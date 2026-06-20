@@ -1,0 +1,26 @@
+schema_version: 1
+backend: coolprop
+mode: property_table
+fluids:
+  - Propane
+  - Isobutane
+grid:
+  temperature:
+    kind: linspace
+    start: 20.0
+    stop: 100.0
+    num: 5
+    unit: degC
+  pressure:
+    kind: geomspace
+    start: 1.0
+    stop: 20.0
+    num: 5
+    unit: bar
+properties:
+  - specific_enthalpy
+  - specific_entropy
+  - mass_density
+  - isobaric_specific_heat_capacity
+  - dynamic_viscosity
+  - thermal_conductivity

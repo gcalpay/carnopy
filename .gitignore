@@ -1,0 +1,25 @@
+# Python bytecode/cache
+__pycache__/
+*.py[cod]
+
+# Test/lint/type-check caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# Build/package artifacts
+build/
+dist/
+*.egg-info/
+
+# Generated datasets
+outputs/*
+!outputs/.gitkeep
+
+# Local environment files
+.env
+.env.*

@@ -1,0 +1,16 @@
+schema_version: 1
+backend: coolprop
+mode: vapor_mass_fraction_table
+fluids: [Propane]
+grid:
+  temperature:
+    kind: explicit
+    values: [250.0]
+    unit: K
+  vapor_mass_fraction:
+    kind: explicit
+    values: [0.0, 0.5, 1.0]
+    unit: "1"
+properties:
+  - specific_enthalpy
+  - mass_density

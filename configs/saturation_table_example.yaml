@@ -1,0 +1,17 @@
+schema_version: 1
+backend: coolprop
+mode: saturation_table
+fluids:
+  - Propane
+grid:
+  temperature:
+    kind: stepspace
+    start: -30.0
+    stop: 60.0
+    step: 10.0
+    unit: degC
+properties:
+  - specific_enthalpy
+  - specific_entropy
+  - mass_density
+  - surface_tension

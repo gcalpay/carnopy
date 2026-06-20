@@ -1,0 +1,20 @@
+schema_version: 1
+backend: coolprop
+mode: vapor_mass_fraction_table
+fluids:
+  - Propane
+grid:
+  temperature:
+    kind: linspace
+    start: -20.0
+    stop: 50.0
+    num: 4
+    unit: degC
+  vapor_mass_fraction:
+    kind: explicit
+    values: [0.0, 0.25, 0.5, 0.75, 1.0]
+    unit: "1"
+properties:
+  - specific_enthalpy
+  - specific_entropy
+  - mass_density
