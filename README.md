@@ -1,8 +1,8 @@
 # Carnopy
 
-Carnopy is a CLI-first Python package for generating reproducible,
-CoolProp-derived thermophysical datasets for machine-learning, surrogate-model,
-and engineering workflows.
+Carnopy is a CLI-first Python package for generating reproducible
+thermophysical datasets from configured property backends for machine-learning,
+surrogate-model, and engineering workflows.
 
 Carnopy is not a thermodynamic property model. It orchestrates a property
 backend, validates a deterministic sampling specification, preserves failed
@@ -38,11 +38,29 @@ Generate an immutable run:
 carnopy generate configs/property_table_example.yaml
 ```
 
-List fluids supported by the installed CoolProp version:
+List pure fluids available from the current backend:
 
 ```bash
 carnopy fluids
 ```
+
+Install optional visualization support:
+
+```bash
+python -m pip install -e ".[viz]"
+```
+
+Export a scientific plot from a vapor-mass-fraction run:
+
+```bash
+carnopy plot outputs/<run-directory> \
+  --property mass_density \
+  --kind curves \
+  --show
+```
+
+The image and a traceable `.plot.json` sidecar are written under `figures/` by
+default. Plotting does not modify the immutable source run.
 
 Each run contains:
 
@@ -70,7 +88,8 @@ strict row validity: failure of any requested property invalidates the complete
 row, while successful values are retained for diagnosis.
 
 See [configuration](docs/configuration.md), [data policy](docs/data-policy.md),
-and [architecture](docs/architecture.md) for the stable contracts.
+[visualization](docs/visualization.md), and
+[architecture](docs/architecture.md) for the stable contracts.
 
 Official CoolProp references:
 

@@ -20,6 +20,9 @@ dist/
 outputs/*
 !outputs/.gitkeep
 
+# Generated figures
+figures/
+
 # Local environment files
 .env
 .env.*

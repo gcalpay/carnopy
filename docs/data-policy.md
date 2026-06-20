@@ -27,3 +27,9 @@ these quantities into universal absolutes.
 
 Generated run directories are immutable disposable artifacts and must not be
 committed.
+
+Scientific figures are derived artifacts written outside source runs. Every
+export includes a `.plot.json` sidecar containing the source hash, run/spec
+identity, selected property and fluids, effective plotting settings, and image
+hash. When source metadata is available, plotting fails on dataset hash
+mismatch. Standalone files without metadata are marked unverified.

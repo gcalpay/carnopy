@@ -30,7 +30,11 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
+viz = [
+  "matplotlib>=3.8",
+]
 dev = [
+  "matplotlib>=3.8",
   "pytest>=8",
   "ruff>=0.9",
   "mypy>=1.13",
@@ -63,7 +67,15 @@ files = ["src/carnopy"]
 warn_unused_configs = true
 
 [[tool.mypy.overrides]]
-module = ["CoolProp", "CoolProp.*", "yaml", "pyarrow", "pyarrow.*"]
+module = [
+  "CoolProp",
+  "CoolProp.*",
+  "yaml",
+  "pyarrow",
+  "pyarrow.*",
+  "matplotlib",
+  "matplotlib.*",
+]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

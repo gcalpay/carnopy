@@ -23,6 +23,10 @@ when concrete requirements exist.
 Runs are staged in a sibling directory and atomically renamed. Existing run
 directories are never overwritten.
 
+Optional visualization is isolated under `carnopy.visualization`. It reads
+finalized datasets, verifies recorded hashes, and exports figures outside the
+immutable source run. Matplotlib is not imported by generation modules.
+
 Identity layers:
 
 - `spec_id`: canonical scientific specification.

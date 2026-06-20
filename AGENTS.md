@@ -19,6 +19,9 @@ older examples later in this file. In particular:
 - row failures use the approved layered backend-neutral schema;
 - CoolProp reference state is reset once per requested fluid to `DEF` before
   generation.
+- optional Matplotlib visualization may read finalized
+  `vapor_mass_fraction_table` runs, but must export figures outside immutable
+  run directories and include plot-provenance sidecars.
 
 If actual CoolProp behavior contradicts an approved public contract, stop,
 preserve diagnostics, and ask the human operator before implementing a

@@ -18,6 +18,12 @@ class UnitDefinition:
             raise ValueError("unit conversion produced a non-finite value")
         return 0.0 if result == 0.0 else result
 
+    def from_si(self, value: float) -> float:
+        result = (value - self.offset) / self.scale
+        if not isfinite(result):
+            raise ValueError("unit conversion produced a non-finite value")
+        return 0.0 if result == 0.0 else result
+
 
 UNITS: Final[dict[str, UnitDefinition]] = {
     "K": UnitDefinition("temperature", "K"),

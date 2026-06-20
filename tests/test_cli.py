@@ -48,3 +48,38 @@ properties: [surface_tension]
     assert result.exit_code == 3
     assert "completed_zero_valid_rows" in result.stdout
     assert list(output_root.iterdir())
+
+
+def test_help_uses_backend_neutral_wording() -> None:
+    result = runner.invoke(app, ["--help"])
+    assert result.exit_code == 0
+    assert "from configured backends" in result.stdout
+    fluids = runner.invoke(app, ["fluids", "--help"])
+    assert fluids.exit_code == 0
+    assert "available from the current backend" in fluids.stdout
+
+
+def test_plot_command_exports_figure_and_sidecar(
+    vapor_config_path: Path,
+    tmp_path: Path,
+) -> None:
+    from carnopy.api import generate_dataset
+
+    run = generate_dataset(vapor_config_path, output_root=tmp_path / "runs")
+    output = tmp_path / "density.png"
+    result = runner.invoke(
+        app,
+        [
+            "plot",
+            str(run.output_directory),
+            "--property",
+            "mass_density",
+            "--output",
+            str(output),
+        ],
+        env={"MPLBACKEND": "Agg", "MPLCONFIGDIR": str(tmp_path / "mpl")},
+    )
+    assert result.exit_code == 0, result.stdout
+    assert output.is_file()
+    assert output.with_suffix(".plot.json").is_file()
+    assert "Source integrity: verified" in result.stdout

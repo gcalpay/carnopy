@@ -1,0 +1,28 @@
+schema_version: 1
+backend: coolprop
+mode: vapor_mass_fraction_table
+
+fluids:
+  - Cyclopentane
+
+grid:
+  pressure:
+    kind: stepspace
+    start: 1.0
+    stop: 3.0
+    step: 0.25
+    unit: bar
+
+  vapor_mass_fraction:
+    kind: linspace
+    start: 0.0
+    stop: 1.0
+    num: 11
+    unit: "1"
+
+properties:
+  - specific_enthalpy
+  - specific_entropy
+  - mass_density
+  - dynamic_viscosity
+  - thermal_conductivity
