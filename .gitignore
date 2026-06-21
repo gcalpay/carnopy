@@ -28,3 +28,6 @@ figures/
 # Local environment files
 .env
 .env.*
+
+# Operator-specific coding-agent instructions
+.agents/local.md

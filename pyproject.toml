@@ -76,11 +76,9 @@ packages = ["src/carnopy"]
 [tool.hatch.build.targets.sdist]
 include = [
   "/AGENTS.md",
-  "/CONTRIBUTING.md",
   "/LICENSE",
   "/README.md",
   "/configs",
-  "/docs",
   "/pyproject.toml",
   "/scripts",
   "/src",

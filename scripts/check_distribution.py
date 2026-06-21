@@ -23,16 +23,11 @@ WHEEL_REQUIRED = {
 }
 SDIST_REQUIRED = {
     "AGENTS.md",
-    "CONTRIBUTING.md",
     "LICENSE",
     "README.md",
     "configs/property_table_example.yaml",
     "configs/saturation_table_example.yaml",
     "configs/vapor_mass_fraction_table_example.yaml",
-    "docs/architecture.md",
-    "docs/configuration.md",
-    "docs/data-policy.md",
-    "docs/visualization.md",
     "pyproject.toml",
     "scripts/check_distribution.py",
     "scripts/hash_distributions.py",
@@ -43,6 +38,10 @@ SDIST_REQUIRED = {
     "src/carnopy/templates/property_table.yaml",
     "tests/test_cli.py",
     "uv.lock",
+}
+SDIST_MARKDOWN = {
+    "AGENTS.md",
+    "README.md",
 }
 FORBIDDEN_ANYWHERE = {
     ".mypy_cache",
@@ -218,6 +217,12 @@ def inspect_sdist(path: Path, expected_version: str) -> None:
         missing = sorted(SDIST_REQUIRED - relative)
         if missing:
             raise ValueError(f"sdist is missing required files: {', '.join(missing)}")
+        markdown = {name for name in relative if name.endswith(".md")}
+        if markdown != SDIST_MARKDOWN:
+            raise ValueError(
+                "sdist Markdown inventory must contain only AGENTS.md and README.md; "
+                f"found {sorted(markdown)}"
+            )
         invalid = forbidden_paths(names, strip_root=True)
         if invalid:
             raise ValueError(f"sdist contains forbidden files: {', '.join(invalid)}")

@@ -46,9 +46,32 @@ def test_alpha_metadata_uses_modern_license_and_release_urls() -> None:
 def test_manual_plot_workflow_uses_the_printed_run_directory_directly() -> None:
     root = Path(__file__).resolve().parents[1]
     expected_run = 'RUN_DIR="outputs/manual-test/20260621T172006Z_vapor_fraction_c8e28e9f"'
-    for relative_path in ("README.md", "docs/visualization.md"):
-        text = (root / relative_path).read_text(encoding="utf-8")
-        assert "--out outputs/manual-test" in text
-        assert "Example only; replace this with the exact path printed by your run." in text
-        assert expected_run in text
-        assert "outputs/manual-test/outputs/manual-test" not in text
+    text = (root / "README.md").read_text(encoding="utf-8")
+    assert "--out outputs/manual-test" in text
+    assert "Example only; replace this with the exact path printed by your run." in text
+    assert expected_run in text
+    assert "outputs/manual-test/outputs/manual-test" not in text
+
+
+def test_public_markdown_is_consolidated() -> None:
+    root = Path(__file__).resolve().parents[1]
+    assert (root / "README.md").is_file()
+    assert (root / "AGENTS.md").is_file()
+    assert not (root / "CONTRIBUTING.md").exists()
+    assert not list((root / "docs").glob("*.md"))
+
+    pyproject: dict[str, Any] = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    sdist_includes = set(pyproject["tool"]["hatch"]["build"]["targets"]["sdist"]["include"])
+    assert "/README.md" in sdist_includes
+    assert "/AGENTS.md" in sdist_includes
+    assert "/CONTRIBUTING.md" not in sdist_includes
+    assert "/docs" not in sdist_includes
+
+
+def test_public_agents_bootstraps_ignored_local_policy() -> None:
+    root = Path(__file__).resolve().parents[1]
+    agents = (root / "AGENTS.md").read_text(encoding="utf-8")
+    gitignore = (root / ".gitignore").read_text(encoding="utf-8")
+    assert "<repository-root>/.agents/local.md" in agents
+    assert "highest-priority repository instruction" in agents
+    assert ".agents/local.md" in gitignore

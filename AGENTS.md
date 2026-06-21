@@ -1,11 +1,29 @@
-# AGENTS.md
+# Carnopy contributor and coding-agent guide
 
-## Scope and authority
+## Authority and local instructions
 
-This file applies to `/home/cfd/carnopy/` and every subdirectory unless a more
-specific nested `AGENTS.md` is added later.
+This file applies to the repository root and all subdirectories unless a more
+specific nested `AGENTS.md` exists.
 
-The repository is `gcalpay/carnopy`. Canonical names are:
+Before inspecting, testing, or changing the repository, check this exact
+repository-relative path:
+
+```text
+<repository-root>/.agents/local.md
+```
+
+If that file exists, read it in full before taking any other action. It is the
+highest-priority repository instruction for local paths, environment selection,
+allowed commands, Git authority, dependency operations, credentials, and
+publication boundaries. Do not infer permission from this public file when the
+local file is more restrictive.
+
+The tracked `AGENTS.md` remains authoritative for public scientific behavior,
+schemas, compatibility contracts, architecture, and contribution standards.
+Local instructions may narrow operational authority but must not silently alter
+those public contracts.
+
+Canonical names:
 
 ```text
 Project: Carnopy
@@ -17,68 +35,15 @@ CLI: carnopy
 
 CoolProp is the first backend dependency, not the project identity.
 
-## Hard boundaries
+Before starting an implementation stage, establish whether unrelated or
+uncommitted work is present. If the tree is dirty, pause before editing,
+describe the intended stage boundary, and suggest a Conventional Commit message
+so separate stages are not mixed accidentally. Preserve unrelated changes.
 
-- Work only inside `/home/cfd/carnopy/`.
-- Do not run Git commands. The human owns Git history, branches, tags, remotes,
-  pushes, and repository settings.
-- Before starting an implementation stage, ask the human whether the working
-  tree contains uncommitted changes. If it is dirty, pause before editing,
-  summarize the intended stage boundary, and suggest a conventional commit
-  message so unrelated stages are not mixed accidentally. Continue only after
-  the human confirms the existing changes are committed, stashed, or explicitly
-  approved as part of the current stage.
-- Do not publish to TestPyPI or PyPI.
-- Do not create or handle package-index tokens.
-- Do not configure GitHub environments or Trusted Publishers.
-- Do not install, upgrade, remove, or synchronize dependencies without explicit
-  human approval.
-- Do not create or replace Python environments.
-- Do not use destructive filesystem commands without explicit approval.
-- Preserve unrelated human changes.
+Do not publish packages, create credentials, configure repository security, or
+change dependency declarations without explicit maintainer authorization.
 
-The human owns dependency decisions, environment bootstrap, GitHub visibility,
-release approval, version tags, and publication.
-
-## Development environment
-
-Use standalone uv 0.11.23 and the project-local environment:
-
-```text
-/home/cfd/carnopy/.venv
-```
-
-`pyproject.toml` and `uv.lock` are authoritative. Do not recreate
-`requirements.txt` files.
-
-Normal development:
-
-```bash
-uv sync --locked --extra all --group dev
-```
-
-Release-readiness tooling:
-
-```bash
-uv sync --locked --extra all --group dev --group release
-```
-
-Use locked commands:
-
-```bash
-uv lock --check
-uv run --locked ruff check .
-uv run --locked ruff format --check .
-uv run --locked mypy src/carnopy
-uv run --locked pytest
-uv run --locked python scripts/preflight.py
-uv pip check --python .venv/bin/python
-```
-
-If a required dependency or command is unavailable, preserve the exact failure
-and ask before installing or substituting anything.
-
-## Project purpose
+## Purpose and scope
 
 Carnopy generates reproducible, backend-derived synthetic thermophysical
 datasets for machine-learning, surrogate-model, and engineering workflows.
@@ -86,8 +51,7 @@ datasets for machine-learning, surrogate-model, and engineering workflows.
 Carnopy is not:
 
 - a thermodynamic property model;
-- experimental data;
-- backend-independent ground truth;
+- experimental data or backend-independent ground truth;
 - a process simulator;
 - a machine-learning training framework.
 
@@ -100,14 +64,12 @@ sampling specification
 → stable tabular schema
 → CSV/Parquet
 → metadata and report
+→ optional visualization of emitted columns
 ```
-
-## Milestone 1 contract
 
 Milestone 1 supports:
 
-- Python package and CLI named `carnopy`;
-- CoolProp backend only;
+- CoolProp only;
 - pure fluids only;
 - YAML schema version 1;
 - `property_table`;
@@ -116,8 +78,9 @@ Milestone 1 supports:
 - deterministic sampling;
 - CSV and Parquet;
 - metadata and report JSON;
-- optional Matplotlib property curves, sampled property heatmaps, generic x-y
-  plots, and emitted-column p-v and T-s diagrams.
+- optional Matplotlib property curves, sampled heatmaps, x-y plots, and p-v/T-s
+  diagrams;
+- configured post-generation visualization.
 
 Out of scope:
 
@@ -126,11 +89,65 @@ Out of scope:
 - additional property backends;
 - random, Sobol, Latin-hypercube, adaptive, or active-learning sampling;
 - ML training or inference;
-- GUI, web service, API server, or database;
-- ThermoML, OCR, RAG, or literature mining;
-- package publication by the agent.
+- GUI, web/API services, or databases;
+- ThermoML, OCR, RAG, or literature mining.
 
-## Public CLI
+Do not broaden scope without maintainer approval.
+
+## Development workflow
+
+Use the project-local environment and locked uv workflow described by local
+instructions. `pyproject.toml` and `uv.lock` are authoritative; do not recreate
+requirements files.
+
+Normal synchronization:
+
+```bash
+uv sync --locked --extra all --group dev
+```
+
+Release tooling:
+
+```bash
+uv sync --locked --extra all --group dev --group release
+```
+
+Required quality gate:
+
+```bash
+uv lock --check
+uv run --locked ruff check .
+uv run --locked ruff format --check .
+uv run --locked mypy src/carnopy
+uv run --locked pytest
+uv run --locked python scripts/preflight.py
+uv pip check --python .venv/bin/python
+```
+
+If a required command or dependency is unavailable, preserve the exact failure
+and ask before installing, upgrading, or substituting anything.
+
+Use:
+
+- `rg` for searches;
+- `apply_patch` for repository file edits;
+- temporary directories for generated test artifacts;
+- focused tests for every behavior change.
+
+Avoid:
+
+- monolithic modules;
+- speculative frameworks;
+- heavy imports and side effects at module import time;
+- brittle golden thermodynamic datasets;
+- pixel-perfect figure tests.
+
+Root and subcommand help must not import CoolProp, NumPy, pandas, PyArrow, or
+Matplotlib.
+
+## Public interfaces
+
+The public CLI is:
 
 ```text
 carnopy --version
@@ -138,7 +155,7 @@ carnopy init MODE OUTPUT [--create-parents]
 carnopy properties
 carnopy fluids
 carnopy validate CONFIG.yaml
-carnopy generate CONFIG.yaml [--out PATH]
+carnopy generate CONFIG.yaml [--out PATH] [--figures-out PATH]
 carnopy plot SOURCE ...
 ```
 
@@ -148,21 +165,21 @@ The documented workflow is:
 init → edit → optional validate → generate → inspect → optional plot
 ```
 
-`generate` validates automatically. Commands remain independently scriptable;
-do not add implicit chaining.
+Commands remain independently scriptable; do not add implicit chaining.
 
-`init`:
+The supported Python API intentionally remains narrow:
 
-- supports all three public modes;
-- requires `.yaml` or `.yml`;
-- never overwrites;
-- prompts before creating missing parents;
-- fails noninteractively unless `--create-parents` is supplied;
-- reads templates packaged with `importlib.resources`.
+- `load_config`;
+- `validate_config`;
+- `generate_dataset`;
+- public configuration and result models;
+- explicit visualization functions.
 
-## Public configuration
+Keep CLI handlers thin and scientific logic outside `cli.py`.
 
-Every YAML configuration contains:
+## Configuration and sampling contracts
+
+Every configuration contains:
 
 ```yaml
 schema_version: 1
@@ -172,6 +189,9 @@ fluids: [...]
 grid: ...
 properties: [...]
 ```
+
+An optional `visualization:` section is allowed, but must not affect scientific
+dataset identity.
 
 Public samplers:
 
@@ -186,7 +206,7 @@ logspace
 `stepspace` is inclusive and requires a reachable endpoint. Public `arange` is
 not supported.
 
-Supported units:
+Supported input units:
 
 ```text
 temperature: K, degC
@@ -194,27 +214,25 @@ pressure: Pa, kPa, MPa, bar
 vapor_mass_fraction: "1"
 ```
 
-All backend calls and generated numeric columns use SI. Preserve original units
-and sampler declarations in metadata.
+All backend calls and generated numeric columns use SI. Preserve original
+units and sampler declarations in metadata.
 
 The row limit is 1,000,000 after sampler materialization, fluid
 canonicalization, Cartesian expansion, and saturation endpoint expansion.
 
-## Mode contracts
+Mode contracts:
 
-`property_table` requires temperature and pressure and generates their Cartesian
-product for each canonical fluid.
+- `property_table` requires temperature and pressure;
+- `saturation_table` requires exactly one of temperature or pressure and emits
+  separate liquid and vapor endpoint rows;
+- `vapor_mass_fraction_table` requires vapor mass fraction plus exactly one of
+  temperature or pressure.
 
-`saturation_table` requires exactly one of temperature or pressure and emits
-separate saturated-liquid and saturated-vapor rows.
-
-`vapor_mass_fraction_table` requires vapor mass fraction plus exactly one of
-temperature or pressure. Public `vapor_mass_fraction` maps to CoolProp `Q` only
-inside the adapter.
+Public `vapor_mass_fraction` maps to CoolProp `Q` only inside the adapter.
 
 ## Scientific behavior
 
-Use official CoolProp documentation as the authority:
+Use the official CoolProp documentation as the backend authority:
 
 - https://coolprop.org/coolprop/
 - https://coolprop.org/coolprop/HighLevelAPI.html
@@ -233,14 +251,14 @@ If actual CoolProp behavior contradicts an approved contract:
 2. Preserve fluid, normalized inputs, property, mode, CoolProp version,
    exception type/message, and observed result.
 3. Explain the contradiction.
-4. Ask the human operator to decide.
+4. Ask the maintainer to decide.
 
 Do not silently change input pairs, phase rules, numerical methods, schemas, or
 backend behavior.
 
-## Rows and failures
+## Rows, validity, and failures
 
-Rows include:
+Every row includes:
 
 ```text
 run_id
@@ -263,11 +281,11 @@ backend_error_message
 `case_id` is zero-based and assigned after deterministic final ordering.
 
 Milestone 1 uses strict row validity. Any required coordinate, phase, or
-requested-property failure invalidates the row. Successful values may remain;
-failed values remain null.
+requested-property failure invalidates the row. Successfully evaluated values
+may remain populated; failed values remain null.
 
-Do not infer stable failure categories by parsing backend messages. Preserve raw
-backend diagnostics separately.
+Do not infer stable failure categories by brittle parsing of backend messages.
+Preserve raw backend diagnostics separately.
 
 ## Provenance and immutable artifacts
 
@@ -276,7 +294,8 @@ Identity meanings:
 - `spec_id`: canonical executable scientific specification;
 - `generation_context_id`: artifact-generation context;
 - `run_id`: one UUID4 generation attempt;
-- artifact hashes: exact emitted bytes.
+- artifact hashes: exact emitted bytes;
+- `visualization_request_id`: normalized visualization request.
 
 Generation writes immutable run directories containing:
 
@@ -289,37 +308,95 @@ metadata.json
 report.json
 ```
 
-Human-facing run-directory names use:
+Human-facing names use:
 
 ```text
 <UTC-second>_<mode-slug>_<eight-character-run-prefix>
 ```
 
-The name is a locator, not dataset identity. Full `run_id`, `spec_id`,
-generation context, and artifact hashes remain in metadata.
+The directory name is a locator, not dataset identity.
+
+Runs are staged and atomically renamed. Never overwrite an existing final or
+staging directory. Do not add host source-config paths to metadata.
 
 Tests use temporary directories. Do not commit generated datasets or figures.
 
-Visualization:
+## Visualization contracts
 
-- reads emitted columns from all three Milestone 1 dataset modes;
-- prefers Parquet in run directories;
-- verifies recorded source hashes;
-- plots only valid values;
-- supports discrete property curves and non-interpolated sampled heatmaps;
-- supports generic numeric x-y plots and conventional p-v/T-s diagrams derived
-  only from emitted density, pressure, entropy, and temperature columns;
-- preserves invalid and missing states as gaps;
-- never calls a thermodynamic backend or invents intermediate states;
-- writes outside immutable run directories;
-- writes an image plus `.plot.json`;
-- refuses existing image or sidecar paths;
-- finalizes with exclusive same-filesystem hard links;
-- is no-overwrite-safe but not fully two-file crash-atomic.
+Visualization is a reproducible view of emitted columns:
 
-## Packaging and release readiness
+- never call a thermodynamic backend;
+- never smooth, interpolate, extrapolate, or invent states;
+- preserve invalid and missing gaps;
+- derive only `specific_volume = 1 / mass_density`;
+- use semantic scientific labels and units;
+- keep visualization identity separate from dataset identity.
 
-Use a `src/` layout and Hatchling:
+Supported kinds:
+
+```text
+property_curves
+property_heatmap
+xy
+pv
+ts
+```
+
+CLI spelling uses `property-curves` and `property-heatmap`.
+
+Manual exports:
+
+- prefer Parquet in run directories;
+- verify recorded source hashes;
+- write outside immutable source runs;
+- write an image plus `.plot.json`;
+- refuse existing image or sidecar paths;
+- finalize using exclusive same-filesystem hard links;
+- remain no-overwrite-safe but not fully two-file crash-atomic.
+
+Configured visualization:
+
+- validates before thermodynamic generation;
+- executes after dataset finalization;
+- writes under a separate figure root;
+- records one `visualization-report.json`;
+- preserves successful figures after another plot fails;
+- never changes `config.normalized.json`, `spec_id`,
+  `generation_context_id`, or dataset artifact hashes.
+
+Dataset `run_status` remains solely about row validity.
+
+## Architecture
+
+The high-level pipeline is:
+
+```text
+YAML
+  → validated configuration
+  → canonical SI scientific specification
+  → thin backend adapter
+  → mode-specific rows
+  → stable DataFrame schema
+  → immutable CSV/Parquet + metadata/report
+  → optional emitted-column visualization
+```
+
+The backend boundary contains only capabilities needed by current modes. It is
+not a plugin framework. Add abstractions only when concrete additional backend
+requirements exist.
+
+Keep focused module boundaries:
+
+- configuration parsing and normalization;
+- semantic domain registries;
+- backend adapter;
+- mode generators;
+- output/provenance writers;
+- visualization requests, selection, rendering, and automation.
+
+## Packaging and release safeguards
+
+Use the `src/` layout and Hatchling:
 
 ```toml
 [build-system]
@@ -327,42 +404,67 @@ requires = ["hatchling>=1.27.0"]
 build-backend = "hatchling.build"
 ```
 
-Matplotlib remains optional through `viz`; `all` must contain every user-facing
-optional dependency. PyArrow remains core.
+Matplotlib remains optional through `viz`; `all` must remain synchronized with
+all user-facing extras. PyArrow remains core.
 
-The first intended public version is `0.1.0a1`. Publication uses one verified
-wheel and sdist, uploaded byte-identically to TestPyPI and PyPI through
-GitHub OIDC Trusted Publishing. The human performs all publication steps.
+The first intended public release is `0.1.0a1`. The release workflow builds one
+wheel and sdist, verifies them, and uploads the same bytes to TestPyPI and PyPI
+through GitHub OIDC Trusted Publishing.
 
-Never rebuild changed payloads under an uploaded version. Any payload change
-requires a new version.
+Only a human maintainer may:
 
-## Code quality
+- make the repository public;
+- configure GitHub environments or Trusted Publishers;
+- create or push release tags;
+- approve production deployment;
+- publish to TestPyPI or PyPI.
 
-- Prefer direct, explicit implementations.
-- Keep CLI functions thin.
-- Keep scientific logic out of `cli.py`.
-- Avoid heavy imports and side effects at module import time.
-- Root and subcommand help must not import CoolProp, NumPy, pandas, PyArrow, or
-  Matplotlib.
-- Keep module boundaries focused; avoid monolithic files and speculative
-  frameworks.
-- Use `apply_patch` for edits.
-- Use `rg` for text and file searches.
-- Use strict mypy for `src/carnopy`.
-- Add focused regression tests for every behavior change.
-- Do not use brittle golden thermodynamic datasets or pixel-perfect plots.
+Never rebuild changed payloads under an uploaded version. Any changed payload
+requires a new version. Never use `skip-existing` to repair a partial release.
 
-## Commit-message guidance
+Distribution checks:
 
-The human uses:
+```bash
+uv run --locked --group release python -m build
+uv run --locked --group release python -m twine check dist/*
+uv run --locked python scripts/check_distribution.py dist/*
+```
+
+## Commit messages
+
+Use:
 
 ```text
 <type>(<scope>): <imperative summary>
 ```
 
-Common types: `feat`, `fix`, `test`, `docs`, `refactor`, `chore`, `ci`,
-`build`, `perf`, and `style`.
+Rules:
 
-Common scopes: `dataset`, `schema`, `sampler`, `coolprop`, `cli`,
-`validation`, `metadata`, `tests`, `docs`, `ci`, and `packaging`.
+- lowercase type and scope;
+- imperative mood: `add`, `fix`, `validate`, `reject`, `document`;
+- concise summary, ideally no more than 72 characters;
+- no trailing period;
+- body only when the reason or tradeoff matters.
+
+Common types:
+
+```text
+feat fix test docs refactor chore ci build perf style
+```
+
+Recommended scopes:
+
+```text
+dataset schema sampler coolprop cli validation metadata tests docs ci
+packaging viz
+```
+
+Examples:
+
+```text
+feat(viz): add configured visualization outputs
+fix(validation): reject duplicate canonical fluids
+test(sampler): cover descending stepspace ranges
+docs(project): consolidate public guidance
+build(packaging): declare parquet runtime dependency
+```

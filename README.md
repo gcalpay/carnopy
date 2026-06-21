@@ -19,12 +19,30 @@ Milestone 1 supports pure fluids through CoolProp and three modes:
 - `saturation_table`: saturated-liquid and saturated-vapor endpoint rows;
 - `vapor_mass_fraction_table`: two-phase states over vapor mass fraction.
 
-## Install the alpha
+## Contents
 
-After `0.1.0a1` is published:
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [Configuration](#configuration)
+- [Properties](#properties)
+- [Visualization](#visualization)
+- [Generated artifacts and provenance](#generated-artifacts-and-provenance)
+- [Python API](#python-api)
+- [Scientific limitations](#scientific-limitations)
+- [Development and contribution](#development-and-contribution)
+- [Alpha release procedure](#alpha-release-procedure)
+
+## Installation
+
+After `0.1.0a1` is published to PyPI:
 
 ```bash
 python -m pip install "carnopy==0.1.0a1"
+```
+
+Install optional plotting support:
+
+```bash
 python -m pip install "carnopy[all]==0.1.0a1"
 ```
 
@@ -35,16 +53,26 @@ uv tool install "carnopy==0.1.0a1"
 uv tool install "carnopy[all]==0.1.0a1"
 ```
 
-The base package supports dataset generation. The `all` extra additionally
-installs optional scientific plotting.
+The base package supports generation and validation. The `viz` and `all` extras
+install Matplotlib for manual or configured figure generation. PyArrow remains
+a core dependency because every run emits CSV and Parquet.
 
-## CLI workflow
+For repository development:
+
+```bash
+uv sync --locked --extra all --group dev
+uv run --locked carnopy --help
+```
+
+## Quick start
+
+The normal workflow is:
 
 ```text
 init → edit → optional validate → generate → inspect → optional plot
 ```
 
-Create a commented starter configuration:
+Create a starter configuration:
 
 ```bash
 carnopy init property_table my-dataset.yaml
@@ -58,7 +86,7 @@ saturation_table
 vapor_mass_fraction_table
 ```
 
-Discover fluids and semantic properties:
+Discover backend fluids and semantic properties:
 
 ```bash
 carnopy fluids
@@ -72,8 +100,8 @@ carnopy validate my-dataset.yaml
 carnopy generate my-dataset.yaml
 ```
 
-`generate` performs validation automatically. The separate `validate` command
-is useful for scripts and early feedback but is not a required extra step.
+`generate` validates automatically. The separate `validate` command is useful
+for scripts and early feedback, but does not evaluate thermodynamic rows.
 
 To choose a different output root:
 
@@ -83,19 +111,338 @@ carnopy generate \
   --out outputs/manual-test
 ```
 
-The generated run is created directly under that root. Copy the exact path
-printed after `Output directory:`; do not prepend `outputs/manual-test` again:
+The run is created directly under that root. Copy the exact path printed after
+`Output directory:`; do not prepend the output root again:
 
 ```bash
 # Example only; replace this with the exact path printed by your run.
 RUN_DIR="outputs/manual-test/20260621T172006Z_vapor_fraction_c8e28e9f"
 ```
 
-Run names use the UTC creation time, a short mode label, and the first eight
+Run names use UTC creation time, a short mode label, and the first eight
 hexadecimal characters of the unique `run_id`. Full identities and hashes
 remain in `metadata.json`.
 
-Inspect:
+Use command-specific help for the complete current interface:
+
+```bash
+carnopy --help
+carnopy generate --help
+carnopy plot --help
+```
+
+## Configuration
+
+Schema version 1 requires:
+
+```yaml
+schema_version: 1
+backend: coolprop
+mode: property_table
+fluids: [Propane]
+
+grid:
+  temperature:
+    kind: linspace
+    start: 20
+    stop: 100
+    num: 5
+    unit: degC
+  pressure:
+    kind: geomspace
+    start: 1
+    stop: 20
+    num: 5
+    unit: bar
+
+properties:
+  - specific_enthalpy
+  - mass_density
+```
+
+### Modes
+
+`property_table` requires temperature and pressure and generates their Cartesian
+product for every selected fluid.
+
+`saturation_table` requires exactly one of temperature or pressure. It computes
+the missing saturation coordinate and emits separate saturated-liquid and
+saturated-vapor rows.
+
+`vapor_mass_fraction_table` requires vapor mass fraction plus exactly one of
+temperature or pressure. Vapor mass fraction is vapor mass divided by total
+vapor-plus-liquid mass. CoolProp's `Q` name remains internal to the adapter.
+
+### Samplers
+
+| Sampler | Parameters | Behavior |
+|---|---|---|
+| `explicit` | `values` | Preserves declared order; values must be finite and unique after SI conversion. |
+| `linspace` | `start`, `stop`, `num` | Includes both endpoints; supports ascending and descending ranges. |
+| `stepspace` | `start`, `stop`, `step` | Includes both endpoints; the endpoint must be reachable. |
+| `geomspace` | `start`, `stop`, `num` | Positive physical endpoints; supports either direction. |
+| `logspace` | `start_exp`, `stop_exp`, `num`, optional `base` | Samples exponent space; `base` must exceed one. |
+
+Equal sampler bounds are rejected; use `explicit` for one value. Geometric and
+logarithmic sampling is not supported for offset Celsius values or vapor mass
+fraction. Use Kelvin for geometric temperature grids.
+
+### Units
+
+Supported input units:
+
+```text
+temperature: K, degC
+pressure: Pa, kPa, MPa, bar
+vapor_mass_fraction: "1"
+```
+
+All backend calls and generated numeric columns use SI. Original units and
+sampler definitions remain recorded in metadata.
+
+Validation rejects non-finite values, non-positive pressure, temperatures at or
+below absolute zero, vapor mass fractions outside `[0, 1]`, incompatible units,
+duplicate canonical fluids, and projected runs above 1,000,000 rows.
+
+Validation proves that a configuration is structurally executable. It does not
+promise that every fluid, state, phase, and requested property will be valid.
+
+## Properties
+
+Use `carnopy properties` for the authoritative installed registry.
+
+| Semantic name | Dataset column | Classification |
+|---|---|---|
+| `specific_enthalpy` | `specific_enthalpy_J_kg` | backend-provided, reference-dependent |
+| `specific_entropy` | `specific_entropy_J_kgK` | backend-provided, reference-dependent |
+| `specific_internal_energy` | `specific_internal_energy_J_kg` | backend-provided, reference-dependent |
+| `mass_density` | `mass_density_kg_m3` | backend-provided |
+| `isobaric_specific_heat_capacity` | `isobaric_specific_heat_capacity_J_kgK` | backend-provided |
+| `isochoric_specific_heat_capacity` | `isochoric_specific_heat_capacity_J_kgK` | backend-provided |
+| `dynamic_viscosity` | `dynamic_viscosity_Pa_s` | backend-provided |
+| `kinematic_viscosity` | `kinematic_viscosity_m2_s` | derived from viscosity and density |
+| `thermal_conductivity` | `thermal_conductivity_W_mK` | backend-provided |
+| `prandtl_number` | `prandtl_number` | backend-provided |
+| `speed_of_sound` | `speed_of_sound_m_s` | backend-provided |
+| `molar_mass` | `molar_mass_kg_mol` | fluid constant |
+| `critical_temperature` | `critical_temperature_K` | fluid constant |
+| `critical_pressure` | `critical_pressure_Pa` | fluid constant |
+| `triple_point_temperature` | `triple_point_temperature_K` | fluid constant |
+| `surface_tension` | `surface_tension_N_m` | mode/region limited |
+
+Derived dependencies may be evaluated internally without being emitted unless
+explicitly requested. Fluid constants may be repeated in rows and are also
+summarized in metadata.
+
+Milestone 1 uses strict row validity: failure of any required coordinate, phase,
+or requested property makes the row invalid. Successfully evaluated values may
+remain populated while failed values remain null. Requesting a mode-limited
+property such as `surface_tension` over a broad state grid can therefore
+invalidate otherwise usable rows.
+
+## Visualization
+
+Visualization is a reproducible view of emitted dataset columns:
+
+- it never calls CoolProp or another thermodynamic backend;
+- it never smooths, interpolates, extrapolates, or invents states;
+- it preserves invalid and missing gaps;
+- it retains markers at emitted samples;
+- its identity is separate from scientific dataset identity.
+
+Install `carnopy[all]` or `carnopy[viz]` before plotting.
+
+### Manual plotting
+
+Supported plot kinds:
+
+```text
+property-curves
+property-heatmap
+xy
+pv
+ts
+```
+
+Property curves use discrete, colorblind-safe series colors and markers.
+For `property_table`, choose the x-axis explicitly:
+
+```bash
+carnopy plot outputs/<property-run> \
+  --kind property-curves \
+  --property mass_density \
+  --x temperature
+```
+
+For `vapor_mass_fraction_table`, vapor mass fraction is the x-axis and the
+sampled saturation pressure or temperature defines the series:
+
+```bash
+carnopy plot "$RUN_DIR" \
+  --kind property-curves \
+  --property mass_density \
+  --value-scale linear \
+  --show
+```
+
+Sampled heatmaps use flat, non-interpolated cells and require at least two
+unique values on each axis:
+
+```bash
+carnopy plot "$RUN_DIR" \
+  --kind property-heatmap \
+  --property specific_enthalpy \
+  --color-scale linear
+```
+
+`saturation_table` does not support property heatmaps because it contains only
+the two endpoint branches.
+
+Generic x-y plots use numeric semantic fields from emitted columns:
+
+```bash
+carnopy plot outputs/<property-run> \
+  --kind xy \
+  --x specific_enthalpy \
+  --y specific_entropy \
+  --group-by pressure
+```
+
+If more than one independent sampling coordinate remains, `--group-by` must
+resolve the ambiguity. Carnopy does not apply hidden grouping precedence.
+
+Conventional thermodynamic diagrams are derived only from emitted columns:
+
+```bash
+carnopy plot outputs/<run-with-density> --kind pv
+carnopy plot outputs/<run-with-entropy> --kind ts
+```
+
+The p-v diagram uses:
+
+```text
+specific_volume = 1 / mass_density
+```
+
+The T-s diagram uses emitted entropy and temperature and requires recorded
+reference-state metadata. Neither command fabricates a saturation dome,
+critical point, or missing branch.
+
+Exact filters use canonical SI values and never select a nearest neighbor:
+
+```bash
+carnopy plot "$RUN_DIR" \
+  --kind property-curves \
+  --property mass_density \
+  --filter pressure=200000
+```
+
+Repeat `--filter` to combine filters with logical AND. Current filter fields are
+temperature, pressure, vapor mass fraction, phase, and saturation endpoint.
+Repeat `--fluid` to select multiple fluids; each fluid receives its own facet.
+
+`SOURCE` may be a run directory, CSV, or Parquet file. Run directories prefer
+Parquet and verify it against `metadata.json`. Standalone saturation and
+vapor-quality files may require `--saturation-coordinate pressure` or
+`--saturation-coordinate temperature`.
+
+Every export writes an image plus `.plot.json` provenance sidecar under
+`figures/` by default. Existing image or sidecar paths are refused.
+Finalization uses exclusive same-filesystem hard links: it is no-overwrite-safe,
+but the two-file pair is not fully crash-atomic.
+
+### Configured visualization
+
+An optional top-level `visualization` section generates figures after the
+immutable dataset run is finalized:
+
+```yaml
+visualization:
+  format: png
+  fluids: [Propane]
+
+  plots:
+    - name: density-vs-temperature
+      kind: property_curves
+      property: mass_density
+      x: temperature
+      value_scale: linear
+
+    - name: density-map
+      kind: property_heatmap
+      property: mass_density
+      color_scale: log
+
+    - name: enthalpy-entropy
+      kind: xy
+      x: specific_enthalpy
+      y: specific_entropy
+      group_by: pressure
+
+    - name: pressure-specific-volume
+      kind: pv
+
+    - name: temperature-entropy
+      kind: ts
+```
+
+Supported formats are `png`, `pdf`, and `svg`. Per-plot `format` and `fluids`
+replace their shared values; scales are selected per plot. Per-plot filters are
+AND-merged with shared filters, and conflicting values for the same field are
+rejected. Plot names must be unique safe filename slugs. Output paths and
+interactive display are intentionally not stored in YAML.
+
+Shared or per-plot exact filters use YAML mappings:
+
+```yaml
+visualization:
+  filters:
+    phase: gas
+  plots:
+    - name: gas-density
+      kind: property_curves
+      property: mass_density
+      x: temperature
+      filters:
+        pressure: 100000
+```
+
+Generate with the default figure root:
+
+```bash
+carnopy generate my-dataset.yaml
+```
+
+Or select another figure root:
+
+```bash
+carnopy generate my-dataset.yaml \
+  --out outputs/manual-test \
+  --figures-out figures/manual-test
+```
+
+Configured figures are written to:
+
+```text
+<figures-root>/<run-directory-name>/
+├── <plot-name>.<format>
+├── <plot-name>.plot.json
+└── visualization-report.json
+```
+
+Plots execute independently after dataset finalization. A failed plot preserves
+the immutable run and any successful figures, records outcomes in the report,
+and makes the CLI exit with code `1`. A zero-valid-row dataset retains exit code
+`3` and records configured plots as skipped.
+
+Visualization settings do not change `config.normalized.json`, `spec_id`, or
+`generation_context_id`. They receive their own
+`visualization_request_id = viz-<sha256>`. Exact YAML bytes still affect the raw
+configuration hash.
+
+## Generated artifacts and provenance
+
+Each immutable run contains:
 
 ```text
 outputs/<run>/
@@ -107,77 +454,46 @@ outputs/<run>/
 └── report.json
 ```
 
-Export sampled property curves from a vapor-mass-fraction run:
+Runs are staged and then finalized atomically as one directory. Existing final
+or staging paths are never overwritten.
 
-```bash
-carnopy plot "$RUN_DIR" \
-  --kind property-curves \
-  --property mass_density \
-  --show
-```
+Identity layers:
 
-For `property_table`, choose the x-axis explicitly:
+- `spec_id`: canonical executable scientific specification;
+- `generation_context_id`: specification plus software and artifact context;
+- `run_id`: one UUID4 execution attempt;
+- artifact hashes: exact emitted bytes;
+- `visualization_request_id`: normalized visualization request, independent
+  from dataset identity.
 
-```bash
-carnopy plot outputs/<property-run> \
-  --kind property-curves \
-  --property mass_density \
-  --x temperature
-```
+Configuration provenance includes SHA-256 hashes of exact source YAML and
+canonical materialized SI configuration bytes. Metadata records software
+versions, reference-state policy, canonical fluids and properties, sampling,
+failure counts, units, fluid constants, and artifact hashes. Carnopy does not
+store the host source-config path.
 
-Create a non-interpolated sampled property map:
-
-```bash
-carnopy plot "$RUN_DIR" \
-  --kind property-heatmap \
-  --property mass_density
-```
-
-Create a generic emitted-column x-y plot:
-
-```bash
-carnopy plot "$RUN_DIR" \
-  --kind xy \
-  --x specific_enthalpy \
-  --y vapor_mass_fraction
-```
-
-Create conventional thermodynamic diagrams when the required properties were
-emitted:
-
-```bash
-carnopy plot outputs/<run-with-density> --kind pv
-carnopy plot outputs/<run-with-entropy> --kind ts
-```
-
-The p-v diagram uses `specific_volume = 1 / mass_density`. The T-s diagram uses
-the emitted entropy and temperature and requires recorded reference-state
-metadata. Neither command performs additional thermodynamic evaluation.
-
-The image and `.plot.json` provenance sidecar are written under `figures/` by
-default. Plotting never calls CoolProp, interpolates states, or modifies the
-source run.
-
-Run:
-
-```bash
-carnopy --help
-carnopy generate --help
-carnopy plot --help
-```
-
-for complete command-specific guidance.
+Parquet schema metadata includes the dataset schema version and unit mapping.
+Figures are derived artifacts outside the run and are not added to immutable
+dataset artifact hashes.
 
 ## Python API
 
 ```python
 from carnopy import generate_dataset, load_config, validate_config
 
+loaded = load_config("my-dataset.yaml")
 validation = validate_config("my-dataset.yaml")
-result = generate_dataset("my-dataset.yaml")
+result = generate_dataset(
+    "my-dataset.yaml",
+    output_root="outputs",
+    figures_root="figures",
+)
 ```
 
-Optional visualization:
+When configured visualization exists, `result.visualization` contains its
+request ID, status, figure directory, report path, and outcome counts.
+
+Manual plotting:
 
 ```python
 from carnopy.visualization import (
@@ -186,44 +502,151 @@ from carnopy.visualization import (
     plot_xy,
 )
 
-result = plot_property_heatmap(
-    "outputs/manual-test/20260621T172006Z_vapor_fraction_c8e28e9f",
+heatmap = plot_property_heatmap(
+    "outputs/<run>",
     property_name="mass_density",
 )
 
-xy_result = plot_xy(
+xy = plot_xy(
     "outputs/<run>",
     x="specific_enthalpy",
-    y="vapor_mass_fraction",
+    y="specific_entropy",
+    group_by="pressure",
 )
 
-pv_result = plot_thermodynamic_diagram("outputs/<run>", kind="pv")
+pv = plot_thermodynamic_diagram("outputs/<run>", kind="pv")
 ```
 
-The returned figure has already been exported. Modifying it does not update the
-image or provenance sidecar.
+The returned Matplotlib figure represents an image that has already been
+exported. Modifying it does not update the image or provenance sidecar.
 
 ## Scientific limitations
 
-- Backend calls and generated numeric columns use SI.
-- Original declared units and sampling definitions remain in metadata.
+- CoolProp is the only backend in Milestone 1.
+- Pure fluids only; mixtures are deferred.
+- Generated data is backend output, not experimental evidence.
+- All backend calls and generated numeric columns use SI.
 - Specific enthalpy, entropy, and internal energy depend on reference state.
-- Carnopy initializes requested fluids with CoolProp `DEF` and records it.
-- Milestone 1 uses strict row validity.
-- Mode-limited properties such as `surface_tension` can invalidate otherwise
-  useful rows when requested outside their supported region.
-- Mixtures, additional backends, ORC generation, and ML training are deferred.
+- Carnopy resets every requested fluid to CoolProp `DEF` before generation and
+  records that policy.
+- CoolProp reference-state mutation is process-global; concurrent embedded use
+  with unrelated CoolProp calculations is unsupported in Milestone 1.
+- Absolute reference-dependent values are not directly comparable across
+  different reference conventions.
+- Visualization reads emitted columns only and is not a second property
+  evaluation layer.
+- ORC generation, additional backends, ML training, GUI, web services,
+  databases, and mixture models are deferred.
 
-See:
-
-- [Configuration](docs/configuration.md)
-- [Architecture](docs/architecture.md)
-- [Data and provenance](docs/data-policy.md)
-- [Visualization](docs/visualization.md)
-- [Release process](docs/releasing.md)
-- [Contributing](CONTRIBUTING.md)
-
-Official CoolProp references:
+Official backend references:
 
 - https://coolprop.org/coolprop/
+- https://coolprop.org/coolprop/HighLevelAPI.html
 - https://github.com/CoolProp/CoolProp
+
+## Development and contribution
+
+Carnopy uses a `src/` layout, Hatchling, standalone uv, Ruff, strict mypy, and
+pytest. `pyproject.toml` and `uv.lock` are authoritative.
+
+Normal development:
+
+```bash
+uv sync --locked --extra all --group dev
+```
+
+Release-readiness tooling:
+
+```bash
+uv sync --locked --extra all --group dev --group release
+```
+
+Quality gate:
+
+```bash
+uv lock --check
+uv run --locked ruff check .
+uv run --locked ruff format --check .
+uv run --locked mypy src/carnopy
+uv run --locked pytest
+uv run --locked python scripts/preflight.py
+uv pip check --python .venv/bin/python
+```
+
+Keep changes small and explicit. Public configuration names, semantic property
+names, SI dataset columns, failure codes, metadata fields, and identity rules
+are compatibility contracts. Tests use temporary output directories and do not
+commit generated datasets or figures.
+
+Contributor and coding-agent rules, architecture constraints, commit
+conventions, and release-maintainer safeguards are in
+[AGENTS.md](https://github.com/gcalpay/carnopy/blob/main/AGENTS.md).
+
+## Alpha release procedure
+
+Carnopy `0.1.0a1` is intended to be a functional alpha, not a placeholder
+package. The PyPI name is claimed only after production PyPI accepts the
+distribution.
+
+Before release:
+
+1. Make `gcalpay/carnopy` public.
+2. Enable GitHub secret scanning and push protection.
+3. Create GitHub environments:
+   - `testpypi`, without secrets or a reviewer gate;
+   - `pypi`, with a required human reviewer.
+4. Register pending Trusted Publishers on TestPyPI and PyPI:
+
+```text
+Project:      carnopy
+Owner:        gcalpay
+Repository:   carnopy
+Workflow:     publish.yml
+Environment:  testpypi or pypi
+```
+
+Pending publishers do not reserve the project name. Confirm production name
+availability immediately before tagging.
+
+Release verification:
+
+```bash
+uv sync --locked --extra all --group dev --group release
+uv lock --check
+uv run --locked ruff check .
+uv run --locked ruff format --check .
+uv run --locked mypy src/carnopy
+uv run --locked pytest
+uv run --locked python scripts/preflight.py
+uv run --locked --group release python -m build
+uv run --locked --group release python -m twine check dist/*
+uv run --locked python scripts/check_distribution.py dist/*
+uv pip check --python .venv/bin/python
+```
+
+The human creates and pushes the release tag:
+
+```bash
+git tag -a v0.1.0a1 -m "Release carnopy 0.1.0a1"
+git push origin v0.1.0a1
+```
+
+The publishing workflow tests Python 3.10–3.13, builds one wheel/sdist pair
+once, verifies and hashes it, uploads the same bytes to TestPyPI, smoke-tests
+the downloaded files, waits for production approval, then publishes and
+verifies the same bytes on PyPI. Only publish jobs receive `id-token: write`;
+no long-lived index token or `skip-existing` behavior is used.
+
+Never rebuild or republish changed files under an uploaded version. Any payload
+change requires `0.1.0a2` or later. Never move a pushed release tag or delete a
+release to reuse its version.
+
+Official publishing references:
+
+- https://docs.pypi.org/trusted-publishers/creating-a-project-through-oidc/
+- https://docs.pypi.org/trusted-publishers/using-a-publisher/
+- https://packaging.python.org/en/latest/guides/publishing-package-distribution-releases-using-github-actions-ci-cd-workflows/
+
+## License
+
+Carnopy is distributed under the MIT License. See `LICENSE`.
