@@ -3,9 +3,9 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from typing import Literal
+from typing import Literal, cast
 
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, ValidationInfo, field_validator, model_validator
 
 from carnopy.visualization.fields import get_field
 
@@ -15,7 +15,6 @@ PlotKindV2 = Literal[
     "xy",
     "pv",
     "ts",
-    "legacy_contour",
 ]
 PlotScale = Literal["linear", "log"]
 PlotFormat = Literal["png", "pdf", "svg"]
@@ -36,6 +35,20 @@ class ExactFilter(BaseModel):
         if not definition.filter_allowed:
             raise ValueError(f"field {field!r} is not supported for exact filters")
         return field
+
+    @field_validator("value", mode="before")
+    @classmethod
+    def canonical_filter_value(cls, value: object, info: ValidationInfo) -> float | str:
+        field = info.data.get("field")
+        if not isinstance(field, str):
+            return str(value)
+        definition = get_field(field)
+        if definition.kind == "numeric":
+            try:
+                return float(str(value))
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"numeric filter {field!r} requires a number") from exc
+        return str(value).strip().casefold()
 
     @model_validator(mode="after")
     def valid_filter_value(self) -> ExactFilter:
@@ -75,7 +88,7 @@ class PlotRequest(BaseModel):
     def supported_property(cls, property_name: str | None) -> str | None:
         if property_name is not None:
             definition = get_field(property_name)
-            if definition.required_property != property_name:
+            if definition.kind != "numeric" or definition.required_property is None:
                 raise ValueError(f"{property_name!r} is not an emitted Carnopy property")
         return property_name
 
@@ -95,7 +108,7 @@ class PlotRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_kind_contract(self) -> PlotRequest:
-        property_kinds = {"property_curves", "property_heatmap", "legacy_contour"}
+        property_kinds = {"property_curves", "property_heatmap"}
         if self.kind in property_kinds and self.property_name is None:
             raise ValueError(f"{self.kind} requires property_name")
         if self.kind == "xy" and (self.x_field is None or self.y_field is None):
@@ -124,22 +137,63 @@ def request_id(requests: tuple[PlotRequest, ...]) -> str:
     return f"viz-{digest}"
 
 
-def legacy_property_request(
+def property_plot_request(
     *,
     property_name: str,
-    kind: Literal["curves", "contour"],
+    kind: Literal["property_curves", "property_heatmap"],
     fluids: tuple[str, ...],
-    scale: PlotScale,
-    coordinate: SaturationCoordinate | None,
+    x_field: str | None = None,
+    filters: tuple[ExactFilter, ...] = (),
+    value_scale: PlotScale = "linear",
+    color_scale: PlotScale = "linear",
+    saturation_coordinate: SaturationCoordinate | None = None,
+    output_format: PlotFormat = "png",
 ) -> PlotRequest:
     return PlotRequest(
-        kind="property_curves" if kind == "curves" else "legacy_contour",
+        kind=kind,
         property_name=property_name,
+        x_field=x_field,
+        filters=filters,
         fluids=fluids,
-        value_scale=scale if kind == "curves" else "linear",
-        color_scale=scale if kind == "contour" else "linear",
-        saturation_coordinate=coordinate,
+        value_scale=value_scale,
+        color_scale=color_scale,
+        saturation_coordinate=saturation_coordinate,
+        output_format=output_format,
     )
+
+
+def normalize_public_plot_kind(value: str) -> Literal["property_curves", "property_heatmap"]:
+    normalized = value.strip().replace("-", "_")
+    if normalized in {"property_curves", "property_heatmap"}:
+        return cast(Literal["property_curves", "property_heatmap"], normalized)
+    if normalized == "contour":
+        raise ValueError(
+            "Contour plots interpolate between sampled states and are not supported.\n"
+            "Use property-heatmap for a non-interpolated sampled property map."
+        )
+    if normalized == "curves":
+        raise ValueError(
+            "Plot kind 'curves' was replaced by 'property-curves'. Use --kind property-curves."
+        )
+    if normalized == "heatmap":
+        raise ValueError("Plot kind 'heatmap' is ambiguous. Use --kind property-heatmap.")
+    raise ValueError("plot kind must be 'property-curves' or 'property-heatmap'")
+
+
+def parse_exact_filter(value: str) -> ExactFilter:
+    field, separator, raw_value = value.partition("=")
+    if not separator or not field.strip() or not raw_value.strip():
+        raise ValueError("filters must use FIELD=VALUE")
+    definition = get_field(field.strip())
+    parsed: FilterValue
+    if definition.kind == "numeric":
+        try:
+            parsed = float(raw_value)
+        except ValueError as exc:
+            raise ValueError(f"numeric filter {field.strip()!r} requires a number") from exc
+    else:
+        parsed = raw_value.strip()
+    return ExactFilter(field=field.strip(), value=parsed)
 
 
 def _canonical_json_bytes(value: dict[str, object]) -> bytes:

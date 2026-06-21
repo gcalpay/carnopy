@@ -7,7 +7,6 @@ from importlib import metadata
 from pathlib import Path
 
 from carnopy._version import __version__
-from carnopy.config.normalize import canonical_json_bytes
 
 CONFIG_SCHEMA_VERSION = 1
 DATASET_SCHEMA_VERSION = 1
@@ -45,6 +44,8 @@ def build_identity(
     normalized_config: bytes,
     backend_version: str,
 ) -> Identity:
+    from carnopy.config.normalize import canonical_json_bytes
+
     raw_hash = sha256_bytes(raw_config)
     normalized_hash = sha256_bytes(normalized_config)
     context = {

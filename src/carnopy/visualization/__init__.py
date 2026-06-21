@@ -11,7 +11,11 @@ if TYPE_CHECKING:
         VisualizationDependencyError,
         VisualizationError,
     )
-    from carnopy.visualization.plots import plot_dataset
+    from carnopy.visualization.plots import (
+        plot_dataset,
+        plot_property_curves,
+        plot_property_heatmap,
+    )
 
 __all__ = [
     "Advisory",
@@ -20,6 +24,8 @@ __all__ = [
     "VisualizationDependencyError",
     "VisualizationError",
     "plot_dataset",
+    "plot_property_curves",
+    "plot_property_heatmap",
 ]
 
 _LAZY_EXPORTS = {
@@ -32,6 +38,14 @@ _LAZY_EXPORTS = {
     ),
     "VisualizationError": ("carnopy.visualization.models", "VisualizationError"),
     "plot_dataset": ("carnopy.visualization.plots", "plot_dataset"),
+    "plot_property_curves": (
+        "carnopy.visualization.plots",
+        "plot_property_curves",
+    ),
+    "plot_property_heatmap": (
+        "carnopy.visualization.plots",
+        "plot_property_heatmap",
+    ),
 }
 
 

@@ -107,17 +107,35 @@ outputs/<run>/
 └── report.json
 ```
 
-For a vapor-mass-fraction run, export a scientific figure:
+Export sampled property curves from a vapor-mass-fraction run:
 
 ```bash
 carnopy plot "$RUN_DIR" \
+  --kind property-curves \
   --property mass_density \
-  --kind curves \
   --show
 ```
 
+For `property_table`, choose the x-axis explicitly:
+
+```bash
+carnopy plot outputs/<property-run> \
+  --kind property-curves \
+  --property mass_density \
+  --x temperature
+```
+
+Create a non-interpolated sampled property map:
+
+```bash
+carnopy plot "$RUN_DIR" \
+  --kind property-heatmap \
+  --property mass_density
+```
+
 The image and `.plot.json` provenance sidecar are written under `figures/` by
-default. Plotting never modifies the source run.
+default. Plotting never calls CoolProp, interpolates states, or modifies the
+source run.
 
 Run:
 
@@ -141,12 +159,11 @@ result = generate_dataset("my-dataset.yaml")
 Optional visualization:
 
 ```python
-from carnopy.visualization import plot_dataset
+from carnopy.visualization import plot_property_heatmap
 
-result = plot_dataset(
+result = plot_property_heatmap(
     "outputs/manual-test/20260621T172006Z_vapor_fraction_c8e28e9f",
     property_name="mass_density",
-    kind="contour",
 )
 ```
 

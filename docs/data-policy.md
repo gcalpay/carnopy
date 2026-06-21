@@ -36,7 +36,10 @@ Scientific figures are derived artifacts written outside source runs. Every
 export includes a `.plot.json` sidecar containing the source hash, run/spec
 identity, selected property and fluids, effective plotting settings, and image
 hash. When source metadata is available, plotting fails on dataset hash
-mismatch. Standalone files without metadata are marked unverified. Existing
-image or sidecar paths are refused. Concurrent export cannot overwrite an
-existing artifact, although process termination between the image and sidecar
-links may leave an incomplete pair.
+mismatch. Property curves connect only adjacent valid emitted samples and split
+at invalid states and phase changes. Sampled heatmaps use non-interpolated cells
+and preserve invalid or missing cells as gaps. Visualization does not call a
+thermodynamic backend. Standalone files without metadata are marked unverified.
+Existing image or sidecar paths are refused. Concurrent export cannot overwrite
+an existing artifact, although process termination between the image and
+sidecar links may leave an incomplete pair.

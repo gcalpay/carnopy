@@ -12,14 +12,15 @@ from uuid import uuid4
 
 from carnopy._version import __version__
 from carnopy.provenance import sha256_file
+from carnopy.visualization.fields import FieldDefinition
 from carnopy.visualization.models import (
     Advisory,
-    PlotKind,
-    PlotScale,
     PlotSource,
+    RenderedPlot,
     VisualizationError,
 )
 from carnopy.visualization.requests import PlotRequest
+from carnopy.visualization.selection import FilterMatch
 
 PLOT_SCHEMA_VERSION = 2
 DEFAULT_RASTER_DPI = 300
@@ -28,29 +29,25 @@ ALLOWED_OUTPUT_SUFFIXES = {".png", ".pdf", ".svg"}
 
 def export_figure(
     *,
-    figure: Any,
+    rendered: RenderedPlot,
     plot_source: PlotSource,
     output: str | Path | None,
-    selected_fluids: list[str],
-    property_name: str,
-    property_column: str,
-    property_unit: str,
-    kind: PlotKind,
-    scale: PlotScale,
+    selected_fluids: tuple[str, ...],
+    property_field: FieldDefinition,
     valid_rows_plotted: int,
     invalid_rows_excluded: int,
     matplotlib_version: str,
-    settings: dict[str, Any],
     request: PlotRequest,
     visualization_request_id: str,
+    filter_matches: tuple[FilterMatch, ...],
     advisories: tuple[Advisory, ...],
 ) -> tuple[Path, Path]:
     image_path = _resolve_output_path(
         output=output,
         plot_source=plot_source,
         selected_fluids=selected_fluids,
-        property_name=property_name,
-        kind=kind,
+        property_name=property_field.name,
+        kind=request.kind,
     )
     _ensure_output_outside_source_run(image_path, plot_source)
     sidecar_path = image_path.with_suffix(".plot.json")
@@ -75,11 +72,12 @@ def export_figure(
     linked_image = False
     linked_sidecar = False
     try:
-        save_kwargs: dict[str, Any] = {}
+        save_kwargs: dict[str, Any] = {
+            "format": image_path.suffix.lower().removeprefix("."),
+        }
         if image_path.suffix.lower() == ".png":
             save_kwargs["dpi"] = DEFAULT_RASTER_DPI
-        save_kwargs["format"] = image_path.suffix.lower().removeprefix(".")
-        figure.savefig(staged_image, **save_kwargs)
+        rendered.figure.savefig(staged_image, **save_kwargs)
         image_sha256 = _hash_file(staged_image)
         sidecar = _build_sidecar(
             plot_source=plot_source,
@@ -87,17 +85,14 @@ def export_figure(
             image_sha256=image_sha256,
             sidecar_path=sidecar_path,
             selected_fluids=selected_fluids,
-            property_name=property_name,
-            property_column=property_column,
-            property_unit=property_unit,
-            kind=kind,
-            scale=scale,
+            property_field=property_field,
             valid_rows_plotted=valid_rows_plotted,
             invalid_rows_excluded=invalid_rows_excluded,
             matplotlib_version=matplotlib_version,
-            settings=settings,
+            rendered=rendered,
             request=request,
             visualization_request_id=visualization_request_id,
+            filter_matches=filter_matches,
             advisories=advisories,
         )
         with staged_sidecar.open("x", encoding="utf-8", newline="\n") as stream:
@@ -144,9 +139,9 @@ def _resolve_output_path(
     *,
     output: str | Path | None,
     plot_source: PlotSource,
-    selected_fluids: list[str],
+    selected_fluids: tuple[str, ...],
     property_name: str,
-    kind: PlotKind,
+    kind: str,
 ) -> Path:
     if output is None:
         fluid_part = _slug(selected_fluids[0]) if len(selected_fluids) == 1 else "multifluid"
@@ -180,32 +175,17 @@ def _build_sidecar(
     image_path: Path,
     image_sha256: str,
     sidecar_path: Path,
-    selected_fluids: list[str],
-    property_name: str,
-    property_column: str,
-    property_unit: str,
-    kind: PlotKind,
-    scale: PlotScale,
+    selected_fluids: tuple[str, ...],
+    property_field: FieldDefinition,
     valid_rows_plotted: int,
     invalid_rows_excluded: int,
     matplotlib_version: str,
-    settings: dict[str, Any],
+    rendered: RenderedPlot,
     request: PlotRequest,
     visualization_request_id: str,
+    filter_matches: tuple[FilterMatch, ...],
     advisories: tuple[Advisory, ...],
 ) -> dict[str, Any]:
-    axes = _legacy_axes(
-        plot_source=plot_source,
-        property_name=property_name,
-        property_column=property_column,
-        property_unit=property_unit,
-        kind=kind,
-    )
-    scales = (
-        {"x": "linear", "y": scale, "color": None}
-        if kind == "curves"
-        else {"x": "linear", "y": "linear", "color": scale}
-    )
     return {
         "plot_schema_version": PLOT_SCHEMA_VERSION,
         "plot_kind": request.kind,
@@ -229,21 +209,28 @@ def _build_sidecar(
         },
         "visualization_request_id": visualization_request_id,
         "data_selection": {
-            "fluids": selected_fluids,
-            "property": property_name,
-            "property_column": property_column,
-            "property_unit": property_unit,
-            "filters": [item.model_dump(mode="json") for item in request.filters],
-            "saturation_coordinate": plot_source.coordinate,
-            "saturation_coordinate_display_unit": plot_source.coordinate_display_unit,
+            "fluids": list(selected_fluids),
+            "property": property_field.name,
+            "property_column": property_field.column,
+            "property_unit": property_field.unit,
+            "filters": [
+                {
+                    "field": match.field,
+                    "requested_value": match.requested_value,
+                    "matched_values": list(match.matched_values),
+                }
+                for match in filter_matches
+            ],
+            "saturation_coordinate": plot_source.saturation_coordinate,
+            "saturation_coordinate_display_unit": (plot_source.saturation_coordinate_display_unit),
         },
-        "axes": axes,
-        "scales": scales,
+        "axes": rendered.axes,
+        "scales": rendered.scales,
         "effective_settings": {
-            **settings,
+            **rendered.settings,
             "raster_dpi": (DEFAULT_RASTER_DPI if image_path.suffix.lower() == ".png" else None),
         },
-        "series_or_cells": _legacy_series_or_cells(kind=kind, settings=settings),
+        "series_or_cells": rendered.series_or_cells,
         "advisories": [asdict(advisory) for advisory in advisories],
         "valid_sample_count": valid_rows_plotted,
         "excluded_sample_count": invalid_rows_excluded,
@@ -257,63 +244,6 @@ def _build_sidecar(
             "carnopy": __version__,
             "matplotlib": matplotlib_version,
         },
-    }
-
-
-def _legacy_axes(
-    *,
-    plot_source: PlotSource,
-    property_name: str,
-    property_column: str,
-    property_unit: str,
-    kind: PlotKind,
-) -> dict[str, object]:
-    property_axis = {
-        "field": property_name,
-        "column": property_column,
-        "unit": property_unit,
-    }
-    coordinate_axis = {
-        "field": plot_source.coordinate,
-        "column": plot_source.coordinate_column,
-        "unit": plot_source.coordinate_display_unit,
-    }
-    if kind == "curves":
-        return {
-            "x": {
-                "field": "vapor_mass_fraction",
-                "column": "vapor_mass_fraction",
-                "unit": "1",
-            },
-            "y": property_axis,
-            "series": coordinate_axis,
-            "color": None,
-        }
-    return {
-        "x": {
-            "field": "vapor_mass_fraction",
-            "column": "vapor_mass_fraction",
-            "unit": "1",
-        },
-        "y": coordinate_axis,
-        "series": None,
-        "color": property_axis,
-    }
-
-
-def _legacy_series_or_cells(*, kind: PlotKind, settings: dict[str, Any]) -> dict[str, object]:
-    if kind == "curves":
-        return {
-            "representation": "series",
-            "coordinate_values": settings.get("coordinate_values", []),
-            "marker": settings.get("marker"),
-        }
-    return {
-        "representation": "legacy_interpolated_contour",
-        "contour_levels": settings.get("contour_levels"),
-        "corner_mask": settings.get("corner_mask"),
-        "sample_point_overlay": settings.get("sample_point_overlay"),
-        "property_range": settings.get("property_range"),
     }
 
 

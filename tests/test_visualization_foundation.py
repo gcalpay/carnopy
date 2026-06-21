@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -9,7 +10,12 @@ import pytest
 from carnopy.domain.properties import PROPERTY_REGISTRY
 from carnopy.visualization.fields import FIELD_REGISTRY, format_unit, get_field
 from carnopy.visualization.models import VisualizationError
-from carnopy.visualization.requests import ExactFilter, PlotRequest, request_id
+from carnopy.visualization.requests import (
+    ExactFilter,
+    PlotRequest,
+    property_plot_request,
+    request_id,
+)
 from carnopy.visualization.selection import (
     dynamic_range_advisories,
     resolve_group_by,
@@ -67,6 +73,40 @@ def test_request_identity_expands_defaults_and_preserves_order() -> None:
         fluids=tuple(reversed(filters_first.fluids)),
     )
     assert request_id((filters_first,)) == request_id((filters_reordered,))
+
+    png = property_plot_request(
+        property_name="mass_density",
+        kind="property_curves",
+        fluids=(),
+        output_format="png",
+    )
+    pdf = png.model_copy(update={"output_format": "pdf"})
+    assert request_id((png,)) != request_id((pdf,))
+
+
+def test_filter_identity_canonicalizes_equivalent_values() -> None:
+    uppercase = PlotRequest(
+        kind="property_curves",
+        property_name="mass_density",
+        filters=(ExactFilter(field="phase", value=" GAS "),),
+    )
+    lowercase = PlotRequest(
+        kind="property_curves",
+        property_name="mass_density",
+        filters=(ExactFilter(field="phase", value="gas"),),
+    )
+    numeric_text = PlotRequest(
+        kind="property_curves",
+        property_name="mass_density",
+        filters=(ExactFilter(field="pressure", value="100000"),),
+    )
+    numeric_float = PlotRequest(
+        kind="property_curves",
+        property_name="mass_density",
+        filters=(ExactFilter(field="pressure", value=100_000.0),),
+    )
+    assert request_id((uppercase,)) == request_id((lowercase,))
+    assert request_id((numeric_text,)) == request_id((numeric_float,))
 
 
 def test_plot_request_rejects_invalid_field_contracts() -> None:
@@ -172,12 +212,38 @@ def test_visualization_foundation_does_not_import_coolprop() -> None:
     script = """
 import sys
 import carnopy.visualization.fields
+import carnopy.visualization.plots
 import carnopy.visualization.requests
 import carnopy.visualization.selection
 raise SystemExit("CoolProp" in sys.modules)
 """
     completed = subprocess.run(
         [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+
+
+def test_generation_without_visualization_does_not_import_matplotlib(
+    property_config_path: Path,
+    tmp_path: Path,
+) -> None:
+    script = """
+import sys
+from carnopy.api import generate_dataset
+generate_dataset(sys.argv[1], output_root=sys.argv[2])
+raise SystemExit("matplotlib" in sys.modules)
+"""
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            script,
+            str(property_config_path),
+            str(tmp_path / "subprocess-runs"),
+        ],
         capture_output=True,
         text=True,
         check=False,

@@ -100,7 +100,7 @@ def test_subcommand_help_retains_detailed_descriptions() -> None:
         "fluids": "available from the current backend",
         "properties": "semantic properties accepted",
         "init": "commented configuration template",
-        "plot": "from a vapor-mass-fraction dataset",
+        "plot": "without backend calls or interpolation",
     }
     for command, description in expectations.items():
         result = runner.invoke(app, [command, "--help"], terminal_width=80)
@@ -115,11 +115,14 @@ def test_plot_help_describes_inputs_and_constrained_choices() -> None:
         "Run directory, CSV, or Parquet file.",
         "--property PROPERTY",
         "Semantic property, e.g. mass_density.",
-        "--kind [curves|contour]",
+        "--kind KIND",
+        "property-curves or property-heatmap",
+        "--x FIELD",
         "--fluid FLUID",
         "Repeat --fluid to select multiple fluids.",
-        "--scale [linear|log]",
-        "--coordinate [pressure|temperature]",
+        "--filter FIELD=VALUE",
+        "--value-scale [linear|log]",
+        "--color-scale [linear|log]",
         "--output PATH",
         "--show",
     )
@@ -127,21 +130,54 @@ def test_plot_help_describes_inputs_and_constrained_choices() -> None:
         assert content in result.stdout
 
 
-@pytest.mark.parametrize(
-    ("option", "value"),
-    [
-        ("--kind", "surface"),
-        ("--scale", "automatic"),
-        ("--coordinate", "enthalpy"),
-    ],
-)
-def test_plot_choices_are_rejected_by_cli_parser(option: str, value: str) -> None:
+def test_plot_scale_choices_are_rejected_by_cli_parser() -> None:
     result = runner.invoke(
         app,
-        ["plot", "missing.csv", "--property", "mass_density", option, value],
+        [
+            "plot",
+            "missing.csv",
+            "--property",
+            "mass_density",
+            "--kind",
+            "property-curves",
+            "--value-scale",
+            "automatic",
+        ],
     )
     assert result.exit_code == 2
-    assert f"Invalid value for '{option}'" in result.output
+    assert "Invalid value for '--value-scale'" in result.output
+
+
+@pytest.mark.parametrize(
+    ("kind", "message"),
+    [
+        ("curves", "replaced by 'property-curves'"),
+        ("heatmap", "Use --kind property-heatmap"),
+        ("contour", "Contour plots interpolate"),
+    ],
+)
+def test_plot_legacy_kinds_have_migration_guidance(
+    vapor_config_path: Path,
+    tmp_path: Path,
+    kind: str,
+    message: str,
+) -> None:
+    from carnopy.api import generate_dataset
+
+    run = generate_dataset(vapor_config_path, output_root=tmp_path / "runs")
+    result = runner.invoke(
+        app,
+        [
+            "plot",
+            str(run.output_directory),
+            "--property",
+            "mass_density",
+            "--kind",
+            kind,
+        ],
+    )
+    assert result.exit_code == 2
+    assert message in result.output
 
 
 @pytest.mark.parametrize(
@@ -223,6 +259,8 @@ def test_missing_matplotlib_message_is_exact(
             str(run.output_directory),
             "--property",
             "mass_density",
+            "--kind",
+            "property-curves",
             "--output",
             str(tmp_path / "density.png"),
         ],
@@ -296,6 +334,8 @@ def test_plot_command_exports_figure_and_sidecar(
             str(run.output_directory),
             "--property",
             "mass_density",
+            "--kind",
+            "property-curves",
             "--output",
             str(output),
         ],

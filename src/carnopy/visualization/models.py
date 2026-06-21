@@ -8,7 +8,7 @@ import pandas as pd
 
 from carnopy.domain.failures import CarnopyError
 
-PlotKind = Literal["curves", "contour"]
+PlotKind = Literal["property_curves", "property_heatmap"]
 PlotScale = Literal["linear", "log"]
 PlotCoordinate = Literal["pressure", "temperature"]
 SourceIntegrity = Literal["verified", "unverified"]
@@ -43,10 +43,19 @@ class PlotSource:
     run_id: str
     spec_id: str | None
     generation_context_id: str | None
-    coordinate: PlotCoordinate
-    coordinate_column: str
-    coordinate_si_unit: str
-    coordinate_display_unit: str
+    saturation_coordinate: PlotCoordinate | None
+    saturation_coordinate_column: str | None
+    saturation_coordinate_si_unit: str | None
+    saturation_coordinate_display_unit: str | None
+
+
+@dataclass(frozen=True)
+class RenderedPlot:
+    figure: Any
+    axes: dict[str, object]
+    scales: dict[str, str | None]
+    settings: dict[str, Any]
+    series_or_cells: dict[str, object]
 
 
 @dataclass(frozen=True)

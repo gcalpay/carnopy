@@ -10,7 +10,7 @@ from carnopy.visualization.io import load_plot_source
 from carnopy.visualization.models import VisualizationError
 
 
-def test_run_directory_prefers_verified_parquet(
+def test_run_directory_prefers_verified_parquet_and_infers_saturation_coordinate(
     vapor_config_path: Path,
     tmp_path: Path,
 ) -> None:
@@ -19,8 +19,27 @@ def test_run_directory_prefers_verified_parquet(
     assert source.dataset_path.name == "dataset.parquet"
     assert source.source_format == "parquet"
     assert source.source_integrity == "verified"
-    assert source.coordinate == "temperature"
-    assert source.coordinate_display_unit == "K"
+    assert source.mode == "vapor_mass_fraction_table"
+    assert source.saturation_coordinate == "temperature"
+    assert source.saturation_coordinate_display_unit == "K"
+
+
+def test_all_milestone_modes_are_valid_plot_sources(
+    property_config_path: Path,
+    saturation_config_path: Path,
+    vapor_config_path: Path,
+    tmp_path: Path,
+) -> None:
+    expected = {
+        property_config_path: ("property_table", None),
+        saturation_config_path: ("saturation_table", "temperature"),
+        vapor_config_path: ("vapor_mass_fraction_table", "temperature"),
+    }
+    for config, (mode, coordinate) in expected.items():
+        run = generate_dataset(config, output_root=tmp_path / mode)
+        source = load_plot_source(run.output_directory)
+        assert source.mode == mode
+        assert source.saturation_coordinate == coordinate
 
 
 def test_existing_long_named_run_directory_remains_readable(
@@ -58,26 +77,16 @@ def test_hash_mismatch_is_rejected(
         load_plot_source(run.output_directory)
 
 
-def test_standalone_source_requires_coordinate_and_is_unverified(
+def test_standalone_source_is_unverified_without_inventing_coordinate(
     vapor_config_path: Path,
     tmp_path: Path,
 ) -> None:
     run = generate_dataset(vapor_config_path, output_root=tmp_path / "runs")
     standalone = tmp_path / "standalone.csv"
     standalone.write_bytes((run.output_directory / "dataset.csv").read_bytes())
-    with pytest.raises(VisualizationError, match=r"require.*coordinate"):
-        load_plot_source(standalone)
-    source = load_plot_source(standalone, coordinate="temperature")
+    source = load_plot_source(standalone)
     assert source.source_integrity == "unverified"
-
-
-def test_unsupported_dataset_mode_is_rejected(
-    property_config_path: Path,
-    tmp_path: Path,
-) -> None:
-    run = generate_dataset(property_config_path, output_root=tmp_path / "runs")
-    with pytest.raises(VisualizationError, match="supports only"):
-        load_plot_source(run.output_directory)
+    assert source.saturation_coordinate is None
 
 
 def test_multiple_run_identities_are_rejected(
@@ -90,7 +99,7 @@ def test_multiple_run_identities_are_rejected(
     standalone = tmp_path / "mixed.csv"
     frame.to_csv(standalone, index=False)
     with pytest.raises(VisualizationError, match="exactly one run_id"):
-        load_plot_source(standalone, coordinate="temperature")
+        load_plot_source(standalone)
 
 
 @pytest.mark.parametrize(
@@ -115,7 +124,7 @@ def test_null_and_blank_dataset_identity_is_rejected_before_filtering(
     standalone = tmp_path / f"invalid-{column}.csv"
     frame.to_csv(standalone, index=False)
     with pytest.raises(VisualizationError, match=message):
-        load_plot_source(standalone, coordinate="temperature")
+        load_plot_source(standalone)
 
 
 def test_multiple_modes_are_rejected_before_property_selection(
@@ -128,4 +137,4 @@ def test_multiple_modes_are_rejected_before_property_selection(
     standalone = tmp_path / "mixed-mode.csv"
     frame.to_csv(standalone, index=False)
     with pytest.raises(VisualizationError, match="exactly one dataset mode"):
-        load_plot_source(standalone, coordinate="temperature")
+        load_plot_source(standalone)

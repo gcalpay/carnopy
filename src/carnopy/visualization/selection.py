@@ -73,7 +73,7 @@ def select_fluids(frame: pd.DataFrame, requested: Sequence[str] | None) -> list[
             )
         if match not in selected:
             selected.append(match)
-    return selected
+    return sorted(selected, key=str.casefold)
 
 
 def resolve_group_by(

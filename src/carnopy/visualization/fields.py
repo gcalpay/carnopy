@@ -24,15 +24,22 @@ class FieldDefinition:
 
     @property
     def display_label(self) -> str:
+        return self.label_for_unit(self.unit)
+
+    def label_for_unit(self, unit: str | None) -> str:
         symbol = f", {self.symbol}" if self.symbol is not None else ""
-        unit = f" [{format_unit(self.unit)}]" if self.unit is not None else ""
-        return f"{self.label}{symbol}{unit}"
+        unit_text = f" [{format_unit(unit)}]" if unit is not None else ""
+        return f"{self.label}{symbol}{unit_text}"
 
 
 UNIT_LABELS: Final[dict[str, str]] = {
     "1": r"$-$",
     "K": r"$\mathrm{K}$",
+    "degC": r"$^\circ\mathrm{C}$",
     "Pa": r"$\mathrm{Pa}$",
+    "kPa": r"$\mathrm{kPa}$",
+    "MPa": r"$\mathrm{MPa}$",
+    "bar": r"$\mathrm{bar}$",
     "J/kg": r"$\mathrm{J\,kg^{-1}}$",
     "J/(kg*K)": r"$\mathrm{J\,kg^{-1}\,K^{-1}}$",
     "kg/m^3": r"$\mathrm{kg\,m^{-3}}$",

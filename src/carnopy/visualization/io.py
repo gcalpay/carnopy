@@ -10,7 +10,11 @@ from carnopy.domain.units import AXIS_SI_UNITS, UNITS, validate_axis_unit
 from carnopy.provenance import sha256_file
 from carnopy.visualization.models import PlotCoordinate, PlotSource, VisualizationError
 
-SUPPORTED_MODE = "vapor_mass_fraction_table"
+SUPPORTED_MODES = {
+    "property_table",
+    "saturation_table",
+    "vapor_mass_fraction_table",
+}
 REQUIRED_IDENTITY_COLUMNS = {
     "run_id",
     "mode",
@@ -19,17 +23,26 @@ REQUIRED_IDENTITY_COLUMNS = {
     "backend_version",
     "valid",
 }
-VAPOR_FRACTION_COLUMNS = {
-    "temperature_K",
-    "pressure_Pa",
-    "vapor_mass_fraction",
+MODE_COLUMNS = {
+    "property_table": {"temperature_K", "pressure_Pa"},
+    "saturation_table": {
+        "temperature_K",
+        "pressure_Pa",
+        "vapor_mass_fraction",
+        "saturation_endpoint",
+    },
+    "vapor_mass_fraction_table": {
+        "temperature_K",
+        "pressure_Pa",
+        "vapor_mass_fraction",
+    },
 }
 
 
 def load_plot_source(
     source: str | Path,
     *,
-    coordinate: PlotCoordinate | None = None,
+    saturation_coordinate: PlotCoordinate | None = None,
 ) -> PlotSource:
     requested_path = Path(source).expanduser().resolve()
     dataset_path = _resolve_dataset_path(requested_path)
@@ -42,24 +55,33 @@ def load_plot_source(
     integrity = _verify_integrity(dataset_path, source_sha256, metadata)
     frame = _read_dataset(dataset_path, source_format)
     mode, run_id = _validate_dataset_identity(frame)
-    if mode != SUPPORTED_MODE:
-        raise VisualizationError(
-            f"visualization currently supports only {SUPPORTED_MODE!r}; source mode is {mode!r}"
-        )
-    missing = sorted(VAPOR_FRACTION_COLUMNS - set(frame.columns))
+    if mode not in SUPPORTED_MODES:
+        raise VisualizationError(f"unsupported Carnopy dataset mode for visualization: {mode!r}")
+    missing = sorted(MODE_COLUMNS[mode] - set(frame.columns))
     if missing:
         raise VisualizationError(
-            f"vapor-mass-fraction dataset is missing required columns: {', '.join(missing)}"
+            f"{mode} dataset is missing required columns: {', '.join(missing)}"
         )
-    selected_coordinate = _resolve_coordinate(metadata, coordinate)
-    coordinate_column = "pressure_Pa" if selected_coordinate == "pressure" else "temperature_K"
-    display_unit = _display_unit(metadata, selected_coordinate)
-    try:
-        validate_axis_unit(selected_coordinate, display_unit)
-    except ValueError as exc:
-        raise VisualizationError(
-            f"metadata declares invalid display unit {display_unit!r} for {selected_coordinate}"
-        ) from exc
+    selected_coordinate = _resolve_saturation_coordinate(
+        mode,
+        metadata,
+        saturation_coordinate,
+    )
+    coordinate_column = (
+        None
+        if selected_coordinate is None
+        else ("pressure_Pa" if selected_coordinate == "pressure" else "temperature_K")
+    )
+    display_unit = (
+        None if selected_coordinate is None else _display_unit(metadata, selected_coordinate)
+    )
+    if selected_coordinate is not None and display_unit is not None:
+        try:
+            validate_axis_unit(selected_coordinate, display_unit)
+        except ValueError as exc:
+            raise VisualizationError(
+                f"metadata declares invalid display unit {display_unit!r} for {selected_coordinate}"
+            ) from exc
     return PlotSource(
         requested_path=requested_path,
         dataset_path=dataset_path,
@@ -73,20 +95,29 @@ def load_plot_source(
         run_id=run_id,
         spec_id=_optional_metadata_text(metadata, "spec_id"),
         generation_context_id=_optional_metadata_text(metadata, "generation_context_id"),
-        coordinate=selected_coordinate,
-        coordinate_column=coordinate_column,
-        coordinate_si_unit=AXIS_SI_UNITS[selected_coordinate],
-        coordinate_display_unit=display_unit,
+        saturation_coordinate=selected_coordinate,
+        saturation_coordinate_column=coordinate_column,
+        saturation_coordinate_si_unit=(
+            None if selected_coordinate is None else AXIS_SI_UNITS[selected_coordinate]
+        ),
+        saturation_coordinate_display_unit=display_unit,
     )
 
 
-def convert_coordinate_for_display(
+def convert_field_for_display(
     plot_source: PlotSource,
+    field: PlotCoordinate,
     frame: pd.DataFrame | None = None,
 ) -> pd.Series:
-    definition = UNITS[plot_source.coordinate_display_unit]
+    display_unit = display_unit_for_field(plot_source, field)
+    definition = UNITS[display_unit]
     selected_frame = frame if frame is not None else plot_source.frame
-    return selected_frame[plot_source.coordinate_column].map(definition.from_si)
+    column = "pressure_Pa" if field == "pressure" else "temperature_K"
+    return selected_frame[column].map(definition.from_si)
+
+
+def display_unit_for_field(plot_source: PlotSource, field: PlotCoordinate) -> str:
+    return _display_unit(plot_source.metadata, field)
 
 
 def _resolve_dataset_path(source: Path) -> Path:
@@ -175,10 +206,17 @@ def _validate_dataset_identity(frame: pd.DataFrame) -> tuple[str, str]:
     return values["mode"], values["run_id"]
 
 
-def _resolve_coordinate(
+def _resolve_saturation_coordinate(
+    mode: str,
     metadata: dict[str, Any] | None,
     requested: PlotCoordinate | None,
-) -> PlotCoordinate:
+) -> PlotCoordinate | None:
+    if mode == "property_table":
+        if requested is not None:
+            raise VisualizationError(
+                "saturation_coordinate is not valid for property_table datasets"
+            )
+        return None
     inferred: PlotCoordinate | None = None
     if metadata is not None:
         sampling = metadata.get("sampling")
@@ -195,10 +233,7 @@ def _resolve_coordinate(
         return requested
     if inferred is not None:
         return inferred
-    raise VisualizationError(
-        "standalone datasets without usable metadata require "
-        "coordinate='pressure' or coordinate='temperature'"
-    )
+    return None
 
 
 def _display_unit(

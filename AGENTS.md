@@ -22,6 +22,12 @@ CoolProp is the first backend dependency, not the project identity.
 - Work only inside `/home/cfd/carnopy/`.
 - Do not run Git commands. The human owns Git history, branches, tags, remotes,
   pushes, and repository settings.
+- Before starting an implementation stage, ask the human whether the working
+  tree contains uncommitted changes. If it is dirty, pause before editing,
+  summarize the intended stage boundary, and suggest a conventional commit
+  message so unrelated stages are not mixed accidentally. Continue only after
+  the human confirms the existing changes are committed, stashed, or explicitly
+  approved as part of the current stage.
 - Do not publish to TestPyPI or PyPI.
 - Do not create or handle package-index tokens.
 - Do not configure GitHub environments or Trusted Publishers.
@@ -110,7 +116,8 @@ Milestone 1 supports:
 - deterministic sampling;
 - CSV and Parquet;
 - metadata and report JSON;
-- optional Matplotlib visualization for vapor-mass-fraction tables.
+- optional Matplotlib property curves for all three modes and sampled property
+  heatmaps for property and vapor-mass-fraction tables.
 
 Out of scope:
 
@@ -295,11 +302,13 @@ Tests use temporary directories. Do not commit generated datasets or figures.
 
 Visualization:
 
-- reads only `vapor_mass_fraction_table`;
+- reads emitted columns from all three Milestone 1 dataset modes;
 - prefers Parquet in run directories;
 - verifies recorded source hashes;
 - plots only valid values;
-- preserves invalid contour cells as gaps;
+- supports discrete property curves and non-interpolated sampled heatmaps;
+- preserves invalid and missing states as gaps;
+- never calls a thermodynamic backend or invents intermediate states;
 - writes outside immutable run directories;
 - writes an image plus `.plot.json`;
 - refuses existing image or sidecar paths;

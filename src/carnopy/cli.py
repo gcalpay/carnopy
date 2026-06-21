@@ -10,19 +10,9 @@ import typer
 from carnopy._version import __version__
 
 
-class PlotKindCli(str, Enum):
-    curves = "curves"
-    contour = "contour"
-
-
 class PlotScaleCli(str, Enum):
     linear = "linear"
     log = "log"
-
-
-class PlotCoordinateCli(str, Enum):
-    pressure = "pressure"
-    temperature = "temperature"
 
 
 class ConfigModeCli(str, Enum):
@@ -231,9 +221,21 @@ def plot_command(
         ),
     ],
     kind: Annotated[
-        PlotKindCli,
-        typer.Option("--kind", help="Plot kind: curves or contour."),
-    ] = PlotKindCli.curves,
+        str,
+        typer.Option(
+            "--kind",
+            metavar="KIND",
+            help="Required plot kind: property-curves or property-heatmap.",
+        ),
+    ],
+    x_field: Annotated[
+        str | None,
+        typer.Option(
+            "--x",
+            metavar="FIELD",
+            help="Curve x-axis for property_table: temperature or pressure.",
+        ),
+    ] = None,
     fluids: Annotated[
         list[str] | None,
         typer.Option(
@@ -242,15 +244,26 @@ def plot_command(
             help="Repeat --fluid to select multiple fluids.",
         ),
     ] = None,
-    scale: Annotated[
-        PlotScaleCli,
-        typer.Option("--scale", help="Property scale: linear or log."),
-    ] = PlotScaleCli.linear,
-    coordinate: Annotated[
-        PlotCoordinateCli | None,
+    filters: Annotated[
+        list[str] | None,
         typer.Option(
-            "--coordinate",
-            help="Driving coordinate for standalone files: pressure or temperature.",
+            "--filter",
+            metavar="FIELD=VALUE",
+            help="Exact canonical-value filter; repeat to combine with AND.",
+        ),
+    ] = None,
+    value_scale: Annotated[
+        PlotScaleCli | None,
+        typer.Option(
+            "--value-scale",
+            help="Property-curves y scale: linear or log.",
+        ),
+    ] = None,
+    color_scale: Annotated[
+        PlotScaleCli | None,
+        typer.Option(
+            "--color-scale",
+            help="Property-heatmap color scale: linear or log.",
         ),
     ] = None,
     output: Annotated[
@@ -265,24 +278,44 @@ def plot_command(
         typer.Option("--show", help="Display the figure after exporting it."),
     ] = False,
 ) -> None:
-    """Export a scientific plot from a vapor-mass-fraction dataset."""
+    """Plot emitted Carnopy values without backend calls or interpolation.
+
+    property-curves supports all dataset modes. property_table sources require
+    --x temperature or --x pressure. property-heatmap supports property_table
+    and vapor_mass_fraction_table sources and renders sampled cells only.
+    """
     from carnopy.visualization import (
         VisualizationDependencyError,
         VisualizationError,
         plot_dataset,
     )
+    from carnopy.visualization.requests import (
+        normalize_public_plot_kind,
+        parse_exact_filter,
+    )
 
     try:
+        normalized_kind = normalize_public_plot_kind(kind)
+        if normalized_kind == "property_curves" and color_scale is not None:
+            raise VisualizationError("--color-scale is valid only with --kind property-heatmap")
+        if normalized_kind == "property_heatmap" and value_scale is not None:
+            raise VisualizationError("--value-scale is valid only with --kind property-curves")
+        exact_filters = tuple(parse_exact_filter(value) for value in (filters or ()))
         result = plot_dataset(
             source,
             property_name=property_name,
-            kind=kind.value,
+            kind=normalized_kind,
+            x=x_field,
             fluids=fluids,
-            scale=scale.value,
+            filters=exact_filters,
+            value_scale=(value_scale or PlotScaleCli.linear).value,
+            color_scale=(color_scale or PlotScaleCli.linear).value,
             output=output,
             show=show,
-            coordinate=coordinate.value if coordinate is not None else None,
         )
+    except ValueError as exc:
+        typer.echo(f"Visualization failed: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
     except VisualizationDependencyError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
@@ -294,3 +327,5 @@ def plot_command(
     typer.echo(f"Valid rows plotted: {result.valid_rows_plotted}")
     typer.echo(f"Invalid rows excluded: {result.invalid_rows_excluded}")
     typer.echo(f"Source integrity: {result.source_integrity}")
+    for advisory in result.advisories:
+        typer.echo(f"Advisory: {advisory.message}")

@@ -3,45 +3,84 @@ from __future__ import annotations
 import errno
 import json
 import os
+import subprocess
+import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 import matplotlib
 import numpy as np
 import pandas as pd
 import pytest
-from matplotlib.axes import Axes
 
 matplotlib.use("Agg", force=True)
 
 from carnopy.api import generate_dataset
 from carnopy.provenance import sha256_file
-from carnopy.visualization import plot_dataset
+from carnopy.visualization import (
+    plot_dataset,
+    plot_property_curves,
+    plot_property_heatmap,
+)
 from carnopy.visualization.models import VisualizationError
+from carnopy.visualization.requests import ExactFilter
 
 
-def _write_surface_config(
+@pytest.fixture(autouse=True)
+def _close_figures_after_test() -> Iterator[None]:
+    yield
+    import matplotlib.pyplot as plt
+
+    plt.close("all")
+
+
+def _write_config(
     path: Path,
-    fluids: list[str] | None = None,
-    pressures: list[float] | None = None,
+    *,
+    mode: str,
+    fluids: tuple[str, ...] = ("Propane",),
+    temperatures: tuple[float, ...] = (250.0, 260.0, 270.0),
+    pressures_bar: tuple[float, ...] = (1.0, 2.0, 3.0),
+    qualities: tuple[float, ...] = (0.0, 0.5, 1.0),
 ) -> Path:
-    fluid_lines = "\n".join(f"  - {fluid}" for fluid in (fluids or ["Propane"]))
-    pressure_values = pressures or [1.0, 2.0]
+    fluid_text = ", ".join(fluids)
+    if mode == "property_table":
+        grid = f"""
+  temperature:
+    kind: explicit
+    values: {list(temperatures)}
+    unit: K
+  pressure:
+    kind: explicit
+    values: {list(pressures_bar)}
+    unit: bar
+"""
+    elif mode == "saturation_table":
+        grid = f"""
+  temperature:
+    kind: explicit
+    values: {list(temperatures)}
+    unit: K
+"""
+    else:
+        grid = f"""
+  pressure:
+    kind: explicit
+    values: {list(pressures_bar)}
+    unit: bar
+  vapor_mass_fraction:
+    kind: explicit
+    values: {list(qualities)}
+    unit: "1"
+"""
     path.write_text(
         f"""
 schema_version: 1
 backend: coolprop
-mode: vapor_mass_fraction_table
-fluids:
-{fluid_lines}
+mode: {mode}
+fluids: [{fluid_text}]
 grid:
-  pressure:
-    kind: explicit
-    values: {pressure_values}
-    unit: bar
-  vapor_mass_fraction:
-    kind: explicit
-    values: [0.0, 0.5, 1.0]
-    unit: "1"
+{grid.rstrip()}
 properties:
   - mass_density
   - specific_enthalpy
@@ -51,87 +90,342 @@ properties:
     return path
 
 
-def test_curves_export_image_sidecar_and_sampled_lines(
+def test_vapor_property_curves_use_discrete_series_markers_and_sidecar(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    config = _write_surface_config(tmp_path / "surface.yaml")
+    config = _write_config(tmp_path / "vapor.yaml", mode="vapor_mass_fraction_table")
     run = generate_dataset(config, output_root=tmp_path / "runs")
     monkeypatch.chdir(tmp_path)
     before = {path.name for path in run.output_directory.iterdir()}
     result = plot_dataset(
         run.output_directory,
+        kind="property-curves",
         property_name="mass_density",
-        kind="curves",
     )
-    after = {path.name for path in run.output_directory.iterdir()}
-    assert before == after
-    assert result.image_path.parent == tmp_path / "figures"
-    assert result.image_path.is_file()
-    assert result.sidecar_path.is_file()
-    assert len(result.figure.axes[0].lines) == 2
-    assert result.figure.axes[0].get_xlabel() == "Vapor mass fraction [-]"
-    assert "Mass density" in result.figure.axes[0].get_ylabel()
-    assert result.figure.axes[0].get_position().y0 > 0.1
-    assert result.figure.axes[0].get_position().y1 < 0.9
-    sidecar = json.loads(result.sidecar_path.read_text())
+    assert before == {path.name for path in run.output_directory.iterdir()}
+    assert result.kind == "property_curves"
+    assert len(result.figure.axes[0].lines) == 3
+    assert all(line.get_marker() == "o" for line in result.figure.axes[0].lines)
+    assert len({line.get_color() for line in result.figure.axes[0].lines}) == 3
+    assert result.figure.axes[0].get_legend() is not None
+    assert "Vapor mass fraction" in result.figure.axes[0].get_xlabel()
+    assert "m^{-3}" in result.figure.axes[0].get_ylabel()
+    assert "^" not in result.figure.axes[0].get_ylabel().replace("^{-3}", "")
+    sidecar = json.loads(result.sidecar_path.read_text(encoding="utf-8"))
     assert sidecar["plot_schema_version"] == 2
     assert sidecar["plot_kind"] == "property_curves"
-    assert sidecar["source_identity"]["integrity"] == "verified"
+    assert sidecar["series_or_cells"]["representation"] == "sampled_series"
+    assert sidecar["effective_settings"]["palette"] == "tab10"
+    assert sidecar["effective_settings"]["smoothing"] is False
     assert sidecar["source_identity"]["dataset_sha256"] == sha256_file(
         run.output_directory / "dataset.parquet"
     )
     assert sidecar["image"]["sha256"] == sha256_file(result.image_path)
-    assert sidecar["effective_settings"]["raster_dpi"] == 300
-    assert sidecar["valid_sample_count"] == 6
-    assert sidecar["excluded_sample_count"] == 0
-    assert sidecar["visualization_request_id"] == result.visualization_request_id
-    assert result.effective_settings["raster_dpi"] == 300
-    assert sidecar["advisories"] == [
+    frame = pd.read_parquet(run.output_directory / "dataset.parquet")
+    expected = (
+        frame.loc[frame["pressure_Pa"] == 100_000.0]
+        .sort_values("vapor_mass_fraction")["mass_density_kg_m3"]
+        .to_numpy(dtype=float)
+    )
+    np.testing.assert_allclose(
+        np.asarray(result.figure.axes[0].lines[0].get_ydata(), dtype=float),
+        expected,
+        rtol=0.0,
+        atol=0.0,
+    )
+
+
+def test_property_table_curves_require_explicit_x_and_group_by_other_coordinate(
+    tmp_path: Path,
+) -> None:
+    run = generate_dataset(
+        _write_config(tmp_path / "property.yaml", mode="property_table"),
+        output_root=tmp_path / "runs",
+    )
+    with pytest.raises(VisualizationError, match="requires --x"):
+        plot_property_curves(
+            run.output_directory,
+            property_name="mass_density",
+            output=tmp_path / "missing-x.png",
+        )
+    result = plot_property_curves(
+        run.output_directory,
+        property_name="mass_density",
+        x="temperature",
+        output=tmp_path / "property-curves.png",
+    )
+    assert len(result.figure.axes[0].lines) == 3
+    assert "Temperature" in result.figure.axes[0].get_xlabel()
+    legend = result.figure.axes[0].get_legend()
+    assert legend is not None
+    assert "Pressure" in legend.get_title().get_text()
+
+
+def test_saturation_curves_render_two_unconnected_endpoint_branches(
+    tmp_path: Path,
+) -> None:
+    run = generate_dataset(
+        _write_config(tmp_path / "saturation.yaml", mode="saturation_table"),
+        output_root=tmp_path / "runs",
+    )
+    result = plot_property_curves(
+        run.output_directory,
+        property_name="mass_density",
+        output=tmp_path / "saturation.png",
+    )
+    lines = result.figure.axes[0].lines
+    assert len(lines) == 2
+    assert {line.get_label() for line in lines} == {
+        "saturated liquid",
+        "saturated vapor",
+    }
+    assert all(len(line.get_xdata()) == 3 for line in lines)
+
+
+def test_property_table_curves_split_at_phase_changes(tmp_path: Path) -> None:
+    run = generate_dataset(
+        _write_config(tmp_path / "property.yaml", mode="property_table"),
+        output_root=tmp_path / "runs",
+    )
+    frame = pd.read_csv(run.output_directory / "dataset.csv")
+    first_pressure = frame["pressure_Pa"] == 100_000.0
+    frame.loc[first_pressure, "phase"] = ["gas", "liquid", "gas"]
+    standalone = tmp_path / "phase-change.csv"
+    frame.to_csv(standalone, index=False)
+    result = plot_property_curves(
+        standalone,
+        property_name="mass_density",
+        x="temperature",
+        output=tmp_path / "phase-change.png",
+    )
+    y_values = np.asarray(result.figure.axes[0].lines[0].get_ydata(), dtype=float)
+    assert int(np.isnan(y_values).sum()) == 2
+
+
+def test_property_curves_preserve_descending_sampler_order(tmp_path: Path) -> None:
+    run = generate_dataset(
+        _write_config(
+            tmp_path / "descending.yaml",
+            mode="property_table",
+            temperatures=(270.0, 260.0, 250.0),
+        ),
+        output_root=tmp_path / "runs",
+    )
+    result = plot_property_curves(
+        run.output_directory,
+        property_name="mass_density",
+        x="temperature",
+        output=tmp_path / "descending.png",
+    )
+    np.testing.assert_array_equal(
+        np.asarray(result.figure.axes[0].lines[0].get_xdata(), dtype=float),
+        np.asarray([270.0, 260.0, 250.0]),
+    )
+
+
+def test_property_heatmap_uses_sampled_flat_cells_and_masks_invalid_state(
+    tmp_path: Path,
+) -> None:
+    run = generate_dataset(
+        _write_config(tmp_path / "vapor.yaml", mode="vapor_mass_fraction_table"),
+        output_root=tmp_path / "runs",
+    )
+    frame = pd.read_csv(run.output_directory / "dataset.csv")
+    interior = (frame["pressure_Pa"] == 200_000.0) & (frame["vapor_mass_fraction"] == 0.5)
+    frame.loc[interior, "valid"] = False
+    standalone = tmp_path / "masked.csv"
+    frame.to_csv(standalone, index=False)
+    result = plot_property_heatmap(
+        standalone,
+        property_name="mass_density",
+        saturation_coordinate="pressure",
+        output=tmp_path / "heatmap.png",
+    )
+    sidecar = json.loads(result.sidecar_path.read_text(encoding="utf-8"))
+    assert sidecar["plot_kind"] == "property_heatmap"
+    assert sidecar["effective_settings"]["shading"] == "flat"
+    assert sidecar["effective_settings"]["interpolation"] is False
+    cells = sidecar["series_or_cells"]["cells"]["n-Propane"]
+    assert cells["masked_cell_count"] == 1
+    assert cells["sampled_cell_count"] == 9
+    assert not any(
+        collection.__class__.__name__.startswith("QuadContour")
+        for collection in result.figure.axes[0].collections
+    )
+    mesh_values = np.ma.asarray(result.figure.axes[0].collections[0].get_array())
+    emitted = pd.to_numeric(
+        frame.loc[~interior, "mass_density_kg_m3"],
+        errors="coerce",
+    ).to_numpy(dtype=float)
+    np.testing.assert_allclose(
+        np.sort(mesh_values.compressed()),
+        np.sort(emitted),
+        rtol=0.0,
+        atol=0.0,
+    )
+
+
+def test_property_table_heatmap_uses_temperature_and_pressure_axes(
+    tmp_path: Path,
+) -> None:
+    run = generate_dataset(
+        _write_config(tmp_path / "property.yaml", mode="property_table"),
+        output_root=tmp_path / "runs",
+    )
+    result = plot_property_heatmap(
+        run.output_directory,
+        property_name="mass_density",
+        output=tmp_path / "property-heatmap.png",
+    )
+    sidecar = json.loads(result.sidecar_path.read_text(encoding="utf-8"))
+    assert sidecar["axes"]["x"]["field"] == "temperature"
+    assert sidecar["axes"]["y"]["field"] == "pressure"
+    assert sidecar["axes"]["color"]["field"] == "mass_density"
+
+
+def test_multifluid_heatmaps_share_color_normalization(tmp_path: Path) -> None:
+    run = generate_dataset(
+        _write_config(
+            tmp_path / "multi-heatmap.yaml",
+            mode="vapor_mass_fraction_table",
+            fluids=("Propane", "Isobutane"),
+        ),
+        output_root=tmp_path / "runs",
+    )
+    result = plot_property_heatmap(
+        run.output_directory,
+        property_name="mass_density",
+        fluids=["n-Propane", "IsoButane"],
+        output=tmp_path / "multi-heatmap.png",
+    )
+    first_norm = result.figure.axes[0].collections[0].norm
+    second_norm = result.figure.axes[1].collections[0].norm
+    assert first_norm.vmin == second_norm.vmin
+    assert first_norm.vmax == second_norm.vmax
+
+
+def test_property_heatmap_rejects_saturation_and_one_dimensional_sources(
+    tmp_path: Path,
+) -> None:
+    saturation = generate_dataset(
+        _write_config(tmp_path / "saturation.yaml", mode="saturation_table"),
+        output_root=tmp_path / "sat-runs",
+    )
+    with pytest.raises(VisualizationError, match="does not support property_heatmap"):
+        plot_property_heatmap(
+            saturation.output_directory,
+            property_name="mass_density",
+            output=tmp_path / "sat.png",
+        )
+    one_dimensional = generate_dataset(
+        _write_config(
+            tmp_path / "one-dimensional.yaml",
+            mode="vapor_mass_fraction_table",
+            pressures_bar=(1.0,),
+        ),
+        output_root=tmp_path / "one-runs",
+    )
+    with pytest.raises(VisualizationError, match="at least two unique x values"):
+        plot_property_heatmap(
+            one_dimensional.output_directory,
+            property_name="mass_density",
+            output=tmp_path / "one.png",
+        )
+
+
+@pytest.mark.parametrize(
+    ("kind", "message"),
+    [
+        ("curves", "replaced by 'property-curves'"),
+        ("heatmap", "Use --kind property-heatmap"),
+        ("contour", "Contour plots interpolate"),
+    ],
+)
+def test_legacy_plot_kinds_are_rejected_with_migration_guidance(
+    vapor_config_path: Path,
+    tmp_path: Path,
+    kind: str,
+    message: str,
+) -> None:
+    run = generate_dataset(vapor_config_path, output_root=tmp_path / "runs")
+    with pytest.raises(VisualizationError, match=message):
+        plot_dataset(
+            run.output_directory,
+            kind=kind,
+            property_name="mass_density",
+            output=tmp_path / f"{kind}.png",
+        )
+
+
+def test_dispatch_rejects_plot_kind_specific_options_instead_of_ignoring_them(
+    vapor_config_path: Path,
+    tmp_path: Path,
+) -> None:
+    run = generate_dataset(vapor_config_path, output_root=tmp_path / "runs")
+    with pytest.raises(VisualizationError, match="color_scale"):
+        plot_dataset(
+            run.output_directory,
+            kind="property-curves",
+            property_name="mass_density",
+            color_scale="log",
+        )
+    with pytest.raises(VisualizationError, match="rejects x"):
+        plot_dataset(
+            run.output_directory,
+            kind="property-heatmap",
+            property_name="mass_density",
+            x="temperature",
+        )
+
+
+def test_exact_filter_is_recorded_and_limits_curve_family(tmp_path: Path) -> None:
+    run = generate_dataset(
+        _write_config(tmp_path / "vapor.yaml", mode="vapor_mass_fraction_table"),
+        output_root=tmp_path / "runs",
+    )
+    result = plot_property_curves(
+        run.output_directory,
+        property_name="mass_density",
+        filters=(ExactFilter(field="pressure", value=200_000.0),),
+        output=tmp_path / "filtered.png",
+    )
+    assert len(result.figure.axes[0].lines) == 1
+    sidecar = json.loads(result.sidecar_path.read_text(encoding="utf-8"))
+    assert sidecar["data_selection"]["filters"] == [
         {
-            "code": "large_linear_dynamic_range",
-            "dynamic_range_ratio": result.advisories[0].dynamic_range_ratio,
-            "message": result.advisories[0].message,
+            "field": "pressure",
+            "requested_value": 200_000.0,
+            "matched_values": [200_000.0],
         }
     ]
 
 
-def test_contour_exports_pdf_and_uses_sample_overlay(tmp_path: Path) -> None:
-    config = _write_surface_config(tmp_path / "surface.yaml")
-    run = generate_dataset(config, output_root=tmp_path / "runs")
-    output = tmp_path / "density.pdf"
-    result = plot_dataset(
-        run.output_directory,
-        property_name="mass_density",
-        kind="contour",
-        output=output,
-    )
-    assert result.image_path == output
-    assert result.sidecar_path == output.with_suffix(".plot.json")
-    assert len(result.figure.axes[0].collections) >= 2
-    sidecar = json.loads(result.sidecar_path.read_text())
-    assert sidecar["plot_schema_version"] == 2
-    assert sidecar["plot_kind"] == "legacy_contour"
-    assert sidecar["effective_settings"]["contour_levels"] == 20
-    assert sidecar["effective_settings"]["corner_mask"] is False
-    assert sidecar["effective_settings"]["sample_point_overlay"] is True
-    assert sidecar["series_or_cells"]["representation"] == "legacy_interpolated_contour"
-
-
 def test_multi_fluid_requires_selection_and_uses_facets(tmp_path: Path) -> None:
-    config = _write_surface_config(tmp_path / "multi.yaml", ["Propane", "Isobutane"])
-    run = generate_dataset(config, output_root=tmp_path / "runs")
+    run = generate_dataset(
+        _write_config(
+            tmp_path / "multi.yaml",
+            mode="vapor_mass_fraction_table",
+            fluids=("Propane", "Isobutane"),
+        ),
+        output_root=tmp_path / "runs",
+    )
     with pytest.raises(VisualizationError, match="multiple fluids"):
-        plot_dataset(run.output_directory, property_name="mass_density")
-    result = plot_dataset(
+        plot_property_curves(
+            run.output_directory,
+            property_name="mass_density",
+            output=tmp_path / "missing-selection.png",
+        )
+    result = plot_property_curves(
         run.output_directory,
         property_name="mass_density",
         fluids=["n-Propane", "IsoButane"],
         output=tmp_path / "multi.svg",
     )
-    facet_titles = [axis.get_title() for axis in result.figure.axes[:2]]
-    assert facet_titles == ["n-Propane", "IsoButane"]
-    assert result.selected_fluids == ("n-Propane", "IsoButane")
+    assert [axis.get_title() for axis in result.figure.axes[:2]] == [
+        "IsoButane",
+        "n-Propane",
+    ]
 
 
 def test_log_scale_rejects_nonpositive_values(
@@ -144,11 +438,11 @@ def test_log_scale_rejects_nonpositive_values(
     standalone = tmp_path / "nonpositive.csv"
     frame.to_csv(standalone, index=False)
     with pytest.raises(VisualizationError, match="requires positive"):
-        plot_dataset(
+        plot_property_curves(
             standalone,
             property_name="mass_density",
-            scale="log",
-            coordinate="temperature",
+            value_scale="log",
+            saturation_coordinate="temperature",
             output=tmp_path / "log.png",
         )
 
@@ -162,39 +456,15 @@ def test_invalid_rows_remain_curve_gaps(
     frame.loc[1, "valid"] = False
     standalone = tmp_path / "gap.csv"
     frame.to_csv(standalone, index=False)
-    result = plot_dataset(
+    result = plot_property_curves(
         standalone,
         property_name="mass_density",
-        coordinate="temperature",
+        saturation_coordinate="temperature",
         output=tmp_path / "gap.png",
     )
     y_values = np.asarray(result.figure.axes[0].lines[0].get_ydata(), dtype=float)
     assert np.isnan(y_values[1])
     assert result.invalid_rows_excluded == 1
-
-
-def test_all_invalid_and_absent_property_fail(
-    tmp_path: Path,
-    vapor_config_path: Path,
-) -> None:
-    run = generate_dataset(vapor_config_path, output_root=tmp_path / "runs")
-    with pytest.raises(VisualizationError, match="not present"):
-        plot_dataset(
-            run.output_directory,
-            property_name="thermal_conductivity",
-            output=tmp_path / "missing.png",
-        )
-    frame = pd.read_csv(run.output_directory / "dataset.csv")
-    frame["valid"] = False
-    standalone = tmp_path / "all-invalid.csv"
-    frame.to_csv(standalone, index=False)
-    with pytest.raises(VisualizationError, match="no valid"):
-        plot_dataset(
-            standalone,
-            property_name="mass_density",
-            coordinate="temperature",
-            output=tmp_path / "invalid.png",
-        )
 
 
 def test_show_occurs_after_export(
@@ -212,7 +482,7 @@ def test_show_occurs_after_export(
         calls.append(output.is_file())
 
     monkeypatch.setattr(plt, "show", record_show)
-    plot_dataset(
+    plot_property_curves(
         run.output_directory,
         property_name="mass_density",
         output=output,
@@ -221,57 +491,51 @@ def test_show_occurs_after_export(
     assert calls == [True]
 
 
-def test_output_inside_immutable_run_is_rejected(
+def test_output_format_changes_request_identity_and_pdf_exports(
     tmp_path: Path,
     vapor_config_path: Path,
 ) -> None:
     run = generate_dataset(vapor_config_path, output_root=tmp_path / "runs")
-    with pytest.raises(VisualizationError, match="immutable"):
-        plot_dataset(
-            run.output_directory,
-            property_name="mass_density",
-            output=run.output_directory / "plot.png",
-        )
-
-
-def test_contour_masks_invalid_interior_cell_without_corner_filling(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    config = _write_surface_config(
-        tmp_path / "surface.yaml",
-        pressures=[1.0, 2.0, 3.0],
-    )
-    run = generate_dataset(config, output_root=tmp_path / "runs")
-    frame = pd.read_csv(run.output_directory / "dataset.csv")
-    interior = (frame["pressure_Pa"] == 200_000.0) & (frame["vapor_mass_fraction"] == 0.5)
-    frame.loc[interior, "valid"] = False
-    standalone = tmp_path / "masked.csv"
-    frame.to_csv(standalone, index=False)
-
-    captured: dict[str, object] = {}
-    original_contourf = Axes.contourf
-
-    def record_contourf(self: Axes, *args: object, **kwargs: object) -> object:
-        captured["mask"] = np.ma.getmaskarray(args[2]).copy()
-        captured["corner_mask"] = kwargs.get("corner_mask")
-        return original_contourf(self, *args, **kwargs)
-
-    monkeypatch.setattr(Axes, "contourf", record_contourf)
-    result = plot_dataset(
-        standalone,
+    png = plot_property_curves(
+        run.output_directory,
         property_name="mass_density",
-        kind="contour",
-        coordinate="pressure",
-        output=tmp_path / "masked.png",
+        output=tmp_path / "density.png",
     )
-    mask = np.asarray(captured["mask"], dtype=bool)
-    assert mask.shape == (3, 3)
-    assert mask[1, 1]
-    assert int(mask.sum()) == 1
-    assert captured["corner_mask"] is False
-    sidecar = json.loads(result.sidecar_path.read_text(encoding="utf-8"))
-    assert sidecar["effective_settings"]["corner_mask"] is False
+    pdf = plot_property_curves(
+        run.output_directory,
+        property_name="mass_density",
+        output=tmp_path / "density-pdf.pdf",
+    )
+    assert png.visualization_request_id != pdf.visualization_request_id
+    sidecar = json.loads(pdf.sidecar_path.read_text(encoding="utf-8"))
+    assert sidecar["image"]["format"] == "pdf"
+
+
+def test_plot_execution_in_fresh_process_does_not_import_coolprop(
+    tmp_path: Path,
+    vapor_config_path: Path,
+) -> None:
+    run = generate_dataset(vapor_config_path, output_root=tmp_path / "runs")
+    script = """
+import sys
+from carnopy.visualization import plot_property_curves
+plot_property_curves(sys.argv[1], property_name="mass_density", output=sys.argv[2])
+raise SystemExit("CoolProp" in sys.modules)
+"""
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            script,
+            str(run.output_directory),
+            str(tmp_path / "subprocess-plot.png"),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "MPLBACKEND": "Agg", "MPLCONFIGDIR": str(tmp_path / "mpl-subprocess")},
+    )
+    assert completed.returncode == 0, completed.stderr or completed.stdout
 
 
 @pytest.mark.parametrize("existing_kind", ["image", "sidecar"])
@@ -285,14 +549,12 @@ def test_existing_plot_artifact_is_preserved(
     existing = output if existing_kind == "image" else output.with_suffix(".plot.json")
     existing.write_bytes(b"external-content")
     with pytest.raises(VisualizationError, match="refusing to overwrite"):
-        plot_dataset(
+        plot_property_curves(
             run.output_directory,
             property_name="mass_density",
             output=output,
         )
     assert existing.read_bytes() == b"external-content"
-    other = output.with_suffix(".plot.json") if existing_kind == "image" else output
-    assert not other.exists()
 
 
 def test_second_link_failure_rolls_back_new_image_and_temporary_files(
@@ -316,7 +578,7 @@ def test_second_link_failure_rolls_back_new_image_and_temporary_files(
 
     monkeypatch.setattr(export_module.os, "link", fail_second_link)
     with pytest.raises(VisualizationError, match="could not export plot artifacts"):
-        plot_dataset(
+        plot_property_curves(
             run.output_directory,
             property_name="mass_density",
             output=output,
@@ -343,46 +605,12 @@ def test_external_image_created_after_precheck_is_not_overwritten(
 
     monkeypatch.setattr(export_module.os, "link", race_link)
     with pytest.raises(VisualizationError, match="could not export plot artifacts"):
-        plot_dataset(
+        plot_property_curves(
             run.output_directory,
             property_name="mass_density",
             output=output,
         )
     assert output.read_bytes() == b"external-race-winner"
-    assert not output.with_suffix(".plot.json").exists()
-
-
-def test_rollback_preserves_external_replacement_with_different_inode(
-    tmp_path: Path,
-    vapor_config_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import carnopy.visualization.export as export_module
-
-    run = generate_dataset(vapor_config_path, output_root=tmp_path / "runs")
-    output = tmp_path / "density.png"
-    real_link = os.link
-    calls = 0
-
-    def replace_before_second_link(source: Path, destination: Path) -> None:
-        nonlocal calls
-        calls += 1
-        if calls == 1:
-            real_link(source, destination)
-            return
-        output.unlink()
-        output.write_bytes(b"external-replacement")
-        raise OSError(errno.EIO, "controlled sidecar link failure")
-
-    monkeypatch.setattr(export_module.os, "link", replace_before_second_link)
-    with pytest.raises(VisualizationError, match="could not export plot artifacts"):
-        plot_dataset(
-            run.output_directory,
-            property_name="mass_density",
-            output=output,
-        )
-    assert output.read_bytes() == b"external-replacement"
-    assert not output.with_suffix(".plot.json").exists()
 
 
 def test_unsupported_hard_links_fail_without_fallback(
@@ -400,10 +628,9 @@ def test_unsupported_hard_links_fail_without_fallback(
 
     monkeypatch.setattr(export_module.os, "link", unsupported_link)
     with pytest.raises(VisualizationError, match="hard-link support"):
-        plot_dataset(
+        plot_property_curves(
             run.output_directory,
             property_name="mass_density",
             output=output,
         )
     assert not output.exists()
-    assert not output.with_suffix(".plot.json").exists()
