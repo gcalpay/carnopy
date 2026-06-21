@@ -1,9 +1,34 @@
 from __future__ import annotations
 
+from enum import Enum
 from pathlib import Path
-from typing import Annotated, cast
+from typing import Annotated
 
 import typer
+
+from carnopy._version import __version__
+
+
+class PlotKindCli(str, Enum):
+    curves = "curves"
+    contour = "contour"
+
+
+class PlotScaleCli(str, Enum):
+    linear = "linear"
+    log = "log"
+
+
+class PlotCoordinateCli(str, Enum):
+    pressure = "pressure"
+    temperature = "temperature"
+
+
+def _version_callback(value: bool) -> None:
+    if value:
+        typer.echo(f"carnopy {__version__}")
+        raise typer.Exit
+
 
 app = typer.Typer(
     add_completion=False,
@@ -12,6 +37,21 @@ app = typer.Typer(
     rich_markup_mode=None,
     help="Generate reproducible thermophysical datasets from configured backends.",
 )
+
+
+@app.callback()
+def main_callback(
+    version: Annotated[
+        bool,
+        typer.Option(
+            "--version",
+            callback=_version_callback,
+            is_eager=True,
+            help="Show the Carnopy version and exit.",
+        ),
+    ] = False,
+) -> None:
+    """Generate reproducible thermophysical datasets."""
 
 
 @app.command("validate", short_help="Check a configuration.")
@@ -91,32 +131,38 @@ def fluids_command() -> None:
 def plot_command(
     source: Annotated[
         Path,
-        typer.Argument(exists=True, readable=True),
+        typer.Argument(
+            exists=True,
+            readable=True,
+            help="Run directory, CSV, or Parquet file.",
+        ),
     ],
     property_name: Annotated[
         str,
         typer.Option(
             "--property",
-            help="Semantic Carnopy property name to plot.",
+            metavar="PROPERTY",
+            help="Semantic property, e.g. mass_density.",
         ),
     ],
     kind: Annotated[
-        str,
+        PlotKindCli,
         typer.Option("--kind", help="Plot kind: curves or contour."),
-    ] = "curves",
+    ] = PlotKindCli.curves,
     fluids: Annotated[
         list[str] | None,
         typer.Option(
             "--fluid",
-            help="Fluid to plot; repeat for multiple pure-fluid facets.",
+            metavar="FLUID",
+            help="Repeat --fluid to select multiple fluids.",
         ),
     ] = None,
     scale: Annotated[
-        str,
+        PlotScaleCli,
         typer.Option("--scale", help="Property scale: linear or log."),
-    ] = "linear",
+    ] = PlotScaleCli.linear,
     coordinate: Annotated[
-        str | None,
+        PlotCoordinateCli | None,
         typer.Option(
             "--coordinate",
             help="Driving coordinate for standalone files: pressure or temperature.",
@@ -140,21 +186,20 @@ def plot_command(
         VisualizationError,
         plot_dataset,
     )
-    from carnopy.visualization.models import PlotCoordinate, PlotKind, PlotScale
 
     try:
         result = plot_dataset(
             source,
             property_name=property_name,
-            kind=cast(PlotKind, kind),
+            kind=kind.value,
             fluids=fluids,
-            scale=cast(PlotScale, scale),
+            scale=scale.value,
             output=output,
             show=show,
-            coordinate=cast(PlotCoordinate | None, coordinate),
+            coordinate=coordinate.value if coordinate is not None else None,
         )
     except VisualizationDependencyError as exc:
-        typer.echo(f"Visualization dependency error: {exc}", err=True)
+        typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
     except VisualizationError as exc:
         typer.echo(f"Visualization failed: {exc}", err=True)

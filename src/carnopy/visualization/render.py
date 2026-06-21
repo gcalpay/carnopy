@@ -26,8 +26,11 @@ def import_matplotlib() -> dict[str, Any]:
         from matplotlib.colors import LogNorm, Normalize
     except ImportError as exc:
         raise VisualizationDependencyError(
-            "Matplotlib visualization is unavailable. Install it with "
-            '`python -m pip install -e ".[viz]"`.'
+            "Plotting requires the visualization extra.\n\n"
+            "For an isolated CLI:\n"
+            '  uv tool install --force "carnopy[viz]"\n\n'
+            "With pip:\n"
+            '  python -m pip install "carnopy[viz]"'
         ) from exc
     return {
         "matplotlib": matplotlib,

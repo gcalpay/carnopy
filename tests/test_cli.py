@@ -5,11 +5,20 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
+from carnopy._version import __version__
 from carnopy.cli import app
 
 runner = CliRunner()
+MISSING_VISUALIZATION_MESSAGE = (
+    "Plotting requires the visualization extra.\n\n"
+    "For an isolated CLI:\n"
+    '  uv tool install --force "carnopy[viz]"\n\n'
+    "With pip:\n"
+    '  python -m pip install "carnopy[viz]"'
+)
 
 
 def test_validate_reports_row_validity_is_deferred(property_config_path: Path) -> None:
@@ -62,6 +71,12 @@ def test_help_uses_backend_neutral_wording() -> None:
     assert "available from the current backend" in fluids.stdout
 
 
+def test_version_is_lightweight_and_exact() -> None:
+    result = runner.invoke(app, ["--version"])
+    assert result.exit_code == 0
+    assert result.stdout == f"carnopy {__version__}\n"
+
+
 def test_root_help_has_complete_summaries_at_narrow_width() -> None:
     result = runner.invoke(app, ["--help"], terminal_width=48)
     assert result.exit_code == 0
@@ -84,17 +99,69 @@ def test_subcommand_help_retains_detailed_descriptions() -> None:
         assert description in result.stdout
 
 
-def test_importing_cli_does_not_load_scientific_dependencies() -> None:
+def test_plot_help_describes_inputs_and_constrained_choices() -> None:
+    result = runner.invoke(app, ["plot", "--help"], terminal_width=100)
+    assert result.exit_code == 0
+    required_content = (
+        "Run directory, CSV, or Parquet file.",
+        "--property PROPERTY",
+        "Semantic property, e.g. mass_density.",
+        "--kind [curves|contour]",
+        "--fluid FLUID",
+        "Repeat --fluid to select multiple fluids.",
+        "--scale [linear|log]",
+        "--coordinate [pressure|temperature]",
+        "--output PATH",
+        "--show",
+    )
+    for content in required_content:
+        assert content in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("option", "value"),
+    [
+        ("--kind", "surface"),
+        ("--scale", "automatic"),
+        ("--coordinate", "enthalpy"),
+    ],
+)
+def test_plot_choices_are_rejected_by_cli_parser(option: str, value: str) -> None:
+    result = runner.invoke(
+        app,
+        ["plot", "missing.csv", "--property", "mass_density", option, value],
+    )
+    assert result.exit_code == 2
+    assert f"Invalid value for '{option}'" in result.output
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["--help"],
+        ["--version"],
+        ["validate", "--help"],
+        ["generate", "--help"],
+        ["fluids", "--help"],
+        ["plot", "--help"],
+    ],
+)
+def test_help_and_version_do_not_load_scientific_dependencies(arguments: list[str]) -> None:
     root = Path(__file__).resolve().parents[1]
     environment = os.environ.copy()
     environment["PYTHONPATH"] = str(root / "src")
-    script = """
+    script = f"""
 import sys
-import carnopy.cli
+from typer.testing import CliRunner
+from carnopy.cli import app
+
+result = CliRunner().invoke(app, {arguments!r})
+if result.exit_code != 0:
+    raise SystemExit(result.output)
 
 for module_name in ("CoolProp", "numpy", "pandas", "pyarrow", "matplotlib"):
     if module_name in sys.modules:
-        raise SystemExit(f"{module_name} imported while loading carnopy.cli")
+        raise SystemExit(f"{{module_name}} imported by command")
 """
     completed = subprocess.run(
         [sys.executable, "-c", script],
@@ -105,6 +172,52 @@ for module_name in ("CoolProp", "numpy", "pandas", "pyarrow", "matplotlib"):
         check=False,
     )
     assert completed.returncode == 0, completed.stderr or completed.stdout
+
+
+def test_missing_matplotlib_message_is_exact(
+    vapor_config_path: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import builtins
+
+    from carnopy.api import generate_dataset
+
+    run = generate_dataset(vapor_config_path, output_root=tmp_path / "runs")
+    original_import = builtins.__import__
+
+    def block_matplotlib(
+        name: str,
+        globals: object = None,
+        locals: object = None,
+        fromlist: tuple[str, ...] = (),
+        level: int = 0,
+    ) -> object:
+        if name == "matplotlib" or name.startswith("matplotlib."):
+            raise ModuleNotFoundError("controlled missing Matplotlib")
+        return original_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", block_matplotlib)
+    from carnopy.visualization.models import VisualizationDependencyError
+    from carnopy.visualization.render import import_matplotlib
+
+    with pytest.raises(VisualizationDependencyError) as error:
+        import_matplotlib()
+    assert str(error.value) == MISSING_VISUALIZATION_MESSAGE
+
+    result = runner.invoke(
+        app,
+        [
+            "plot",
+            str(run.output_directory),
+            "--property",
+            "mass_density",
+            "--output",
+            str(tmp_path / "density.png"),
+        ],
+    )
+    assert result.exit_code == 1
+    assert result.output == f"{MISSING_VISUALIZATION_MESSAGE}\n"
 
 
 def test_plot_command_exports_figure_and_sidecar(
