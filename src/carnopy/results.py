@@ -5,6 +5,12 @@ from pathlib import Path
 from typing import Literal
 
 RunStatus = Literal["completed", "completed_with_invalid_rows", "completed_zero_valid_rows"]
+VisualizationStatus = Literal[
+    "completed",
+    "completed_with_failures",
+    "failed",
+    "skipped_zero_valid_rows",
+]
 
 
 @dataclass(frozen=True)
@@ -18,6 +24,18 @@ class ValidationResult:
 
 
 @dataclass(frozen=True)
+class VisualizationSummary:
+    visualization_request_id: str
+    status: VisualizationStatus
+    figure_directory: Path | None
+    report_path: Path | None
+    requested_plot_count: int
+    succeeded_plot_count: int
+    failed_plot_count: int
+    skipped_plot_count: int
+
+
+@dataclass(frozen=True)
 class RunResult:
     run_id: str
     run_status: RunStatus
@@ -28,3 +46,4 @@ class RunResult:
     invalid_row_count: int
     spec_id: str
     generation_context_id: str
+    visualization: VisualizationSummary | None = None

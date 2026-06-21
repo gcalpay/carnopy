@@ -24,3 +24,6 @@ def test_package_level_public_exports_remain_available() -> None:
     assert carnopy.NormalizedConfig.__name__ == "NormalizedConfig"
     assert carnopy.RunResult.__name__ == "RunResult"
     assert carnopy.ValidationResult.__name__ == "ValidationResult"
+    assert carnopy.VisualizationConfig.__name__ == "VisualizationConfig"
+    assert carnopy.VisualizationPlotConfig.__name__ == "VisualizationPlotConfig"
+    assert carnopy.VisualizationSummary.__name__ == "VisualizationSummary"

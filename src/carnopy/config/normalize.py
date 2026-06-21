@@ -26,6 +26,7 @@ def normalize_config(
             raise ConfigError(str(exc)) from exc
     if len(set(canonical_fluids)) != len(canonical_fluids):
         raise ConfigError("fluid aliases resolve to duplicate canonical fluids")
+    requested_fluid_canonical_names = list(canonical_fluids)
     canonical_fluids.sort()
 
     materialized_grid: dict[str, list[float]] = {}
@@ -65,6 +66,7 @@ def normalize_config(
         properties=properties,
         projected_rows=projected_rows,
         requested_fluid_aliases=list(config.fluids),
+        requested_fluid_canonical_names=requested_fluid_canonical_names,
         requested_property_order=list(config.properties),
         original_grid=original_grid,
     )

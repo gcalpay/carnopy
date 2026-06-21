@@ -152,19 +152,21 @@ def plot_property_curves(
     show: bool = False,
     saturation_coordinate: PlotCoordinate | None = None,
 ) -> PlotResult:
-    return _plot_property(
-        source,
-        kind="property_curves",
-        property_name=property_name,
-        x=x,
-        fluids=fluids,
-        filters=filters,
-        value_scale=value_scale,
-        color_scale="linear",
-        output=output,
-        show=show,
-        saturation_coordinate=saturation_coordinate,
-    )
+    try:
+        request = property_plot_request(
+            property_name=property_name,
+            kind="property_curves",
+            x_field=x,
+            filters=tuple(filters),
+            fluids=tuple(fluids or ()),
+            value_scale=value_scale,
+            color_scale="linear",
+            saturation_coordinate=saturation_coordinate,
+            output_format=_output_format(output),
+        )
+    except (ValidationError, ValueError) as exc:
+        raise VisualizationError(str(exc)) from exc
+    return render_plot_request(source, request=request, output=output, show=show)
 
 
 def plot_property_heatmap(
@@ -178,19 +180,21 @@ def plot_property_heatmap(
     show: bool = False,
     saturation_coordinate: PlotCoordinate | None = None,
 ) -> PlotResult:
-    return _plot_property(
-        source,
-        kind="property_heatmap",
-        property_name=property_name,
-        x=None,
-        fluids=fluids,
-        filters=filters,
-        value_scale="linear",
-        color_scale=color_scale,
-        output=output,
-        show=show,
-        saturation_coordinate=saturation_coordinate,
-    )
+    try:
+        request = property_plot_request(
+            property_name=property_name,
+            kind="property_heatmap",
+            x_field=None,
+            filters=tuple(filters),
+            fluids=tuple(fluids or ()),
+            value_scale="linear",
+            color_scale=color_scale,
+            saturation_coordinate=saturation_coordinate,
+            output_format=_output_format(output),
+        )
+    except (ValidationError, ValueError) as exc:
+        raise VisualizationError(str(exc)) from exc
+    return render_plot_request(source, request=request, output=output, show=show)
 
 
 def plot_xy(
@@ -221,17 +225,7 @@ def plot_xy(
         )
     except (ValidationError, ValueError) as exc:
         raise VisualizationError(str(exc)) from exc
-    return _plot_axes_request(
-        source,
-        request=request,
-        x_field=x,
-        y_field=y,
-        fluids=fluids,
-        filters=filters,
-        output=output,
-        show=show,
-        saturation_coordinate=saturation_coordinate,
-    )
+    return render_plot_request(source, request=request, output=output, show=show)
 
 
 def plot_thermodynamic_diagram(
@@ -258,51 +252,64 @@ def plot_thermodynamic_diagram(
         )
     except (ValidationError, ValueError) as exc:
         raise VisualizationError(str(exc)) from exc
+    return render_plot_request(source, request=request, output=output, show=show)
+
+
+def render_plot_request(
+    source: str | Path,
+    *,
+    request: PlotRequest,
+    output: str | Path | None,
+    show: bool,
+    visualization_request_id: str | None = None,
+) -> PlotResult:
+    if request.kind in {"property_curves", "property_heatmap"}:
+        return _plot_property_request(
+            source,
+            request=request,
+            output=output,
+            show=show,
+            visualization_request_id=visualization_request_id,
+        )
+    x_field = (
+        request.x_field
+        if request.kind == "xy"
+        else "specific_volume"
+        if request.kind == "pv"
+        else "specific_entropy"
+    )
+    y_field = (
+        request.y_field
+        if request.kind == "xy"
+        else "pressure"
+        if request.kind == "pv"
+        else "temperature"
+    )
+    if x_field is None or y_field is None:
+        raise VisualizationError(f"{request.kind} requires complete axis fields")
     return _plot_axes_request(
         source,
         request=request,
-        x_field="specific_volume" if kind == "pv" else "specific_entropy",
-        y_field="pressure" if kind == "pv" else "temperature",
-        fluids=fluids,
-        filters=filters,
+        x_field=x_field,
+        y_field=y_field,
         output=output,
         show=show,
-        saturation_coordinate=saturation_coordinate,
+        visualization_request_id=visualization_request_id,
     )
 
 
-def _plot_property(
+def _plot_property_request(
     source: str | Path,
     *,
-    kind: Literal["property_curves", "property_heatmap"],
-    property_name: str,
-    x: str | None,
-    fluids: Sequence[str] | None,
-    filters: Sequence[ExactFilter],
-    value_scale: PlotScale,
-    color_scale: PlotScale,
+    request: PlotRequest,
     output: str | Path | None,
     show: bool,
-    saturation_coordinate: PlotCoordinate | None,
+    visualization_request_id: str | None,
 ) -> PlotResult:
-    try:
-        output_format = _output_format(output)
-        request = property_plot_request(
-            property_name=property_name,
-            kind=kind,
-            x_field=x,
-            filters=tuple(filters),
-            fluids=tuple(fluids or ()),
-            value_scale=value_scale,
-            color_scale=color_scale,
-            saturation_coordinate=saturation_coordinate,
-            output_format=output_format,
-        )
-    except (ValidationError, ValueError) as exc:
-        raise VisualizationError(str(exc)) from exc
+    property_name = cast(str, request.property_name)
     plot_source = load_plot_source(
         source,
-        saturation_coordinate=saturation_coordinate,
+        saturation_coordinate=request.saturation_coordinate,
     )
     if request.saturation_coordinate is None and plot_source.saturation_coordinate is not None:
         request = request.model_copy(
@@ -310,8 +317,8 @@ def _plot_property(
         )
     selection = select_rows(
         plot_source.frame,
-        fluids=fluids,
-        filters=filters,
+        fluids=request.fluids,
+        filters=request.filters,
     )
     property_field = _property_field(property_name)
     prepared, valid_count, excluded_count = _prepare_property_frame(
@@ -321,7 +328,9 @@ def _plot_property(
     valid_values = prepared.loc[prepared["_plot_valid"], "_plot_value"]
     if valid_values.empty:
         raise VisualizationError("no valid property values remain to plot")
-    effective_scale = value_scale if kind == "property_curves" else color_scale
+    effective_scale = (
+        request.value_scale if request.kind == "property_curves" else request.color_scale
+    )
     if effective_scale == "log" and bool((valid_values <= 0.0).any()):
         raise VisualizationError(f"log scaling requires positive {property_name} values")
     advisories = dynamic_range_advisories(
@@ -330,7 +339,7 @@ def _plot_property(
         subject=f"{property_name} property",
     )
     mpl = import_matplotlib()
-    if kind == "property_curves":
+    if request.kind == "property_curves":
         rendered = render_property_curves(
             mpl=mpl,
             plot_source=plot_source,
@@ -367,6 +376,7 @@ def _plot_property(
         filter_matches=selection.filter_matches,
         advisories=advisories,
         show=show,
+        visualization_request_id=visualization_request_id,
     )
 
 
@@ -376,15 +386,13 @@ def _plot_axes_request(
     request: PlotRequest,
     x_field: str,
     y_field: str,
-    fluids: Sequence[str] | None,
-    filters: Sequence[ExactFilter],
     output: str | Path | None,
     show: bool,
-    saturation_coordinate: PlotCoordinate | None,
+    visualization_request_id: str | None = None,
 ) -> PlotResult:
     plot_source = load_plot_source(
         source,
-        saturation_coordinate=saturation_coordinate,
+        saturation_coordinate=request.saturation_coordinate,
     )
     if request.kind == "ts":
         policy = (
@@ -402,8 +410,8 @@ def _plot_axes_request(
         )
     selection = select_rows(
         plot_source.frame,
-        fluids=fluids,
-        filters=filters,
+        fluids=request.fluids,
+        filters=request.filters,
     )
     prepared, valid_count, excluded_count = _prepare_axes_frame(
         selection.frame,
@@ -448,6 +456,7 @@ def _plot_axes_request(
         filter_matches=selection.filter_matches,
         advisories=advisories,
         show=show,
+        visualization_request_id=visualization_request_id,
     )
 
 
@@ -465,8 +474,9 @@ def _finalize_plot(
     filter_matches: tuple[FilterMatch, ...],
     advisories: tuple[Advisory, ...],
     show: bool,
+    visualization_request_id: str | None,
 ) -> PlotResult:
-    visualization_request_id = request_id((request,))
+    effective_request_id = visualization_request_id or request_id((request,))
     image_path, sidecar_path = export_figure(
         rendered=rendered,
         plot_source=plot_source,
@@ -477,7 +487,7 @@ def _finalize_plot(
         invalid_rows_excluded=excluded_count,
         matplotlib_version=mpl["matplotlib"].__version__,
         request=request,
-        visualization_request_id=visualization_request_id,
+        visualization_request_id=effective_request_id,
         filter_matches=filter_matches,
         advisories=advisories,
     )
@@ -504,7 +514,7 @@ def _finalize_plot(
         valid_rows_plotted=valid_count,
         invalid_rows_excluded=excluded_count,
         source_integrity=plot_source.source_integrity,
-        visualization_request_id=visualization_request_id,
+        visualization_request_id=effective_request_id,
         effective_settings=effective_settings,
         advisories=advisories,
     )

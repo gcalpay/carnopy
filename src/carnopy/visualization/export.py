@@ -208,6 +208,7 @@ def _build_sidecar(
             "reference_state_policy": _metadata_text(plot_source, "reference_state_policy"),
         },
         "visualization_request_id": visualization_request_id,
+        "normalized_request": request.canonical_dict(),
         "data_selection": {
             "fluids": list(selected_fluids),
             "property": property_field.name if property_field is not None else None,

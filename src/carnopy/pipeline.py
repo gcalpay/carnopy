@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -10,6 +11,7 @@ from carnopy.backends.coolprop import CoolPropBackend
 from carnopy.config.io import LoadedConfig
 from carnopy.config.models import NormalizedConfig
 from carnopy.config.normalize import canonical_json_bytes, normalize_config
+from carnopy.domain.failures import OutputError
 from carnopy.generation import (
     generate_property_table,
     generate_saturation_table,
@@ -30,12 +32,28 @@ from carnopy.outputs import (
 )
 from carnopy.provenance import build_identity
 from carnopy.results import RunResult, ValidationResult
+from carnopy.visualization.automation import (
+    ensure_visualization_dependencies,
+    render_configured_visualizations,
+)
+from carnopy.visualization.configuration import (
+    NormalizedVisualization,
+    normalize_visualization,
+)
+
+
+@dataclass(frozen=True)
+class ValidatedRunConfig:
+    result: ValidationResult
+    normalized: NormalizedConfig
+    normalized_bytes: bytes
+    visualization: NormalizedVisualization | None
 
 
 def validate_loaded_config(
     loaded: LoadedConfig,
     backend: CoolPropBackend | None = None,
-) -> tuple[ValidationResult, NormalizedConfig, bytes]:
+) -> ValidatedRunConfig:
     selected_backend = backend or CoolPropBackend()
     normalized = normalize_config(loaded.model, selected_backend)
     normalized_bytes = canonical_json_bytes(normalized.executable_dict())
@@ -52,15 +70,29 @@ def validate_loaded_config(
         canonical_fluids=tuple(normalized.fluids),
         normalized_config_sha256=identity.normalized_config_sha256,
     )
-    return result, normalized, normalized_bytes
+    visualization = normalize_visualization(
+        loaded.model.visualization,
+        scientific_config=normalized,
+    )
+    if visualization is not None:
+        ensure_visualization_dependencies()
+    return ValidatedRunConfig(
+        result=result,
+        normalized=normalized,
+        normalized_bytes=normalized_bytes,
+        visualization=visualization,
+    )
 
 
 def run_generation(
     loaded: LoadedConfig,
     output_root: Path,
+    figures_root: Path = Path("figures"),
 ) -> RunResult:
     backend = CoolPropBackend()
-    _, normalized, normalized_bytes = validate_loaded_config(loaded, backend)
+    validated = validate_loaded_config(loaded, backend)
+    normalized = validated.normalized
+    normalized_bytes = validated.normalized_bytes
     identity = build_identity(
         raw_config=loaded.raw_bytes,
         normalized_config=normalized_bytes,
@@ -74,6 +106,18 @@ def run_generation(
         run_id=run_id,
         created_at=created_at,
     )
+    if validated.visualization is not None:
+        planned_figure_directory = figures_root.expanduser().resolve() / layout.final_directory.name
+        if (
+            planned_figure_directory == layout.final_directory.resolve()
+            or planned_figure_directory.exists()
+        ):
+            layout.staging_directory.rmdir()
+            raise OutputError(
+                "configured visualization output directory conflicts with the immutable "
+                "run directory or already exists: "
+                f"{planned_figure_directory}"
+            )
 
     backend.initialize_reference_states(normalized.fluids)
     rows = _generate_rows(normalized, backend, run_id)
@@ -121,6 +165,17 @@ def run_generation(
     )
     write_json(layout.staging_directory / "metadata.json", metadata)
     finalize_run_layout(layout)
+    visualization_summary = None
+    if validated.visualization is not None:
+        visualization_summary = render_configured_visualizations(
+            source_run=layout.final_directory,
+            figures_root=figures_root,
+            run_status=run_status,
+            run_id=run_id,
+            spec_id=identity.spec_id,
+            generation_context_id=identity.generation_context_id,
+            visualization=validated.visualization,
+        )
     return RunResult(
         run_id=run_id,
         run_status=run_status,
@@ -131,6 +186,7 @@ def run_generation(
         invalid_row_count=int((~frame["valid"]).sum()),
         spec_id=identity.spec_id,
         generation_context_id=identity.generation_context_id,
+        visualization=visualization_summary,
     )
 
 

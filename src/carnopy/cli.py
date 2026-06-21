@@ -69,13 +69,16 @@ def validate_command(
 ) -> None:
     """Validate a configuration without evaluating thermodynamic rows."""
     from carnopy.api import validate_config
-    from carnopy.domain.failures import ConfigError
+    from carnopy.domain.failures import CarnopyError, ConfigError
 
     try:
         result = validate_config(config)
     except ConfigError as exc:
         typer.echo(f"Configuration validation failed: {exc}", err=True)
         raise typer.Exit(code=2) from exc
+    except CarnopyError as exc:
+        typer.echo(f"Validation environment failed: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
     typer.echo(f"Backend: {result.backend} {result.backend_version}")
     typer.echo(f"Mode: {result.mode}")
     typer.echo(f"Projected rows: {result.projected_rows}")
@@ -98,6 +101,14 @@ def generate_command(
             help="Root directory for immutable generated runs.",
         ),
     ] = Path("outputs"),
+    figures_root: Annotated[
+        Path,
+        typer.Option(
+            "--figures-out",
+            file_okay=False,
+            help="Root directory for configured figure outputs.",
+        ),
+    ] = Path("figures"),
 ) -> None:
     """Generate and finalize one immutable dataset run.
 
@@ -112,7 +123,11 @@ def generate_command(
     from carnopy.domain.failures import CarnopyError, ConfigError
 
     try:
-        result = generate_dataset(config, output_root=output_root)
+        result = generate_dataset(
+            config,
+            output_root=output_root,
+            figures_root=figures_root,
+        )
     except ConfigError as exc:
         typer.echo(f"Configuration validation failed: {exc}", err=True)
         raise typer.Exit(code=2) from exc
@@ -125,8 +140,19 @@ def generate_command(
     typer.echo(f"Invalid rows: {result.invalid_row_count}")
     typer.echo(f"Run status: {result.run_status}")
     typer.echo(f"Output directory: {result.output_directory}")
+    if result.visualization is not None:
+        typer.echo(f"Visualization status: {result.visualization.status}")
+        if result.visualization.figure_directory is not None:
+            typer.echo(f"Figure directory: {result.visualization.figure_directory}")
+        if result.visualization.report_path is not None:
+            typer.echo(f"Visualization report: {result.visualization.report_path}")
     if result.valid_row_count == 0:
         raise typer.Exit(code=3)
+    if result.visualization is not None and result.visualization.status in {
+        "completed_with_failures",
+        "failed",
+    }:
+        raise typer.Exit(code=1)
 
 
 @app.command("fluids", short_help="List backend fluids.")

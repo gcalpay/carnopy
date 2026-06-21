@@ -61,6 +61,7 @@ def build_metadata(
         "failure_counts_by_property": _counts(frame["failure_property"]),
         "canonical_fluids": config.fluids,
         "requested_fluid_aliases": config.requested_fluid_aliases,
+        "requested_fluid_canonical_names": config.requested_fluid_canonical_names,
         "canonical_properties": config.properties,
         "requested_property_order": config.requested_property_order,
         "sampling": {

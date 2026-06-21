@@ -228,6 +228,8 @@ def test_dynamic_range_advisory_never_changes_scale() -> None:
 def test_visualization_foundation_does_not_import_coolprop() -> None:
     script = """
 import sys
+import carnopy.visualization.automation
+import carnopy.visualization.configuration
 import carnopy.visualization.fields
 import carnopy.visualization.plots
 import carnopy.visualization.requests

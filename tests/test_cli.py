@@ -108,6 +108,12 @@ def test_subcommand_help_retains_detailed_descriptions() -> None:
         assert description in result.stdout
 
 
+def test_generate_help_includes_configured_figure_root() -> None:
+    result = runner.invoke(app, ["generate", "--help"])
+    assert result.exit_code == 0
+    assert "--figures-out DIRECTORY" in result.stdout
+
+
 def test_plot_help_describes_inputs_and_constrained_choices() -> None:
     result = runner.invoke(app, ["plot", "--help"], terminal_width=100)
     assert result.exit_code == 0

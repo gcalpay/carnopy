@@ -13,14 +13,18 @@ def load_config(path: str | Path) -> LoadedConfig:
 
 def validate_config(path: str | Path) -> ValidationResult:
     loaded = load_config_file(path)
-    result, _, _ = validate_loaded_config(loaded)
-    return result
+    return validate_loaded_config(loaded).result
 
 
 def generate_dataset(
     path: str | Path,
     *,
     output_root: str | Path = "outputs",
+    figures_root: str | Path = "figures",
 ) -> RunResult:
     loaded = load_config_file(path)
-    return run_generation(loaded, Path(output_root))
+    return run_generation(
+        loaded,
+        Path(output_root),
+        Path(figures_root),
+    )
