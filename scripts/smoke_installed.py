@@ -31,6 +31,19 @@ def run_command(
     return completed
 
 
+def build_plot_arguments(run_directory: Path, figure: Path) -> list[str]:
+    return [
+        "plot",
+        str(run_directory),
+        "--kind",
+        "property-curves",
+        "--property",
+        "mass_density",
+        "--output",
+        str(figure),
+    ]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Smoke-test an installed Carnopy distribution.")
     parser.add_argument("--work-directory", type=Path, required=True)
@@ -72,14 +85,7 @@ def main() -> int:
 
     matplotlib_available = importlib.util.find_spec("matplotlib") is not None
     figure = work_directory / "density.png"
-    plot_arguments = [
-        "plot",
-        str(runs[0]),
-        "--property",
-        "mass_density",
-        "--output",
-        str(figure),
-    ]
+    plot_arguments = build_plot_arguments(runs[0], figure)
     if arguments.with_visualization:
         if not matplotlib_available:
             raise RuntimeError("visualization smoke test requires Matplotlib")

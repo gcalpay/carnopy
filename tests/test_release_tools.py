@@ -24,6 +24,7 @@ def load_script(name: str) -> ModuleType:
 
 check_distribution = load_script("check_distribution")
 hash_distributions = load_script("hash_distributions")
+smoke_installed = load_script("smoke_installed")
 verify_index_release = load_script("verify_index_release")
 
 
@@ -100,4 +101,20 @@ def test_distribution_path_filters_and_source_version() -> None:
     assert invalid == [
         "carnopy-0.1.0a1/scratch.ipynb",
         "carnopy-0.1.0a1/src/carnopy/__pycache__/module.pyc",
+    ]
+
+
+def test_installed_smoke_plot_arguments_use_current_cli_contract(tmp_path: Path) -> None:
+    run_directory = tmp_path / "run"
+    figure = tmp_path / "density.png"
+
+    assert smoke_installed.build_plot_arguments(run_directory, figure) == [
+        "plot",
+        str(run_directory),
+        "--kind",
+        "property-curves",
+        "--property",
+        "mass_density",
+        "--output",
+        str(figure),
     ]
