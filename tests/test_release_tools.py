@@ -91,13 +91,13 @@ def test_distribution_path_filters_and_source_version() -> None:
     assert check_distribution.source_version(ROOT / "src/carnopy/_version.py") == "0.1.0a1"
     invalid = check_distribution.forbidden_paths(
         {
-            "carnopy-0.1.0a1/hli.ipynb",
+            "carnopy-0.1.0a1/scratch.ipynb",
             "carnopy-0.1.0a1/src/carnopy/__pycache__/module.pyc",
             "carnopy-0.1.0a1/src/carnopy/__init__.py",
         },
         strip_root=True,
     )
     assert invalid == [
-        "carnopy-0.1.0a1/hli.ipynb",
+        "carnopy-0.1.0a1/scratch.ipynb",
         "carnopy-0.1.0a1/src/carnopy/__pycache__/module.pyc",
     ]

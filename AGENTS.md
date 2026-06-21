@@ -28,7 +28,6 @@ CoolProp is the first backend dependency, not the project identity.
 - Do not install, upgrade, remove, or synchronize dependencies without explicit
   human approval.
 - Do not create or replace Python environments.
-- Do not modify `hli.ipynb`.
 - Do not use destructive filesystem commands without explicit approval.
 - Preserve unrelated human changes.
 
@@ -282,6 +281,15 @@ config.normalized.json
 metadata.json
 report.json
 ```
+
+Human-facing run-directory names use:
+
+```text
+<UTC-second>_<mode-slug>_<eight-character-run-prefix>
+```
+
+The name is a locator, not dataset identity. Full `run_id`, `spec_id`,
+generation context, and artifact hashes remain in metadata.
 
 Tests use temporary directories. Do not commit generated datasets or figures.
 

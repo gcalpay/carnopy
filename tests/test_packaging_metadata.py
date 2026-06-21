@@ -41,3 +41,14 @@ def test_alpha_metadata_uses_modern_license_and_release_urls() -> None:
     assert "Typing :: Typed" in project["classifiers"]
     assert not any(classifier.startswith("Private ::") for classifier in project["classifiers"])
     assert "License :: OSI Approved :: MIT License" not in project["classifiers"]
+
+
+def test_manual_plot_workflow_uses_the_printed_run_directory_directly() -> None:
+    root = Path(__file__).resolve().parents[1]
+    expected_run = 'RUN_DIR="outputs/manual-test/20260621T172006Z_vapor_fraction_c8e28e9f"'
+    for relative_path in ("README.md", "docs/visualization.md"):
+        text = (root / relative_path).read_text(encoding="utf-8")
+        assert "--out outputs/manual-test" in text
+        assert "Example only; replace this with the exact path printed by your run." in text
+        assert expected_run in text
+        assert "outputs/manual-test/outputs/manual-test" not in text

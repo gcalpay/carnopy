@@ -166,7 +166,7 @@ def forbidden_paths(names: set[str], *, strip_root: bool) -> list[str]:
         path = PurePosixPath(name)
         parts = path.parts[1:] if strip_root and path.parts else path.parts
         if (
-            "hli.ipynb" in parts
+            any(part.endswith(".ipynb") for part in parts)
             or (parts and parts[0] in FORBIDDEN_TOP_LEVEL)
             or any(part in FORBIDDEN_ANYWHERE for part in parts)
         ):

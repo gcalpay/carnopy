@@ -26,7 +26,11 @@ records that policy. This makes the convention reproducible but does not turn
 these quantities into universal absolutes.
 
 Generated run directories are immutable disposable artifacts and must not be
-committed.
+committed. Their human-facing names contain a UTC timestamp, a short mode label,
+and an eight-character `run_id` prefix. The directory name is only a convenient
+locator: full scientific and execution identities remain in `metadata.json`.
+Carnopy preserves the exact source YAML as `config.original.yaml` and hashes
+its bytes; it does not add the host source-config path to metadata.
 
 Scientific figures are derived artifacts written outside source runs. Every
 export includes a `.plot.json` sidecar containing the source hash, run/spec

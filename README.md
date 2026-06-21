@@ -75,6 +75,26 @@ carnopy generate my-dataset.yaml
 `generate` performs validation automatically. The separate `validate` command
 is useful for scripts and early feedback but is not a required extra step.
 
+To choose a different output root:
+
+```bash
+carnopy generate \
+  configs/cyclopentane_vapor_fraction_pressure.yaml \
+  --out outputs/manual-test
+```
+
+The generated run is created directly under that root. Copy the exact path
+printed after `Output directory:`; do not prepend `outputs/manual-test` again:
+
+```bash
+# Example only; replace this with the exact path printed by your run.
+RUN_DIR="outputs/manual-test/20260621T172006Z_vapor_fraction_c8e28e9f"
+```
+
+Run names use the UTC creation time, a short mode label, and the first eight
+hexadecimal characters of the unique `run_id`. Full identities and hashes
+remain in `metadata.json`.
+
 Inspect:
 
 ```text
@@ -90,7 +110,7 @@ outputs/<run>/
 For a vapor-mass-fraction run, export a scientific figure:
 
 ```bash
-carnopy plot outputs/<run> \
+carnopy plot "$RUN_DIR" \
   --property mass_density \
   --kind curves \
   --show
@@ -124,7 +144,7 @@ Optional visualization:
 from carnopy.visualization import plot_dataset
 
 result = plot_dataset(
-    "outputs/<run>",
+    "outputs/manual-test/20260621T172006Z_vapor_fraction_c8e28e9f",
     property_name="mass_density",
     kind="contour",
 )

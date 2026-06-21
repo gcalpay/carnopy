@@ -23,6 +23,13 @@ class VisualizationDependencyError(VisualizationError):
 
 
 @dataclass(frozen=True)
+class Advisory:
+    code: str
+    message: str
+    dynamic_range_ratio: float | None = None
+
+
+@dataclass(frozen=True)
 class PlotSource:
     requested_path: Path
     dataset_path: Path
@@ -54,3 +61,6 @@ class PlotResult:
     valid_rows_plotted: int
     invalid_rows_excluded: int
     source_integrity: SourceIntegrity
+    visualization_request_id: str
+    effective_settings: dict[str, Any]
+    advisories: tuple[Advisory, ...]

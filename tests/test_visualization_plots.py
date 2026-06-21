@@ -75,10 +75,25 @@ def test_curves_export_image_sidecar_and_sampled_lines(
     assert result.figure.axes[0].get_position().y0 > 0.1
     assert result.figure.axes[0].get_position().y1 < 0.9
     sidecar = json.loads(result.sidecar_path.read_text())
-    assert sidecar["source"]["integrity"] == "verified"
-    assert sidecar["source"]["sha256"] == sha256_file(run.output_directory / "dataset.parquet")
+    assert sidecar["plot_schema_version"] == 2
+    assert sidecar["plot_kind"] == "property_curves"
+    assert sidecar["source_identity"]["integrity"] == "verified"
+    assert sidecar["source_identity"]["dataset_sha256"] == sha256_file(
+        run.output_directory / "dataset.parquet"
+    )
     assert sidecar["image"]["sha256"] == sha256_file(result.image_path)
-    assert sidecar["settings"]["raster_dpi"] == 300
+    assert sidecar["effective_settings"]["raster_dpi"] == 300
+    assert sidecar["valid_sample_count"] == 6
+    assert sidecar["excluded_sample_count"] == 0
+    assert sidecar["visualization_request_id"] == result.visualization_request_id
+    assert result.effective_settings["raster_dpi"] == 300
+    assert sidecar["advisories"] == [
+        {
+            "code": "large_linear_dynamic_range",
+            "dynamic_range_ratio": result.advisories[0].dynamic_range_ratio,
+            "message": result.advisories[0].message,
+        }
+    ]
 
 
 def test_contour_exports_pdf_and_uses_sample_overlay(tmp_path: Path) -> None:
@@ -95,9 +110,12 @@ def test_contour_exports_pdf_and_uses_sample_overlay(tmp_path: Path) -> None:
     assert result.sidecar_path == output.with_suffix(".plot.json")
     assert len(result.figure.axes[0].collections) >= 2
     sidecar = json.loads(result.sidecar_path.read_text())
-    assert sidecar["settings"]["contour_levels"] == 20
-    assert sidecar["settings"]["corner_mask"] is False
-    assert sidecar["settings"]["sample_point_overlay"] is True
+    assert sidecar["plot_schema_version"] == 2
+    assert sidecar["plot_kind"] == "legacy_contour"
+    assert sidecar["effective_settings"]["contour_levels"] == 20
+    assert sidecar["effective_settings"]["corner_mask"] is False
+    assert sidecar["effective_settings"]["sample_point_overlay"] is True
+    assert sidecar["series_or_cells"]["representation"] == "legacy_interpolated_contour"
 
 
 def test_multi_fluid_requires_selection_and_uses_facets(tmp_path: Path) -> None:
@@ -253,7 +271,7 @@ def test_contour_masks_invalid_interior_cell_without_corner_filling(
     assert int(mask.sum()) == 1
     assert captured["corner_mask"] is False
     sidecar = json.loads(result.sidecar_path.read_text(encoding="utf-8"))
-    assert sidecar["settings"]["corner_mask"] is False
+    assert sidecar["effective_settings"]["corner_mask"] is False
 
 
 @pytest.mark.parametrize("existing_kind", ["image", "sidecar"])

@@ -21,7 +21,10 @@ plugin framework. Future adapters can implement the same semantic operations
 when concrete requirements exist.
 
 Runs are staged in a sibling directory and atomically renamed. Existing run
-directories are never overwritten.
+directories are never overwritten. Final names use
+`<UTC-second>_<mode-slug>_<run-prefix>` for practical command-line use. The
+short name is not a reproducible identity; complete identities remain in
+metadata.
 
 Optional visualization is isolated under `carnopy.visualization`. It reads
 finalized datasets, verifies recorded hashes, and exports figures outside the

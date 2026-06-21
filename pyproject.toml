@@ -91,14 +91,12 @@ exclude = [
   "/build",
   "/dist",
   "/figures",
-  "/hli.ipynb",
   "/outputs",
 ]
 
 [tool.ruff]
 target-version = "py310"
 line-length = 100
-extend-exclude = ["hli.ipynb"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]

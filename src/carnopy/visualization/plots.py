@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from carnopy.domain.properties import PROPERTY_REGISTRY
-from carnopy.visualization.export import export_figure
+from carnopy.visualization.export import DEFAULT_RASTER_DPI, export_figure
 from carnopy.visualization.io import (
     convert_coordinate_for_display,
     load_plot_source,
@@ -21,6 +21,8 @@ from carnopy.visualization.models import (
     VisualizationError,
 )
 from carnopy.visualization.render import create_figure, import_matplotlib
+from carnopy.visualization.requests import legacy_property_request, request_id
+from carnopy.visualization.selection import dynamic_range_advisories, select_rows
 
 
 def plot_dataset(
@@ -41,23 +43,39 @@ def plot_dataset(
         raise VisualizationError("plot scale must be 'linear' or 'log'")
     if coordinate not in (None, "pressure", "temperature"):
         raise VisualizationError("plot coordinate must be 'pressure' or 'temperature'")
+    request = legacy_property_request(
+        property_name=property_name,
+        kind=kind,
+        fluids=tuple(fluids or ()),
+        scale=scale,
+        coordinate=coordinate,
+    )
     plot_source = load_plot_source(source, coordinate=coordinate)
+    if request.saturation_coordinate is None:
+        request = request.model_copy(update={"saturation_coordinate": plot_source.coordinate})
+    visualization_request_id = request_id((request,))
     definition = PROPERTY_REGISTRY.get(property_name)
     if definition is None:
         raise VisualizationError(f"unknown Carnopy property {property_name!r}")
     if definition.column not in plot_source.frame.columns:
         raise VisualizationError(f"property {property_name!r} is not present in the source dataset")
-    selected_fluids = _select_fluids(plot_source.frame, fluids)
+    selection = select_rows(plot_source.frame, fluids=fluids)
+    selected_fluids = list(selection.selected_fluids)
     prepared, valid_count, excluded_count = _prepare_frame(
         plot_source,
+        frame=selection.frame,
         property_column=definition.column,
-        selected_fluids=selected_fluids,
     )
     valid_values = prepared.loc[prepared["_plot_valid"], "_plot_value"]
     if valid_values.empty:
         raise VisualizationError("no valid property values remain to plot")
     if scale == "log" and bool((valid_values <= 0.0).any()):
         raise VisualizationError(f"log scaling requires positive {property_name} values")
+    advisories = dynamic_range_advisories(
+        valid_values.tolist(),
+        scale=scale,
+        subject=f"{property_name} property",
+    )
 
     mpl = import_matplotlib()
     figure, settings = create_figure(
@@ -87,9 +105,16 @@ def plot_dataset(
         invalid_rows_excluded=excluded_count,
         matplotlib_version=mpl["matplotlib"].__version__,
         settings=settings,
+        request=request,
+        visualization_request_id=visualization_request_id,
+        advisories=advisories,
     )
     if show:
         mpl["pyplot"].show()
+    effective_settings = {
+        **settings,
+        "raster_dpi": (DEFAULT_RASTER_DPI if image_path.suffix.lower() == ".png" else None),
+    }
     return PlotResult(
         figure=figure,
         image_path=image_path,
@@ -101,43 +126,19 @@ def plot_dataset(
         valid_rows_plotted=valid_count,
         invalid_rows_excluded=excluded_count,
         source_integrity=plot_source.source_integrity,
+        visualization_request_id=visualization_request_id,
+        effective_settings=effective_settings,
+        advisories=advisories,
     )
-
-
-def _select_fluids(
-    frame: pd.DataFrame,
-    requested: Sequence[str] | None,
-) -> list[str]:
-    available = sorted(frame["fluid"].dropna().astype(str).unique().tolist())
-    if not available:
-        raise VisualizationError("source dataset contains no fluids")
-    if not requested:
-        if len(available) == 1:
-            return available
-        raise VisualizationError(
-            "source contains multiple fluids; select one or more with --fluid. "
-            f"Available fluids: {', '.join(available)}"
-        )
-    selected: list[str] = []
-    lookup = {fluid.casefold(): fluid for fluid in available}
-    for name in requested:
-        match = lookup.get(name.casefold())
-        if match is None:
-            raise VisualizationError(
-                f"fluid {name!r} is not present. Available fluids: {', '.join(available)}"
-            )
-        if match not in selected:
-            selected.append(match)
-    return selected
 
 
 def _prepare_frame(
     plot_source: PlotSource,
     *,
+    frame: pd.DataFrame,
     property_column: str,
-    selected_fluids: list[str],
 ) -> tuple[pd.DataFrame, int, int]:
-    selected = plot_source.frame.loc[plot_source.frame["fluid"].isin(selected_fluids)].copy()
+    selected = frame.copy()
     if selected.empty:
         raise VisualizationError("fluid selection produced no rows")
     coordinate_values = pd.to_numeric(selected[plot_source.coordinate_column], errors="coerce")

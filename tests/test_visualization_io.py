@@ -23,6 +23,20 @@ def test_run_directory_prefers_verified_parquet(
     assert source.coordinate_display_unit == "K"
 
 
+def test_existing_long_named_run_directory_remains_readable(
+    vapor_config_path: Path,
+    tmp_path: Path,
+) -> None:
+    run = generate_dataset(vapor_config_path, output_root=tmp_path / "runs")
+    legacy_directory = run.output_directory.with_name(
+        "20260621T172006.270984Z_vapor_mass_fraction_table_712208da178a_c8e28e9f"
+    )
+    run.output_directory.rename(legacy_directory)
+    source = load_plot_source(legacy_directory)
+    assert source.dataset_path == legacy_directory / "dataset.parquet"
+    assert source.source_integrity == "verified"
+
+
 def test_direct_csv_uses_sibling_metadata(
     vapor_config_path: Path,
     tmp_path: Path,

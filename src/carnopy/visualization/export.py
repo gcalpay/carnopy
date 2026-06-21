@@ -4,6 +4,7 @@ import errno
 import json
 import os
 import re
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -12,13 +13,15 @@ from uuid import uuid4
 from carnopy._version import __version__
 from carnopy.provenance import sha256_file
 from carnopy.visualization.models import (
+    Advisory,
     PlotKind,
     PlotScale,
     PlotSource,
     VisualizationError,
 )
+from carnopy.visualization.requests import PlotRequest
 
-PLOT_SCHEMA_VERSION = 1
+PLOT_SCHEMA_VERSION = 2
 DEFAULT_RASTER_DPI = 300
 ALLOWED_OUTPUT_SUFFIXES = {".png", ".pdf", ".svg"}
 
@@ -38,6 +41,9 @@ def export_figure(
     invalid_rows_excluded: int,
     matplotlib_version: str,
     settings: dict[str, Any],
+    request: PlotRequest,
+    visualization_request_id: str,
+    advisories: tuple[Advisory, ...],
 ) -> tuple[Path, Path]:
     image_path = _resolve_output_path(
         output=output,
@@ -90,6 +96,9 @@ def export_figure(
             invalid_rows_excluded=invalid_rows_excluded,
             matplotlib_version=matplotlib_version,
             settings=settings,
+            request=request,
+            visualization_request_id=visualization_request_id,
+            advisories=advisories,
         )
         with staged_sidecar.open("x", encoding="utf-8", newline="\n") as stream:
             stream.write(json.dumps(sidecar, indent=2, sort_keys=True, ensure_ascii=False) + "\n")
@@ -181,17 +190,31 @@ def _build_sidecar(
     invalid_rows_excluded: int,
     matplotlib_version: str,
     settings: dict[str, Any],
+    request: PlotRequest,
+    visualization_request_id: str,
+    advisories: tuple[Advisory, ...],
 ) -> dict[str, Any]:
+    axes = _legacy_axes(
+        plot_source=plot_source,
+        property_name=property_name,
+        property_column=property_column,
+        property_unit=property_unit,
+        kind=kind,
+    )
+    scales = (
+        {"x": "linear", "y": scale, "color": None}
+        if kind == "curves"
+        else {"x": "linear", "y": "linear", "color": scale}
+    )
     return {
         "plot_schema_version": PLOT_SCHEMA_VERSION,
+        "plot_kind": request.kind,
         "created_at_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        "carnopy_version": __version__,
-        "matplotlib_version": matplotlib_version,
-        "source": {
+        "source_identity": {
             "requested_path": str(plot_source.requested_path),
             "dataset_path": str(plot_source.dataset_path),
-            "format": plot_source.source_format,
-            "sha256": plot_source.source_sha256,
+            "dataset_format": plot_source.source_format,
+            "dataset_sha256": plot_source.source_sha256,
             "integrity": plot_source.source_integrity,
             "metadata_path": (
                 str(plot_source.metadata_path) if plot_source.metadata_path is not None else None
@@ -204,28 +227,93 @@ def _build_sidecar(
             "backend_version": _single_or_joined(plot_source.frame["backend_version"]),
             "reference_state_policy": _metadata_text(plot_source, "reference_state_policy"),
         },
-        "selection": {
+        "visualization_request_id": visualization_request_id,
+        "data_selection": {
             "fluids": selected_fluids,
             "property": property_name,
             "property_column": property_column,
             "property_unit": property_unit,
-            "kind": kind,
-            "scale": scale,
-            "coordinate": plot_source.coordinate,
-            "coordinate_display_unit": plot_source.coordinate_display_unit,
-            "valid_rows_plotted": valid_rows_plotted,
-            "invalid_rows_excluded": invalid_rows_excluded,
+            "filters": [item.model_dump(mode="json") for item in request.filters],
+            "saturation_coordinate": plot_source.coordinate,
+            "saturation_coordinate_display_unit": plot_source.coordinate_display_unit,
         },
-        "settings": {
+        "axes": axes,
+        "scales": scales,
+        "effective_settings": {
             **settings,
             "raster_dpi": (DEFAULT_RASTER_DPI if image_path.suffix.lower() == ".png" else None),
         },
+        "series_or_cells": _legacy_series_or_cells(kind=kind, settings=settings),
+        "advisories": [asdict(advisory) for advisory in advisories],
+        "valid_sample_count": valid_rows_plotted,
+        "excluded_sample_count": invalid_rows_excluded,
         "image": {
             "path": str(image_path),
             "sidecar_path": str(sidecar_path),
             "sha256": image_sha256,
             "format": image_path.suffix.lower().removeprefix("."),
         },
+        "runtime_versions": {
+            "carnopy": __version__,
+            "matplotlib": matplotlib_version,
+        },
+    }
+
+
+def _legacy_axes(
+    *,
+    plot_source: PlotSource,
+    property_name: str,
+    property_column: str,
+    property_unit: str,
+    kind: PlotKind,
+) -> dict[str, object]:
+    property_axis = {
+        "field": property_name,
+        "column": property_column,
+        "unit": property_unit,
+    }
+    coordinate_axis = {
+        "field": plot_source.coordinate,
+        "column": plot_source.coordinate_column,
+        "unit": plot_source.coordinate_display_unit,
+    }
+    if kind == "curves":
+        return {
+            "x": {
+                "field": "vapor_mass_fraction",
+                "column": "vapor_mass_fraction",
+                "unit": "1",
+            },
+            "y": property_axis,
+            "series": coordinate_axis,
+            "color": None,
+        }
+    return {
+        "x": {
+            "field": "vapor_mass_fraction",
+            "column": "vapor_mass_fraction",
+            "unit": "1",
+        },
+        "y": coordinate_axis,
+        "series": None,
+        "color": property_axis,
+    }
+
+
+def _legacy_series_or_cells(*, kind: PlotKind, settings: dict[str, Any]) -> dict[str, object]:
+    if kind == "curves":
+        return {
+            "representation": "series",
+            "coordinate_values": settings.get("coordinate_values", []),
+            "marker": settings.get("marker"),
+        }
+    return {
+        "representation": "legacy_interpolated_contour",
+        "contour_levels": settings.get("contour_levels"),
+        "corner_mask": settings.get("corner_mask"),
+        "sample_point_overlay": settings.get("sample_point_overlay"),
+        "property_range": settings.get("property_range"),
     }
 
 
