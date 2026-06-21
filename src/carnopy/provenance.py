@@ -4,6 +4,7 @@ import hashlib
 import platform
 from dataclasses import asdict, dataclass
 from importlib import metadata
+from pathlib import Path
 
 from carnopy._version import __version__
 from carnopy.config.normalize import canonical_json_bytes
@@ -25,6 +26,17 @@ class Identity:
 
 def sha256_bytes(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
+
+
+def sha256_file(path: str | Path, *, chunk_size: int = 1024 * 1024) -> str:
+    """Hash a file without loading the complete artifact into memory."""
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be positive")
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as stream:
+        while chunk := stream.read(chunk_size):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def build_identity(

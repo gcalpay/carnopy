@@ -7,7 +7,7 @@ from typing import Any, Literal, cast
 import pandas as pd
 
 from carnopy.domain.units import AXIS_SI_UNITS, UNITS, validate_axis_unit
-from carnopy.provenance import sha256_bytes
+from carnopy.provenance import sha256_file
 from carnopy.visualization.models import PlotCoordinate, PlotSource, VisualizationError
 
 SUPPORTED_MODE = "vapor_mass_fraction_table"
@@ -38,8 +38,7 @@ def load_plot_source(
     )
     metadata_path = dataset_path.parent / "metadata.json"
     metadata = _load_metadata(metadata_path) if metadata_path.is_file() else None
-    source_bytes = _read_bytes(dataset_path)
-    source_sha256 = sha256_bytes(source_bytes)
+    source_sha256 = _hash_source(dataset_path)
     integrity = _verify_integrity(dataset_path, source_sha256, metadata)
     frame = _read_dataset(dataset_path, source_format)
     mode, run_id = _validate_dataset_identity(frame)
@@ -108,11 +107,11 @@ def _resolve_dataset_path(source: Path) -> Path:
     return source
 
 
-def _read_bytes(path: Path) -> bytes:
+def _hash_source(path: Path) -> str:
     try:
-        return path.read_bytes()
+        return sha256_file(path)
     except OSError as exc:
-        raise VisualizationError(f"could not read plot source {path}: {exc}") from exc
+        raise VisualizationError(f"could not hash plot source {path}: {exc}") from exc
 
 
 def _load_metadata(path: Path) -> dict[str, Any]:
@@ -161,13 +160,19 @@ def _read_dataset(
 
 
 def _validate_dataset_identity(frame: pd.DataFrame) -> tuple[str, str]:
-    modes = frame["mode"].dropna().astype(str).unique().tolist()
-    run_ids = frame["run_id"].dropna().astype(str).unique().tolist()
-    if len(modes) != 1:
-        raise VisualizationError("plot source must contain exactly one dataset mode")
-    if len(run_ids) != 1:
-        raise VisualizationError("plot source must contain exactly one run_id")
-    return modes[0], run_ids[0]
+    values: dict[str, str] = {}
+    for column, label in (("mode", "dataset mode"), ("run_id", "run_id")):
+        series = frame[column]
+        if bool(series.isna().any()):
+            raise VisualizationError(f"plot source must not contain null {label} values")
+        normalized = series.astype(str).str.strip()
+        if bool(normalized.eq("").any()):
+            raise VisualizationError(f"plot source must not contain blank {label} values")
+        unique = normalized.unique().tolist()
+        if len(unique) != 1:
+            raise VisualizationError(f"plot source must contain exactly one {label}")
+        values[column] = unique[0]
+    return values["mode"], values["run_id"]
 
 
 def _resolve_coordinate(

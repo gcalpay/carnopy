@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling>=1.25"]
+requires = ["hatchling>=1.27.0"]
 build-backend = "hatchling.build"
 
 [project]
@@ -8,7 +8,8 @@ dynamic = ["version"]
 description = "Reproducible ML-ready thermodynamic fluid-property datasets from configurable property backends."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Göran Cem Alpay" }]
 dependencies = [
   "CoolProp>=7.2",
@@ -21,13 +22,17 @@ dependencies = [
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",
-  "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Topic :: Scientific/Engineering",
+  "Typing :: Typed",
 ]
+
+[project.urls]
+Repository = "https://github.com/gcalpay/carnopy"
+Issues = "https://github.com/gcalpay/carnopy/issues"
 
 [project.optional-dependencies]
 viz = [
@@ -67,6 +72,28 @@ path = "src/carnopy/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/carnopy"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/AGENTS.md",
+  "/CONTRIBUTING.md",
+  "/LICENSE",
+  "/README.md",
+  "/configs",
+  "/docs",
+  "/pyproject.toml",
+  "/scripts",
+  "/src",
+  "/tests",
+  "/uv.lock",
+]
+exclude = [
+  "/build",
+  "/dist",
+  "/figures",
+  "/hli.ipynb",
+  "/outputs",
+]
 
 [tool.ruff]
 target-version = "py310"

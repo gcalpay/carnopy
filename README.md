@@ -1,111 +1,159 @@
 # Carnopy
 
-Carnopy is a CLI-first Python package for generating reproducible
-thermophysical datasets from configured property backends for machine-learning,
-surrogate-model, and engineering workflows.
+> Alpha software: public interfaces and generated schemas may still change
+> before the stable `0.1.0` release.
 
-Carnopy is not a thermodynamic property model. It orchestrates a property
-backend, validates a deterministic sampling specification, preserves failed
-states as diagnostics, and emits stable tabular data with provenance metadata.
-Generated values are backend-derived synthetic data, not experimental data or
-backend-independent ground truth.
+Carnopy is a CLI-first Python package for generating reproducible,
+backend-derived thermophysical datasets for machine-learning, surrogate-model,
+and engineering workflows.
 
-Milestone 1 supports pure fluids with the CoolProp backend and three modes:
+Carnopy is not a thermodynamic property model. It orchestrates configured
+property backends, validates deterministic sampling, preserves failed states as
+diagnostics, and emits stable tabular data with provenance. Generated values are
+synthetic backend output, not experimental data or backend-independent ground
+truth.
 
-- `property_table`: arbitrary temperature-pressure states with inferred phase.
-- `saturation_table`: saturated-liquid and saturated-vapor endpoint rows.
-- `vapor_mass_fraction_table`: two-phase states at a specified vapor mass fraction.
+Milestone 1 supports pure fluids through CoolProp and three modes:
 
-## Development setup
+- `property_table`: temperature-pressure state tables;
+- `saturation_table`: saturated-liquid and saturated-vapor endpoint rows;
+- `vapor_mass_fraction_table`: two-phase states over vapor mass fraction.
 
-Carnopy development uses standalone uv and a project-local `.venv`. After the
-human operator has installed uv and generated `uv.lock`, synchronize the normal
-development environment with:
+## Install the alpha
 
-```bash
-uv sync --locked --extra all --group dev
-```
-
-Run commands without activating the environment:
+After `0.1.0a1` is published:
 
 ```bash
-uv run --locked carnopy --help
-uv run --locked pytest
+python -m pip install "carnopy==0.1.0a1"
+python -m pip install "carnopy[all]==0.1.0a1"
 ```
 
-## Usage
-
-Validate without evaluating thermodynamic rows:
+For an isolated CLI:
 
 ```bash
-carnopy validate configs/property_table_example.yaml
+uv tool install "carnopy==0.1.0a1"
+uv tool install "carnopy[all]==0.1.0a1"
 ```
 
-Generate an immutable run:
+The base package supports dataset generation. The `all` extra additionally
+installs optional scientific plotting.
+
+## CLI workflow
+
+```text
+init → edit → optional validate → generate → inspect → optional plot
+```
+
+Create a commented starter configuration:
 
 ```bash
-carnopy generate configs/property_table_example.yaml
+carnopy init property_table my-dataset.yaml
 ```
 
-List pure fluids available from the current backend:
+Available modes:
+
+```text
+property_table
+saturation_table
+vapor_mass_fraction_table
+```
+
+Discover fluids and semantic properties:
 
 ```bash
 carnopy fluids
+carnopy properties
 ```
 
-Visualization is an optional user-facing feature. The `all` extra currently
-includes every optional feature, including visualization. For repository
-development it is installed by the synchronization command above.
+Edit the YAML, optionally validate it, then generate an immutable run:
 
 ```bash
-uv sync --locked --extra all --group dev
+carnopy validate my-dataset.yaml
+carnopy generate my-dataset.yaml
 ```
 
-Export a scientific plot from a vapor-mass-fraction run:
+`generate` performs validation automatically. The separate `validate` command
+is useful for scripts and early feedback but is not a required extra step.
+
+Inspect:
+
+```text
+outputs/<run>/
+├── dataset.csv
+├── dataset.parquet
+├── config.original.yaml
+├── config.normalized.json
+├── metadata.json
+└── report.json
+```
+
+For a vapor-mass-fraction run, export a scientific figure:
 
 ```bash
-carnopy plot outputs/<run-directory> \
+carnopy plot outputs/<run> \
   --property mass_density \
   --kind curves \
   --show
 ```
 
-The image and a traceable `.plot.json` sidecar are written under `figures/` by
-default. Plotting does not modify the immutable source run.
+The image and `.plot.json` provenance sidecar are written under `figures/` by
+default. Plotting never modifies the source run.
 
-Each run contains:
+Run:
 
-```text
-dataset.csv
-dataset.parquet
-config.original.yaml
-config.normalized.json
-metadata.json
-report.json
+```bash
+carnopy --help
+carnopy generate --help
+carnopy plot --help
 ```
 
-Input YAML may use supported engineering units. Backend calls and generated
-numeric columns use SI. Original units and sampler definitions remain in
-metadata.
+for complete command-specific guidance.
 
-Specific enthalpy, entropy, and internal energy depend on the selected reference
-state. Carnopy resets requested fluids to CoolProp `DEF` before generation and
-records that convention. Absolute values should not be compared across different
-reference conventions.
+## Python API
 
-Mode-limited properties such as `surface_tension` should not be requested over
-broad `property_table` grids unless invalid rows are expected. Milestone 1 uses
-strict row validity: failure of any requested property invalidates the complete
-row, while successful values are retained for diagnosis.
+```python
+from carnopy import generate_dataset, load_config, validate_config
 
-See [configuration](docs/configuration.md), [data policy](docs/data-policy.md),
-[visualization](docs/visualization.md), and
-[architecture](docs/architecture.md) for the stable contracts.
+validation = validate_config("my-dataset.yaml")
+result = generate_dataset("my-dataset.yaml")
+```
+
+Optional visualization:
+
+```python
+from carnopy.visualization import plot_dataset
+
+result = plot_dataset(
+    "outputs/<run>",
+    property_name="mass_density",
+    kind="contour",
+)
+```
+
+The returned figure has already been exported. Modifying it does not update the
+image or provenance sidecar.
+
+## Scientific limitations
+
+- Backend calls and generated numeric columns use SI.
+- Original declared units and sampling definitions remain in metadata.
+- Specific enthalpy, entropy, and internal energy depend on reference state.
+- Carnopy initializes requested fluids with CoolProp `DEF` and records it.
+- Milestone 1 uses strict row validity.
+- Mode-limited properties such as `surface_tension` can invalidate otherwise
+  useful rows when requested outside their supported region.
+- Mixtures, additional backends, ORC generation, and ML training are deferred.
+
+See:
+
+- [Configuration](docs/configuration.md)
+- [Architecture](docs/architecture.md)
+- [Data and provenance](docs/data-policy.md)
+- [Visualization](docs/visualization.md)
+- [Release process](docs/releasing.md)
+- [Contributing](CONTRIBUTING.md)
 
 Official CoolProp references:
 
 - https://coolprop.org/coolprop/
 - https://github.com/CoolProp/CoolProp
-
-Not included in Milestone 1: mixtures, ORC generation, random/design-of-
-experiments sampling, ML training, services, databases, or additional backends.

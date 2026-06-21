@@ -77,3 +77,41 @@ def test_multiple_run_identities_are_rejected(
     frame.to_csv(standalone, index=False)
     with pytest.raises(VisualizationError, match="exactly one run_id"):
         load_plot_source(standalone, coordinate="temperature")
+
+
+@pytest.mark.parametrize(
+    ("column", "value", "message"),
+    [
+        ("mode", None, "null dataset mode"),
+        ("mode", "   ", "blank dataset mode"),
+        ("run_id", None, "null run_id"),
+        ("run_id", "   ", "blank run_id"),
+    ],
+)
+def test_null_and_blank_dataset_identity_is_rejected_before_filtering(
+    vapor_config_path: Path,
+    tmp_path: Path,
+    column: str,
+    value: object,
+    message: str,
+) -> None:
+    run = generate_dataset(vapor_config_path, output_root=tmp_path / "runs")
+    frame = pd.read_csv(run.output_directory / "dataset.csv")
+    frame.loc[0, column] = value
+    standalone = tmp_path / f"invalid-{column}.csv"
+    frame.to_csv(standalone, index=False)
+    with pytest.raises(VisualizationError, match=message):
+        load_plot_source(standalone, coordinate="temperature")
+
+
+def test_multiple_modes_are_rejected_before_property_selection(
+    vapor_config_path: Path,
+    tmp_path: Path,
+) -> None:
+    run = generate_dataset(vapor_config_path, output_root=tmp_path / "runs")
+    frame = pd.read_csv(run.output_directory / "dataset.csv")
+    frame.loc[0, "mode"] = "property_table"
+    standalone = tmp_path / "mixed-mode.csv"
+    frame.to_csv(standalone, index=False)
+    with pytest.raises(VisualizationError, match="exactly one dataset mode"):
+        load_plot_source(standalone, coordinate="temperature")

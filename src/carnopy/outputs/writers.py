@@ -9,7 +9,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from carnopy.domain.failures import OutputError
-from carnopy.provenance import DATASET_SCHEMA_VERSION, sha256_bytes
+from carnopy.provenance import DATASET_SCHEMA_VERSION, sha256_file
 
 
 class _ParquetWriter(Protocol):
@@ -62,7 +62,7 @@ def hash_artifacts(directory: Path, names: list[str]) -> dict[str, str]:
     hashes: dict[str, str] = {}
     for name in names:
         try:
-            hashes[name] = sha256_bytes((directory / name).read_bytes())
+            hashes[name] = sha256_file(directory / name)
         except OSError as exc:
             raise OutputError(f"could not hash {name}: {exc}") from exc
     return hashes

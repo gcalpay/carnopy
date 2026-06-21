@@ -225,6 +225,7 @@ def _plot_contours(
             levels=levels,
             norm=norm,
             cmap=cmap,
+            corner_mask=False,
         )
         valid_points = fluid_frame.loc[fluid_frame["_plot_valid"]]
         axis.scatter(
@@ -244,6 +245,7 @@ def _plot_contours(
     return {
         "colormap": DEFAULT_COLORMAP,
         "contour_levels": DEFAULT_CONTOUR_LEVELS,
+        "corner_mask": False,
         "sample_point_overlay": True,
         "property_range": [value_min, value_max],
     }

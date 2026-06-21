@@ -1,0 +1,144 @@
+name: Verify
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Quality (Python 3.12)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          version: "0.11.23"
+          enable-cache: true
+      - name: Verify lock file
+        run: uv lock --check
+      - name: Synchronize development dependencies
+        run: uv sync --locked --python 3.12 --extra all --group dev
+      - name: Run Ruff
+        run: uv run --locked ruff check .
+      - name: Check formatting
+        run: uv run --locked ruff format --check .
+      - name: Run strict mypy
+        run: uv run --locked mypy src/carnopy
+      - name: Run preflight
+        run: uv run --locked python scripts/preflight.py
+      - name: Check environment dependencies
+        run: uv pip check --python .venv/bin/python
+
+  tests:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.10"
+          - "3.11"
+          - "3.12"
+          - "3.13"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Set up uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          version: "0.11.23"
+          enable-cache: true
+      - name: Synchronize test dependencies
+        run: >-
+          uv sync --locked --python "${{ matrix.python-version }}"
+          --extra all --no-default-groups --group test
+      - name: Run tests
+        run: uv run --locked --no-default-groups --group test pytest
+      - name: Check environment dependencies
+        run: uv pip check --python .venv/bin/python
+
+  distribution:
+    name: Distribution verification
+    needs:
+      - quality
+      - tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          version: "0.11.23"
+          enable-cache: true
+      - name: Synchronize release dependencies
+        run: uv sync --locked --python 3.12 --extra all --group dev --group release
+      - name: Build wheel and sdist once
+        run: uv run --locked --group release python -m build
+      - name: Check metadata and README rendering
+        run: uv run --locked --group release python -m twine check dist/*
+      - name: Inspect distribution contents
+        run: uv run --locked python scripts/check_distribution.py dist/*
+      - name: Smoke-test base wheel outside checkout
+        shell: bash
+        run: |
+          WHEEL="$(find "$PWD/dist" -maxdepth 1 -name '*.whl' -print -quit)"
+          python -m venv "$RUNNER_TEMP/carnopy-base"
+          "$RUNNER_TEMP/carnopy-base/bin/python" -m pip install "$WHEEL"
+          "$RUNNER_TEMP/carnopy-base/bin/python" -m pip check
+          "$RUNNER_TEMP/carnopy-base/bin/python" scripts/smoke_installed.py \
+            --work-directory "$RUNNER_TEMP/base-smoke"
+      - name: Smoke-test wheel with all extras outside checkout
+        shell: bash
+        run: |
+          WHEEL="$(find "$PWD/dist" -maxdepth 1 -name '*.whl' -print -quit)"
+          python -m venv "$RUNNER_TEMP/carnopy-all"
+          WHEEL_URI="$("$RUNNER_TEMP/carnopy-all/bin/python" -c \
+            'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve().as_uri())' \
+            "$WHEEL")"
+          "$RUNNER_TEMP/carnopy-all/bin/python" -m pip install \
+            --index-url https://pypi.org/simple/ \
+            "carnopy[all] @ ${WHEEL_URI}"
+          "$RUNNER_TEMP/carnopy-all/bin/python" -m pip check
+          "$RUNNER_TEMP/carnopy-all/bin/python" scripts/smoke_installed.py \
+            --work-directory "$RUNNER_TEMP/all-smoke" \
+            --with-visualization
+      - name: Smoke-test sdist and reconstruct wheel outside checkout
+        shell: bash
+        run: |
+          SDIST="$(find "$PWD/dist" -maxdepth 1 -name '*.tar.gz' -print -quit)"
+          python -m venv "$RUNNER_TEMP/carnopy-sdist"
+          "$RUNNER_TEMP/carnopy-sdist/bin/python" -m pip install "$SDIST"
+          "$RUNNER_TEMP/carnopy-sdist/bin/python" -m pip check
+          "$RUNNER_TEMP/carnopy-sdist/bin/python" scripts/smoke_installed.py \
+            --work-directory "$RUNNER_TEMP/sdist-smoke"
+          "$RUNNER_TEMP/carnopy-sdist/bin/python" -m pip wheel \
+            --no-deps \
+            --wheel-dir "$RUNNER_TEMP/rebuilt-wheel" \
+            "$SDIST"

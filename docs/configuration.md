@@ -1,5 +1,15 @@
 # Configuration
 
+Generate a commented template:
+
+```bash
+carnopy init property_table my-dataset.yaml
+```
+
+Use `carnopy fluids` and `carnopy properties` to discover accepted semantic
+names. `carnopy generate` validates automatically; `carnopy validate` is an
+optional standalone check.
+
 Schema version 1 requires:
 
 ```yaml

@@ -13,8 +13,8 @@ YAML
   -> CSV/Parquet + metadata/report
 ```
 
-The public Python API is intentionally narrow: load, validate, and generate.
-Mode generators and CoolProp mappings are internal.
+The public Python API is intentionally narrow: load, validate, generate, and
+optional visualization. Mode generators and CoolProp mappings are internal.
 
 The backend boundary covers only capabilities used in Milestone 1. It is not a
 plugin framework. Future adapters can implement the same semantic operations
@@ -25,7 +25,9 @@ directories are never overwritten.
 
 Optional visualization is isolated under `carnopy.visualization`. It reads
 finalized datasets, verifies recorded hashes, and exports figures outside the
-immutable source run. Matplotlib is not imported by generation modules.
+immutable source run. Matplotlib is not imported by generation modules or CLI
+help. Figure and sidecar finalization uses exclusive same-filesystem hard links
+to prevent overwrites; the pair is not fully crash-atomic.
 
 Identity layers:
 

@@ -80,17 +80,26 @@ def test_version_is_lightweight_and_exact() -> None:
 def test_root_help_has_complete_summaries_at_narrow_width() -> None:
     result = runner.invoke(app, ["--help"], terminal_width=48)
     assert result.exit_code == 0
-    assert "validate  Check a configuration." in result.stdout
-    assert "generate  Generate an immutable run." in result.stdout
-    assert "fluids    List backend fluids." in result.stdout
-    assert "plot      Plot a generated dataset." in result.stdout
+    for command, summary in (
+        ("validate", "Check a configuration."),
+        ("generate", "Generate an immutable run."),
+        ("fluids", "List backend fluids."),
+        ("properties", "List dataset properties."),
+        ("init", "Create a starter configuration."),
+        ("plot", "Plot a generated dataset."),
+    ):
+        assert command in result.stdout
+        assert summary in result.stdout
+    assert "init → edit → optional validate" in result.stdout
 
 
 def test_subcommand_help_retains_detailed_descriptions() -> None:
     expectations = {
         "validate": "without evaluating thermodynamic rows",
-        "generate": "finalize one immutable dataset run",
+        "generate": "Generation performs configuration",
         "fluids": "available from the current backend",
+        "properties": "semantic properties accepted",
+        "init": "commented configuration template",
         "plot": "from a vapor-mass-fraction dataset",
     }
     for command, description in expectations.items():
@@ -143,6 +152,8 @@ def test_plot_choices_are_rejected_by_cli_parser(option: str, value: str) -> Non
         ["validate", "--help"],
         ["generate", "--help"],
         ["fluids", "--help"],
+        ["properties", "--help"],
+        ["init", "--help"],
         ["plot", "--help"],
     ],
 )
@@ -218,6 +229,56 @@ def test_missing_matplotlib_message_is_exact(
     )
     assert result.exit_code == 1
     assert result.output == f"{MISSING_VISUALIZATION_MESSAGE}\n"
+
+
+def test_init_creates_packaged_template_and_prints_workflow(tmp_path: Path) -> None:
+    output = tmp_path / "nested" / "property.yaml"
+    result = runner.invoke(
+        app,
+        [
+            "init",
+            "property_table",
+            str(output),
+            "--create-parents",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert output.is_file()
+    assert "mode: property_table" in output.read_text(encoding="utf-8")
+    assert f"carnopy validate {output.resolve()}" in result.stdout
+    assert f"carnopy generate {output.resolve()}" in result.stdout
+
+
+def test_init_refuses_wrong_suffix_existing_file_and_missing_noninteractive_parent(
+    tmp_path: Path,
+) -> None:
+    wrong_suffix = runner.invoke(app, ["init", "property_table", str(tmp_path / "config.txt")])
+    assert wrong_suffix.exit_code == 2
+    assert "must end in .yaml or .yml" in wrong_suffix.output
+
+    existing = tmp_path / "existing.yaml"
+    existing.write_text("preserve me\n", encoding="utf-8")
+    existing_result = runner.invoke(app, ["init", "property_table", str(existing)])
+    assert existing_result.exit_code == 2
+    assert "refusing to overwrite" in existing_result.output
+    assert existing.read_text(encoding="utf-8") == "preserve me\n"
+
+    missing_parent = runner.invoke(
+        app,
+        ["init", "saturation_table", str(tmp_path / "missing" / "config.yaml")],
+    )
+    assert missing_parent.exit_code == 2
+    assert "--create-parents" in missing_parent.output
+
+
+def test_properties_lists_semantic_registry_details() -> None:
+    result = runner.invoke(app, ["properties"])
+    assert result.exit_code == 0
+    assert "PROPERTY" in result.stdout
+    assert "specific_enthalpy" in result.stdout
+    assert "specific_enthalpy_J_kg" in result.stdout
+    assert "kinematic_viscosity" in result.stdout
+    assert "dynamic_viscosity, mass_density" in result.stdout
 
 
 def test_plot_command_exports_figure_and_sidecar(

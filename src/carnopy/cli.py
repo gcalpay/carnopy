@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from enum import Enum
 from pathlib import Path
 from typing import Annotated
@@ -24,6 +25,12 @@ class PlotCoordinateCli(str, Enum):
     temperature = "temperature"
 
 
+class ConfigModeCli(str, Enum):
+    property_table = "property_table"
+    saturation_table = "saturation_table"
+    vapor_mass_fraction_table = "vapor_mass_fraction_table"
+
+
 def _version_callback(value: bool) -> None:
     if value:
         typer.echo(f"carnopy {__version__}")
@@ -36,6 +43,10 @@ app = typer.Typer(
     pretty_exceptions_enable=False,
     rich_markup_mode=None,
     help="Generate reproducible thermophysical datasets from configured backends.",
+    epilog=(
+        "Workflow: init → edit → optional validate → generate → inspect report/metadata "
+        "→ optional plot."
+    ),
 )
 
 
@@ -93,7 +104,15 @@ def generate_command(
         ),
     ] = Path("outputs"),
 ) -> None:
-    """Generate and finalize one immutable dataset run."""
+    """Generate and finalize one immutable dataset run.
+
+    Modes: property_table requires temperature and pressure; saturation_table
+    requires exactly one of them; vapor_mass_fraction_table requires vapor mass
+    fraction plus exactly one temperature or pressure axis.
+
+    Start with `carnopy init MODE CONFIG.yaml`. Generation performs configuration
+    validation automatically; `carnopy validate` is an optional separate check.
+    """
     from carnopy.api import generate_dataset
     from carnopy.domain.failures import CarnopyError, ConfigError
 
@@ -125,6 +144,72 @@ def fluids_command() -> None:
     for fluid in backend.list_fluids():
         aliases = ", ".join(backend.aliases_for(fluid))
         typer.echo(f"{fluid}: {aliases}")
+
+
+@app.command("properties", short_help="List dataset properties.")
+def properties_command() -> None:
+    """List semantic properties accepted by configuration schema version 1."""
+    from carnopy.domain.properties import PROPERTY_REGISTRY
+
+    header = (
+        f"{'PROPERTY':<40} {'COLUMN':<48} {'UNIT':<12} "
+        f"{'CLASSIFICATION':<20} {'REFERENCE':<9} DEPENDENCIES"
+    )
+    typer.echo(header)
+    for name in sorted(PROPERTY_REGISTRY):
+        definition = PROPERTY_REGISTRY[name]
+        dependencies = ", ".join(definition.dependencies) or "-"
+        reference = "yes" if definition.reference_dependent else "no"
+        typer.echo(
+            f"{definition.name:<40} {definition.column:<48} {definition.unit:<12} "
+            f"{definition.classification:<20} {reference:<9} {dependencies}"
+        )
+
+
+@app.command("init", short_help="Create a starter configuration.")
+def init_command(
+    mode: Annotated[
+        ConfigModeCli,
+        typer.Argument(help="Dataset mode for the starter configuration."),
+    ],
+    output: Annotated[
+        Path,
+        typer.Argument(
+            dir_okay=False,
+            metavar="OUTPUT",
+            help="New .yaml or .yml configuration path.",
+        ),
+    ],
+    create_parents: Annotated[
+        bool,
+        typer.Option(
+            "--create-parents",
+            help="Create missing parent directories without prompting.",
+        ),
+    ] = False,
+) -> None:
+    """Create a commented configuration template without overwriting files."""
+    from carnopy.templates import TemplateError, initialize_config
+
+    def confirm_create(parent: Path) -> bool:
+        return typer.confirm(f"Parent directory {parent} does not exist. Create it?", default=False)
+
+    try:
+        created = initialize_config(
+            mode.value,
+            output,
+            create_parents=create_parents,
+            interactive=sys.stdin.isatty(),
+            confirm_create=confirm_create,
+        )
+    except TemplateError as exc:
+        typer.echo(f"Configuration initialization failed: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(f"Created configuration: {created}")
+    typer.echo("Next:")
+    typer.echo(f"  edit {created}")
+    typer.echo(f"  carnopy validate {created}")
+    typer.echo(f"  carnopy generate {created}")
 
 
 @app.command("plot", short_help="Plot a generated dataset.")

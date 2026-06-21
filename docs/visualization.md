@@ -3,15 +3,21 @@
 Visualization is optional and currently supports
 `vapor_mass_fraction_table` datasets.
 
-For repository development, synchronize the optional visualization dependency
-through the `all` extra:
+Install the alpha with visualization:
+
+```bash
+python -m pip install "carnopy[all]==0.1.0a1"
+```
+
+For repository development:
 
 ```bash
 uv sync --locked --extra all --group dev
 ```
 
-Curves show the selected property against vapor mass fraction, with one sampled
-line per pressure or temperature:
+## Curves and contours
+
+Curves show one sampled line per configured pressure or temperature:
 
 ```bash
 carnopy plot outputs/<run> \
@@ -20,7 +26,7 @@ carnopy plot outputs/<run> \
   --show
 ```
 
-Contours show the full sampled response surface:
+Contours show the sampled response surface:
 
 ```bash
 carnopy plot outputs/<run> \
@@ -29,23 +35,40 @@ carnopy plot outputs/<run> \
   --output figures/cyclopentane_enthalpy.pdf
 ```
 
-The source may be a run directory, CSV, or Parquet file. Run directories prefer
-Parquet and verify the dataset against `metadata.json`. Standalone files without
-metadata require `--coordinate pressure` or `--coordinate temperature` and are
-marked unverified.
+Invalid samples remain gaps. Curves are not smoothed, and contour corner filling
+is disabled so masked states are not rendered as valid data.
 
-Only valid rows are plotted. Missing or invalid samples remain gaps; curves are
-not smoothed and contours do not extrapolate across masked cells. Linear scaling
-is the default. `--scale log` is explicit and rejected for nonpositive values.
+Linear scaling is the default. `--scale log` is explicit and requires every
+plotted value to be positive.
 
-When a dataset contains multiple pure fluids, pass one or more repeatable
-`--fluid` options. Multiple selections are rendered as comparable facets rather
-than overlaid.
+## Sources and fluids
 
-Every export writes an image and a `.plot.json` provenance sidecar under
-`figures/` by default. The immutable generation run is never modified.
+`SOURCE` may be a run directory, CSV, or Parquet file. Run directories prefer
+Parquet and verify it against `metadata.json`. Standalone files without metadata
+require `--coordinate pressure` or `--coordinate temperature` and are marked
+unverified.
 
-Python callers can customize the returned Matplotlib figure:
+For multiple pure fluids, repeat `--fluid`:
+
+```bash
+carnopy plot outputs/<run> \
+  --property mass_density \
+  --fluid Propane \
+  --fluid Isobutane
+```
+
+Each selected fluid receives its own comparable facet.
+
+## Export integrity
+
+Every export writes an image and `.plot.json` sidecar outside the immutable
+source run. Existing image or sidecar paths are refused.
+
+Finalization uses exclusive same-filesystem hard links. This prevents concurrent
+overwrite races. The two-file pair is not fully crash-atomic: abrupt process
+termination between links can leave an image without its sidecar.
+
+Python API:
 
 ```python
 from carnopy.visualization import plot_dataset
@@ -55,5 +78,8 @@ result = plot_dataset(
     property_name="mass_density",
     kind="contour",
 )
-result.figure.suptitle("Cyclopentane density response")
 ```
+
+`result.figure` represents an image that has already been exported. Later
+Matplotlib changes do not update the image or sidecar; call `plot_dataset` again
+with a new output path to create another traceable export.

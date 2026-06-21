@@ -7,6 +7,8 @@ import pandas as pd
 import pyarrow.parquet as pq
 
 from carnopy.api import generate_dataset
+from carnopy.outputs.writers import hash_artifacts
+from carnopy.provenance import sha256_bytes
 
 
 def test_generation_writes_complete_immutable_artifacts(
@@ -33,3 +35,18 @@ def test_generation_writes_complete_immutable_artifacts(
     schema_metadata = pq.read_schema(result.output_directory / "dataset.parquet").metadata
     assert schema_metadata is not None
     assert b"carnopy.units" in schema_metadata
+
+
+def test_artifact_hashing_does_not_require_read_bytes(
+    tmp_path: Path,
+    monkeypatch: object,
+) -> None:
+    path = tmp_path / "artifact.bin"
+    content = b"large-artifact" * 100_000
+    path.write_bytes(content)
+
+    def reject_read_bytes(_path: Path) -> bytes:
+        raise AssertionError("artifact hashing must be chunked")
+
+    monkeypatch.setattr(Path, "read_bytes", reject_read_bytes)
+    assert hash_artifacts(tmp_path, [path.name]) == {path.name: sha256_bytes(content)}

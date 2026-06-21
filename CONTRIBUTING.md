@@ -22,6 +22,9 @@ Release-readiness tooling is separate from everyday development:
 uv sync --locked --extra all --group dev --group release
 ```
 
+The human operator performs this synchronization. Do not let `uv run` silently
+resolve or install missing release tools during a release check.
+
 Use explicit groups in documented commands even where uv currently supplies a
 default group.
 
@@ -42,6 +45,14 @@ uv run --locked pytest
 uv pip check --python .venv/bin/python
 ```
 
+Distribution checks, after release tooling has been synchronized:
+
+```bash
+uv run --locked --group release python -m build
+uv run --locked --group release python -m twine check dist/*
+uv run --locked python scripts/check_distribution.py dist/*
+```
+
 Keep changes small and explicit. Public configuration names, SI dataset columns,
 failure codes, and metadata fields are compatibility contracts. Tests must use
 temporary output directories and must not write generated data into repository
@@ -49,6 +60,11 @@ temporary output directories and must not write generated data into repository
 
 Git operations, environment bootstrap, release decisions, publishing, and
 dependency changes are owned by the human operator.
+
+The GitHub release workflow builds once, verifies one wheel/sdist pair, uploads
+the same bytes to TestPyPI and production PyPI, and requires approval through
+the protected `pypi` environment. Never reuse a published version for changed
+payloads. See [the release guide](docs/releasing.md).
 
 ## Commit messages
 
