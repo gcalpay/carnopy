@@ -108,17 +108,43 @@ class PlotRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_kind_contract(self) -> PlotRequest:
-        property_kinds = {"property_curves", "property_heatmap"}
-        if self.kind in property_kinds and self.property_name is None:
-            raise ValueError(f"{self.kind} requires property_name")
-        if self.kind == "xy" and (self.x_field is None or self.y_field is None):
-            raise ValueError("xy requires both x_field and y_field")
-        if self.kind in {"pv", "ts"} and any(
-            value is not None for value in (self.property_name, self.x_field, self.y_field)
+        if self.kind == "property_curves":
+            if self.property_name is None:
+                raise ValueError("property_curves requires property_name")
+            if self.y_field is not None or self.group_by is not None:
+                raise ValueError("property_curves rejects y_field and group_by")
+        elif self.kind == "property_heatmap":
+            if self.property_name is None:
+                raise ValueError("property_heatmap requires property_name")
+            if any(value is not None for value in (self.x_field, self.y_field, self.group_by)):
+                raise ValueError(
+                    "property_heatmap uses mode-defined axes and rejects x_field/y_field/group_by"
+                )
+        elif self.kind == "xy":
+            if self.x_field is None or self.y_field is None:
+                raise ValueError("xy requires both x_field and y_field")
+            if self.property_name is not None:
+                raise ValueError("xy rejects property_name")
+        elif any(
+            value is not None
+            for value in (
+                self.property_name,
+                self.x_field,
+                self.y_field,
+                self.group_by,
+            )
         ):
             raise ValueError(
-                f"{self.kind} uses fixed axes and rejects property_name/x_field/y_field"
+                f"{self.kind} uses fixed axes and rejects property_name/x_field/y_field/group_by"
             )
+        if self.kind != "property_curves" and self.value_scale != "linear":
+            raise ValueError("value_scale is valid only for property_curves")
+        if self.kind != "property_heatmap" and self.color_scale != "linear":
+            raise ValueError("color_scale is valid only for property_heatmap")
+        if self.kind in {"property_curves", "property_heatmap"} and (
+            self.x_scale != "linear" or self.y_scale != "linear"
+        ):
+            raise ValueError("x_scale/y_scale are valid only for xy, pv, and ts")
         return self
 
     def canonical_dict(self) -> dict[str, object]:
@@ -162,10 +188,10 @@ def property_plot_request(
     )
 
 
-def normalize_public_plot_kind(value: str) -> Literal["property_curves", "property_heatmap"]:
+def normalize_public_plot_kind(value: str) -> PlotKindV2:
     normalized = value.strip().replace("-", "_")
-    if normalized in {"property_curves", "property_heatmap"}:
-        return cast(Literal["property_curves", "property_heatmap"], normalized)
+    if normalized in {"property_curves", "property_heatmap", "xy", "pv", "ts"}:
+        return cast(PlotKindV2, normalized)
     if normalized == "contour":
         raise ValueError(
             "Contour plots interpolate between sampled states and are not supported.\n"
@@ -177,7 +203,54 @@ def normalize_public_plot_kind(value: str) -> Literal["property_curves", "proper
         )
     if normalized == "heatmap":
         raise ValueError("Plot kind 'heatmap' is ambiguous. Use --kind property-heatmap.")
-    raise ValueError("plot kind must be 'property-curves' or 'property-heatmap'")
+    raise ValueError("plot kind must be one of: property-curves, property-heatmap, xy, pv, ts")
+
+
+def xy_plot_request(
+    *,
+    x_field: str,
+    y_field: str,
+    group_by: str | None,
+    fluids: tuple[str, ...],
+    filters: tuple[ExactFilter, ...] = (),
+    x_scale: PlotScale = "linear",
+    y_scale: PlotScale = "linear",
+    saturation_coordinate: SaturationCoordinate | None = None,
+    output_format: PlotFormat = "png",
+) -> PlotRequest:
+    return PlotRequest(
+        kind="xy",
+        x_field=x_field,
+        y_field=y_field,
+        group_by=group_by,
+        filters=filters,
+        fluids=fluids,
+        x_scale=x_scale,
+        y_scale=y_scale,
+        saturation_coordinate=saturation_coordinate,
+        output_format=output_format,
+    )
+
+
+def thermodynamic_diagram_request(
+    *,
+    kind: Literal["pv", "ts"],
+    fluids: tuple[str, ...],
+    filters: tuple[ExactFilter, ...] = (),
+    x_scale: PlotScale = "linear",
+    y_scale: PlotScale = "linear",
+    saturation_coordinate: SaturationCoordinate | None = None,
+    output_format: PlotFormat = "png",
+) -> PlotRequest:
+    return PlotRequest(
+        kind=kind,
+        filters=filters,
+        fluids=fluids,
+        x_scale=x_scale,
+        y_scale=y_scale,
+        saturation_coordinate=saturation_coordinate,
+        output_format=output_format,
+    )
 
 
 def parse_exact_filter(value: str) -> ExactFilter:

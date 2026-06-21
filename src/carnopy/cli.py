@@ -15,6 +15,11 @@ class PlotScaleCli(str, Enum):
     log = "log"
 
 
+class PlotCoordinateCli(str, Enum):
+    pressure = "pressure"
+    temperature = "temperature"
+
+
 class ConfigModeCli(str, Enum):
     property_table = "property_table"
     saturation_table = "saturation_table"
@@ -212,28 +217,44 @@ def plot_command(
             help="Run directory, CSV, or Parquet file.",
         ),
     ],
-    property_name: Annotated[
-        str,
-        typer.Option(
-            "--property",
-            metavar="PROPERTY",
-            help="Semantic property, e.g. mass_density.",
-        ),
-    ],
     kind: Annotated[
         str,
         typer.Option(
             "--kind",
             metavar="KIND",
-            help="Required plot kind: property-curves or property-heatmap.",
+            help="Required kind: property-curves, property-heatmap, xy, pv, or ts.",
         ),
     ],
+    property_name: Annotated[
+        str | None,
+        typer.Option(
+            "--property",
+            metavar="PROPERTY",
+            help="Semantic property for property-curves or property-heatmap.",
+        ),
+    ] = None,
     x_field: Annotated[
         str | None,
         typer.Option(
             "--x",
             metavar="FIELD",
-            help="Curve x-axis for property_table: temperature or pressure.",
+            help="X field for xy, or temperature/pressure for property-table curves.",
+        ),
+    ] = None,
+    y_field: Annotated[
+        str | None,
+        typer.Option(
+            "--y",
+            metavar="FIELD",
+            help="Y field for xy.",
+        ),
+    ] = None,
+    group_by: Annotated[
+        str | None,
+        typer.Option(
+            "--group-by",
+            metavar="FIELD",
+            help="Explicit xy series grouping field when sampling is ambiguous.",
         ),
     ] = None,
     fluids: Annotated[
@@ -266,6 +287,30 @@ def plot_command(
             help="Property-heatmap color scale: linear or log.",
         ),
     ] = None,
+    x_scale: Annotated[
+        PlotScaleCli | None,
+        typer.Option(
+            "--x-scale",
+            help="X-axis scale for xy, pv, or ts.",
+        ),
+    ] = None,
+    y_scale: Annotated[
+        PlotScaleCli | None,
+        typer.Option(
+            "--y-scale",
+            help="Y-axis scale for xy, pv, or ts.",
+        ),
+    ] = None,
+    saturation_coordinate: Annotated[
+        PlotCoordinateCli | None,
+        typer.Option(
+            "--saturation-coordinate",
+            help=(
+                "Independent saturation coordinate for standalone saturation "
+                "or vapor-quality files."
+            ),
+        ),
+    ] = None,
     output: Annotated[
         Path | None,
         typer.Option(
@@ -282,7 +327,8 @@ def plot_command(
 
     property-curves supports all dataset modes. property_table sources require
     --x temperature or --x pressure. property-heatmap supports property_table
-    and vapor_mass_fraction_table sources and renders sampled cells only.
+    and vapor_mass_fraction_table sources. xy uses explicit semantic axes.
+    pv and ts use conventional fixed axes derived from emitted columns.
     """
     from carnopy.visualization import (
         VisualizationDependencyError,
@@ -300,18 +346,29 @@ def plot_command(
             raise VisualizationError("--color-scale is valid only with --kind property-heatmap")
         if normalized_kind == "property_heatmap" and value_scale is not None:
             raise VisualizationError("--value-scale is valid only with --kind property-curves")
+        if normalized_kind in {"property_curves", "property_heatmap"} and (
+            x_scale is not None or y_scale is not None
+        ):
+            raise VisualizationError("--x-scale and --y-scale are valid only with xy, pv, or ts")
         exact_filters = tuple(parse_exact_filter(value) for value in (filters or ()))
         result = plot_dataset(
             source,
             property_name=property_name,
             kind=normalized_kind,
             x=x_field,
+            y=y_field,
+            group_by=group_by,
             fluids=fluids,
             filters=exact_filters,
             value_scale=(value_scale or PlotScaleCli.linear).value,
             color_scale=(color_scale or PlotScaleCli.linear).value,
+            x_scale=(x_scale or PlotScaleCli.linear).value,
+            y_scale=(y_scale or PlotScaleCli.linear).value,
             output=output,
             show=show,
+            saturation_coordinate=(
+                saturation_coordinate.value if saturation_coordinate is not None else None
+            ),
         )
     except ValueError as exc:
         typer.echo(f"Visualization failed: {exc}", err=True)

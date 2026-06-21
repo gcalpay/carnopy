@@ -138,3 +138,17 @@ def test_multiple_modes_are_rejected_before_property_selection(
     frame.to_csv(standalone, index=False)
     with pytest.raises(VisualizationError, match="exactly one dataset mode"):
         load_plot_source(standalone)
+
+
+@pytest.mark.parametrize("column", ["case_id", "phase"])
+def test_plot_source_requires_ordering_and_phase_columns(
+    vapor_config_path: Path,
+    tmp_path: Path,
+    column: str,
+) -> None:
+    run = generate_dataset(vapor_config_path, output_root=tmp_path / "runs")
+    frame = pd.read_csv(run.output_directory / "dataset.csv").drop(columns=[column])
+    standalone = tmp_path / f"missing-{column}.csv"
+    frame.to_csv(standalone, index=False)
+    with pytest.raises(VisualizationError, match=column):
+        load_plot_source(standalone)

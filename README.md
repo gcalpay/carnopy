@@ -133,6 +133,27 @@ carnopy plot "$RUN_DIR" \
   --property mass_density
 ```
 
+Create a generic emitted-column x-y plot:
+
+```bash
+carnopy plot "$RUN_DIR" \
+  --kind xy \
+  --x specific_enthalpy \
+  --y vapor_mass_fraction
+```
+
+Create conventional thermodynamic diagrams when the required properties were
+emitted:
+
+```bash
+carnopy plot outputs/<run-with-density> --kind pv
+carnopy plot outputs/<run-with-entropy> --kind ts
+```
+
+The p-v diagram uses `specific_volume = 1 / mass_density`. The T-s diagram uses
+the emitted entropy and temperature and requires recorded reference-state
+metadata. Neither command performs additional thermodynamic evaluation.
+
 The image and `.plot.json` provenance sidecar are written under `figures/` by
 default. Plotting never calls CoolProp, interpolates states, or modifies the
 source run.
@@ -159,12 +180,24 @@ result = generate_dataset("my-dataset.yaml")
 Optional visualization:
 
 ```python
-from carnopy.visualization import plot_property_heatmap
+from carnopy.visualization import (
+    plot_property_heatmap,
+    plot_thermodynamic_diagram,
+    plot_xy,
+)
 
 result = plot_property_heatmap(
     "outputs/manual-test/20260621T172006Z_vapor_fraction_c8e28e9f",
     property_name="mass_density",
 )
+
+xy_result = plot_xy(
+    "outputs/<run>",
+    x="specific_enthalpy",
+    y="vapor_mass_fraction",
+)
+
+pv_result = plot_thermodynamic_diagram("outputs/<run>", kind="pv")
 ```
 
 The returned figure has already been exported. Modifying it does not update the

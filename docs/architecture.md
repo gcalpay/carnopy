@@ -30,11 +30,13 @@ Optional visualization is isolated under `carnopy.visualization`. It reads
 finalized datasets, verifies recorded hashes, and exports figures outside the
 immutable source run. Property curves and sampled heatmaps use only emitted
 columns; visualization never calls a backend or interpolates thermodynamic
-states. A centralized semantic-field registry controls scientific labels,
-units, filters, and later plot extensions. Matplotlib is not imported by
-generation modules or CLI help. Figure and sidecar finalization uses exclusive
-same-filesystem hard links to prevent overwrites; the pair is not fully
-crash-atomic.
+states. Generic x-y plots resolve sampling-coordinate grouping explicitly.
+Conventional p-v and T-s diagrams derive only specific volume from emitted
+density and otherwise use emitted axes directly. A centralized semantic-field
+registry controls scientific labels, units, filters, and plot dependencies.
+Matplotlib is not imported by generation modules or CLI help. Figure and
+sidecar finalization uses exclusive same-filesystem hard links to prevent
+overwrites; the pair is not fully crash-atomic.
 
 Identity layers:
 

@@ -4,6 +4,7 @@ import math
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
 
 from carnopy.visualization.fields import get_field
@@ -84,40 +85,112 @@ def resolve_group_by(
     requested: str | None,
 ) -> GroupingResolution:
     axes = set(axis_fields)
-    candidates = [
+    sampling = tuple(sampling_fields)
+    varying = [
         field
-        for field in sampling_fields
-        if field not in axes
-        and get_field(field).column in frame.columns
+        for field in sampling
+        if get_field(field).column in frame.columns
         and frame[get_field(field).column].nunique(dropna=True) > 1
     ]
     if requested is not None:
-        if requested not in candidates:
-            available = ", ".join(candidates) or "none"
+        definition = get_field(requested)
+        if definition.column in frame.columns and bool(frame[definition.column].isna().any()):
+            raise VisualizationError(f"group-by field {requested!r} contains null values")
+        requested_varies = (
+            definition.column in frame.columns and frame[definition.column].nunique(dropna=True) > 1
+        )
+        if not definition.group_allowed or not requested_varies:
+            available = ", ".join(varying) or "none"
             raise VisualizationError(
                 f"group-by field {requested!r} is not a varying grouping candidate; "
                 f"available candidates: {available}"
             )
-        unresolved = [field for field in candidates if field != requested]
-        if len(unresolved) > 1:
+        unresolved_sets: list[tuple[str, ...]] = []
+        for _, group in frame.groupby(definition.column, sort=False, dropna=False):
+            unresolved_sets.append(
+                tuple(
+                    field
+                    for field in sampling
+                    if field != requested
+                    and get_field(field).column in group.columns
+                    and group[get_field(field).column].nunique(dropna=True) > 1
+                )
+            )
+        if any(len(fields) > 1 for fields in unresolved_sets):
+            unresolved = sorted({field for fields in unresolved_sets for field in fields})
             raise VisualizationError(
                 "generic x-y curve plot remains ambiguous after grouping; "
                 f"unresolved coordinates: {', '.join(unresolved)}"
             )
+        varying_paths = sorted({field for fields in unresolved_sets for field in fields})
+        if len(varying_paths) > 1:
+            raise VisualizationError(
+                "generic x-y groups do not share one deterministic path coordinate; "
+                f"observed coordinates: {', '.join(varying_paths)}"
+            )
         return GroupingResolution(
             group_by=requested,
-            varying_coordinate=unresolved[0] if unresolved else None,
+            varying_coordinate=varying_paths[0] if varying_paths else None,
         )
-    if len(candidates) > 1:
+    if not varying:
+        return GroupingResolution(group_by=None, varying_coordinate=None)
+    if len(varying) == 1:
+        return GroupingResolution(
+            group_by=None,
+            varying_coordinate=varying[0],
+        )
+    axis_varying = [field for field in varying if field in axes]
+    non_axis_varying = [field for field in varying if field not in axes]
+    if len(axis_varying) == 1 and len(non_axis_varying) == 1:
+        return GroupingResolution(
+            group_by=non_axis_varying[0],
+            varying_coordinate=axis_varying[0],
+        )
+    if len(varying) > 1:
         raise VisualizationError(
             "Generic x-y curve plot is ambiguous because multiple independent "
             "coordinates remain. Specify --group-by using one of: "
-            f"{', '.join(candidates)}."
+            f"{', '.join(varying)}."
         )
-    return GroupingResolution(
-        group_by=None,
-        varying_coordinate=candidates[0] if candidates else None,
+    raise AssertionError("unreachable grouping state")
+
+
+def row_valid_mask(frame: pd.DataFrame) -> pd.Series:
+    valid = frame["valid"]
+    if valid.dtype == object:
+        return valid.astype(str).str.casefold().eq("true")
+    return valid.astype(bool)
+
+
+def numeric_field_values(
+    frame: pd.DataFrame,
+    field: str,
+) -> tuple[pd.Series, pd.Series]:
+    definition = get_field(field)
+    if definition.kind != "numeric":
+        raise VisualizationError(f"field {field!r} is not numeric")
+    source_field = (
+        get_field(definition.required_property)
+        if definition.required_property is not None
+        else definition
     )
+    if source_field.column not in frame.columns:
+        required = definition.required_property or field
+        raise VisualizationError(
+            f"field {field!r} requires emitted {required!r}, "
+            "which is not present in the source dataset"
+        )
+    source = pd.to_numeric(frame[source_field.column], errors="coerce")
+    supported = pd.Series(
+        np.isfinite(source.to_numpy(dtype=float)),
+        index=frame.index,
+    )
+    if definition.derivation == "reciprocal":
+        supported &= source > 0.0
+        values = pd.Series(np.nan, index=frame.index, dtype=float)
+        values.loc[supported] = 1.0 / source.loc[supported]
+        return values, supported
+    return source.astype(float), supported
 
 
 def dynamic_range_advisories(

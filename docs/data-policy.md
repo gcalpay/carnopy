@@ -38,8 +38,12 @@ identity, selected property and fluids, effective plotting settings, and image
 hash. When source metadata is available, plotting fails on dataset hash
 mismatch. Property curves connect only adjacent valid emitted samples and split
 at invalid states and phase changes. Sampled heatmaps use non-interpolated cells
-and preserve invalid or missing cells as gaps. Visualization does not call a
-thermodynamic backend. Standalone files without metadata are marked unverified.
+and preserve invalid or missing cells as gaps. Generic x-y, p-v, and T-s plots
+also preserve gaps and emitted sample markers. Specific volume is the only
+plot-derived field and is computed as the reciprocal of emitted positive
+density. Visualization does not call a thermodynamic backend. Standalone files
+without metadata are marked unverified; T-s additionally requires recorded
+reference-state metadata.
 Existing image or sidecar paths are refused. Concurrent export cannot overwrite
 an existing artifact, although process termination between the image and
 sidecar links may leave an incomplete pair.

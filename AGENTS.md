@@ -116,8 +116,8 @@ Milestone 1 supports:
 - deterministic sampling;
 - CSV and Parquet;
 - metadata and report JSON;
-- optional Matplotlib property curves for all three modes and sampled property
-  heatmaps for property and vapor-mass-fraction tables.
+- optional Matplotlib property curves, sampled property heatmaps, generic x-y
+  plots, and emitted-column p-v and T-s diagrams.
 
 Out of scope:
 
@@ -307,6 +307,8 @@ Visualization:
 - verifies recorded source hashes;
 - plots only valid values;
 - supports discrete property curves and non-interpolated sampled heatmaps;
+- supports generic numeric x-y plots and conventional p-v/T-s diagrams derived
+  only from emitted density, pressure, entropy, and temperature columns;
 - preserves invalid and missing states as gaps;
 - never calls a thermodynamic backend or invents intermediate states;
 - writes outside immutable run directories;

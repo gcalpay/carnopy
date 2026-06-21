@@ -15,6 +15,8 @@ if TYPE_CHECKING:
         plot_dataset,
         plot_property_curves,
         plot_property_heatmap,
+        plot_thermodynamic_diagram,
+        plot_xy,
     )
 
 __all__ = [
@@ -26,6 +28,8 @@ __all__ = [
     "plot_dataset",
     "plot_property_curves",
     "plot_property_heatmap",
+    "plot_thermodynamic_diagram",
+    "plot_xy",
 ]
 
 _LAZY_EXPORTS = {
@@ -46,6 +50,11 @@ _LAZY_EXPORTS = {
         "carnopy.visualization.plots",
         "plot_property_heatmap",
     ),
+    "plot_thermodynamic_diagram": (
+        "carnopy.visualization.plots",
+        "plot_thermodynamic_diagram",
+    ),
+    "plot_xy": ("carnopy.visualization.plots", "plot_xy"),
 }
 
 

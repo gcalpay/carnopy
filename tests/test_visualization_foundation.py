@@ -195,6 +195,23 @@ def test_grouping_requires_explicit_resolution_when_ambiguous() -> None:
     assert single.varying_coordinate == "temperature"
 
 
+def test_grouping_rejects_null_group_labels() -> None:
+    frame = pd.DataFrame(
+        {
+            "temperature_K": [300.0, 310.0],
+            "pressure_Pa": [100_000.0, 200_000.0],
+            "phase": ["gas", None],
+        }
+    )
+    with pytest.raises(VisualizationError, match="contains null"):
+        resolve_group_by(
+            frame,
+            axis_fields=("temperature", "specific_enthalpy"),
+            sampling_fields=("temperature", "pressure"),
+            requested="phase",
+        )
+
+
 def test_dynamic_range_advisory_never_changes_scale() -> None:
     advisories = dynamic_range_advisories(
         [1.0, 100.0],

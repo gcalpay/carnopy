@@ -33,7 +33,7 @@ def export_figure(
     plot_source: PlotSource,
     output: str | Path | None,
     selected_fluids: tuple[str, ...],
-    property_field: FieldDefinition,
+    property_field: FieldDefinition | None,
     valid_rows_plotted: int,
     invalid_rows_excluded: int,
     matplotlib_version: str,
@@ -46,7 +46,7 @@ def export_figure(
         output=output,
         plot_source=plot_source,
         selected_fluids=selected_fluids,
-        property_name=property_field.name,
+        descriptor=_plot_descriptor(request, property_field),
         kind=request.kind,
     )
     _ensure_output_outside_source_run(image_path, plot_source)
@@ -140,12 +140,12 @@ def _resolve_output_path(
     output: str | Path | None,
     plot_source: PlotSource,
     selected_fluids: tuple[str, ...],
-    property_name: str,
+    descriptor: str,
     kind: str,
 ) -> Path:
     if output is None:
         fluid_part = _slug(selected_fluids[0]) if len(selected_fluids) == 1 else "multifluid"
-        filename = f"{fluid_part}_{property_name}_{kind}_{plot_source.run_id[:8]}.png"
+        filename = f"{fluid_part}_{descriptor}_{kind}_{plot_source.run_id[:8]}.png"
         path = Path.cwd() / "figures" / filename
     else:
         path = Path(output).expanduser()
@@ -176,7 +176,7 @@ def _build_sidecar(
     image_sha256: str,
     sidecar_path: Path,
     selected_fluids: tuple[str, ...],
-    property_field: FieldDefinition,
+    property_field: FieldDefinition | None,
     valid_rows_plotted: int,
     invalid_rows_excluded: int,
     matplotlib_version: str,
@@ -210,9 +210,12 @@ def _build_sidecar(
         "visualization_request_id": visualization_request_id,
         "data_selection": {
             "fluids": list(selected_fluids),
-            "property": property_field.name,
-            "property_column": property_field.column,
-            "property_unit": property_field.unit,
+            "property": property_field.name if property_field is not None else None,
+            "property_column": (property_field.column if property_field is not None else None),
+            "property_unit": property_field.unit if property_field is not None else None,
+            "x_field": request.x_field,
+            "y_field": request.y_field,
+            "group_by": request.group_by,
             "filters": [
                 {
                     "field": match.field,
@@ -290,3 +293,14 @@ def _metadata_text(plot_source: PlotSource, key: str) -> str | None:
         return None
     value = plot_source.metadata.get(key)
     return value if isinstance(value, str) else None
+
+
+def _plot_descriptor(
+    request: PlotRequest,
+    property_field: FieldDefinition | None,
+) -> str:
+    if property_field is not None:
+        return property_field.name
+    if request.kind == "xy":
+        return f"{request.x_field}_vs_{request.y_field}"
+    return request.kind

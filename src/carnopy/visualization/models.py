@@ -8,7 +8,7 @@ import pandas as pd
 
 from carnopy.domain.failures import CarnopyError
 
-PlotKind = Literal["property_curves", "property_heatmap"]
+PlotKind = Literal["property_curves", "property_heatmap", "xy", "pv", "ts"]
 PlotScale = Literal["linear", "log"]
 PlotCoordinate = Literal["pressure", "temperature"]
 SourceIntegrity = Literal["verified", "unverified"]
@@ -64,7 +64,7 @@ class PlotResult:
     image_path: Path
     sidecar_path: Path
     selected_fluids: tuple[str, ...]
-    property_name: str
+    property_name: str | None
     kind: PlotKind
     scale: PlotScale
     valid_rows_plotted: int

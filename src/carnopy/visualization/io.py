@@ -17,10 +17,12 @@ SUPPORTED_MODES = {
 }
 REQUIRED_IDENTITY_COLUMNS = {
     "run_id",
+    "case_id",
     "mode",
     "fluid",
     "backend",
     "backend_version",
+    "phase",
     "valid",
 }
 MODE_COLUMNS = {

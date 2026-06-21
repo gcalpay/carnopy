@@ -114,15 +114,20 @@ def test_plot_help_describes_inputs_and_constrained_choices() -> None:
     required_content = (
         "Run directory, CSV, or Parquet file.",
         "--property PROPERTY",
-        "Semantic property, e.g. mass_density.",
         "--kind KIND",
-        "property-curves or property-heatmap",
+        "property-curves, property-",
+        "heatmap, xy, pv, or ts",
         "--x FIELD",
+        "--y FIELD",
+        "--group-by FIELD",
         "--fluid FLUID",
         "Repeat --fluid to select multiple fluids.",
         "--filter FIELD=VALUE",
         "--value-scale [linear|log]",
         "--color-scale [linear|log]",
+        "--x-scale [linear|log]",
+        "--y-scale [linear|log]",
+        "--saturation-coordinate [pressure|temperature]",
         "--output PATH",
         "--show",
     )
@@ -345,3 +350,96 @@ def test_plot_command_exports_figure_and_sidecar(
     assert output.is_file()
     assert output.with_suffix(".plot.json").is_file()
     assert "Source integrity: verified" in result.stdout
+
+
+def test_plot_command_exports_xy_and_pv(
+    tmp_path: Path,
+) -> None:
+    from carnopy.api import generate_dataset
+
+    config = tmp_path / "diagram.yaml"
+    config.write_text(
+        """
+schema_version: 1
+backend: coolprop
+mode: property_table
+fluids: [Propane]
+grid:
+  temperature: {kind: explicit, values: [250, 260], unit: K}
+  pressure: {kind: explicit, values: [1, 2], unit: bar}
+properties: [mass_density, specific_enthalpy, specific_entropy]
+""",
+        encoding="utf-8",
+    )
+    run = generate_dataset(config, output_root=tmp_path / "runs")
+    xy_output = tmp_path / "xy.png"
+    xy = runner.invoke(
+        app,
+        [
+            "plot",
+            str(run.output_directory),
+            "--kind",
+            "xy",
+            "--x",
+            "specific_enthalpy",
+            "--y",
+            "specific_entropy",
+            "--group-by",
+            "pressure",
+            "--output",
+            str(xy_output),
+        ],
+        env={"MPLBACKEND": "Agg", "MPLCONFIGDIR": str(tmp_path / "mpl-xy")},
+    )
+    assert xy.exit_code == 0, xy.output
+    assert xy_output.is_file()
+
+    pv_output = tmp_path / "pv.png"
+    pv = runner.invoke(
+        app,
+        [
+            "plot",
+            str(run.output_directory),
+            "--kind",
+            "pv",
+            "--output",
+            str(pv_output),
+        ],
+        env={"MPLBACKEND": "Agg", "MPLCONFIGDIR": str(tmp_path / "mpl-pv")},
+    )
+    assert pv.exit_code == 0, pv.output
+    assert pv_output.is_file()
+
+
+def test_plot_cli_validates_kind_specific_options(
+    vapor_config_path: Path,
+    tmp_path: Path,
+) -> None:
+    from carnopy.api import generate_dataset
+
+    run = generate_dataset(vapor_config_path, output_root=tmp_path / "runs")
+    missing_property = runner.invoke(
+        app,
+        [
+            "plot",
+            str(run.output_directory),
+            "--kind",
+            "property-curves",
+        ],
+    )
+    assert missing_property.exit_code == 2
+    assert "requires --property" in missing_property.output
+
+    fixed_axes = runner.invoke(
+        app,
+        [
+            "plot",
+            str(run.output_directory),
+            "--kind",
+            "pv",
+            "--x",
+            "pressure",
+        ],
+    )
+    assert fixed_axes.exit_code == 2
+    assert "fixed axes" in fixed_axes.output
