@@ -7,9 +7,11 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 
-# Virtual environments
+# Project virtual environments (uv uses .venv)
 .venv/
 venv/
+
+# uv.lock is intentionally tracked.
 
 # Build/package artifacts
 build/

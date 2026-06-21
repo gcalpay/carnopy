@@ -347,44 +347,55 @@ Do not modify files outside the repository root.
 
 ## Python environment rule
 
-Use only the existing conda environment named:
+Carnopy uses standalone uv with the project-local environment:
 
 ```text
-qsink
+/home/cfd/carnopy/.venv
 ```
 
-Use `qsink` as the development interpreter.
+The human operator owns:
 
-The project must not depend on the environment name `qsink`; it is only a local development instruction.
+- initial uv installation
+- initial `.venv` creation
+- dependency declaration changes
+- `uv lock`
+- the first `uv sync`
 
-Do not create another virtual environment or conda environment.
+Do not install uv, create or replace `.venv`, modify dependency declarations,
+or synchronize dependencies without explicit human approval.
 
-Do not install, upgrade, remove, or pin packages without explicit human approval.
+After the human confirms the initial synchronization, use `.venv` through
+locked uv commands. Prefer `uv run --locked ...` rather than relying on shell
+activation.
 
-Before assuming a dependency is missing, first check whether it is already available in `qsink`.
+Before assuming a dependency is missing, inspect the locked project environment.
 
 Allowed inspection commands include:
 
 ```bash
-which python
-python --version
-python -c "import CoolProp, numpy, pandas; print('ok')"
-python -c "import typer, pydantic, yaml, pyarrow; print('ok')"
+uv --version
+uv lock --check
+uv run --locked python --version
+uv run --locked python -c "import CoolProp, numpy, pandas; print('ok')"
+uv run --locked python -c "import typer, pydantic, yaml, pyarrow; print('ok')"
 ```
 
-The following commands require explicit human approval before execution:
+The following commands require explicit human approval when they create or
+change the environment:
 
 ```bash
-python -m pip install ...
-python -m pip install -e ...
-conda install ...
-conda update ...
-conda remove ...
+uv venv ...
+uv lock
+uv sync ...
+uv add ...
+uv remove ...
+uv pip install ...
 ```
 
 If a dependency is missing, report the exact import or command failure and ask the human user to approve installation.
 
-Do not create a second large Python environment if `qsink` already provides the needed packages.
+Do not create another project environment or fall back to the shared `qsink`
+environment.
 
 ---
 
@@ -495,7 +506,7 @@ Target Python compatibility:
 requires-python = ">=3.10"
 ```
 
-The development interpreter is still the local `qsink` environment.
+The development interpreter is the project-local `.venv` managed by uv.
 
 ---
 
@@ -547,7 +558,18 @@ Development dependencies for milestone 1:
 pytest
 ruff
 mypy
+pandas-stubs
 ```
+
+Dependency declarations in `pyproject.toml` and exact resolutions in `uv.lock`
+are authoritative. Runtime dependencies belong in `[project.dependencies]`,
+user-facing optional features belong in `[project.optional-dependencies]`, and
+maintainer tools belong in `[dependency-groups]`.
+
+Use the `dev` group for routine test, lint, and type-check tools. Keep build and
+distribution validation tools in the separate `release` group.
+
+Do not maintain duplicate `requirements.txt` or `requirements-dev.txt` files.
 
 Do not add `rich` unless the human user approves it or it is strictly required by the chosen Typer setup in the existing environment.
 
@@ -1733,23 +1755,32 @@ Use pytest temporary directories for writer tests.
 
 ## Development commands
 
-After implementation, non-Git development commands may be run if they do not install or modify environments without approval.
+After the human has initialized and synchronized `.venv`, non-Git development
+commands may be run if they do not modify the environment.
 
 Allowed inspection/test commands include:
 
 ```bash
-python --version
-python -c "import CoolProp, numpy, pandas; print('ok')"
-python -c "import typer, pydantic, yaml, pyarrow; print('ok')"
-ruff check .
-pytest
+uv lock --check
+uv run --locked python --version
+uv run --locked python -c "import CoolProp, numpy, pandas; print('ok')"
+uv run --locked python -c "import typer, pydantic, yaml, pyarrow; print('ok')"
+uv run --locked ruff check .
+uv run --locked ruff format --check .
+uv run --locked mypy src/carnopy
+uv run --locked pytest
+uv pip check --python .venv/bin/python
 rg "coolprop_syndata|coolprop-datagen|coolprop_datagen|coolprop-syndata" .
 ```
 
-The following command requires human approval first because it installs the local project into the active environment:
+The following commands require human approval because they create, resolve, or
+synchronize the project environment:
 
 ```bash
-python -m pip install -e ".[dev]"
+uv venv --python /usr/bin/python3.12 .venv
+uv lock
+uv sync --locked --extra all --group dev
+uv sync --locked --extra all --group dev --group release
 ```
 
 If installation or tests fail, report the exact error and stop guessing.

@@ -1,21 +1,45 @@
 # Contributing
 
-Use the existing `qsink` environment for local development. Do not install or
-upgrade dependencies without human approval.
+Carnopy uses standalone uv with the project-local `.venv` environment. The
+human operator owns initial uv installation, environment creation, dependency
+changes, and synchronization.
+
+After `pyproject.toml` changes, refresh the lock file before synchronizing:
+
+```bash
+uv lock
+```
+
+For normal development:
+
+```bash
+uv sync --locked --extra all --group dev
+```
+
+Release-readiness tooling is separate from everyday development:
+
+```bash
+uv sync --locked --extra all --group dev --group release
+```
+
+Use explicit groups in documented commands even where uv currently supplies a
+default group.
 
 Run the local quality gate:
 
 ```bash
-PYTHONPATH=src python scripts/preflight.py
+uv run --locked python scripts/preflight.py
 ```
 
 Individual checks are:
 
 ```bash
-python -m ruff check .
-python -m ruff format --check .
-python -m mypy src/carnopy
-python -m pytest
+uv lock --check
+uv run --locked ruff check .
+uv run --locked ruff format --check .
+uv run --locked mypy src/carnopy
+uv run --locked pytest
+uv pip check --python .venv/bin/python
 ```
 
 Keep changes small and explicit. Public configuration names, SI dataset columns,
@@ -23,8 +47,8 @@ failure codes, and metadata fields are compatibility contracts. Tests must use
 temporary output directories and must not write generated data into repository
 `outputs/`.
 
-Git operations, release decisions, publishing, and dependency changes are owned
-by the human operator.
+Git operations, environment bootstrap, release decisions, publishing, and
+dependency changes are owned by the human operator.
 
 ## Commit messages
 

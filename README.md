@@ -16,12 +16,21 @@ Milestone 1 supports pure fluids with the CoolProp backend and three modes:
 - `saturation_table`: saturated-liquid and saturated-vapor endpoint rows.
 - `vapor_mass_fraction_table`: two-phase states at a specified vapor mass fraction.
 
-## Installation
+## Development setup
 
-After dependencies have been reviewed and approved:
+Carnopy development uses standalone uv and a project-local `.venv`. After the
+human operator has installed uv and generated `uv.lock`, synchronize the normal
+development environment with:
 
 ```bash
-python -m pip install -e ".[dev]"
+uv sync --locked --extra all --group dev
+```
+
+Run commands without activating the environment:
+
+```bash
+uv run --locked carnopy --help
+uv run --locked pytest
 ```
 
 ## Usage
@@ -44,10 +53,12 @@ List pure fluids available from the current backend:
 carnopy fluids
 ```
 
-Install optional visualization support:
+Visualization is an optional user-facing feature. The `all` extra currently
+includes every optional feature, including visualization. For repository
+development it is installed by the synchronization command above.
 
 ```bash
-python -m pip install -e ".[viz]"
+uv sync --locked --extra all --group dev
 ```
 
 Export a scientific plot from a vapor-mass-fraction run:

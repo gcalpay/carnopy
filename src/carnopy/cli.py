@@ -5,16 +5,6 @@ from typing import Annotated, cast
 
 import typer
 
-from carnopy.api import generate_dataset, validate_config
-from carnopy.backends import CoolPropBackend
-from carnopy.domain.failures import CarnopyError, ConfigError
-from carnopy.visualization import (
-    VisualizationDependencyError,
-    VisualizationError,
-    plot_dataset,
-)
-from carnopy.visualization.models import PlotCoordinate, PlotKind, PlotScale
-
 app = typer.Typer(
     add_completion=False,
     no_args_is_help=True,
@@ -24,7 +14,7 @@ app = typer.Typer(
 )
 
 
-@app.command("validate")
+@app.command("validate", short_help="Check a configuration.")
 def validate_command(
     config: Annotated[
         Path,
@@ -32,6 +22,9 @@ def validate_command(
     ],
 ) -> None:
     """Validate a configuration without evaluating thermodynamic rows."""
+    from carnopy.api import validate_config
+    from carnopy.domain.failures import ConfigError
+
     try:
         result = validate_config(config)
     except ConfigError as exc:
@@ -45,7 +38,7 @@ def validate_command(
     )
 
 
-@app.command("generate")
+@app.command("generate", short_help="Generate an immutable run.")
 def generate_command(
     config: Annotated[
         Path,
@@ -61,6 +54,9 @@ def generate_command(
     ] = Path("outputs"),
 ) -> None:
     """Generate and finalize one immutable dataset run."""
+    from carnopy.api import generate_dataset
+    from carnopy.domain.failures import CarnopyError, ConfigError
+
     try:
         result = generate_dataset(config, output_root=output_root)
     except ConfigError as exc:
@@ -79,9 +75,11 @@ def generate_command(
         raise typer.Exit(code=3)
 
 
-@app.command("fluids")
+@app.command("fluids", short_help="List backend fluids.")
 def fluids_command() -> None:
     """List pure fluids available from the current backend."""
+    from carnopy.backends import CoolPropBackend
+
     backend = CoolPropBackend()
     typer.echo(f"CoolProp {backend.version}")
     for fluid in backend.list_fluids():
@@ -89,7 +87,7 @@ def fluids_command() -> None:
         typer.echo(f"{fluid}: {aliases}")
 
 
-@app.command("plot")
+@app.command("plot", short_help="Plot a generated dataset.")
 def plot_command(
     source: Annotated[
         Path,
@@ -137,6 +135,13 @@ def plot_command(
     ] = False,
 ) -> None:
     """Export a scientific plot from a vapor-mass-fraction dataset."""
+    from carnopy.visualization import (
+        VisualizationDependencyError,
+        VisualizationError,
+        plot_dataset,
+    )
+    from carnopy.visualization.models import PlotCoordinate, PlotKind, PlotScale
+
     try:
         result = plot_dataset(
             source,

@@ -33,11 +33,30 @@ classifiers = [
 viz = [
   "matplotlib>=3.8",
 ]
-dev = [
+all = [
   "matplotlib>=3.8",
+]
+
+[dependency-groups]
+test = [
   "pytest>=8",
+  "tomli>=2; python_version < '3.11'",
+]
+lint = [
   "ruff>=0.9",
+]
+type = [
   "mypy>=1.13",
+  "pandas-stubs>=2.2",
+]
+release = [
+  "build>=1.2",
+  "twine>=6",
+]
+dev = [
+  { include-group = "test" },
+  { include-group = "lint" },
+  { include-group = "type" },
 ]
 
 [project.scripts]

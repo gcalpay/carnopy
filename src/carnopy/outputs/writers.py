@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, cast
 
 import pandas as pd
 import pyarrow as pa
@@ -10,6 +10,15 @@ import pyarrow.parquet as pq
 
 from carnopy.domain.failures import OutputError
 from carnopy.provenance import DATASET_SCHEMA_VERSION, sha256_bytes
+
+
+class _ParquetWriter(Protocol):
+    """Typed boundary for PyArrow's currently incomplete inline stubs."""
+
+    def write_table(self, table: object, where: str | Path) -> None: ...
+
+
+_PARQUET_WRITER = cast(_ParquetWriter, pq)
 
 
 def write_dataset(
@@ -27,7 +36,7 @@ def write_dataset(
         metadata[b"carnopy.units"] = json.dumps(
             unit_map, sort_keys=True, separators=(",", ":")
         ).encode()
-        pq.write_table(table.replace_schema_metadata(metadata), parquet_path)
+        _PARQUET_WRITER.write_table(table.replace_schema_metadata(metadata), parquet_path)
     except Exception as exc:
         raise OutputError(f"could not write dataset files: {exc}") from exc
 

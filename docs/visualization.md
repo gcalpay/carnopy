@@ -3,10 +3,11 @@
 Visualization is optional and currently supports
 `vapor_mass_fraction_table` datasets.
 
-Install:
+For repository development, synchronize the optional visualization dependency
+through the `all` extra:
 
 ```bash
-python -m pip install -e ".[viz]"
+uv sync --locked --extra all --group dev
 ```
 
 Curves show the selected property against vapor mass fraction, with one sampled

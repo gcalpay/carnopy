@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -57,6 +60,51 @@ def test_help_uses_backend_neutral_wording() -> None:
     fluids = runner.invoke(app, ["fluids", "--help"])
     assert fluids.exit_code == 0
     assert "available from the current backend" in fluids.stdout
+
+
+def test_root_help_has_complete_summaries_at_narrow_width() -> None:
+    result = runner.invoke(app, ["--help"], terminal_width=48)
+    assert result.exit_code == 0
+    assert "validate  Check a configuration." in result.stdout
+    assert "generate  Generate an immutable run." in result.stdout
+    assert "fluids    List backend fluids." in result.stdout
+    assert "plot      Plot a generated dataset." in result.stdout
+
+
+def test_subcommand_help_retains_detailed_descriptions() -> None:
+    expectations = {
+        "validate": "without evaluating thermodynamic rows",
+        "generate": "finalize one immutable dataset run",
+        "fluids": "available from the current backend",
+        "plot": "from a vapor-mass-fraction dataset",
+    }
+    for command, description in expectations.items():
+        result = runner.invoke(app, [command, "--help"], terminal_width=80)
+        assert result.exit_code == 0
+        assert description in result.stdout
+
+
+def test_importing_cli_does_not_load_scientific_dependencies() -> None:
+    root = Path(__file__).resolve().parents[1]
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = str(root / "src")
+    script = """
+import sys
+import carnopy.cli
+
+for module_name in ("CoolProp", "numpy", "pandas", "pyarrow", "matplotlib"):
+    if module_name in sys.modules:
+        raise SystemExit(f"{module_name} imported while loading carnopy.cli")
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=root,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr or completed.stdout
 
 
 def test_plot_command_exports_figure_and_sidecar(
