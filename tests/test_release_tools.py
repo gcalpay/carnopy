@@ -9,7 +9,10 @@ from types import ModuleType
 
 import pytest
 
+from carnopy._version import __version__
+
 ROOT = Path(__file__).resolve().parents[1]
+FIXTURE_VERSION = "1.2.3"
 
 
 def load_script(name: str) -> ModuleType:
@@ -29,8 +32,8 @@ verify_index_release = load_script("verify_index_release")
 
 
 def test_distribution_checksums_are_deterministic_and_non_overwriting(tmp_path: Path) -> None:
-    wheel = tmp_path / "carnopy-0.1.0a1-py3-none-any.whl"
-    sdist = tmp_path / "carnopy-0.1.0a1.tar.gz"
+    wheel = tmp_path / f"carnopy-{FIXTURE_VERSION}-py3-none-any.whl"
+    sdist = tmp_path / f"carnopy-{FIXTURE_VERSION}.tar.gz"
     wheel.write_bytes(b"wheel")
     sdist.write_bytes(b"sdist")
     output = tmp_path / "SHA256SUMS"
@@ -48,8 +51,8 @@ def test_release_downloader_uses_api_urls_and_verifies_hashes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     files = {
-        "carnopy-0.1.0a1-py3-none-any.whl": b"wheel-content",
-        "carnopy-0.1.0a1.tar.gz": b"sdist-content",
+        f"carnopy-{FIXTURE_VERSION}-py3-none-any.whl": b"wheel-content",
+        f"carnopy-{FIXTURE_VERSION}.tar.gz": b"sdist-content",
     }
     checksums_path = tmp_path / "SHA256SUMS"
     checksums_path.write_text(
@@ -89,18 +92,18 @@ def test_release_downloader_uses_api_urls_and_verifies_hashes(
 
 
 def test_distribution_path_filters_and_source_version() -> None:
-    assert check_distribution.source_version(ROOT / "src/carnopy/_version.py") == "0.1.0a1"
+    assert check_distribution.source_version(ROOT / "src/carnopy/_version.py") == __version__
     invalid = check_distribution.forbidden_paths(
         {
-            "carnopy-0.1.0a1/scratch.ipynb",
-            "carnopy-0.1.0a1/src/carnopy/__pycache__/module.pyc",
-            "carnopy-0.1.0a1/src/carnopy/__init__.py",
+            f"carnopy-{FIXTURE_VERSION}/scratch.ipynb",
+            f"carnopy-{FIXTURE_VERSION}/src/carnopy/__pycache__/module.pyc",
+            f"carnopy-{FIXTURE_VERSION}/src/carnopy/__init__.py",
         },
         strip_root=True,
     )
     assert invalid == [
-        "carnopy-0.1.0a1/scratch.ipynb",
-        "carnopy-0.1.0a1/src/carnopy/__pycache__/module.pyc",
+        f"carnopy-{FIXTURE_VERSION}/scratch.ipynb",
+        f"carnopy-{FIXTURE_VERSION}/src/carnopy/__pycache__/module.pyc",
     ]
 
 

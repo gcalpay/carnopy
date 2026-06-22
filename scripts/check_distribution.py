@@ -10,6 +10,20 @@ from pathlib import Path, PurePosixPath
 from typing import Protocol
 
 PROJECT_NAME = "carnopy"
+PROJECT_SUMMARY = (
+    "Reproducible thermophysical fluid-property datasets and scientific plots "
+    "for ML, surrogate models, and engineering workflows."
+)
+PROJECT_KEYWORDS = {
+    "coolprop",
+    "dataset generation",
+    "fluid properties",
+    "machine learning",
+    "scientific computing",
+    "surrogate modeling",
+    "thermodynamics",
+    "thermophysical properties",
+}
 SOURCE_VERSION_PATTERN = re.compile(r'^__version__\s*=\s*"([^"]+)"\s*$')
 WHEEL_REQUIRED = {
     "carnopy/__init__.py",
@@ -130,6 +144,8 @@ def validate_metadata(metadata: Message, expected_version: str, *, artifact: str
             f"{artifact} metadata version {metadata.get('Version')!r} "
             f"does not match {expected_version!r}"
         )
+    if metadata.get("Summary") != PROJECT_SUMMARY:
+        raise ValueError(f"{artifact} metadata summary is not the approved project description")
     if metadata.get("License-Expression") != "MIT":
         raise ValueError(f"{artifact} does not declare License-Expression: MIT")
     if "LICENSE" not in metadata.get_all("License-File", []):
@@ -139,14 +155,32 @@ def validate_metadata(metadata: Message, expected_version: str, *, artifact: str
         raise ValueError(f"{artifact} metadata does not declare Typing :: Typed")
     if "Programming Language :: Python :: 3.13" not in classifiers:
         raise ValueError(f"{artifact} metadata does not declare Python 3.13 support")
+    for classifier in (
+        "Environment :: Console",
+        "Intended Audience :: Science/Research",
+        "Operating System :: OS Independent",
+    ):
+        if classifier not in classifiers:
+            raise ValueError(f"{artifact} metadata does not declare {classifier!r}")
     private = [classifier for classifier in classifiers if classifier.startswith("Private ::")]
     if private:
         raise ValueError(f"{artifact} contains forbidden private classifiers: {private}")
     urls = metadata.get_all("Project-URL", [])
     if not any(value.startswith("Repository, ") for value in urls):
         raise ValueError(f"{artifact} metadata does not contain the Repository project URL")
+    if not any(value.startswith("Documentation, ") for value in urls):
+        raise ValueError(f"{artifact} metadata does not contain the Documentation project URL")
     if not any(value.startswith("Issues, ") for value in urls):
         raise ValueError(f"{artifact} metadata does not contain the Issues project URL")
+    if not any(value.startswith("Releases, ") for value in urls):
+        raise ValueError(f"{artifact} metadata does not contain the Releases project URL")
+    keywords = {
+        keyword.strip().casefold()
+        for keyword in metadata.get("Keywords", "").split(",")
+        if keyword.strip()
+    }
+    if keywords != PROJECT_KEYWORDS:
+        raise ValueError(f"{artifact} metadata declares unexpected keywords: {sorted(keywords)}")
     extras = set(metadata.get_all("Provides-Extra", []))
     if extras != {"all", "viz"}:
         raise ValueError(f"{artifact} metadata declares unexpected optional extras: {extras}")

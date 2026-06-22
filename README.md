@@ -1,11 +1,16 @@
 # Carnopy
 
+[![PyPI](https://img.shields.io/pypi/v/carnopy.svg)](https://pypi.org/project/carnopy/)
+[![Python](https://img.shields.io/pypi/pyversions/carnopy.svg)](https://pypi.org/project/carnopy/)
+[![Verify](https://github.com/gcalpay/carnopy/actions/workflows/ci.yml/badge.svg)](https://github.com/gcalpay/carnopy/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Typing: typed](https://img.shields.io/badge/typing-typed-blue.svg)](src/carnopy/py.typed)
+
+Reproducible thermophysical fluid-property datasets and scientific plots for
+ML, surrogate models, and engineering workflows.
+
 > Alpha software: public interfaces and generated schemas may still change
 > before the stable `0.1.0` release.
-
-Carnopy is a CLI-first Python package for generating reproducible,
-backend-derived thermophysical datasets for machine-learning, surrogate-model,
-and engineering workflows.
 
 Carnopy is not a thermodynamic property model. It orchestrates configured
 property backends, validates deterministic sampling, preserves failed states as
@@ -19,43 +24,49 @@ Milestone 1 supports pure fluids through CoolProp and three modes:
 - `saturation_table`: saturated-liquid and saturated-vapor endpoint rows;
 - `vapor_mass_fraction_table`: two-phase states over vapor mass fraction.
 
-## Contents
-
-- [Installation](#installation)
-- [Quick start](#quick-start)
-- [Configuration](#configuration)
-- [Properties](#properties)
-- [Visualization](#visualization)
-- [Generated artifacts and provenance](#generated-artifacts-and-provenance)
-- [Python API](#python-api)
-- [Scientific limitations](#scientific-limitations)
-- [Development and contribution](#development-and-contribution)
-- [Alpha release procedure](#alpha-release-procedure)
-
 ## Installation
 
-After `0.1.0a1` is published to PyPI:
+Install the current alpha:
 
 ```bash
-python -m pip install "carnopy==0.1.0a1"
+python -m pip install "carnopy==0.1.0a2"
 ```
 
 Install optional plotting support:
 
 ```bash
-python -m pip install "carnopy[all]==0.1.0a1"
+python -m pip install "carnopy[all]==0.1.0a2"
 ```
 
 For an isolated CLI:
 
 ```bash
-uv tool install "carnopy==0.1.0a1"
-uv tool install "carnopy[all]==0.1.0a1"
+uv tool install "carnopy==0.1.0a2"
+uv tool install "carnopy[all]==0.1.0a2"
 ```
 
 The base package supports generation and validation. The `viz` and `all` extras
 install Matplotlib for manual or configured figure generation. PyArrow remains
 a core dependency because Parquet is a supported first-class output format.
+
+## Quick start
+
+```bash
+carnopy init property_table my-dataset.yaml
+# Edit the generated YAML, then:
+carnopy generate my-dataset.yaml
+carnopy inspect outputs/<run>
+carnopy plot outputs/<run> \
+  --kind property-curves \
+  --property mass_density \
+  --x temperature
+```
+
+The normal workflow is:
+
+```text
+init → edit → optional validate → generate → inspect → optional plot
+```
 
 For repository development:
 
@@ -64,9 +75,19 @@ uv sync --locked --extra all --group dev
 uv run --locked carnopy --help
 ```
 
-## Quick start
+## Guide
 
-The normal workflow is:
+- [Workflow details](#workflow-details)
+- [Configuration](#configuration)
+- [Properties](#properties)
+- [Visualization](#visualization)
+- [Generated artifacts and provenance](#generated-artifacts-and-provenance)
+- [Python API](#python-api)
+- [Scientific limitations](#scientific-limitations)
+- [Development and contribution](#development-and-contribution)
+- [Project status and roadmap](#project-status-and-roadmap)
+
+## Workflow details
 
 ```text
 init → edit → optional validate → generate → inspect → optional plot
@@ -709,86 +730,33 @@ equivalent cases.
 Contributor and coding-agent rules, architecture constraints, commit
 conventions, and release-maintainer safeguards are in
 [AGENTS.md](https://github.com/gcalpay/carnopy/blob/main/AGENTS.md).
+Contributor setup, testing, and pull-request guidance are in
+[CONTRIBUTING.md](https://github.com/gcalpay/carnopy/blob/main/.github/CONTRIBUTING.md).
+Report security vulnerabilities privately according to the
+[security policy](https://github.com/gcalpay/carnopy/security/policy).
 
-## Alpha release procedure
+## Project status and roadmap
 
-Carnopy `0.1.0a1` is intended to be a functional alpha, not a placeholder
-package. The PyPI name is claimed only after production PyPI accepts the
-distribution.
+Carnopy remains alpha software while its public schemas and backend boundaries
+are validated through real use. The next substantive milestone is a separately
+designed pure-fluid ORC feasibility-envelope subsystem. It will produce
+traceable accepted and rejected operating windows rather than silently acting
+as a complete process simulator or optimizer.
 
-Before release:
+That design must explicitly cover source and sink profiles, pinch and approach
+temperatures, pressure losses, subcooling and superheat margins, equipment
+efficiencies, critical-point and operating limits, and minimum turbine-exhaust
+quality. Saturated liquid alone is not a pump cavitation margin; NPSH may be
+reported only when sufficient hydraulic-system and pump data are supplied.
 
-1. Make `gcalpay/carnopy` public.
-2. Enable GitHub secret scanning and push protection.
-3. Create a protected GitHub environment named `pypi` with a required human
-   reviewer and a deployment tag rule matching `v*`.
-4. Register a pending Trusted Publisher on production PyPI:
+Deferred work includes TFC screening, mixtures, Peng–Robinson and SRK models,
+3D visualization, and a PySide6 desktop interface. These capabilities will use
+the same core Python API rather than duplicate scientific logic.
 
-```text
-Project:      carnopy
-Owner:        gcalpay
-Repository:   carnopy
-Workflow:     publish.yml
-Environment:  pypi
-```
-
-Pending publishers do not reserve the project name. Confirm production name
-availability immediately before tagging.
-
-Release verification:
-
-```bash
-uv sync --locked --extra all --group dev --group release
-uv lock --check
-uv run --locked ruff check .
-uv run --locked ruff format --check .
-uv run --locked mypy src/carnopy
-uv run --locked pytest
-uv run --locked python scripts/preflight.py
-uv run --locked --group release python -m build
-uv run --locked --group release python -m twine check dist/*
-uv run --locked python scripts/check_distribution.py dist/*
-uv pip check --python .venv/bin/python
-```
-
-The build command uses an isolated build environment by default and installs
-the declared build backend there. The development environment therefore does
-not need to be changed solely to run a build. Use the ignored repository-local
-`prerelease/` directory for a non-destructive rehearsal when an existing
-`dist/` must be preserved:
-
-```bash
-uv run --locked --group release python -m build --outdir prerelease
-uv run --locked --group release python -m twine check prerelease/*
-uv run --locked python scripts/check_distribution.py prerelease/*
-```
-
-Final approved artifacts are built into `dist/` for inspection, hashing, and
-publication. Carnopy build artifacts should not be written outside the
-repository.
-
-The human creates and pushes the release tag:
-
-```bash
-git tag -a v0.1.0a1 -m "Release carnopy 0.1.0a1"
-git push origin v0.1.0a1
-```
-
-The publishing workflow tests Python 3.10–3.13, builds one wheel/sdist pair
-once, verifies and hashes it, waits for production approval, publishes the
-verified files to PyPI, then downloads and smoke-tests the published release.
-Only the production publish job receives `id-token: write`; no long-lived index
-token or `skip-existing` behavior is used.
-
-Never rebuild or republish changed files under an uploaded version. Any payload
-change requires `0.1.0a2` or later. Never move a pushed release tag or delete a
-release to reuse its version.
-
-Official publishing references:
-
-- https://docs.pypi.org/trusted-publishers/creating-a-project-through-oidc/
-- https://docs.pypi.org/trusted-publishers/using-a-publisher/
-- https://packaging.python.org/en/latest/guides/publishing-package-distribution-releases-using-github-actions-ci-cd-workflows/
+Use [GitHub issues](https://github.com/gcalpay/carnopy/issues) for bug reports,
+scientific discrepancies, and focused feature requests. See
+[CONTRIBUTING.md](https://github.com/gcalpay/carnopy/blob/main/.github/CONTRIBUTING.md)
+before proposing a public or scientific contract change.
 
 ## License
 

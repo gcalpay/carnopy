@@ -452,9 +452,9 @@ build-backend = "hatchling.build"
 Matplotlib remains optional through `viz`; `all` must remain synchronized with
 all user-facing extras. PyArrow remains core.
 
-The first intended public release is `0.1.0a1`. The release workflow builds one
-wheel and sdist, verifies them, requires human approval, and publishes them to
-production PyPI through GitHub OIDC Trusted Publishing.
+Carnopy uses alpha releases before stable `0.1.0`. The release workflow builds
+one wheel and sdist, verifies them, requires human approval, and publishes them
+to production PyPI through GitHub OIDC Trusted Publishing.
 
 Only a human maintainer may:
 
@@ -466,6 +466,19 @@ Only a human maintainer may:
 
 Never rebuild changed payloads under an uploaded version. Any changed payload
 requires a new version. Never use `skip-existing` to repair a partial release.
+
+For each release:
+
+1. update the source version and user-facing installation examples;
+2. run the complete source and distribution gates;
+3. commit and push, then require green CI on `main`;
+4. create one annotated `v<version>` tag;
+5. push only that tag and approve the protected `pypi` environment;
+6. verify the published release and create a matching GitHub pre-release while
+   Carnopy remains alpha.
+
+Do not move or reuse a published version tag. After stable `0.1.0`, use ordinary
+release versions unless a deliberate prerelease is needed.
 
 Distribution checks:
 

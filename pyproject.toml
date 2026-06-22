@@ -5,12 +5,22 @@ build-backend = "hatchling.build"
 [project]
 name = "carnopy"
 dynamic = ["version"]
-description = "Reproducible ML-ready thermodynamic fluid-property datasets from configurable property backends."
+description = "Reproducible thermophysical fluid-property datasets and scientific plots for ML, surrogate models, and engineering workflows."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Göran Cem Alpay" }]
+keywords = [
+  "thermodynamics",
+  "fluid properties",
+  "thermophysical properties",
+  "dataset generation",
+  "scientific computing",
+  "machine learning",
+  "surrogate modeling",
+  "CoolProp",
+]
 dependencies = [
   "CoolProp>=7.2",
   "numpy>=2.0",
@@ -22,18 +32,26 @@ dependencies = [
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Science/Research",
+  "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Topic :: Scientific/Engineering",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Scientific/Engineering :: Physics",
+  "Topic :: Software Development :: Libraries :: Python Modules",
   "Typing :: Typed",
 ]
 
 [project.urls]
 Repository = "https://github.com/gcalpay/carnopy"
+Documentation = "https://github.com/gcalpay/carnopy#readme"
 Issues = "https://github.com/gcalpay/carnopy/issues"
+Releases = "https://github.com/gcalpay/carnopy/releases"
 
 [project.optional-dependencies]
 viz = [
