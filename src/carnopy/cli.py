@@ -82,6 +82,7 @@ def validate_command(
     typer.echo(f"Backend: {result.backend} {result.backend_version}")
     typer.echo(f"Mode: {result.mode}")
     typer.echo(f"Projected rows: {result.projected_rows}")
+    typer.echo(f"Dataset formats: {', '.join(result.dataset_formats)}")
     typer.echo(
         "Configuration is valid. Thermodynamic row validity will be determined during generation."
     )
@@ -187,6 +188,29 @@ def properties_command() -> None:
         )
 
 
+@app.command("inspect", short_help="Inspect plotting options.")
+def inspect_command(
+    source: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            readable=True,
+            help="Run directory, CSV, or Parquet file.",
+        ),
+    ],
+) -> None:
+    """List emitted fields and compatible plots without backend calls."""
+    from carnopy.visualization.inspect import inspect_plot_source
+    from carnopy.visualization.models import VisualizationError
+
+    try:
+        inspection = inspect_plot_source(source)
+    except VisualizationError as exc:
+        typer.echo(f"Inspection failed: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(inspection.format_text())
+
+
 @app.command("init", short_help="Create a starter configuration.")
 def init_command(
     mode: Annotated[
@@ -244,13 +268,31 @@ def plot_command(
         ),
     ],
     kind: Annotated[
-        str,
+        str | None,
         typer.Option(
             "--kind",
             metavar="KIND",
-            help="Required kind: property-curves, property-heatmap, xy, pv, or ts.",
+            help="Manual plot kind: property-curves, property-heatmap, xy, pv, or ts.",
         ),
-    ],
+    ] = None,
+    plot_config: Annotated[
+        Path | None,
+        typer.Option(
+            "--config",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            help="Render all visualization requests from YAML for an existing run.",
+        ),
+    ] = None,
+    figures_root: Annotated[
+        Path | None,
+        typer.Option(
+            "--figures-out",
+            file_okay=False,
+            help="Batch figure root; defaults to ./figures.",
+        ),
+    ] = None,
     property_name: Annotated[
         str | None,
         typer.Option(
@@ -351,10 +393,9 @@ def plot_command(
 ) -> None:
     """Plot emitted Carnopy values without backend calls or interpolation.
 
-    property-curves supports all dataset modes. property_table sources require
-    --x temperature or --x pressure. property-heatmap supports property_table
-    and vapor_mass_fraction_table sources. xy uses explicit semantic axes.
-    pv and ts use conventional fixed axes derived from emitted columns.
+    Manual mode uses --kind and creates one figure. Batch mode uses --config
+    with an immutable run directory and renders every visualization request in
+    the YAML file.
     """
     from carnopy.visualization import (
         VisualizationDependencyError,
@@ -367,7 +408,69 @@ def plot_command(
     )
 
     try:
+        if plot_config is not None:
+            manual_values = {
+                "--kind": kind,
+                "--property": property_name,
+                "--x": x_field,
+                "--y": y_field,
+                "--group-by": group_by,
+                "--fluid": fluids,
+                "--filter": filters,
+                "--value-scale": value_scale,
+                "--color-scale": color_scale,
+                "--x-scale": x_scale,
+                "--y-scale": y_scale,
+                "--saturation-coordinate": saturation_coordinate,
+                "--output": output,
+                "--show": show or None,
+            }
+            conflicting = [name for name, value in manual_values.items() if value is not None]
+            if conflicting:
+                raise VisualizationError(
+                    "--config batch mode cannot be combined with manual plot options: "
+                    + ", ".join(conflicting)
+                )
+            from carnopy.visualization.automation import (
+                render_existing_run_visualizations,
+            )
+
+            summary = render_existing_run_visualizations(
+                source_run=source,
+                config_path=plot_config,
+                figures_root=figures_root or Path("figures"),
+            )
+            typer.echo(f"Visualization status: {summary.status}")
+            if summary.figure_directory is not None:
+                typer.echo(f"Figure directory: {summary.figure_directory}")
+            if summary.report_path is not None:
+                typer.echo(f"Visualization report: {summary.report_path}")
+            typer.echo(f"Plots succeeded: {summary.succeeded_plot_count}")
+            typer.echo(f"Plots failed: {summary.failed_plot_count}")
+            if summary.status in {"completed_with_failures", "failed"}:
+                raise typer.Exit(code=1)
+            return
+        if figures_root is not None:
+            raise VisualizationError("--figures-out is valid only with --config")
+        if kind is None:
+            raise VisualizationError(
+                "manual plotting requires --kind KIND. "
+                f"Run `carnopy inspect {source}` to list compatible plots."
+            )
         normalized_kind = normalize_public_plot_kind(kind)
+        if normalized_kind in {"property_curves", "property_heatmap"} and property_name is None:
+            raise VisualizationError(
+                f"{kind} requires --property PROPERTY. "
+                f"Run `carnopy inspect {source}` to list emitted properties and compatible plots."
+            )
+        if normalized_kind == "property_curves" and x_field is None:
+            from carnopy.visualization.io import load_plot_source
+
+            if load_plot_source(source).mode == "property_table":
+                raise VisualizationError(
+                    "property-table property-curves requires --x temperature or --x pressure. "
+                    f"Run `carnopy inspect {source}` to list compatible plots."
+                )
         if normalized_kind == "property_curves" and color_scale is not None:
             raise VisualizationError("--color-scale is valid only with --kind property-heatmap")
         if normalized_kind == "property_heatmap" and value_scale is not None:

@@ -4,7 +4,12 @@ import hashlib
 from pathlib import Path
 
 from carnopy.config.normalize import canonical_json_bytes
-from carnopy.provenance import build_identity, sha256_bytes, sha256_file
+from carnopy.provenance import (
+    build_identity,
+    build_output_request_id,
+    sha256_bytes,
+    sha256_file,
+)
 
 
 def test_identity_separates_raw_source_from_normalized_spec() -> None:
@@ -27,6 +32,28 @@ def test_identity_separates_raw_source_from_normalized_spec() -> None:
 
 def test_canonical_json_normalizes_negative_zero() -> None:
     assert canonical_json_bytes({"value": -0.0}) == b'{"value":0.0}\n'
+
+
+def test_output_request_identity_is_canonical_and_changes_context() -> None:
+    normalized = canonical_json_bytes({"pressure": [100_000.0]})
+    both = build_output_request_id(("csv", "parquet"))
+    csv = build_output_request_id(("csv",))
+    assert both.startswith("out-")
+    assert both != csv
+    both_identity = build_identity(
+        raw_config=b"same",
+        normalized_config=normalized,
+        backend_version="7.2.0",
+        output_request_id=both,
+    )
+    csv_identity = build_identity(
+        raw_config=b"same",
+        normalized_config=normalized,
+        backend_version="7.2.0",
+        output_request_id=csv,
+    )
+    assert both_identity.spec_id == csv_identity.spec_id
+    assert both_identity.generation_context_id != csv_identity.generation_context_id
 
 
 def test_sha256_file_matches_byte_hash_across_multiple_chunks(tmp_path: Path) -> None:

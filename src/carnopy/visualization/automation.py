@@ -5,12 +5,17 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from importlib import metadata
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from carnopy._version import __version__
 from carnopy.results import RunStatus, VisualizationStatus, VisualizationSummary
-from carnopy.visualization.configuration import NormalizedVisualization
-from carnopy.visualization.models import PlotResult
+from carnopy.visualization.config_io import load_visualization_config
+from carnopy.visualization.configuration import (
+    NormalizedVisualization,
+    normalize_visualization_for_source,
+)
+from carnopy.visualization.io import load_plot_source
+from carnopy.visualization.models import PlotResult, VisualizationError
 from carnopy.visualization.plots import render_plot_request
 from carnopy.visualization.render import import_matplotlib
 
@@ -19,6 +24,54 @@ VISUALIZATION_REPORT_SCHEMA_VERSION = 1
 
 def ensure_visualization_dependencies() -> None:
     import_matplotlib()
+
+
+def render_existing_run_visualizations(
+    *,
+    source_run: Path,
+    config_path: Path,
+    figures_root: Path,
+) -> VisualizationSummary:
+    if not source_run.is_dir():
+        raise ValueError("batch visualization requires an immutable run directory")
+    plot_source = load_plot_source(source_run)
+    if plot_source.metadata is None:
+        raise ValueError("batch visualization requires run metadata")
+    figure_directory = figures_root.expanduser().resolve() / source_run.name
+    if figure_directory.is_relative_to(source_run.resolve()):
+        raise VisualizationError(
+            "configured visualization output directory cannot be inside the immutable run"
+        )
+    if figure_directory.exists():
+        raise VisualizationError(
+            f"configured visualization output directory already exists: {figure_directory}"
+        )
+    visualization_config = load_visualization_config(config_path)
+    visualization = normalize_visualization_for_source(
+        visualization_config,
+        plot_source=plot_source,
+    )
+    metadata = plot_source.metadata
+    run_status = metadata.get("run_status")
+    spec_id = metadata.get("spec_id")
+    generation_context_id = metadata.get("generation_context_id")
+    if run_status not in {
+        "completed",
+        "completed_with_invalid_rows",
+        "completed_zero_valid_rows",
+    }:
+        raise ValueError("run metadata contains an invalid run_status")
+    if not isinstance(spec_id, str) or not isinstance(generation_context_id, str):
+        raise ValueError("run metadata is missing source identity fields")
+    return render_configured_visualizations(
+        source_run=source_run,
+        figures_root=figures_root,
+        run_status=cast(RunStatus, run_status),
+        run_id=plot_source.run_id,
+        spec_id=spec_id,
+        generation_context_id=generation_context_id,
+        visualization=visualization,
+    )
 
 
 def render_configured_visualizations(

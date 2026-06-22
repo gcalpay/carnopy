@@ -55,7 +55,7 @@ uv tool install "carnopy[all]==0.1.0a1"
 
 The base package supports generation and validation. The `viz` and `all` extras
 install Matplotlib for manual or configured figure generation. PyArrow remains
-a core dependency because every run emits CSV and Parquet.
+a core dependency because Parquet is a supported first-class output format.
 
 For repository development:
 
@@ -122,6 +122,15 @@ carnopy generate my-dataset.yaml
 `generate` validates automatically. The separate `validate` command is useful
 for scripts and early feedback, but does not evaluate thermodynamic rows.
 
+After generation, inspect the run before choosing a plot:
+
+```bash
+carnopy inspect outputs/<run>
+```
+
+The inspection lists fluids, sampling levels, emitted properties, compatible
+plot kinds, and copyable commands.
+
 To choose a different output root:
 
 ```bash
@@ -168,7 +177,7 @@ grid:
     num: 5
     unit: degC
   pressure:
-    kind: geomspace
+    kind: linspace
     start: 1
     stop: 20
     num: 5
@@ -177,6 +186,10 @@ grid:
 properties:
   - specific_enthalpy
   - mass_density
+
+outputs:
+  # Omit this section to keep the same default.
+  dataset_formats: [csv, parquet]
 ```
 
 ### Modes
@@ -232,6 +245,24 @@ for the backend definition of the endpoint states.
 Equal sampler bounds are rejected; use `explicit` for one value. Geometric and
 logarithmic sampling is not supported for offset Celsius values or vapor mass
 fraction. Use Kelvin for geometric temperature grids.
+
+`linspace` uses uniform increments. For example, `start: 1`, `stop: 5`, and
+`num: 5` produce `1, 2, 3, 4, 5`. `geomspace` uses uniform ratios and produces
+approximately `1, 1.495, 2.236, 3.344, 5` for the same bounds.
+
+### Dataset formats
+
+Select generated table formats independently of the scientific specification:
+
+```yaml
+outputs:
+  dataset_formats: [csv]
+```
+
+Supported values are `csv` and `parquet`. At least one is required. Omitting
+`outputs` preserves the default `[csv, parquet]`. Format selection changes the
+artifact-generation context and `output_request_id`, but not `spec_id` or
+`config.normalized.json`.
 
 ### Units
 
@@ -318,6 +349,17 @@ carnopy plot outputs/<property-run> \
   --kind property-curves \
   --property mass_density \
   --x temperature
+```
+
+Carnopy connects adjacent valid emitted samples with straight line segments as
+visual guides. It does not smooth or evaluate intermediate states. A sparse
+series advisory is emitted for connected series with five or fewer samples.
+Generate a denser source grid for finer thermodynamic resolution. Use SVG or
+PDF for zoom-independent rendering:
+
+```bash
+carnopy plot outputs/<run> ... --output figures/plot.svg
+carnopy plot outputs/<run> ... --output figures/plot.pdf
 ```
 
 For `vapor_mass_fraction_table`, vapor mass fraction is the x-axis and the
@@ -476,6 +518,21 @@ Configured figures are written to:
 └── visualization-report.json
 ```
 
+The same YAML requests can be applied later to an existing immutable run. The
+file may be a full Carnopy configuration or a small file containing only a
+top-level `visualization:` section:
+
+```bash
+carnopy plot outputs/<run> \
+  --config plots.yaml \
+  --figures-out figures
+```
+
+Batch plotting accepts run directories, not standalone CSV/Parquet files.
+Scientific generation fields in a full config are ignored; requests are
+validated against the actual emitted run columns. Manual plot options cannot be
+combined with `--config`.
+
 Plots execute independently after dataset finalization. A failed plot preserves
 the immutable run and any successful figures, records outcomes in the report,
 and makes the CLI exit with code `1`. A zero-valid-row dataset retains exit code
@@ -488,12 +545,13 @@ configuration hash.
 
 ## Generated artifacts and provenance
 
-Each immutable run contains:
+Each immutable run contains the selected dataset files plus mandatory
+provenance artifacts:
 
 ```text
 outputs/<run>/
-├── dataset.csv
-├── dataset.parquet
+├── dataset.csv          # when requested
+├── dataset.parquet      # when requested
 ├── config.original.yaml
 ├── config.normalized.json
 ├── metadata.json
@@ -507,6 +565,7 @@ Identity layers:
 
 - `spec_id`: canonical executable scientific specification;
 - `generation_context_id`: specification plus software and artifact context;
+- `output_request_id`: canonical dataset serialization request;
 - `run_id`: one UUID4 execution attempt;
 - artifact hashes: exact emitted bytes;
 - `visualization_request_id`: normalized visualization request, independent
@@ -538,6 +597,8 @@ result = generate_dataset(
 
 When configured visualization exists, `result.visualization` contains its
 request ID, status, figure directory, report path, and outcome counts.
+`result.dataset_formats` and `result.output_request_id` describe the selected
+table serialization independently of the scientific `spec_id`.
 
 Manual plotting:
 
@@ -589,6 +650,15 @@ exported. Modifying it does not update the image or provenance sidecar.
   evaluation layer.
 - ORC generation, additional backends, ML training, GUI, web services,
   databases, and mixture models are deferred.
+
+Post-alpha work may add an optional cycle-feasibility subsystem that produces
+traceable screening datasets without turning the property generator into a
+hidden process simulator. An ORC/TFC contract must explicitly include source
+and sink profiles, pinch/approach temperatures, pressure losses, component
+efficiencies, subcooling and superheat margins, cavitation/NPSH constraints,
+minimum turbine-exhaust quality, and critical/maximum operating limits.
+Saturated liquid alone is not a pump cavitation margin, and turbine discharge
+need not universally have vapor mass fraction one.
 
 Official backend references:
 
@@ -650,17 +720,16 @@ Before release:
 
 1. Make `gcalpay/carnopy` public.
 2. Enable GitHub secret scanning and push protection.
-3. Create GitHub environments:
-   - `testpypi`, without secrets or a reviewer gate;
-   - `pypi`, with a required human reviewer.
-4. Register pending Trusted Publishers on TestPyPI and PyPI:
+3. Create a protected GitHub environment named `pypi` with a required human
+   reviewer and a deployment tag rule matching `v*`.
+4. Register a pending Trusted Publisher on production PyPI:
 
 ```text
 Project:      carnopy
 Owner:        gcalpay
 Repository:   carnopy
 Workflow:     publish.yml
-Environment:  testpypi or pypi
+Environment:  pypi
 ```
 
 Pending publishers do not reserve the project name. Confirm production name
@@ -706,10 +775,10 @@ git push origin v0.1.0a1
 ```
 
 The publishing workflow tests Python 3.10–3.13, builds one wheel/sdist pair
-once, verifies and hashes it, uploads the same bytes to TestPyPI, smoke-tests
-the downloaded files, waits for production approval, then publishes and
-verifies the same bytes on PyPI. Only publish jobs receive `id-token: write`;
-no long-lived index token or `skip-existing` behavior is used.
+once, verifies and hashes it, waits for production approval, publishes the
+verified files to PyPI, then downloads and smoke-tests the published release.
+Only the production publish job receives `id-token: write`; no long-lived index
+token or `skip-existing` behavior is used.
 
 Never rebuild or republish changed files under an uploaded version. Any payload
 change requires `0.1.0a2` or later. Never move a pushed release tag or delete a

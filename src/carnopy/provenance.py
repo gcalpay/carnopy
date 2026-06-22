@@ -23,6 +23,13 @@ class Identity:
     generation_context_id: str
 
 
+def build_output_request_id(dataset_formats: tuple[str, ...]) -> str:
+    from carnopy.config.normalize import canonical_json_bytes
+
+    payload: dict[str, object] = {"dataset_formats": list(dataset_formats)}
+    return f"out-{sha256_bytes(canonical_json_bytes(payload))}"
+
+
 def sha256_bytes(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
@@ -43,11 +50,13 @@ def build_identity(
     raw_config: bytes,
     normalized_config: bytes,
     backend_version: str,
+    output_request_id: str | None = None,
 ) -> Identity:
     from carnopy.config.normalize import canonical_json_bytes
 
     raw_hash = sha256_bytes(raw_config)
     normalized_hash = sha256_bytes(normalized_config)
+    selected_output_request_id = output_request_id or build_output_request_id(("csv", "parquet"))
     context = {
         "normalized_config_sha256": normalized_hash,
         "carnopy_version": __version__,
@@ -58,6 +67,7 @@ def build_identity(
         "backend": "coolprop",
         "backend_version": backend_version,
         "reference_state_policy": REFERENCE_STATE_POLICY,
+        "output_request_id": selected_output_request_id,
         "runtime_versions": runtime_versions(),
     }
     context_hash = sha256_bytes(canonical_json_bytes(context))

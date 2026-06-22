@@ -118,6 +118,7 @@ def test_vapor_property_curves_use_discrete_series_markers_and_sidecar(
     assert sidecar["series_or_cells"]["representation"] == "sampled_series"
     assert sidecar["effective_settings"]["palette"] == "tab10"
     assert sidecar["effective_settings"]["smoothing"] is False
+    assert any(advisory["code"] == "sparse_sampled_series" for advisory in sidecar["advisories"])
     assert sidecar["source_identity"]["dataset_sha256"] == sha256_file(
         run.output_directory / "dataset.parquet"
     )

@@ -93,7 +93,7 @@ Milestone 1 supports:
 - `saturation_table`;
 - `vapor_mass_fraction_table`;
 - deterministic sampling;
-- CSV and Parquet;
+- selectable CSV and/or Parquet dataset output;
 - metadata and report JSON;
 - optional Matplotlib property curves, sampled heatmaps, x-y plots, and p-v/T-s
   diagrams;
@@ -179,6 +179,7 @@ carnopy properties
 carnopy fluids
 carnopy validate CONFIG.yaml
 carnopy generate CONFIG.yaml [--out PATH] [--figures-out PATH]
+carnopy inspect SOURCE
 carnopy plot SOURCE ...
 ```
 
@@ -213,8 +214,19 @@ grid: ...
 properties: [...]
 ```
 
-An optional `visualization:` section is allowed, but must not affect scientific
-dataset identity.
+Optional `outputs:` and `visualization:` sections are allowed. Dataset format
+selection affects artifact-generation context but not scientific `spec_id`.
+Visualization must not affect scientific or artifact-generation identity.
+
+Dataset formats:
+
+```yaml
+outputs:
+  dataset_formats: [csv, parquet]
+```
+
+Omission defaults to both formats. At least one of `csv` or `parquet` is
+required. Canonical format order is CSV then Parquet.
 
 Public samplers:
 
@@ -318,6 +330,7 @@ Identity meanings:
 
 - `spec_id`: canonical executable scientific specification;
 - `generation_context_id`: artifact-generation context;
+- `output_request_id`: canonical CSV/Parquet serialization request;
 - `run_id`: one UUID4 generation attempt;
 - artifact hashes: exact emitted bytes;
 - `visualization_request_id`: normalized visualization request.
@@ -372,6 +385,7 @@ CLI spelling uses `property-curves` and `property-heatmap`.
 Manual exports:
 
 - prefer Parquet in run directories;
+- fall back to CSV for CSV-only runs;
 - verify recorded source hashes;
 - write outside immutable source runs;
 - write an image plus `.plot.json`;
@@ -388,6 +402,12 @@ Configured visualization:
 - preserves successful figures after another plot fails;
 - never changes `config.normalized.json`, `spec_id`,
   `generation_context_id`, or dataset artifact hashes.
+
+`carnopy inspect SOURCE` reports emitted plotting capabilities without backend
+calls. `carnopy plot RUN --config FILE.yaml` batch-renders a top-level
+`visualization:` section against an existing immutable run. Batch rendering
+must ignore scientific fields in a full generation config and validate only
+against emitted run columns.
 
 Dataset `run_status` remains solely about row validity.
 
@@ -433,8 +453,8 @@ Matplotlib remains optional through `viz`; `all` must remain synchronized with
 all user-facing extras. PyArrow remains core.
 
 The first intended public release is `0.1.0a1`. The release workflow builds one
-wheel and sdist, verifies them, and uploads the same bytes to TestPyPI and PyPI
-through GitHub OIDC Trusted Publishing.
+wheel and sdist, verifies them, requires human approval, and publishes them to
+production PyPI through GitHub OIDC Trusted Publishing.
 
 Only a human maintainer may:
 
@@ -442,7 +462,7 @@ Only a human maintainer may:
 - configure GitHub environments or Trusted Publishers;
 - create or push release tags;
 - approve production deployment;
-- publish to TestPyPI or PyPI.
+- publish to PyPI.
 
 Never rebuild changed payloads under an uploaded version. Any changed payload
 requires a new version. Never use `skip-existing` to repair a partial release.

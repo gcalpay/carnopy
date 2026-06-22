@@ -6,6 +6,7 @@ from carnopy.outputs.writers import (
     hash_artifacts,
     write_bytes,
     write_dataset,
+    write_dataset_formats,
     write_json,
 )
 
@@ -21,5 +22,6 @@ __all__ = [
     "hash_artifacts",
     "write_bytes",
     "write_dataset",
+    "write_dataset_formats",
     "write_json",
 ]

@@ -27,10 +27,10 @@ from carnopy.outputs import (
     finalize_run_layout,
     hash_artifacts,
     write_bytes,
-    write_dataset,
+    write_dataset_formats,
     write_json,
 )
-from carnopy.provenance import build_identity
+from carnopy.provenance import build_identity, build_output_request_id
 from carnopy.results import RunResult, ValidationResult
 from carnopy.visualization.automation import (
     ensure_visualization_dependencies,
@@ -48,6 +48,8 @@ class ValidatedRunConfig:
     normalized: NormalizedConfig
     normalized_bytes: bytes
     visualization: NormalizedVisualization | None
+    output_request_id: str
+    dataset_formats: tuple[str, ...]
 
 
 def validate_loaded_config(
@@ -57,10 +59,13 @@ def validate_loaded_config(
     selected_backend = backend or CoolPropBackend()
     normalized = normalize_config(loaded.model, selected_backend)
     normalized_bytes = canonical_json_bytes(normalized.executable_dict())
+    dataset_formats = loaded.model.outputs.dataset_formats
+    output_request_id = build_output_request_id(dataset_formats)
     identity = build_identity(
         raw_config=loaded.raw_bytes,
         normalized_config=normalized_bytes,
         backend_version=selected_backend.version,
+        output_request_id=output_request_id,
     )
     result = ValidationResult(
         backend=selected_backend.name,
@@ -69,6 +74,8 @@ def validate_loaded_config(
         projected_rows=normalized.projected_rows,
         canonical_fluids=tuple(normalized.fluids),
         normalized_config_sha256=identity.normalized_config_sha256,
+        output_request_id=output_request_id,
+        dataset_formats=dataset_formats,
     )
     visualization = normalize_visualization(
         loaded.model.visualization,
@@ -81,6 +88,8 @@ def validate_loaded_config(
         normalized=normalized,
         normalized_bytes=normalized_bytes,
         visualization=visualization,
+        output_request_id=output_request_id,
+        dataset_formats=dataset_formats,
     )
 
 
@@ -97,6 +106,7 @@ def run_generation(
         raw_config=loaded.raw_bytes,
         normalized_config=normalized_bytes,
         backend_version=backend.version,
+        output_request_id=validated.output_request_id,
     )
     run_id = str(uuid4())
     created_at = datetime.now(timezone.utc)
@@ -127,7 +137,12 @@ def run_generation(
     unit_map = dataset_unit_map(normalized)
     input_columns = _input_columns(normalized.mode)
 
-    write_dataset(frame, layout.staging_directory, unit_map)
+    dataset_files = write_dataset_formats(
+        frame,
+        layout.staging_directory,
+        unit_map,
+        dataset_formats=validated.dataset_formats,
+    )
     write_bytes(layout.staging_directory / "config.original.yaml", loaded.raw_bytes)
     write_bytes(
         layout.staging_directory / "config.normalized.json",
@@ -142,8 +157,7 @@ def run_generation(
     )
     write_json(layout.staging_directory / "report.json", report)
     hashed_names = [
-        "dataset.csv",
-        "dataset.parquet",
+        *dataset_files,
         "config.original.yaml",
         "config.normalized.json",
         "report.json",
@@ -162,6 +176,8 @@ def run_generation(
         output_files=output_files,
         artifact_hashes=artifact_hashes,
         unit_map=unit_map,
+        output_request_id=validated.output_request_id,
+        dataset_formats=validated.dataset_formats,
     )
     write_json(layout.staging_directory / "metadata.json", metadata)
     finalize_run_layout(layout)
@@ -186,6 +202,8 @@ def run_generation(
         invalid_row_count=int((~frame["valid"]).sum()),
         spec_id=identity.spec_id,
         generation_context_id=identity.generation_context_id,
+        output_request_id=validated.output_request_id,
+        dataset_formats=validated.dataset_formats,
         visualization=visualization_summary,
     )
 

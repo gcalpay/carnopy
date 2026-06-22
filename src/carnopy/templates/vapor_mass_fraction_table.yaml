@@ -26,3 +26,6 @@ properties:
   - specific_enthalpy
   - specific_entropy
   - mass_density
+outputs:
+  # Select one or both. Omission defaults to [csv, parquet].
+  dataset_formats: [csv, parquet]

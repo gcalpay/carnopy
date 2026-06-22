@@ -66,6 +66,30 @@ def test_direct_csv_uses_sibling_metadata(
     assert source.source_integrity == "verified"
 
 
+def test_csv_only_run_is_a_verified_plot_source(tmp_path: Path) -> None:
+    config = tmp_path / "csv-only.yaml"
+    config.write_text(
+        """
+schema_version: 1
+backend: coolprop
+mode: property_table
+fluids: [Propane]
+grid:
+  temperature: {kind: explicit, values: [300, 310], unit: K}
+  pressure: {kind: explicit, values: [1, 2], unit: bar}
+properties: [mass_density]
+outputs:
+  dataset_formats: [csv]
+""",
+        encoding="utf-8",
+    )
+    run = generate_dataset(config, output_root=tmp_path / "runs")
+    source = load_plot_source(run.output_directory)
+    assert source.dataset_path.name == "dataset.csv"
+    assert source.source_format == "csv"
+    assert source.source_integrity == "verified"
+
+
 def test_hash_mismatch_is_rejected(
     vapor_config_path: Path,
     tmp_path: Path,

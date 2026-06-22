@@ -25,20 +25,42 @@ def write_dataset(
     frame: pd.DataFrame,
     directory: Path,
     unit_map: dict[str, str],
-) -> None:
-    csv_path = directory / "dataset.csv"
-    parquet_path = directory / "dataset.parquet"
+) -> list[str]:
+    return write_dataset_formats(
+        frame,
+        directory,
+        unit_map,
+        dataset_formats=("csv", "parquet"),
+    )
+
+
+def write_dataset_formats(
+    frame: pd.DataFrame,
+    directory: Path,
+    unit_map: dict[str, str],
+    *,
+    dataset_formats: tuple[str, ...],
+) -> list[str]:
+    written: list[str] = []
     try:
-        frame.to_csv(csv_path, index=False)
-        table = pa.Table.from_pandas(frame, preserve_index=False)
-        metadata = dict(table.schema.metadata or {})
-        metadata[b"carnopy.dataset_schema_version"] = str(DATASET_SCHEMA_VERSION).encode()
-        metadata[b"carnopy.units"] = json.dumps(
-            unit_map, sort_keys=True, separators=(",", ":")
-        ).encode()
-        _PARQUET_WRITER.write_table(table.replace_schema_metadata(metadata), parquet_path)
+        if "csv" in dataset_formats:
+            frame.to_csv(directory / "dataset.csv", index=False)
+            written.append("dataset.csv")
+        if "parquet" in dataset_formats:
+            table = pa.Table.from_pandas(frame, preserve_index=False)
+            metadata = dict(table.schema.metadata or {})
+            metadata[b"carnopy.dataset_schema_version"] = str(DATASET_SCHEMA_VERSION).encode()
+            metadata[b"carnopy.units"] = json.dumps(
+                unit_map, sort_keys=True, separators=(",", ":")
+            ).encode()
+            _PARQUET_WRITER.write_table(
+                table.replace_schema_metadata(metadata),
+                directory / "dataset.parquet",
+            )
+            written.append("dataset.parquet")
     except Exception as exc:
         raise OutputError(f"could not write dataset files: {exc}") from exc
+    return written
 
 
 def write_json(path: Path, value: dict[str, Any]) -> None:

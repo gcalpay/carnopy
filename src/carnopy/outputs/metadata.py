@@ -34,6 +34,8 @@ def build_metadata(
     output_files: list[str],
     artifact_hashes: dict[str, str],
     unit_map: dict[str, str],
+    output_request_id: str,
+    dataset_formats: tuple[str, ...],
 ) -> dict[str, Any]:
     return {
         "metadata_schema_version": METADATA_SCHEMA_VERSION,
@@ -41,6 +43,7 @@ def build_metadata(
         "dataset_id": identity.spec_id,
         "spec_id": identity.spec_id,
         "generation_context_id": identity.generation_context_id,
+        "output_request_id": output_request_id,
         "run_id": run_id,
         "run_status": run_status,
         "mode": config.mode,
@@ -84,6 +87,7 @@ def build_metadata(
         "runtime_versions": runtime_versions(),
         "output_directory": str(output_directory),
         "output_files": output_files,
+        "dataset_formats": list(dataset_formats),
         "artifact_hashes": artifact_hashes,
     }
 

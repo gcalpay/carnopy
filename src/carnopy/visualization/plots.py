@@ -605,6 +605,27 @@ def _layout_advisories(
     if rendered.series_or_cells.get("representation") == "sampled_series":
         raw_series = rendered.series_or_cells.get("series")
         if isinstance(raw_series, dict):
+            sparse = [
+                item
+                for items in raw_series.values()
+                if isinstance(items, list)
+                for item in items
+                if isinstance(item, dict)
+                and item.get("markers_only") is not True
+                and isinstance(item.get("sample_count"), int)
+                and 1 < cast(int, item["sample_count"]) <= 5
+            ]
+            if sparse:
+                advisories.append(
+                    Advisory(
+                        code="sparse_sampled_series",
+                        message=(
+                            "one or more connected series contain five or fewer emitted "
+                            "samples; generate a denser grid for finer resolution or export "
+                            "SVG/PDF for zoom-independent rendering"
+                        ),
+                    )
+                )
             maximum = max(
                 (len(items) for items in raw_series.values() if isinstance(items, list)),
                 default=0,

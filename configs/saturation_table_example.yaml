@@ -20,3 +20,6 @@ properties:
   - specific_entropy
   - mass_density
   - surface_tension
+outputs:
+  # Select one or both. Omission defaults to [csv, parquet].
+  dataset_formats: [csv, parquet]

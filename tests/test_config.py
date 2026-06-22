@@ -13,6 +13,8 @@ def test_valid_example_config(property_config_path: Path) -> None:
     result = validate_config(property_config_path)
     assert result.projected_rows == 2
     assert result.canonical_fluids == ("n-Propane",)
+    assert result.dataset_formats == ("csv", "parquet")
+    assert result.output_request_id.startswith("out-")
 
 
 def test_invalid_vapor_mass_fraction_fails(tmp_path: Path) -> None:
@@ -70,3 +72,46 @@ properties: [mass_density]
     )
     with pytest.raises(ConfigError, match="exceeds limit"):
         validate_config(path)
+
+
+def test_dataset_formats_are_canonical_and_validated(tmp_path: Path) -> None:
+    path = tmp_path / "parquet.yaml"
+    path.write_text(
+        """
+schema_version: 1
+backend: coolprop
+mode: property_table
+fluids: [Propane]
+grid:
+  temperature: {kind: explicit, values: [300], unit: K}
+  pressure: {kind: explicit, values: [1], unit: bar}
+properties: [mass_density]
+outputs:
+  dataset_formats: [parquet, csv]
+""",
+        encoding="utf-8",
+    )
+    explicit = validate_config(path)
+    assert explicit.dataset_formats == ("csv", "parquet")
+
+    default_path = tmp_path / "default.yaml"
+    default_path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "outputs:\n  dataset_formats: [parquet, csv]\n",
+            "",
+        ),
+        encoding="utf-8",
+    )
+    default = validate_config(default_path)
+    assert explicit.output_request_id == default.output_request_id
+
+    duplicate = tmp_path / "duplicate.yaml"
+    duplicate.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "dataset_formats: [parquet, csv]",
+            "dataset_formats: [csv, csv]",
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ConfigError, match="duplicate dataset formats"):
+        validate_config(duplicate)

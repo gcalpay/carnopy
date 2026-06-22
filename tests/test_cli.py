@@ -25,6 +25,7 @@ def test_validate_reports_row_validity_is_deferred(property_config_path: Path) -
     result = runner.invoke(app, ["validate", str(property_config_path)])
     assert result.exit_code == 0
     assert "Thermodynamic row validity will be determined during generation" in result.stdout
+    assert "Dataset formats: csv, parquet" in result.stdout
 
 
 def test_generate_creates_output(property_config_path: Path, tmp_path: Path) -> None:
@@ -85,6 +86,7 @@ def test_root_help_has_complete_summaries_at_narrow_width() -> None:
         ("generate", "Generate an immutable run."),
         ("fluids", "List backend fluids."),
         ("properties", "List dataset properties."),
+        ("inspect", "Inspect plotting options."),
         ("init", "Create a starter configuration."),
         ("plot", "Plot a generated dataset."),
     ):
@@ -99,6 +101,7 @@ def test_subcommand_help_retains_detailed_descriptions() -> None:
         "generate": "Generation performs configuration",
         "fluids": "available from the current backend",
         "properties": "semantic properties accepted",
+        "inspect": "without backend calls",
         "init": "commented configuration template",
         "plot": "without backend calls or interpolation",
     }
@@ -121,8 +124,10 @@ def test_plot_help_describes_inputs_and_constrained_choices() -> None:
         "Run directory, CSV, or Parquet file.",
         "--property PROPERTY",
         "--kind KIND",
-        "property-curves, property-",
-        "heatmap, xy, pv, or ts",
+        "--config FILE",
+        "--figures-out DIRECTORY",
+        "Manual plot kind:",
+        "property-curves",
         "--x FIELD",
         "--y FIELD",
         "--group-by FIELD",
@@ -200,6 +205,7 @@ def test_plot_legacy_kinds_have_migration_guidance(
         ["generate", "--help"],
         ["fluids", "--help"],
         ["properties", "--help"],
+        ["inspect", "--help"],
         ["init", "--help"],
         ["plot", "--help"],
     ],

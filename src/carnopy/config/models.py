@@ -4,6 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from carnopy.config.outputs import OutputConfig
 from carnopy.config.visualization import VisualizationConfig
 from carnopy.domain.properties import PROPERTY_REGISTRY
 from carnopy.sampling.models import Sampler
@@ -20,6 +21,7 @@ class CarnopyConfig(BaseModel):
     fluids: list[str] = Field(min_length=1)
     grid: dict[str, Sampler]
     properties: list[str] = Field(min_length=1)
+    outputs: OutputConfig = Field(default_factory=OutputConfig)
     visualization: VisualizationConfig | None = None
 
     @field_validator("fluids")

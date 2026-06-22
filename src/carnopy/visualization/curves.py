@@ -100,6 +100,7 @@ def render_property_curves(
                 "label": item.label,
                 "sample_count": item.sample_count,
                 "gap_count": item.gap_count,
+                "markers_only": False,
             }
             for item in items
         ]

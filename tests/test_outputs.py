@@ -76,11 +76,88 @@ def test_generation_writes_complete_immutable_artifacts(
     assert metadata["run_id"] == report["run_id"] == result.run_id
     assert metadata["spec_id"] == result.spec_id
     assert metadata["generation_context_id"] == result.generation_context_id
+    assert metadata["output_request_id"] == result.output_request_id
+    assert metadata["dataset_formats"] == ["csv", "parquet"]
     assert str(property_config_path.resolve()) not in json.dumps(metadata)
     assert metadata["artifact_hashes"]["dataset.csv"]
     schema_metadata = pq.read_schema(result.output_directory / "dataset.parquet").metadata
     assert schema_metadata is not None
     assert b"carnopy.units" in schema_metadata
+
+
+@pytest.mark.parametrize(
+    ("dataset_formats", "expected_dataset_files"),
+    [
+        (["csv"], {"dataset.csv"}),
+        (["parquet"], {"dataset.parquet"}),
+    ],
+)
+def test_generation_writes_selected_dataset_formats(
+    tmp_path: Path,
+    dataset_formats: list[str],
+    expected_dataset_files: set[str],
+) -> None:
+    config = tmp_path / "formats.yaml"
+    config.write_text(
+        f"""
+schema_version: 1
+backend: coolprop
+mode: property_table
+fluids: [Propane]
+grid:
+  temperature: {{kind: explicit, values: [300], unit: K}}
+  pressure: {{kind: explicit, values: [1], unit: bar}}
+properties: [mass_density]
+outputs:
+  dataset_formats: [{", ".join(dataset_formats)}]
+""",
+        encoding="utf-8",
+    )
+    result = generate_dataset(config, output_root=tmp_path / "runs")
+    dataset_files = {
+        path.name for path in result.output_directory.glob("dataset.*") if path.is_file()
+    }
+    assert dataset_files == expected_dataset_files
+    metadata = json.loads(
+        result.output_directory.joinpath("metadata.json").read_text(encoding="utf-8")
+    )
+    assert set(metadata["artifact_hashes"]) & {"dataset.csv", "dataset.parquet"} == (
+        expected_dataset_files
+    )
+    assert metadata["dataset_formats"] == dataset_formats
+
+
+def test_output_formats_change_context_but_not_scientific_spec(tmp_path: Path) -> None:
+    base = """
+schema_version: 1
+backend: coolprop
+mode: property_table
+fluids: [Propane]
+grid:
+  temperature: {kind: explicit, values: [300], unit: K}
+  pressure: {kind: explicit, values: [1], unit: bar}
+properties: [mass_density]
+"""
+    csv_config = tmp_path / "csv.yaml"
+    csv_config.write_text(
+        base + "outputs:\n  dataset_formats: [csv]\n",
+        encoding="utf-8",
+    )
+    parquet_config = tmp_path / "parquet.yaml"
+    parquet_config.write_text(
+        base + "outputs:\n  dataset_formats: [parquet]\n",
+        encoding="utf-8",
+    )
+    csv_run = generate_dataset(csv_config, output_root=tmp_path / "csv-runs")
+    parquet_run = generate_dataset(parquet_config, output_root=tmp_path / "parquet-runs")
+
+    assert csv_run.spec_id == parquet_run.spec_id
+    assert csv_run.output_request_id != parquet_run.output_request_id
+    assert csv_run.generation_context_id != parquet_run.generation_context_id
+    assert (
+        csv_run.output_directory.joinpath("config.normalized.json").read_bytes()
+        == parquet_run.output_directory.joinpath("config.normalized.json").read_bytes()
+    )
 
 
 def test_artifact_hashing_does_not_require_read_bytes(

@@ -7,7 +7,8 @@ from pydantic import ValidationError
 from carnopy.config.models import NormalizedConfig
 from carnopy.config.visualization import VisualizationConfig
 from carnopy.domain.failures import ConfigError
-from carnopy.visualization.fields import get_field
+from carnopy.visualization.fields import FIELD_REGISTRY, get_field
+from carnopy.visualization.models import PlotSource, VisualizationError
 from carnopy.visualization.requests import ExactFilter, PlotRequest, request_id
 
 
@@ -64,6 +65,45 @@ def normalize_visualization(
     )
 
 
+def normalize_visualization_for_source(
+    visualization: VisualizationConfig,
+    *,
+    plot_source: PlotSource,
+) -> NormalizedVisualization:
+    requests: list[PlotRequest] = []
+    for plot in visualization.plots:
+        fluids = _source_fluids(
+            plot.fluids if plot.fluids is not None else visualization.fluids,
+            plot_source=plot_source,
+        )
+        filters = _merged_filters(visualization.filters, plot.filters)
+        try:
+            request = PlotRequest(
+                kind=plot.kind,
+                property_name=plot.property_name,
+                x_field=plot.x_field,
+                y_field=plot.y_field,
+                group_by=plot.group_by,
+                filters=filters,
+                fluids=fluids,
+                value_scale=plot.value_scale,
+                color_scale=plot.color_scale,
+                x_scale=plot.x_scale,
+                y_scale=plot.y_scale,
+                output_format=plot.format or visualization.format,
+                name=plot.name,
+            )
+        except (ValidationError, ValueError) as exc:
+            raise VisualizationError(f"invalid visualization plot {plot.name!r}: {exc}") from exc
+        _validate_source_request(request, plot_source)
+        requests.append(request)
+    normalized = tuple(requests)
+    return NormalizedVisualization(
+        visualization_request_id=request_id(normalized),
+        requests=normalized,
+    )
+
+
 def _canonical_fluids(
     requested: tuple[str, ...],
     *,
@@ -92,6 +132,42 @@ def _canonical_fluids(
     if len(set(canonical)) != len(canonical):
         raise ConfigError("visualization fluid aliases resolve to duplicate canonical fluids")
     return tuple(sorted(canonical, key=str.casefold))
+
+
+def _source_fluids(
+    requested: tuple[str, ...],
+    *,
+    plot_source: PlotSource,
+) -> tuple[str, ...]:
+    available = sorted(
+        plot_source.frame["fluid"].dropna().astype(str).unique().tolist(),
+        key=str.casefold,
+    )
+    if not requested:
+        return tuple(available)
+    lookup = {fluid.casefold(): fluid for fluid in available}
+    metadata = plot_source.metadata
+    if isinstance(metadata, dict):
+        aliases = metadata.get("requested_fluid_aliases")
+        canonical = metadata.get("requested_fluid_canonical_names")
+        if isinstance(aliases, list) and isinstance(canonical, list):
+            for alias, name in zip(aliases, canonical, strict=False):
+                if isinstance(alias, str) and isinstance(name, str) and name in available:
+                    lookup[alias.casefold()] = name
+    selected: list[str] = []
+    for fluid in requested:
+        name = lookup.get(fluid.casefold())
+        if name is None:
+            raise VisualizationError(
+                f"visualization fluid {fluid!r} is not present; available fluids: "
+                + ", ".join(available)
+            )
+        if name in selected:
+            raise VisualizationError(
+                "visualization fluid aliases resolve to duplicate canonical fluids"
+            )
+        selected.append(name)
+    return tuple(sorted(selected, key=str.casefold))
 
 
 def _merged_filters(
@@ -184,3 +260,67 @@ def _available_fields(config: NormalizedConfig) -> set[str]:
     if "mass_density" in config.properties:
         fields.add("specific_volume")
     return fields
+
+
+def _validate_source_request(
+    request: PlotRequest,
+    plot_source: PlotSource,
+) -> None:
+    if request.kind == "property_heatmap" and plot_source.mode == "saturation_table":
+        raise VisualizationError(
+            "saturation_table does not support property_heatmap because it contains only "
+            "x_vap=0 and x_vap=1 endpoint states. Use vapor_mass_fraction_table for "
+            "quality-resolved maps."
+        )
+    if request.kind == "property_curves":
+        if plot_source.mode == "property_table":
+            if request.x_field not in {"temperature", "pressure"}:
+                raise VisualizationError(
+                    "property-table property-curves requires x: temperature or x: pressure"
+                )
+        elif request.x_field is not None:
+            raise VisualizationError(
+                f"{plot_source.mode} property-curves uses its mode-defined x-axis and rejects x"
+            )
+    available = _source_available_fields(plot_source)
+    referenced = [
+        request.property_name,
+        request.x_field,
+        request.y_field,
+        request.group_by,
+        *(exact_filter.field for exact_filter in request.filters),
+    ]
+    for field in referenced:
+        if field is not None and field not in available:
+            raise VisualizationError(
+                f"visualization field {field!r} is not emitted by this dataset"
+            )
+    required: set[str] = set()
+    for field in (request.property_name, request.x_field, request.y_field):
+        if field is None:
+            continue
+        dependency = get_field(field).required_property
+        if dependency is not None:
+            required.add(dependency)
+    if request.kind == "pv":
+        required.add("mass_density")
+    if request.kind == "ts":
+        required.add("specific_entropy")
+    missing = sorted(required - available)
+    if missing:
+        raise VisualizationError(
+            "visualization requires emitted properties that are absent: " + ", ".join(missing)
+        )
+
+
+def _source_available_fields(plot_source: PlotSource) -> set[str]:
+    available = {"phase", "fluid"}
+    for name in ("temperature", "pressure", "vapor_mass_fraction", "saturation_endpoint"):
+        if get_field(name).column in plot_source.frame.columns:
+            available.add(name)
+    for name, definition in FIELD_REGISTRY.items():
+        if definition.required_property == name and definition.column in plot_source.frame.columns:
+            available.add(name)
+    if "mass_density" in available:
+        available.add("specific_volume")
+    return available

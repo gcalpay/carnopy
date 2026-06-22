@@ -22,19 +22,23 @@ def test_third_party_actions_are_pinned_to_full_commit_shas() -> None:
 def test_publish_workflow_builds_once_and_scopes_oidc_to_publish_jobs() -> None:
     text = workflow_text("publish.yml")
     assert text.count("python -m build") == 1
-    assert text.count("id-token: write") == 2
+    assert text.count("id-token: write") == 1
     assert "skip-existing" not in text
     assert 'tags:\n      - "v*"' in text
     assert "candidate-distributions" in text
     assert "verified-distributions" in text
 
 
-def test_publish_smoke_install_avoids_multiple_package_indexes() -> None:
+def test_publish_smoke_install_uses_only_production_pypi() -> None:
     text = workflow_text("publish.yml")
     assert "--extra-index-url" not in text
-    assert text.count("--index-url https://pypi.org/simple/") >= 2
-    assert "https://test.pypi.org/pypi" in text
+    assert text.count("--index-url https://pypi.org/simple/") >= 1
+    assert "test.pypi.org" not in text
     assert "https://pypi.org/pypi" in text
+    direct_publish = (
+        "publish-pypi:\n    name: Approve and publish to PyPI\n    needs:\n      - inspect"
+    )
+    assert direct_publish in text
 
 
 def test_ci_matrix_covers_supported_python_versions() -> None:

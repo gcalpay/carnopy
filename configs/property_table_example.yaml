@@ -15,9 +15,9 @@ grid:
     stop: 100.0
     num: 5
     unit: degC
-  # geomspace includes both positive endpoints.
+  # linspace includes both endpoints with uniform pressure increments.
   pressure:
-    kind: geomspace
+    kind: linspace
     start: 1.0
     stop: 20.0
     num: 5
@@ -29,3 +29,6 @@ properties:
   - isobaric_specific_heat_capacity
   - dynamic_viscosity
   - thermal_conductivity
+outputs:
+  # Select one or both. Omission defaults to [csv, parquet].
+  dataset_formats: [csv, parquet]

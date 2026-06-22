@@ -130,6 +130,11 @@ def main() -> int:
     runs = [path for path in output_root.iterdir() if path.is_dir()]
     if len(runs) != 1:
         raise RuntimeError(f"expected one generated run, found {runs}")
+    inspection = run_command(["inspect", str(runs[0])], cwd=work_directory)
+    if "Compatible plot kinds:" not in inspection.stdout:
+        raise RuntimeError(
+            f"installed inspect command returned unexpected output:\n{inspection.stdout}"
+        )
 
     figure = work_directory / "density.png"
     plot_arguments = build_plot_arguments(runs[0], figure)
@@ -161,6 +166,22 @@ def main() -> int:
         )
         if not figure.is_file() or not figure.with_suffix(".plot.json").is_file():
             raise RuntimeError("plot smoke test did not create image and sidecar")
+        batch_root = work_directory / "batch-figures"
+        run_command(
+            [
+                "plot",
+                str(runs[0]),
+                "--config",
+                str(config),
+                "--figures-out",
+                str(batch_root),
+            ],
+            cwd=work_directory,
+            environment=command_environment,
+        )
+        batch_directory = batch_root / runs[0].name
+        if not batch_directory.joinpath("visualization-report.json").is_file():
+            raise RuntimeError("batch visualization smoke test did not create its report")
     else:
         if matplotlib_available:
             raise RuntimeError("base distribution unexpectedly includes Matplotlib")

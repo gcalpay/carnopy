@@ -21,6 +21,8 @@ class ValidationResult:
     projected_rows: int
     canonical_fluids: tuple[str, ...]
     normalized_config_sha256: str
+    output_request_id: str
+    dataset_formats: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -46,4 +48,6 @@ class RunResult:
     invalid_row_count: int
     spec_id: str
     generation_context_id: str
+    output_request_id: str
+    dataset_formats: tuple[str, ...]
     visualization: VisualizationSummary | None = None
