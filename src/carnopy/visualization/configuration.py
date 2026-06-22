@@ -121,7 +121,7 @@ def _validate_static_request(
     if request.kind == "property_heatmap" and scientific_config.mode == "saturation_table":
         raise ConfigError(
             "saturation_table does not support property_heatmap because it contains only "
-            "q=0 and q=1 endpoint states. Use vapor_mass_fraction_table for "
+            "x_vap=0 and x_vap=1 endpoint states. Use vapor_mass_fraction_table for "
             "quality-resolved maps."
         )
     if request.kind == "property_curves":

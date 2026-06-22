@@ -137,6 +137,8 @@ def validate_metadata(metadata: Message, expected_version: str, *, artifact: str
     classifiers = metadata.get_all("Classifier", [])
     if "Typing :: Typed" not in classifiers:
         raise ValueError(f"{artifact} metadata does not declare Typing :: Typed")
+    if "Programming Language :: Python :: 3.13" not in classifiers:
+        raise ValueError(f"{artifact} metadata does not declare Python 3.13 support")
     private = [classifier for classifier in classifiers if classifier.startswith("Private ::")]
     if private:
         raise ValueError(f"{artifact} contains forbidden private classifiers: {private}")

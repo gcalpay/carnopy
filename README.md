@@ -171,7 +171,34 @@ saturated-vapor rows.
 
 `vapor_mass_fraction_table` requires vapor mass fraction plus exactly one of
 temperature or pressure. Vapor mass fraction is vapor mass divided by total
-vapor-plus-liquid mass. CoolProp's `Q` name remains internal to the adapter.
+vapor-plus-liquid mass. Carnopy denotes it by \(x_{\mathrm{vap}}\) in figures
+and scientific equations while keeping the explicit public field name
+`vapor_mass_fraction`. CoolProp's `Q` name remains internal to the adapter.
+
+For a pure fluid at fixed saturation temperature or pressure:
+
+- \(x_{\mathrm{vap}}=0\) is the saturated-liquid boundary;
+- \(x_{\mathrm{vap}}=1\) is the saturated-vapor boundary;
+- \(0<x_{\mathrm{vap}}<1\) is an equilibrium two-phase mixture state.
+
+The endpoint states have definite backend properties. Near-endpoint values such
+as `0.01` and `0.99` are interior mixture states; they supplement rather than
+replace the boundaries. For specific enthalpy and specific volume:
+
+\[
+h(x_{\mathrm{vap}})
+=(1-x_{\mathrm{vap}})h_f+x_{\mathrm{vap}}h_g
+\]
+
+\[
+\frac{1}{\rho(x_{\mathrm{vap}})}
+=\frac{1-x_{\mathrm{vap}}}{\rho_f}
++\frac{x_{\mathrm{vap}}}{\rho_g}
+\]
+
+See the
+[CoolProp high-level saturation documentation](https://coolprop.org/coolprop/HighLevelAPI.html#vapor-liquid-and-saturation-states)
+for the backend definition of the endpoint states.
 
 ### Samplers
 
@@ -531,6 +558,12 @@ exported. Modifying it does not update the image or provenance sidecar.
   records that policy.
 - CoolProp reference-state mutation is process-global; concurrent embedded use
   with unrelated CoolProp calculations is unsupported in Milestone 1.
+- Release regression tests compare finalized Parquet values with direct
+  CoolProp calls for representative states in all three modes.
+- Separate sanity checks require the generated normal boiling points of Propane
+  and Cyclopentane at `101325 Pa` to remain within the uncertainty intervals
+  published by the NIST Chemistry WebBook. These checks do not establish
+  universal experimental accuracy.
 - Absolute reference-dependent values are not directly comparable across
   different reference conventions.
 - Visualization reads emitted columns only and is not a second property
@@ -578,6 +611,12 @@ names, SI dataset columns, failure codes, metadata fields, and identity rules
 are compatibility contracts. Tests use temporary output directories and do not
 commit generated datasets or figures.
 
+The test count is not a quality target. The suite separates configuration,
+sampling, three thermodynamic modes, diagnostics, provenance, visualization,
+CLI behavior, packaging, and release automation. New tests should protect a
+distinct contract or regression and use parametrization instead of duplicating
+equivalent cases.
+
 Contributor and coding-agent rules, architecture constraints, commit
 conventions, and release-maintainer safeguards are in
 [AGENTS.md](https://github.com/gcalpay/carnopy/blob/main/AGENTS.md).
@@ -623,6 +662,22 @@ uv run --locked --group release python -m twine check dist/*
 uv run --locked python scripts/check_distribution.py dist/*
 uv pip check --python .venv/bin/python
 ```
+
+The build command uses an isolated build environment by default and installs
+the declared build backend there. The development environment therefore does
+not need to be changed solely to run a build. Use the ignored repository-local
+`prerelease/` directory for a non-destructive rehearsal when an existing
+`dist/` must be preserved:
+
+```bash
+uv run --locked --group release python -m build --outdir prerelease
+uv run --locked --group release python -m twine check prerelease/*
+uv run --locked python scripts/check_distribution.py prerelease/*
+```
+
+Final approved artifacts are built into `dist/` for inspection, hashing, and
+publication. Carnopy build artifacts should not be written outside the
+repository.
 
 The human creates and pushes the release tag:
 

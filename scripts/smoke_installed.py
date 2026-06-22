@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
 import os
 import subprocess
 import sys
@@ -44,6 +45,32 @@ def build_plot_arguments(run_directory: Path, figure: Path) -> list[str]:
     ]
 
 
+def build_generate_arguments(
+    config: Path,
+    output_root: Path,
+    *,
+    figures_root: Path | None = None,
+) -> list[str]:
+    arguments = ["generate", str(config), "--out", str(output_root)]
+    if figures_root is not None:
+        arguments.extend(["--figures-out", str(figures_root)])
+    return arguments
+
+
+def add_configured_visualization(config: Path) -> None:
+    with config.open("a", encoding="utf-8", newline="\n") as stream:
+        stream.write(
+            """
+visualization:
+  format: png
+  plots:
+    - name: density-vs-vapor-fraction
+      kind: property_curves
+      property: mass_density
+"""
+        )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Smoke-test an installed Carnopy distribution.")
     parser.add_argument("--work-directory", type=Path, required=True)
@@ -73,26 +100,65 @@ def main() -> int:
         ["init", "vapor_mass_fraction_table", str(config)],
         cwd=work_directory,
     )
-    run_command(["validate", str(config)], cwd=work_directory)
+    matplotlib_available = importlib.util.find_spec("matplotlib") is not None
+    command_environment: dict[str, str] | None = None
+    figures_root: Path | None = None
+    if arguments.with_visualization:
+        if not matplotlib_available:
+            raise RuntimeError("visualization smoke test requires Matplotlib")
+        add_configured_visualization(config)
+        figures_root = work_directory / "configured-figures"
+        command_environment = os.environ.copy()
+        command_environment["MPLBACKEND"] = "Agg"
+        command_environment["MPLCONFIGDIR"] = str(work_directory / "mpl-config")
+
+    run_command(
+        ["validate", str(config)],
+        cwd=work_directory,
+        environment=command_environment,
+    )
     output_root = work_directory / "runs"
     run_command(
-        ["generate", str(config), "--out", str(output_root)],
+        build_generate_arguments(
+            config,
+            output_root,
+            figures_root=figures_root,
+        ),
         cwd=work_directory,
+        environment=command_environment,
     )
     runs = [path for path in output_root.iterdir() if path.is_dir()]
     if len(runs) != 1:
         raise RuntimeError(f"expected one generated run, found {runs}")
 
-    matplotlib_available = importlib.util.find_spec("matplotlib") is not None
     figure = work_directory / "density.png"
     plot_arguments = build_plot_arguments(runs[0], figure)
     if arguments.with_visualization:
-        if not matplotlib_available:
-            raise RuntimeError("visualization smoke test requires Matplotlib")
-        environment = os.environ.copy()
-        environment["MPLBACKEND"] = "Agg"
-        environment["MPLCONFIGDIR"] = str(work_directory / "mpl-config")
-        run_command(plot_arguments, cwd=work_directory, environment=environment)
+        assert figures_root is not None
+        configured_directory = figures_root / runs[0].name
+        configured_image = configured_directory / "density-vs-vapor-fraction.png"
+        configured_sidecar = configured_directory / "density-vs-vapor-fraction.plot.json"
+        configured_report = configured_directory / "visualization-report.json"
+        if not all(
+            path.is_file()
+            for path in (
+                configured_image,
+                configured_sidecar,
+                configured_report,
+            )
+        ):
+            raise RuntimeError(
+                "configured visualization smoke test did not create image, sidecar, and report"
+            )
+        report = json.loads(configured_report.read_text(encoding="utf-8"))
+        if report["status"] != "completed" or report["succeeded_plot_count"] != 1:
+            raise RuntimeError(f"unexpected configured visualization report: {report}")
+
+        run_command(
+            plot_arguments,
+            cwd=work_directory,
+            environment=command_environment,
+        )
         if not figure.is_file() or not figure.with_suffix(".plot.json").is_file():
             raise RuntimeError("plot smoke test did not create image and sidecar")
     else:

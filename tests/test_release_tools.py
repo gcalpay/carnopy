@@ -118,3 +118,32 @@ def test_installed_smoke_plot_arguments_use_current_cli_contract(tmp_path: Path)
         "--output",
         str(figure),
     ]
+
+
+def test_installed_smoke_configures_automatic_visualization(tmp_path: Path) -> None:
+    config = tmp_path / "config.yaml"
+    config.write_text("properties: [mass_density]\n", encoding="utf-8")
+    smoke_installed.add_configured_visualization(config)
+
+    assert config.read_text(encoding="utf-8").endswith(
+        """
+visualization:
+  format: png
+  plots:
+    - name: density-vs-vapor-fraction
+      kind: property_curves
+      property: mass_density
+"""
+    )
+    assert smoke_installed.build_generate_arguments(
+        config,
+        tmp_path / "runs",
+        figures_root=tmp_path / "figures",
+    ) == [
+        "generate",
+        str(config),
+        "--out",
+        str(tmp_path / "runs"),
+        "--figures-out",
+        str(tmp_path / "figures"),
+    ]

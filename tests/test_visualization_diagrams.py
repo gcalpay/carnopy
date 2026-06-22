@@ -328,8 +328,8 @@ def test_vapor_diagram_adds_quality_lines_and_sampled_boundary_branches(
     )
     labels = [line.get_label() for line in result.figure.axes[0].lines]
     assert len(labels) == 4
-    assert "q = 0 boundary" in labels
-    assert "q = 1 boundary" in labels
+    assert r"$x_{\mathrm{vap}}$ = 0 boundary" in labels
+    assert r"$x_{\mathrm{vap}}$ = 1 boundary" in labels
 
 
 def test_diagram_invalid_sample_remains_a_gap(tmp_path: Path) -> None:

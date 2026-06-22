@@ -39,6 +39,7 @@ def test_alpha_metadata_uses_modern_license_and_release_urls() -> None:
         "Issues": "https://github.com/gcalpay/carnopy/issues",
     }
     assert "Typing :: Typed" in project["classifiers"]
+    assert "Programming Language :: Python :: 3.13" in project["classifiers"]
     assert not any(classifier.startswith("Private ::") for classifier in project["classifiers"])
     assert "License :: OSI Approved :: MIT License" not in project["classifiers"]
 

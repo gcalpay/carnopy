@@ -1,5 +1,7 @@
 # Two-phase states driven by vapor mass fraction and one saturation coordinate.
 # Vapor mass fraction is dimensionless and must remain between 0 and 1.
+# Values 0 and 1 are the saturated-liquid and saturated-vapor boundaries.
+# Values strictly between them are equilibrium two-phase mixture states.
 # Discover names with: carnopy fluids
 # Discover output properties with: carnopy properties
 schema_version: 1

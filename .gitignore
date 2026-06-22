@@ -16,6 +16,7 @@ venv/
 # Build/package artifacts
 build/
 dist/
+prerelease/
 *.egg-info/
 
 # Generated datasets

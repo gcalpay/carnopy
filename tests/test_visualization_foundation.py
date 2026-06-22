@@ -29,6 +29,7 @@ def test_field_registry_covers_properties_and_scientific_units() -> None:
     assert get_field("specific_volume").derivation == "reciprocal"
     assert get_field("phase").axis_allowed is False
     assert get_field("fluid").filter_allowed is False
+    assert get_field("vapor_mass_fraction").symbol == r"$x_{\mathrm{vap}}$"
     assert format_unit("kg/m^3") == r"$\mathrm{kg\,m^{-3}}$"
     assert "m^3" not in get_field("mass_density").display_label
 

@@ -40,6 +40,23 @@ uncommitted work is present. If the tree is dirty, pause before editing,
 describe the intended stage boundary, and suggest a Conventional Commit message
 so separate stages are not mixed accidentally. Preserve unrelated changes.
 
+Read-only Git commands are allowed when needed to inspect repository state or
+review changes. Examples include:
+
+```text
+git status --short
+git diff
+git diff --check
+git log
+git show
+git ls-files
+```
+
+Do not run Git commands that change repository state. Staging, committing,
+amending, branching, tagging, rebasing, resetting, restoring, merging, pushing,
+and changing remotes remain human-owned unless a local instruction explicitly
+grants narrower authority.
+
 Do not publish packages, create credentials, configure repository security, or
 change dependency declarations without explicit maintainer authorization.
 
@@ -142,6 +159,12 @@ Avoid:
 - brittle golden thermodynamic datasets;
 - pixel-perfect figure tests.
 
+Test count is not a target. Prefer a focused regression for each distinct
+contract or failure mode, use parametrization where cases share behavior, and
+remove redundant tests. The suite can still contain many tests because
+configuration, scientific modes, provenance, visualization, CLI behavior,
+packaging, and release tooling are separate public contracts.
+
 Root and subcommand help must not import CoolProp, NumPy, pandas, PyArrow, or
 Matplotlib.
 
@@ -229,6 +252,8 @@ Mode contracts:
   temperature or pressure.
 
 Public `vapor_mass_fraction` maps to CoolProp `Q` only inside the adapter.
+Use \(x_{\mathrm{vap}}\) as its scientific symbol in figures and equations;
+do not rename the public schema or dataset field.
 
 ## Scientific behavior
 
@@ -429,6 +454,14 @@ uv run --locked --group release python -m build
 uv run --locked --group release python -m twine check dist/*
 uv run --locked python scripts/check_distribution.py dist/*
 ```
+
+`python -m build` normally uses its default isolated build environment. That
+environment installs the `[build-system]` requirements declared in
+`pyproject.toml`. Do not modify the development environment solely to satisfy
+the build backend. Use the ignored, repository-local `prerelease/` directory
+for non-destructive rehearsal builds when an existing `dist/` must be
+preserved. Final release artifacts belong in `dist/`. Do not write Carnopy
+build artifacts outside the repository.
 
 ## Commit messages
 

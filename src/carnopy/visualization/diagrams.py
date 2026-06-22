@@ -111,7 +111,7 @@ def _vapor_quality_series(
         series_from_frame(
             plot_source=plot_source,
             frame=frame.loc[level_mask(frame, coordinate, level)].copy(),
-            label=f"{series_label(coordinate, level)} quality line",
+            label=f"{series_label(coordinate, level)} vapor-fraction line",
             ordering_field="vapor_mass_fraction",
             split_phase=False,
             markers_only=False,
@@ -132,7 +132,7 @@ def _vapor_quality_series(
                 series_from_frame(
                     plot_source=plot_source,
                     frame=frame.loc[level_mask(frame, "vapor_mass_fraction", quality)].copy(),
-                    label=f"q = {quality:.0f} boundary",
+                    label=rf"$x_{{\mathrm{{vap}}}}$ = {quality:.0f} boundary",
                     ordering_field=coordinate,
                     split_phase=False,
                     markers_only=False,

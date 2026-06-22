@@ -29,7 +29,8 @@ HEATMAP_DIMENSION_ERROR = (
 )
 SATURATION_HEATMAP_ERROR = (
     "saturation_table does not support property_heatmap because it contains only\n"
-    "q=0 and q=1 endpoint states. Use vapor_mass_fraction_table for quality-resolved maps."
+    "x_vap=0 and x_vap=1 endpoint states. Use vapor_mass_fraction_table for "
+    "quality-resolved maps."
 )
 
 
