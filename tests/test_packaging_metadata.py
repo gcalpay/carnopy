@@ -54,6 +54,15 @@ def test_manual_plot_workflow_uses_the_printed_run_directory_directly() -> None:
     assert "outputs/manual-test/outputs/manual-test" not in text
 
 
+def test_readme_uses_github_supported_math_delimiters() -> None:
+    root = Path(__file__).resolve().parents[1]
+    text = (root / "README.md").read_text(encoding="utf-8")
+    assert r"\(" not in text
+    assert r"\[" not in text
+    assert "$x_{\\mathrm{vap}}$" in text
+    assert "```math" in text
+
+
 def test_public_markdown_is_consolidated() -> None:
     root = Path(__file__).resolve().parents[1]
     assert (root / "README.md").is_file()

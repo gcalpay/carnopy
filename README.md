@@ -78,6 +78,25 @@ Create a starter configuration:
 carnopy init property_table my-dataset.yaml
 ```
 
+`init` reads the selected template packaged inside the installed `carnopy`
+module and writes a new file at the path you provide. For example, when the
+current directory is `/home/cfd/carnopy/`:
+
+```bash
+carnopy init property_table property.yaml
+```
+
+creates:
+
+```text
+/home/cfd/carnopy/property.yaml
+```
+
+from the packaged `property_table.yaml` template. It does not modify or move
+the packaged template, and it refuses to overwrite an existing
+`property.yaml`. A relative output path is resolved from the current working
+directory; an absolute path is written exactly where specified.
+
 Available modes:
 
 ```text
@@ -171,30 +190,30 @@ saturated-vapor rows.
 
 `vapor_mass_fraction_table` requires vapor mass fraction plus exactly one of
 temperature or pressure. Vapor mass fraction is vapor mass divided by total
-vapor-plus-liquid mass. Carnopy denotes it by \(x_{\mathrm{vap}}\) in figures
+vapor-plus-liquid mass. Carnopy denotes it by $x_{\mathrm{vap}}$ in figures
 and scientific equations while keeping the explicit public field name
 `vapor_mass_fraction`. CoolProp's `Q` name remains internal to the adapter.
 
 For a pure fluid at fixed saturation temperature or pressure:
 
-- \(x_{\mathrm{vap}}=0\) is the saturated-liquid boundary;
-- \(x_{\mathrm{vap}}=1\) is the saturated-vapor boundary;
-- \(0<x_{\mathrm{vap}}<1\) is an equilibrium two-phase mixture state.
+- $x_{\mathrm{vap}}=0$ is the saturated-liquid boundary;
+- $x_{\mathrm{vap}}=1$ is the saturated-vapor boundary;
+- $0<x_{\mathrm{vap}}<1$ is an equilibrium two-phase mixture state.
 
 The endpoint states have definite backend properties. Near-endpoint values such
 as `0.01` and `0.99` are interior mixture states; they supplement rather than
 replace the boundaries. For specific enthalpy and specific volume:
 
-\[
+```math
 h(x_{\mathrm{vap}})
 =(1-x_{\mathrm{vap}})h_f+x_{\mathrm{vap}}h_g
-\]
+```
 
-\[
+```math
 \frac{1}{\rho(x_{\mathrm{vap}})}
 =\frac{1-x_{\mathrm{vap}}}{\rho_f}
 +\frac{x_{\mathrm{vap}}}{\rho_g}
-\]
+```
 
 See the
 [CoolProp high-level saturation documentation](https://coolprop.org/coolprop/HighLevelAPI.html#vapor-liquid-and-saturation-states)
