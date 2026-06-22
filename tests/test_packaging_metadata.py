@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import struct
 from pathlib import Path
 from typing import Any
 
@@ -36,8 +35,8 @@ def test_alpha_metadata_uses_modern_license_and_release_urls() -> None:
     }
     project = pyproject["project"]
     assert project["description"] == (
-        "Reproducible thermophysical fluid-property datasets and scientific plots "
-        "for ML, surrogate models, and engineering workflows."
+        "Synthetic thermophysical property dataset generation from thermodynamic "
+        "databases and simulation backends for physics-informed ML surrogate models."
     )
     assert project["license"] == "MIT"
     assert project["license-files"] == ["LICENSE"]
@@ -115,6 +114,11 @@ def test_readme_describes_current_alpha_without_stale_first_release_wording() ->
     assert 'uv tool install "carnopy[all]==0.1.0a2"' in text
     assert "After `0.1.0a1` is published" not in text
     assert "pending publisher" not in text.casefold()
+    assert "Typing: typed" not in text
+    assert (
+        "Synthetic thermophysical property dataset generation from thermodynamic\n"
+        "databases and simulation backends for physics-informed ML surrogate models."
+    ) in text
 
 
 def test_github_community_files_cover_public_reporting_paths() -> None:
@@ -151,13 +155,9 @@ def test_github_community_files_cover_public_reporting_paths() -> None:
         assert field in scientific
 
 
-def test_social_preview_has_github_recommended_dimensions() -> None:
+def test_repository_does_not_require_a_social_preview_asset() -> None:
     root = Path(__file__).resolve().parents[1]
-    preview = root / ".github" / "assets" / "social-preview.png"
-    content = preview.read_bytes()
-    assert content.startswith(b"\x89PNG\r\n\x1a\n")
-    width, height = struct.unpack(">II", content[16:24])
-    assert (width, height) == (1280, 640)
+    assert not (root / ".github" / "assets" / "social-preview.png").exists()
 
 
 def test_public_agents_bootstraps_ignored_local_policy() -> None:

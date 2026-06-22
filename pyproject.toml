@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "carnopy"
 dynamic = ["version"]
-description = "Reproducible thermophysical fluid-property datasets and scientific plots for ML, surrogate models, and engineering workflows."
+description = "Synthetic thermophysical property dataset generation from thermodynamic databases and simulation backends for physics-informed ML surrogate models."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"

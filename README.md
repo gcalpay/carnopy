@@ -4,10 +4,9 @@
 [![Python](https://img.shields.io/pypi/pyversions/carnopy.svg)](https://pypi.org/project/carnopy/)
 [![Verify](https://github.com/gcalpay/carnopy/actions/workflows/ci.yml/badge.svg)](https://github.com/gcalpay/carnopy/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Typing: typed](https://img.shields.io/badge/typing-typed-blue.svg)](src/carnopy/py.typed)
 
-Reproducible thermophysical fluid-property datasets and scientific plots for
-ML, surrogate models, and engineering workflows.
+Synthetic thermophysical property dataset generation from thermodynamic
+databases and simulation backends for physics-informed ML surrogate models.
 
 > Alpha software: public interfaces and generated schemas may still change
 > before the stable `0.1.0` release.

@@ -11,8 +11,8 @@ from typing import Protocol
 
 PROJECT_NAME = "carnopy"
 PROJECT_SUMMARY = (
-    "Reproducible thermophysical fluid-property datasets and scientific plots "
-    "for ML, surrogate models, and engineering workflows."
+    "Synthetic thermophysical property dataset generation from thermodynamic "
+    "databases and simulation backends for physics-informed ML surrogate models."
 )
 PROJECT_KEYWORDS = {
     "coolprop",
