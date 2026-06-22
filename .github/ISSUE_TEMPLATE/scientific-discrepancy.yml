@@ -1,0 +1,76 @@
+name: Scientific or backend discrepancy
+description: Report a thermodynamic value, phase, or backend-behavior discrepancy.
+title: "science: "
+labels:
+  - scientific-discrepancy
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Carnopy preserves backend output and diagnostics. Provide enough detail
+        to distinguish a Carnopy orchestration error from backend behavior or a
+        difference in reference conventions.
+  - type: input
+    id: versions
+    attributes:
+      label: Carnopy and CoolProp versions
+      placeholder: "Carnopy 0.1.0a2; CoolProp 7.2.0"
+    validations:
+      required: true
+  - type: input
+    id: fluid_mode
+    attributes:
+      label: Fluid and generation mode
+      placeholder: "Cyclopentane; saturation_table"
+    validations:
+      required: true
+  - type: textarea
+    id: coordinates
+    attributes:
+      label: Normalized coordinates and units
+      description: Report canonical SI values and original declared units when available.
+      placeholder: "pressure_Pa = 101325; original pressure = 1.01325 bar"
+    validations:
+      required: true
+  - type: input
+    id: property
+    attributes:
+      label: Requested property or phase result
+      placeholder: "specific_enthalpy or phase"
+    validations:
+      required: true
+  - type: input
+    id: reference_state
+    attributes:
+      label: Reference-state policy
+      placeholder: "coolprop_DEF"
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed Carnopy result
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result and external source
+      description: Cite a primary source, official documentation, or reproducible backend calculation.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Metadata and report diagnostics
+      description: Include relevant metadata/report fields and backend exception details. Remove private paths.
+      render: json
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I accounted for units and thermodynamic reference-state conventions.
+          required: true
+        - label: I searched existing issues for this discrepancy.
+          required: true

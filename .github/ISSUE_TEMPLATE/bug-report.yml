@@ -1,0 +1,60 @@
+name: Bug report
+description: Report reproducible incorrect behavior in Carnopy.
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not report security vulnerabilities here. Use the repository's
+        private vulnerability-reporting form described in the security policy.
+  - type: input
+    id: versions
+    attributes:
+      label: Carnopy and Python versions
+      description: Include the output of `carnopy --version` and `python --version`.
+      placeholder: "carnopy 0.1.0a2; Python 3.12.12"
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      placeholder: "Ubuntu 24.04, Windows 11, macOS 15"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Provide the smallest configuration and command that reproduce the problem.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: Include relevant error output, metadata, or report excerpts. Remove secrets and private paths.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues for this problem.
+          required: true
+        - label: This report does not contain credentials or private data.
+          required: true

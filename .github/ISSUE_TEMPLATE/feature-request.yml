@@ -1,0 +1,49 @@
+name: Feature request
+description: Propose a focused improvement or new capability.
+title: "feature: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or workflow
+      description: Describe the engineering or scientific workflow that is currently difficult.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed capability
+      description: Describe observable behavior rather than only an implementation technology.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: dropdown
+    id: contract
+    attributes:
+      label: Public contract impact
+      options:
+        - No public interface change
+        - CLI or Python API
+        - YAML configuration
+        - Dataset, metadata, or report schema
+        - Scientific interpretation or backend behavior
+        - Unsure
+    validations:
+      required: true
+  - type: textarea
+    id: references
+    attributes:
+      label: Scientific or technical references
+      description: Include primary references when the proposal changes scientific behavior.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues for this request.
+          required: true
