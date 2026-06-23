@@ -115,6 +115,7 @@ def test_root_help_has_complete_summaries_at_narrow_width() -> None:
         ("validate", "Check a configuration."),
         ("generate", "Generate an immutable run."),
         ("sweep", "Generate a model sweep."),
+        ("prepare", "Prepare ML-ready data."),
         ("fluids", "List backend fluids."),
         ("properties", "List dataset properties."),
         ("inspect", "Inspect a generated dataset."),
@@ -131,6 +132,7 @@ def test_subcommand_help_retains_detailed_descriptions() -> None:
         "validate": "without evaluating thermodynamic rows",
         "generate": "Generation performs configuration",
         "sweep": "multiple backend models",
+        "prepare": "without backend calls",
         "fluids": "available from one CoolProp model",
         "properties": "semantic properties accepted",
         "inspect": "without backend calls",
@@ -245,6 +247,7 @@ def test_plot_legacy_kinds_have_migration_guidance(
         ["validate", "--help"],
         ["generate", "--help"],
         ["sweep", "--help"],
+        ["prepare", "--help"],
         ["fluids", "--help"],
         ["properties", "--help"],
         ["inspect", "--help"],
@@ -366,6 +369,14 @@ def test_init_help_documents_full_reference() -> None:
     assert "Configuration template type" in result.stdout
     assert "--full" in result.stdout
     assert "exhaustive commented configuration reference" in result.stdout
+
+
+def test_init_preparation_prints_prepare_next_step(tmp_path: Path) -> None:
+    output = tmp_path / "preparation.yaml"
+    result = runner.invoke(app, ["init", "preparation", str(output)])
+    assert result.exit_code == 0, result.output
+    assert "document_type: preparation" in output.read_text(encoding="utf-8")
+    assert f"carnopy prepare SOURCE --config {output.resolve()}" in result.stdout
 
 
 def test_init_refuses_wrong_suffix_existing_file_and_missing_noninteractive_parent(

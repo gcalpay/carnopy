@@ -6,11 +6,23 @@ from typing import TYPE_CHECKING, Any
 from carnopy._version import __version__
 
 if TYPE_CHECKING:
-    from carnopy.api import generate_dataset, generate_model_sweep, load_config, validate_config
+    from carnopy.api import (
+        generate_dataset,
+        generate_model_sweep,
+        load_config,
+        prepare_dataset,
+        validate_config,
+    )
     from carnopy.config.models import BackendConfig, CarnopyConfig, CoolPropModel, NormalizedConfig
     from carnopy.config.outputs import OutputConfig
     from carnopy.config.visualization import VisualizationConfig, VisualizationPlotConfig
-    from carnopy.results import RunResult, SweepResult, ValidationResult, VisualizationSummary
+    from carnopy.results import (
+        PreparationResult,
+        RunResult,
+        SweepResult,
+        ValidationResult,
+        VisualizationSummary,
+    )
 
 __all__ = [
     "BackendConfig",
@@ -18,6 +30,7 @@ __all__ = [
     "CoolPropModel",
     "NormalizedConfig",
     "OutputConfig",
+    "PreparationResult",
     "RunResult",
     "SweepResult",
     "ValidationResult",
@@ -28,6 +41,7 @@ __all__ = [
     "generate_dataset",
     "generate_model_sweep",
     "load_config",
+    "prepare_dataset",
     "validate_config",
 ]
 
@@ -37,6 +51,7 @@ _LAZY_EXPORTS = {
     "CoolPropModel": ("carnopy.config.models", "CoolPropModel"),
     "NormalizedConfig": ("carnopy.config.models", "NormalizedConfig"),
     "OutputConfig": ("carnopy.config.outputs", "OutputConfig"),
+    "PreparationResult": ("carnopy.results", "PreparationResult"),
     "RunResult": ("carnopy.results", "RunResult"),
     "SweepResult": ("carnopy.results", "SweepResult"),
     "ValidationResult": ("carnopy.results", "ValidationResult"),
@@ -49,6 +64,7 @@ _LAZY_EXPORTS = {
     "generate_dataset": ("carnopy.api", "generate_dataset"),
     "generate_model_sweep": ("carnopy.api", "generate_model_sweep"),
     "load_config": ("carnopy.api", "load_config"),
+    "prepare_dataset": ("carnopy.api", "prepare_dataset"),
     "validate_config": ("carnopy.api", "validate_config"),
 }
 

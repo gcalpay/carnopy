@@ -11,6 +11,12 @@ VisualizationStatus = Literal[
     "failed",
     "skipped_zero_valid_rows",
 ]
+PreparationStatus = Literal[
+    "completed",
+    "completed_with_exclusions",
+    "no_eligible_rows",
+    "failed",
+]
 
 
 @dataclass(frozen=True)
@@ -36,6 +42,22 @@ class VisualizationSummary:
     succeeded_plot_count: int
     failed_plot_count: int
     skipped_plot_count: int
+
+
+@dataclass(frozen=True)
+class PreparationResult:
+    preparation_request_id: str
+    preparation_context_id: str
+    preparation_run_id: str
+    status: PreparationStatus
+    output_directory: Path
+    eligible_row_count: int
+    excluded_row_count: int
+    unsplit_path: Path | None
+    exclusions_path: Path
+    manifest_path: Path
+    diagnostics_path: Path
+    dataset_card_path: Path
 
 
 @dataclass(frozen=True)

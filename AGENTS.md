@@ -182,6 +182,7 @@ carnopy fluids [--model heos|pr|srk]
 carnopy validate CONFIG.yaml
 carnopy generate CONFIG.yaml [--out PATH] [--figures-out PATH]
 carnopy sweep SWEEP.yaml [--out PATH]
+carnopy prepare SOURCE --config PREPARATION.yaml [--out PATH]
 carnopy inspect SOURCE
 carnopy plot SOURCE ...
 ```
@@ -200,6 +201,7 @@ The supported Python API intentionally remains narrow:
 - `validate_config`;
 - `generate_dataset`;
 - `generate_model_sweep`;
+- `prepare_dataset`;
 - public configuration and result models;
 - explicit visualization functions.
 
@@ -254,6 +256,20 @@ reuse dataset `visualization:` inside sweep configs. The concise packaged
 `model_sweep` starter must run in the base install without Matplotlib; keep
 active `comparison_plots:` blocks in richer examples only and document that
 they require `carnopy[viz]` or `carnopy[all]`.
+
+Preparation configurations use independent schema versioning:
+
+```yaml
+schema_version: 1
+document_type: preparation
+```
+
+Preparation reads existing immutable dataset runs or model-sweep bundles and
+writes unsplit Parquet derived-data artifacts. It must resolve semantic fields
+through source metadata/schema, preserve source row order, retain row-level
+source identity, and never import or call thermodynamic backends. Preparation
+does not train, split, scale, shuffle, optimize, or export array/tensor files
+in this release.
 
 Dataset formats:
 

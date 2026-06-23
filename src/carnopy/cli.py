@@ -25,6 +25,7 @@ class ConfigModeCli(str, Enum):
     saturation_table = "saturation_table"
     vapor_mass_fraction_table = "vapor_mass_fraction_table"
     model_sweep = "model_sweep"
+    preparation = "preparation"
 
 
 class InspectFormatCli(str, Enum):
@@ -218,6 +219,59 @@ def sweep_command(
         raise typer.Exit(code=1)
 
 
+@app.command("prepare", short_help="Prepare ML-ready data.")
+def prepare_command(
+    source: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            readable=True,
+            help="Dataset run directory or model-sweep bundle.",
+        ),
+    ],
+    config: Annotated[
+        Path,
+        typer.Option(
+            "--config",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            help="Preparation YAML configuration.",
+        ),
+    ],
+    output_root: Annotated[
+        Path,
+        typer.Option(
+            "--out",
+            file_okay=False,
+            help="Parent directory for immutable preparation bundles.",
+        ),
+    ] = Path("prepared"),
+) -> None:
+    """Prepare deterministic unsplit Parquet artifacts without backend calls."""
+    from carnopy.api import prepare_dataset
+    from carnopy.domain.failures import CarnopyError, ConfigError
+
+    try:
+        result = prepare_dataset(source, config=config, output_root=output_root)
+    except ConfigError as exc:
+        typer.echo(f"Preparation validation failed: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    except CarnopyError as exc:
+        typer.echo(f"Preparation failed: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"Preparation status: {result.status}")
+    typer.echo(f"Eligible rows: {result.eligible_row_count}")
+    typer.echo(f"Excluded rows: {result.excluded_row_count}")
+    typer.echo(f"Output directory: {result.output_directory}")
+    typer.echo(f"Manifest: {result.manifest_path}")
+    if result.unsplit_path is not None:
+        typer.echo(f"Prepared data: {result.unsplit_path}")
+    typer.echo(f"Exclusions: {result.exclusions_path}")
+    if result.status == "no_eligible_rows":
+        raise typer.Exit(code=1)
+
+
 @app.command("fluids", short_help="List backend fluids.")
 def fluids_command(
     model: Annotated[
@@ -360,8 +414,13 @@ def init_command(
     typer.echo(f"Created configuration: {created}")
     typer.echo("Next:")
     typer.echo(f"  edit {created}")
-    typer.echo(f"  carnopy validate {created}")
-    typer.echo(f"  carnopy generate {created}")
+    if mode is ConfigModeCli.model_sweep:
+        typer.echo(f"  carnopy sweep {created}")
+    elif mode is ConfigModeCli.preparation:
+        typer.echo(f"  carnopy prepare SOURCE --config {created}")
+    else:
+        typer.echo(f"  carnopy validate {created}")
+        typer.echo(f"  carnopy generate {created}")
 
 
 @app.command("plot", short_help="Plot a generated dataset.")

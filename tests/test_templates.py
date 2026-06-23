@@ -8,6 +8,7 @@ import yaml
 
 from carnopy.config.io import load_config_file, load_sweep_config_file
 from carnopy.domain.properties import PROPERTY_REGISTRY
+from carnopy.preparation.models import load_preparation_config
 from carnopy.sampling.generate import materialize_sampler
 from carnopy.templates import (
     FULL_REFERENCE_FILENAME,
@@ -27,7 +28,7 @@ def test_packaged_dataset_templates_match_repository_examples_and_validate() -> 
         "vapor_mass_fraction_table": "vapor_mass_fraction_table_example.yaml",
     }
     for mode, filename in TEMPLATE_FILENAMES.items():
-        if mode == "model_sweep":
+        if mode in {"model_sweep", "preparation"}:
             continue
         packaged = template_text(mode)
         example = (root / "configs" / example_names[mode]).read_text(encoding="utf-8")
@@ -61,6 +62,14 @@ def test_model_sweep_template_is_concise_base_runnable_and_example_is_richer(
     assert "carnopy[viz]" in example
     assert "carnopy[all]" in example
     assert load_sweep_config_file(example_path).model.document_type == "model_sweep"
+
+
+def test_preparation_template_is_valid() -> None:
+    concise = template_text("preparation")
+    payload = yaml.safe_load(concise)
+    assert payload["schema_version"] == 1
+    assert payload["document_type"] == "preparation"
+    assert payload["outputs"]["formats"] == ["parquet"]
 
 
 def test_interactive_initialization_can_confirm_parent_creation(tmp_path: Path) -> None:
@@ -119,6 +128,8 @@ def test_full_templates_are_valid_and_append_one_authoritative_reference(
     assert output.read_text(encoding="utf-8") == full
     if mode == "model_sweep":
         assert load_sweep_config_file(output).model.document_type == "model_sweep"
+    elif mode == "preparation":
+        assert load_preparation_config(output).model.document_type == "preparation"
     else:
         assert load_config_file(output).model.mode == mode
 

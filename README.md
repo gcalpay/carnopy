@@ -336,6 +336,43 @@ comparison_plots:
 Stage 4 comparison plots are one-fluid, one-property, one-x-axis side-by-side
 model comparisons. Multiple fluids require multiple plot entries.
 
+### ML preparation foundation
+
+Preparation is an optional derived-data workflow for downstream ML and
+surrogate-model pipelines. It reads an existing immutable run or model-sweep
+bundle and writes deterministic, unsplit Parquet artifacts without calling a
+thermodynamic backend:
+
+```bash
+carnopy init preparation preparation.yaml
+carnopy prepare outputs/<run> --config preparation.yaml --out prepared
+```
+
+Preparation configuration uses its own independent schema version:
+
+```yaml
+schema_version: 1
+document_type: preparation
+features:
+  numeric: [temperature, pressure, mass_density]
+  derived: [specific_volume]
+categorical_features:
+  - field: phase
+    encoding: one_hot
+    categories: observed
+targets: [specific_enthalpy]
+auxiliary: [fluid, backend_model, phase, run_id, case_id]
+outputs:
+  formats: [parquet]
+```
+
+Prepared bundles contain `manifest.json`, `diagnostics.json`,
+`dataset_card.md`, `data/unsplit.parquet`, and `data/exclusions.parquet`.
+If no source rows can produce the requested representation, Carnopy writes a
+clearly marked `no_eligible_rows` bundle without `data/unsplit.parquet`.
+Preparation does not train models, split data, scale features, or export arrays
+in `0.1.0a2`.
+
 ### Modes
 
 `property_table` requires temperature and pressure and generates their Cartesian

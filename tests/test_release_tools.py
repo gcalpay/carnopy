@@ -110,15 +110,21 @@ def test_distribution_path_filters_and_source_version() -> None:
 def test_distribution_checker_requires_model_sweep_artifacts() -> None:
     assert {
         "carnopy/config/sweep.py",
+        "carnopy/preparation/pipeline.py",
+        "carnopy/preparation/models.py",
         "carnopy/sweeps/pipeline.py",
         "carnopy/sweeps/comparison.py",
         "carnopy/templates/model_sweep.yaml",
+        "carnopy/templates/preparation.yaml",
     }.issubset(check_distribution.WHEEL_REQUIRED)
     assert {
         "configs/model_sweep_example.yaml",
         "src/carnopy/config/sweep.py",
+        "src/carnopy/preparation/pipeline.py",
+        "src/carnopy/preparation/models.py",
         "src/carnopy/sweeps/pipeline.py",
         "src/carnopy/templates/model_sweep.yaml",
+        "src/carnopy/templates/preparation.yaml",
     }.issubset(check_distribution.SDIST_REQUIRED)
 
 
@@ -191,4 +197,19 @@ comparison_plots:
         str(config),
         "--out",
         str(tmp_path / "sweeps"),
+    ]
+
+
+def test_installed_smoke_prepare_arguments_use_current_cli_contract(tmp_path: Path) -> None:
+    source = tmp_path / "run"
+    config = tmp_path / "preparation.yaml"
+    output = tmp_path / "prepared"
+
+    assert smoke_installed.build_prepare_arguments(source, config, output) == [
+        "prepare",
+        str(source),
+        "--config",
+        str(config),
+        "--out",
+        str(output),
     ]

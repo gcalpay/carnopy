@@ -61,6 +61,10 @@ def build_sweep_arguments(config: Path, output_root: Path) -> list[str]:
     return ["sweep", str(config), "--out", str(output_root)]
 
 
+def build_prepare_arguments(source: Path, config: Path, output_root: Path) -> list[str]:
+    return ["prepare", str(source), "--config", str(config), "--out", str(output_root)]
+
+
 def add_configured_visualization(config: Path) -> None:
     with config.open("a", encoding="utf-8", newline="\n") as stream:
         stream.write(
@@ -116,6 +120,7 @@ def main() -> int:
         raise RuntimeError(f"unexpected version output: {version.stdout!r}")
     run_command(["--help"], cwd=work_directory)
     run_command(["sweep", "--help"], cwd=work_directory)
+    run_command(["prepare", "--help"], cwd=work_directory)
     run_command(["properties"], cwd=work_directory)
 
     config = work_directory / "config.yaml"
@@ -163,6 +168,29 @@ def main() -> int:
         raise RuntimeError(
             f"installed inspect command returned unexpected output:\n{inspection.stdout}"
         )
+
+    preparation_config = work_directory / "preparation.yaml"
+    run_command(["init", "preparation", str(preparation_config)], cwd=work_directory)
+    prepared_root = work_directory / "prepared"
+    run_command(
+        build_prepare_arguments(runs[0], preparation_config, prepared_root),
+        cwd=work_directory,
+    )
+    prepared_bundles = [path for path in prepared_root.iterdir() if path.is_dir()]
+    if len(prepared_bundles) != 1:
+        raise RuntimeError(f"expected one preparation bundle, found {prepared_bundles}")
+    prepared_bundle = prepared_bundles[0]
+    if not all(
+        path.is_file()
+        for path in (
+            prepared_bundle / "manifest.json",
+            prepared_bundle / "diagnostics.json",
+            prepared_bundle / "dataset_card.md",
+            prepared_bundle / "data" / "unsplit.parquet",
+            prepared_bundle / "data" / "exclusions.parquet",
+        )
+    ):
+        raise RuntimeError("preparation smoke test did not create required artifacts")
 
     figure = work_directory / "density.png"
     plot_arguments = build_plot_arguments(runs[0], figure)

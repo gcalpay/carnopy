@@ -1,0 +1,37 @@
+# Carnopy preparation starter configuration.
+#
+# Preparation converts an existing immutable dataset run or model-sweep bundle
+# into deterministic, unsplit Parquet artifacts for downstream ML/surrogate
+# workflows. It never calls thermodynamic backends.
+
+schema_version: 1
+document_type: preparation
+
+source_policy:
+  allow_partial_sweep: false
+
+features:
+  numeric:
+    - temperature
+    - pressure
+    - mass_density
+  derived:
+    - specific_volume
+
+categorical_features:
+  - field: phase
+    encoding: one_hot
+    categories: observed
+
+targets:
+  - specific_enthalpy
+
+auxiliary:
+  - fluid
+  - backend_model
+  - phase
+  - run_id
+  - case_id
+
+outputs:
+  formats: [parquet]
