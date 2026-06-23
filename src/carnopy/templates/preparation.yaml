@@ -33,5 +33,26 @@ auxiliary:
   - run_id
   - case_id
 
+# Optional leakage-aware scenarios. Omit this section to keep the default
+# unsplit Stage-5 behavior.
+#
+# scenarios:
+#   - name: shuffle_baseline
+#     kind: shuffle
+#     seed: 12345
+#     partitions:
+#       train: 0.8
+#       validation: 0.1
+#       test: 0.1
+#     transformations:
+#       - field: pressure
+#         methods: [log10, standard]
+#
+#   - name: leave_fluid_out
+#     kind: leave_fluid_out
+#     holdouts:
+#       test: [Isopentane]
+#     remainder: train
+
 outputs:
   formats: [parquet]

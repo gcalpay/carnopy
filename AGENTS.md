@@ -265,11 +265,12 @@ document_type: preparation
 ```
 
 Preparation reads existing immutable dataset runs or model-sweep bundles and
-writes unsplit Parquet derived-data artifacts. It must resolve semantic fields
+writes Parquet derived-data artifacts. It must resolve semantic fields
 through source metadata/schema, preserve source row order, retain row-level
 source identity, and never import or call thermodynamic backends. Preparation
-does not train, split, scale, shuffle, optimize, or export array/tensor files
-in this release.
+may create explicit leakage-aware scenarios and deterministic numeric
+transformations. It does not train, optimize, use scikit-learn, or export
+array/tensor files in this release.
 
 Dataset formats:
 

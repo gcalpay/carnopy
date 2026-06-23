@@ -340,8 +340,8 @@ model comparisons. Multiple fluids require multiple plot entries.
 
 Preparation is an optional derived-data workflow for downstream ML and
 surrogate-model pipelines. It reads an existing immutable run or model-sweep
-bundle and writes deterministic, unsplit Parquet artifacts without calling a
-thermodynamic backend:
+bundle and writes deterministic Parquet artifacts without calling a
+thermodynamic backend. Omit `scenarios:` for a single unsplit prepared table:
 
 ```bash
 carnopy init preparation preparation.yaml
@@ -370,8 +370,34 @@ Prepared bundles contain `manifest.json`, `diagnostics.json`,
 `dataset_card.md`, `data/unsplit.parquet`, and `data/exclusions.parquet`.
 If no source rows can produce the requested representation, Carnopy writes a
 clearly marked `no_eligible_rows` bundle without `data/unsplit.parquet`.
-Preparation does not train models, split data, scale features, or export arrays
-in `0.1.0a2`.
+
+Optional leakage-aware scenarios add deterministic partition artifacts and
+plain-JSON transformation parameters:
+
+```yaml
+scenarios:
+  - name: shuffle_baseline
+    kind: shuffle
+    seed: 12345
+    partitions:
+      train: 0.8
+      validation: 0.1
+      test: 0.1
+    transformations:
+      - field: pressure
+        methods: [log10, standard]
+
+  - name: leave_fluid_out
+    kind: leave_fluid_out
+    holdouts:
+      test: [Isopentane]
+    remainder: train
+```
+
+Supported scenarios are `unsplit`, `shuffle`, `coordinate_block`,
+`range_holdout`, `leave_fluid_out`, `phase_holdout`, and `model_holdout`.
+Preparation still does not train models or export arrays/tensors in
+`0.1.0a2`.
 
 ### Modes
 

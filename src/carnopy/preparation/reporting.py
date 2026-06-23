@@ -67,8 +67,9 @@ def build_manifest(
     eligible_row_count: int,
     excluded_row_count: int,
     artifact_hashes: dict[str, str],
+    scenario_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return {
+    manifest = {
         "preparation_schema_version": PREPARATION_SCHEMA_VERSION,
         "preparation_request_id": request_id,
         "preparation_context_id": context_id,
@@ -122,6 +123,9 @@ def build_manifest(
         "output_formats": list(loaded.model.outputs.formats),
         "artifact_hashes": artifact_hashes,
     }
+    if scenario_summary is not None:
+        manifest["scenarios"] = scenario_summary
+    return manifest
 
 
 def build_diagnostics(

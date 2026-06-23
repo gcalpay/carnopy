@@ -60,6 +60,11 @@ outputs:
     )
 
 
+def _prep_config_with_scenarios(path: Path, scenarios: str, **kwargs: str) -> Path:
+    base = _prep_config(path, **kwargs).read_text(encoding="utf-8")
+    return _write(path, base + "\n" + scenarios)
+
+
 def _property_config(path: Path, *, properties: str) -> Path:
     return _write(
         path,
@@ -73,6 +78,33 @@ fluids: [Propane]
 grid:
   temperature: {{kind: explicit, values: [300.0], unit: K}}
   pressure: {{kind: explicit, values: [100000.0, 200000.0], unit: Pa}}
+properties: {properties}
+outputs:
+  dataset_formats: [parquet]
+""",
+    )
+
+
+def _grid_property_config(
+    path: Path,
+    *,
+    fluids: str = "[Propane]",
+    temperatures: str = "[300.0]",
+    pressures: str = "[100000.0, 200000.0, 300000.0, 400000.0]",
+    properties: str = "[mass_density, specific_enthalpy]",
+) -> Path:
+    return _write(
+        path,
+        f"""schema_version: 2
+document_type: dataset
+backend:
+  name: coolprop
+  model: heos
+mode: property_table
+fluids: {fluids}
+grid:
+  temperature: {{kind: explicit, values: {temperatures}, unit: K}}
+  pressure: {{kind: explicit, values: {pressures}, unit: Pa}}
 properties: {properties}
 outputs:
   dataset_formats: [parquet]
@@ -144,6 +176,9 @@ def test_prepare_dataset_run_writes_manifest_and_preserves_order(
     assert manifest["semantic_field_mapping"]["temperature"]["unit"] == "K"
     assert manifest["eligible_row_count"] == len(source)
     assert pd.read_parquet(result.exclusions_path).empty
+    assert result.scenario_report_path is None
+    assert result.scenario_count == 0
+    assert result.partition_count == 0
     assert _relative_files(result.output_directory) == {
         "data/exclusions.parquet",
         "data/unsplit.parquet",
@@ -361,6 +396,210 @@ def test_prepare_request_identity_is_output_independent_and_context_tracks_sourc
     assert prepared_first.preparation_context_id != prepared_second.preparation_context_id
 
 
+def test_prepare_rejects_invalid_scenario_names_and_partitions(tmp_path: Path) -> None:
+    invalid_name = _prep_config_with_scenarios(
+        tmp_path / "invalid-name.yaml",
+        """scenarios:
+  - name: "not safe"
+    kind: unsplit
+""",
+    )
+    with pytest.raises(ConfigError, match="safe slugs"):
+        load_preparation_config(invalid_name)
+
+    invalid_shuffle = _prep_config_with_scenarios(
+        tmp_path / "invalid-shuffle.yaml",
+        """scenarios:
+  - name: bad_shuffle
+    kind: shuffle
+    partitions:
+      train: 0.8
+      all: 0.2
+""",
+    )
+    with pytest.raises(ConfigError, match="all partition"):
+        load_preparation_config(invalid_shuffle)
+
+    invalid_remainder = _prep_config_with_scenarios(
+        tmp_path / "invalid-remainder.yaml",
+        """scenarios:
+  - name: bad_holdout
+    kind: leave_fluid_out
+    holdouts:
+      train: [Propane]
+    remainder: train
+""",
+    )
+    with pytest.raises(ConfigError, match="remainder as a holdout"):
+        load_preparation_config(invalid_remainder)
+
+
+def test_prepare_rejects_empty_declared_holdout_partitions(tmp_path: Path) -> None:
+    dataset = _grid_property_config(tmp_path / "dataset.yaml")
+    run = generate_dataset(dataset, output_root=tmp_path / "runs")
+    config = _prep_config_with_scenarios(
+        tmp_path / "preparation.yaml",
+        """scenarios:
+  - name: missing_fluid_holdout
+    kind: leave_fluid_out
+    holdouts:
+      test: [Isopentane]
+    remainder: train
+""",
+        categorical="[]",
+        derived="[]",
+    )
+
+    with pytest.raises(ConfigError, match="empty partitions: test"):
+        prepare_dataset(run.output_directory, config=config, output_root=tmp_path / "prepared")
+
+
+def test_prepare_shuffle_scenario_is_deterministic_and_seeded(tmp_path: Path) -> None:
+    dataset = _grid_property_config(
+        tmp_path / "grid.yaml",
+        pressures="[100000.0, 150000.0, 200000.0, 250000.0, 300000.0, 350000.0]",
+    )
+    run = generate_dataset(dataset, output_root=tmp_path / "runs")
+    scenarios = """scenarios:
+  - name: shuffle_baseline
+    kind: shuffle
+    seed: 12345
+    partitions:
+      train: 0.5
+      test: 0.5
+"""
+    config = _prep_config_with_scenarios(
+        tmp_path / "preparation.yaml",
+        scenarios,
+        categorical="[]",
+        derived="[]",
+    )
+
+    first = prepare_dataset(run.output_directory, config=config, output_root=tmp_path / "first")
+    second = prepare_dataset(run.output_directory, config=config, output_root=tmp_path / "second")
+
+    first_train = pd.read_parquet(
+        first.output_directory / "data/scenarios/shuffle_baseline/train.parquet"
+    )
+    second_train = pd.read_parquet(
+        second.output_directory / "data/scenarios/shuffle_baseline/train.parquet"
+    )
+    assert first_train["source_row_hash"].tolist() == second_train["source_row_hash"].tolist()
+    assert first.scenario_count == 1
+    assert first.partition_count == 2
+    assert first.scenario_report_path is not None
+    assert first.scenario_report_path.is_file()
+
+    changed_seed = _prep_config_with_scenarios(
+        tmp_path / "changed-seed.yaml",
+        scenarios.replace("12345", "54321"),
+        categorical="[]",
+        derived="[]",
+    )
+    changed = prepare_dataset(
+        run.output_directory,
+        config=changed_seed,
+        output_root=tmp_path / "changed",
+    )
+    changed_train = pd.read_parquet(
+        changed.output_directory / "data/scenarios/shuffle_baseline/train.parquet"
+    )
+    assert first_train["source_row_hash"].tolist() != changed_train["source_row_hash"].tolist()
+
+
+def test_prepare_scenario_transformations_use_train_statistics(tmp_path: Path) -> None:
+    dataset = _grid_property_config(
+        tmp_path / "grid.yaml",
+        pressures="[100000.0, 150000.0, 200000.0, 250000.0, 300000.0, 350000.0]",
+    )
+    run = generate_dataset(dataset, output_root=tmp_path / "runs")
+    config = _prep_config_with_scenarios(
+        tmp_path / "preparation.yaml",
+        """scenarios:
+  - name: shuffle_baseline
+    kind: shuffle
+    seed: 12345
+    partitions:
+      train: 0.5
+      test: 0.5
+    transformations:
+      - field: pressure
+        methods: [log10, standard]
+""",
+        categorical="[]",
+        derived="[]",
+    )
+
+    result = prepare_dataset(run.output_directory, config=config, output_root=tmp_path / "prepared")
+
+    train = pd.read_parquet(
+        result.output_directory / "data/scenarios/shuffle_baseline/train.parquet"
+    )
+    test = pd.read_parquet(result.output_directory / "data/scenarios/shuffle_baseline/test.parquet")
+    scenario = json.loads(
+        result.output_directory.joinpath("data/scenarios/shuffle_baseline/scenario.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    output_column = "pressure__log10__standard"
+    assert output_column in train.columns
+    assert output_column in test.columns
+    assert "pressure" in train.columns
+    assert train[output_column].mean() == pytest.approx(0.0)
+    assert scenario["transformations"][0]["fit_partition"] == "train"
+    assert scenario["transformations"][0]["steps"][1]["method"] == "standard"
+
+
+def test_prepare_holdout_scenarios_select_expected_rows(tmp_path: Path) -> None:
+    dataset = _grid_property_config(
+        tmp_path / "multi.yaml",
+        fluids="[Propane, Isopentane]",
+        pressures="[100000.0, 200000.0]",
+    )
+    run = generate_dataset(dataset, output_root=tmp_path / "runs")
+    config = _prep_config_with_scenarios(
+        tmp_path / "preparation.yaml",
+        """scenarios:
+  - name: leave_fluid_out
+    kind: leave_fluid_out
+    holdouts:
+      test: [Isopentane]
+    remainder: train
+  - name: pressure_range
+    kind: range_holdout
+    field: pressure
+    holdouts:
+      validation: {min: 100000.0, max: 100000.0}
+    remainder: train
+  - name: pressure_temperature_block
+    kind: coordinate_block
+    holdouts:
+      test:
+        pressure: {min: 200000.0, max: 200000.0}
+        temperature: {min: 300.0, max: 300.0}
+    remainder: train
+""",
+        categorical="[]",
+        derived="[]",
+    )
+
+    result = prepare_dataset(run.output_directory, config=config, output_root=tmp_path / "prepared")
+
+    fluid_test = pd.read_parquet(
+        result.output_directory / "data/scenarios/leave_fluid_out/test.parquet"
+    )
+    assert set(fluid_test["fluid"]) == {"Isopentane"}
+    pressure_validation = pd.read_parquet(
+        result.output_directory / "data/scenarios/pressure_range/validation.parquet"
+    )
+    assert set(pressure_validation["pressure"]) == {100000.0}
+    block_test = pd.read_parquet(
+        result.output_directory / "data/scenarios/pressure_temperature_block/test.parquet"
+    )
+    assert set(block_test["pressure"]) == {200000.0}
+    assert set(block_test["temperature"]) == {300.0}
+
+
 def test_prepare_sweep_source_order_and_partial_policy(tmp_path: Path) -> None:
     sweep = generate_model_sweep(
         _sweep_config(tmp_path / "sweep.yaml"),
@@ -409,6 +648,67 @@ def test_prepare_sweep_source_order_and_partial_policy(tmp_path: Path) -> None:
     )
     manifest = json.loads(partial.manifest_path.read_text(encoding="utf-8"))
     assert manifest["partial_sweep_source"] is True
+
+
+def test_prepare_model_holdout_requires_sweep_source(tmp_path: Path) -> None:
+    dataset = _grid_property_config(tmp_path / "dataset.yaml")
+    run = generate_dataset(dataset, output_root=tmp_path / "runs")
+    config = _prep_config_with_scenarios(
+        tmp_path / "preparation.yaml",
+        """scenarios:
+  - name: holdout_model
+    kind: model_holdout
+    holdouts:
+      test: [pr]
+    remainder: train
+""",
+        categorical="[]",
+        derived="[]",
+        auxiliary="[fluid, backend_model]",
+    )
+
+    with pytest.raises(ConfigError, match="model-sweep source"):
+        prepare_dataset(run.output_directory, config=config, output_root=tmp_path / "prepared")
+
+    sweep = generate_model_sweep(
+        _sweep_config(tmp_path / "sweep.yaml"),
+        output_root=tmp_path / "sweeps",
+    )
+    result = prepare_dataset(
+        sweep.output_directory,
+        config=config,
+        output_root=tmp_path / "sweep-prep",
+    )
+    model_test = pd.read_parquet(
+        result.output_directory / "data/scenarios/holdout_model/test.parquet"
+    )
+    assert set(model_test["backend_model"]) == {"pr"}
+
+
+def test_prepare_no_eligible_rows_skips_scenario_artifacts(tmp_path: Path) -> None:
+    dataset = _property_config(tmp_path / "invalid.yaml", properties="[surface_tension]")
+    run = generate_dataset(dataset, output_root=tmp_path / "runs")
+    config = _prep_config_with_scenarios(
+        tmp_path / "preparation.yaml",
+        """scenarios:
+  - name: no_rows
+    kind: unsplit
+""",
+        numeric="[temperature]",
+        derived="[]",
+        categorical="[]",
+        targets="[surface_tension]",
+        auxiliary="[]",
+    )
+
+    result = prepare_dataset(run.output_directory, config=config, output_root=tmp_path / "prepared")
+
+    assert result.status == "no_eligible_rows"
+    assert result.scenario_report_path is None
+    assert not (result.output_directory / "scenario_report.json").exists()
+    assert not (result.output_directory / "data/scenarios").exists()
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    assert manifest["scenarios"]["status"] == "skipped_no_eligible_rows"
 
 
 def test_preparation_execution_does_not_import_coolprop(

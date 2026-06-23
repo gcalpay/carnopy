@@ -58,6 +58,9 @@ class PreparationResult:
     manifest_path: Path
     diagnostics_path: Path
     dataset_card_path: Path
+    scenario_report_path: Path | None = None
+    scenario_count: int = 0
+    partition_count: int = 0
 
 
 @dataclass(frozen=True)

@@ -268,6 +268,8 @@ def prepare_command(
     if result.unsplit_path is not None:
         typer.echo(f"Prepared data: {result.unsplit_path}")
     typer.echo(f"Exclusions: {result.exclusions_path}")
+    if result.scenario_report_path is not None:
+        typer.echo(f"Scenario report: {result.scenario_report_path}")
     if result.status == "no_eligible_rows":
         raise typer.Exit(code=1)
 

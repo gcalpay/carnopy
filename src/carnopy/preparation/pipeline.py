@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import pandas as pd
@@ -25,6 +26,7 @@ from carnopy.preparation.reporting import (
     preparation_context_id,
 )
 from carnopy.preparation.rows import PreparedRows, build_prepared_rows, exclusions_frame
+from carnopy.preparation.scenarios import ScenarioOutput, build_scenario_outputs
 from carnopy.preparation.source import LoadedPreparationSource, load_preparation_source
 from carnopy.provenance import sha256_bytes
 from carnopy.results import PreparationResult, PreparationStatus
@@ -38,6 +40,18 @@ class BundleWriteResult:
     eligible_row_count: int
     excluded_row_count: int
     unsplit_path: Path | None
+    scenario_report_path: Path | None
+    scenario_count: int
+    partition_count: int
+
+
+@dataclass(frozen=True)
+class ScenarioWriteResult:
+    report_path: Path | None
+    artifact_names: list[str]
+    summary: dict[str, Any]
+    scenario_count: int
+    partition_count: int
 
 
 def prepare_dataset(
@@ -90,6 +104,13 @@ def prepare_dataset(
             manifest_path=layout.final_directory / "manifest.json",
             diagnostics_path=layout.final_directory / "diagnostics.json",
             dataset_card_path=layout.final_directory / "dataset_card.md",
+            scenario_report_path=(
+                None
+                if result.scenario_report_path is None
+                else layout.final_directory / "scenario_report.json"
+            ),
+            scenario_count=result.scenario_count,
+            partition_count=result.partition_count,
         )
     except Exception:
         # The staging directory is intentionally left in place only if cleanup itself fails;
@@ -112,7 +133,16 @@ def _write_preparation_bundle(
     data_directory = layout.staging_directory / "data"
     data_directory.mkdir()
     rows = build_prepared_rows(loaded.model, source_data, resolved)
-    unsplit_path = _write_data_artifacts(rows, data_directory)
+    prepared_frame = pd.DataFrame(rows.prepared_rows)
+    unsplit_path = _write_data_artifacts(rows, data_directory, prepared_frame)
+    scenario_result = _write_scenario_artifacts(
+        loaded=loaded,
+        source_data=source_data,
+        layout=layout,
+        data_directory=data_directory,
+        rows=rows,
+        prepared_frame=prepared_frame,
+    )
 
     write_bytes(layout.staging_directory / "preparation.original.yaml", loaded.raw_bytes)
     write_bytes(layout.staging_directory / "preparation.normalized.json", normalized_bytes)
@@ -129,6 +159,8 @@ def _write_preparation_bundle(
     ]
     if unsplit_path is not None:
         artifact_names.append("data/unsplit.parquet")
+    if scenario_result is not None:
+        artifact_names.extend(scenario_result.artifact_names)
     artifact_hashes = hash_artifacts(layout.staging_directory, artifact_names)
     manifest = build_manifest(
         loaded=loaded,
@@ -143,6 +175,7 @@ def _write_preparation_bundle(
         eligible_row_count=len(rows.prepared_rows),
         excluded_row_count=len(rows.exclusion_rows),
         artifact_hashes=artifact_hashes,
+        scenario_summary=None if scenario_result is None else scenario_result.summary,
     )
     write_json(layout.staging_directory / "manifest.json", manifest)
     diagnostics = build_diagnostics(source_data, rows.status, rows.exclusion_rows)
@@ -161,16 +194,125 @@ def _write_preparation_bundle(
         eligible_row_count=len(rows.prepared_rows),
         excluded_row_count=len(rows.exclusion_rows),
         unsplit_path=unsplit_path,
+        scenario_report_path=None if scenario_result is None else scenario_result.report_path,
+        scenario_count=0 if scenario_result is None else scenario_result.scenario_count,
+        partition_count=0 if scenario_result is None else scenario_result.partition_count,
     )
 
 
-def _write_data_artifacts(rows: PreparedRows, data_directory: Path) -> Path | None:
+def _write_data_artifacts(
+    rows: PreparedRows,
+    data_directory: Path,
+    prepared_frame: pd.DataFrame,
+) -> Path | None:
     unsplit_path: Path | None = None
     if rows.prepared_rows:
         unsplit_path = data_directory / "unsplit.parquet"
-        _write_parquet(pd.DataFrame(rows.prepared_rows), unsplit_path)
+        _write_parquet(prepared_frame, unsplit_path)
     _write_parquet(exclusions_frame(rows.exclusion_rows), data_directory / "exclusions.parquet")
     return unsplit_path
+
+
+def _write_scenario_artifacts(
+    *,
+    loaded: LoadedPreparationConfig,
+    source_data: LoadedPreparationSource,
+    layout: PreparationLayout,
+    data_directory: Path,
+    rows: PreparedRows,
+    prepared_frame: pd.DataFrame,
+) -> ScenarioWriteResult | None:
+    if not loaded.model.scenarios:
+        return None
+    if not rows.prepared_rows:
+        return ScenarioWriteResult(
+            report_path=None,
+            artifact_names=[],
+            summary={
+                "scenario_count": 0,
+                "partition_count": 0,
+                "status": "skipped_no_eligible_rows",
+                "report": None,
+                "scenarios": [],
+            },
+            scenario_count=0,
+            partition_count=0,
+        )
+    scenario_root = data_directory / "scenarios"
+    scenario_root.mkdir()
+    outputs = build_scenario_outputs(
+        loaded.model.scenarios,
+        prepared_frame,
+        source_kind=source_data.source_kind,
+    )
+    artifact_names: list[str] = []
+    report_scenarios: list[dict[str, Any]] = []
+    for output in outputs:
+        scenario_directory = scenario_root / output.name
+        scenario_directory.mkdir()
+        partition_artifacts = _write_scenario_partitions(output, scenario_directory)
+        partition_hashes = hash_artifacts(layout.staging_directory, partition_artifacts)
+        scenario_metadata = {
+            **output.metadata,
+            "partition_artifact_hashes": partition_hashes,
+        }
+        write_json(scenario_directory / "scenario.json", scenario_metadata)
+        scenario_json = f"data/scenarios/{output.name}/scenario.json"
+        artifact_names.extend([*partition_artifacts, scenario_json])
+        report_scenarios.append(
+            {
+                "name": output.name,
+                "kind": output.kind,
+                "partition_counts": output.metadata["partition_counts"],
+                "transformations": output.metadata["transformations"],
+                "partition_artifacts": partition_artifacts,
+                "partition_artifact_hashes": partition_hashes,
+                "scenario_artifact": scenario_json,
+            }
+        )
+    scenario_artifact_hashes = hash_artifacts(layout.staging_directory, artifact_names)
+    report = {
+        "scenario_report_schema_version": 1,
+        "scenario_count": len(outputs),
+        "partition_count": sum(len(output.partitions) for output in outputs),
+        "scenarios": [
+            {
+                **scenario,
+                "artifact_hashes": {
+                    name: scenario_artifact_hashes[name]
+                    for name in [*scenario["partition_artifacts"], scenario["scenario_artifact"]]
+                },
+            }
+            for scenario in report_scenarios
+        ],
+    }
+    write_json(layout.staging_directory / "scenario_report.json", report)
+    artifact_names.append("scenario_report.json")
+    return ScenarioWriteResult(
+        report_path=layout.staging_directory / "scenario_report.json",
+        artifact_names=artifact_names,
+        summary={
+            "scenario_count": report["scenario_count"],
+            "partition_count": report["partition_count"],
+            "status": "completed",
+            "report": "scenario_report.json",
+            "scenarios": report["scenarios"],
+        },
+        scenario_count=len(outputs),
+        partition_count=sum(len(output.partitions) for output in outputs),
+    )
+
+
+def _write_scenario_partitions(
+    output: ScenarioOutput,
+    scenario_directory: Path,
+) -> list[str]:
+    artifacts: list[str] = []
+    for partition, frame in output.partitions.items():
+        path = scenario_directory / f"{partition}.parquet"
+        _write_parquet(frame, path)
+        artifacts.append(f"data/scenarios/{output.name}/{partition}.parquet")
+    return artifacts
 
 
 def _write_parquet(frame: pd.DataFrame, path: Path) -> None:
