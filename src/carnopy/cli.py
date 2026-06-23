@@ -24,6 +24,7 @@ class ConfigModeCli(str, Enum):
     property_table = "property_table"
     saturation_table = "saturation_table"
     vapor_mass_fraction_table = "vapor_mass_fraction_table"
+    model_sweep = "model_sweep"
 
 
 class InspectFormatCli(str, Enum):
@@ -169,6 +170,51 @@ def generate_command(
         "completed_with_failures",
         "failed",
     }:
+        raise typer.Exit(code=1)
+
+
+@app.command("sweep", short_help="Generate a model sweep.")
+def sweep_command(
+    config: Annotated[
+        Path,
+        typer.Argument(exists=True, dir_okay=False, readable=True),
+    ],
+    output_root: Annotated[
+        Path,
+        typer.Option(
+            "--out",
+            file_okay=False,
+            help="Parent directory for immutable model-sweep bundles.",
+        ),
+    ] = Path("outputs"),
+) -> None:
+    """Generate child runs for multiple backend models and compare emitted values."""
+    from carnopy.api import generate_model_sweep
+    from carnopy.domain.failures import CarnopyError, ConfigError
+
+    try:
+        result = generate_model_sweep(config, output_root=output_root)
+    except ConfigError as exc:
+        typer.echo(f"Sweep validation failed: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    except CarnopyError as exc:
+        typer.echo(f"Sweep failed: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"Sweep status: {result.sweep_status}")
+    typer.echo(f"Mode: {result.mode}")
+    typer.echo(f"Models: {', '.join(result.models)}")
+    typer.echo(f"Reference model: {result.reference_model}")
+    typer.echo(f"Output directory: {result.output_directory}")
+    typer.echo(f"Child runs: {len(result.child_runs)}")
+    if result.values_path is not None:
+        typer.echo(f"Comparison values: {result.values_path}")
+    if result.deltas_path is not None:
+        typer.echo(f"Comparison deltas: {result.deltas_path}")
+    if result.comparison_plot_directory is not None:
+        typer.echo(f"Comparison plots: {result.comparison_plot_directory}")
+    if result.failure_message is not None:
+        typer.echo(f"Failure: {result.failure_message}", err=True)
+    if result.sweep_status != "completed":
         raise typer.Exit(code=1)
 
 

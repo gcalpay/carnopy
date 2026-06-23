@@ -5,7 +5,7 @@ from typing import get_args
 
 import pytest
 
-from carnopy.config.io import load_config_file
+from carnopy.config.io import load_config_file, load_sweep_config_file
 from carnopy.domain.properties import PROPERTY_REGISTRY
 from carnopy.sampling.generate import materialize_sampler
 from carnopy.templates import (
@@ -24,13 +24,20 @@ def test_packaged_templates_match_repository_examples_and_validate() -> None:
         "property_table": "property_table_example.yaml",
         "saturation_table": "saturation_table_example.yaml",
         "vapor_mass_fraction_table": "vapor_mass_fraction_table_example.yaml",
+        "model_sweep": "model_sweep_example.yaml",
     }
     for mode, filename in TEMPLATE_FILENAMES.items():
         packaged = template_text(mode)
         example = (root / "configs" / example_names[mode]).read_text(encoding="utf-8")
         assert packaged == example
         assert filename.endswith(".yaml")
-        assert load_config_file(root / "configs" / example_names[mode]).model.mode == mode
+        if mode == "model_sweep":
+            assert (
+                load_sweep_config_file(root / "configs" / example_names[mode]).model.document_type
+                == "model_sweep"
+            )
+        else:
+            assert load_config_file(root / "configs" / example_names[mode]).model.mode == mode
 
     property_model = load_config_file(root / "configs" / "property_table_example.yaml").model
     pressure = materialize_sampler(property_model.grid["pressure"])
@@ -91,7 +98,10 @@ def test_full_templates_are_valid_and_append_one_authoritative_reference(
     output = tmp_path / f"{mode}.yaml"
     initialize_config(mode, output, full=True)
     assert output.read_text(encoding="utf-8") == full
-    assert load_config_file(output).model.mode == mode
+    if mode == "model_sweep":
+        assert load_sweep_config_file(output).model.document_type == "model_sweep"
+    else:
+        assert load_config_file(output).model.mode == mode
 
 
 def test_full_reference_tracks_public_registries_and_enums() -> None:

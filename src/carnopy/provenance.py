@@ -9,7 +9,7 @@ from pathlib import Path
 from carnopy._version import __version__
 
 CONFIG_SCHEMA_VERSION = 2
-DATASET_SCHEMA_VERSION = 1
+DATASET_SCHEMA_VERSION = 2
 METADATA_SCHEMA_VERSION = 1
 REPORT_SCHEMA_VERSION = 1
 REFERENCE_STATE_POLICY = "coolprop_DEF"

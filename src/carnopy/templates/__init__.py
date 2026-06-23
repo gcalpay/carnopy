@@ -10,12 +10,14 @@ ConfigTemplateMode = Literal[
     "property_table",
     "saturation_table",
     "vapor_mass_fraction_table",
+    "model_sweep",
 ]
 
 TEMPLATE_FILENAMES: Final[dict[ConfigTemplateMode, str]] = {
     "property_table": "property_table.yaml",
     "saturation_table": "saturation_table.yaml",
     "vapor_mass_fraction_table": "vapor_mass_fraction_table.yaml",
+    "model_sweep": "model_sweep.yaml",
 }
 FULL_REFERENCE_FILENAME: Final = "full_reference.yaml"
 

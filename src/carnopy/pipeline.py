@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import cast
 from uuid import uuid4
 
 import pandas as pd
@@ -101,6 +102,9 @@ def run_generation(
     loaded: LoadedConfig,
     output_root: Path,
     figures_root: Path = Path("figures"),
+    *,
+    public_output_root: Path | None = None,
+    add_state_keys: bool = False,
 ) -> RunResult:
     backend = CoolPropBackend(model=loaded.model.backend.model)
     validated = validate_loaded_config(loaded, backend)
@@ -121,11 +125,14 @@ def run_generation(
         mode=normalized.mode,
         run_id=run_id,
         created_at=created_at,
+        public_output_root=public_output_root,
     )
     if validated.visualization is not None:
-        planned_figure_directory = figures_root.expanduser().resolve() / layout.final_directory.name
+        planned_figure_directory = (
+            figures_root.expanduser().resolve() / layout.public_final_directory.name
+        )
         if (
-            planned_figure_directory == layout.final_directory.resolve()
+            planned_figure_directory == layout.public_final_directory.resolve()
             or planned_figure_directory.exists()
         ):
             layout.staging_directory.rmdir()
@@ -139,6 +146,8 @@ def run_generation(
     rows = _generate_rows(normalized, backend, run_id)
     columns = dataset_columns(normalized)
     frame = pd.DataFrame(rows, columns=columns)
+    if add_state_keys:
+        frame = _with_state_key_columns(frame, normalized)
     run_status = determine_run_status(frame)
     unit_map = dataset_unit_map(normalized)
     input_columns = _input_columns(normalized.mode)
@@ -168,7 +177,7 @@ def run_generation(
         frame=frame,
         run_id=run_id,
         run_status=run_status,
-        output_directory=layout.final_directory,
+        output_directory=layout.public_final_directory,
         input_columns=input_columns,
         backend=backend.name,
         backend_model=backend.model,
@@ -192,7 +201,7 @@ def run_generation(
         run_status=run_status,
         created_at_utc=created_at.isoformat().replace("+00:00", "Z"),
         backend_version=backend.version,
-        output_directory=layout.final_directory,
+        output_directory=layout.public_final_directory,
         output_files=output_files,
         artifact_hashes=artifact_hashes,
         unit_map=unit_map,
@@ -219,7 +228,7 @@ def run_generation(
         backend=backend.name,
         backend_model=backend.model,
         backend_version=backend.version,
-        output_directory=layout.final_directory,
+        output_directory=layout.public_final_directory,
         row_count=len(frame),
         valid_row_count=int(frame["valid"].sum()),
         invalid_row_count=int((~frame["valid"]).sum()),
@@ -255,3 +264,92 @@ def _input_columns(mode: str) -> list[str]:
             "saturation_endpoint",
         ]
     return ["fluid", "temperature_K", "pressure_Pa", "vapor_mass_fraction"]
+
+
+def _with_state_key_columns(
+    frame: pd.DataFrame,
+    config: NormalizedConfig,
+) -> pd.DataFrame:
+    selected = frame.copy()
+    selected["state_key_version"] = 1
+    selected["state_key"] = [_state_key(config, row) for _, row in selected.iterrows()]
+    if config.mode == "property_table":
+        selected["state_key_temperature_index"] = [
+            _sample_index(config.grid["temperature"], cast(float, row["temperature_K"]))
+            for _, row in selected.iterrows()
+        ]
+        selected["state_key_pressure_index"] = [
+            _sample_index(config.grid["pressure"], cast(float, row["pressure_Pa"]))
+            for _, row in selected.iterrows()
+        ]
+    elif config.mode == "saturation_table":
+        axis = _saturation_axis(config)
+        column = "temperature_K" if axis == "temperature" else "pressure_Pa"
+        selected["state_key_saturation_coordinate_name"] = axis
+        selected["state_key_saturation_coordinate_index"] = [
+            _sample_index(config.grid[axis], cast(float, row[column]))
+            for _, row in selected.iterrows()
+        ]
+        selected["state_key_saturation_endpoint"] = selected["saturation_endpoint"]
+    else:
+        axis = _saturation_axis(config)
+        column = "temperature_K" if axis == "temperature" else "pressure_Pa"
+        selected["state_key_saturation_coordinate_name"] = axis
+        selected["state_key_saturation_coordinate_index"] = [
+            _sample_index(config.grid[axis], cast(float, row[column]))
+            for _, row in selected.iterrows()
+        ]
+        selected["state_key_vapor_mass_fraction_index"] = [
+            _sample_index(
+                config.grid["vapor_mass_fraction"],
+                cast(float, row["vapor_mass_fraction"]),
+            )
+            for _, row in selected.iterrows()
+        ]
+    return cast(pd.DataFrame, selected)
+
+
+def _state_key(config: NormalizedConfig, row: pd.Series) -> str:
+    fluid = str(row["fluid"])
+    if config.mode == "property_table":
+        t_index = _sample_index(config.grid["temperature"], cast(float, row["temperature_K"]))
+        p_index = _sample_index(config.grid["pressure"], cast(float, row["pressure_Pa"]))
+        return f"v1|property_table|fluid={fluid}|temperature={t_index}|pressure={p_index}"
+    if config.mode == "saturation_table":
+        axis = _saturation_axis(config)
+        column = "temperature_K" if axis == "temperature" else "pressure_Pa"
+        index = _sample_index(config.grid[axis], cast(float, row[column]))
+        endpoint = str(row["saturation_endpoint"])
+        return f"v1|saturation_table|fluid={fluid}|{axis}={index}|endpoint={endpoint}"
+    axis = _saturation_axis(config)
+    column = "temperature_K" if axis == "temperature" else "pressure_Pa"
+    coordinate_index = _sample_index(config.grid[axis], cast(float, row[column]))
+    fraction_index = _sample_index(
+        config.grid["vapor_mass_fraction"],
+        cast(float, row["vapor_mass_fraction"]),
+    )
+    return (
+        "v1|vapor_mass_fraction_table|"
+        f"fluid={fluid}|{axis}={coordinate_index}|vapor_mass_fraction={fraction_index}"
+    )
+
+
+def _saturation_axis(config: NormalizedConfig) -> str:
+    axes = [axis for axis in ("temperature", "pressure") if axis in config.grid]
+    if len(axes) != 1:
+        raise OutputError("could not determine sweep saturation coordinate")
+    return axes[0]
+
+
+def _sample_index(values: list[float], value: float) -> int:
+    key = _stable_float_key(value)
+    for index, candidate in enumerate(values):
+        if _stable_float_key(candidate) == key:
+            return index
+    raise OutputError(f"could not map emitted coordinate {value!r} to a normalized sample")
+
+
+def _stable_float_key(value: float) -> str:
+    if value == 0.0:
+        return "0"
+    return format(float(value), ".15g")

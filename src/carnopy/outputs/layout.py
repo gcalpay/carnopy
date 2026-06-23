@@ -19,6 +19,7 @@ class RunLayout:
     output_root: Path
     staging_directory: Path
     final_directory: Path
+    public_final_directory: Path
 
 
 def create_run_layout(
@@ -27,6 +28,7 @@ def create_run_layout(
     mode: str,
     run_id: str,
     created_at: datetime,
+    public_output_root: Path | None = None,
 ) -> RunLayout:
     try:
         output_root.mkdir(parents=True, exist_ok=True)
@@ -44,13 +46,15 @@ def create_run_layout(
     name = f"{timestamp}_{mode_slug}_{run_prefix}"
     final_directory = output_root / name
     staging_directory = output_root / f".{name}.staging"
+    selected_public_root = public_output_root if public_output_root is not None else output_root
+    public_final_directory = selected_public_root / name
     if final_directory.exists() or staging_directory.exists():
         raise OutputError(f"immutable run path already exists: {final_directory}")
     try:
         staging_directory.mkdir()
     except OSError as exc:
         raise OutputError(f"could not create staging directory: {exc}") from exc
-    return RunLayout(output_root, staging_directory, final_directory)
+    return RunLayout(output_root, staging_directory, final_directory, public_final_directory)
 
 
 def finalize_run_layout(layout: RunLayout) -> None:

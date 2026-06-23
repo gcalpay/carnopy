@@ -1,0 +1,46 @@
+# Carnopy model sweep starter configuration.
+#
+# Generate one child dataset per selected CoolProp model, then compare emitted
+# columns without additional backend calls.
+
+schema_version: 2
+document_type: model_sweep
+
+backend:
+  name: coolprop
+  models: [heos, pr, srk]
+  reference_model: heos
+
+mode: property_table
+fluids: [Propane]
+
+grid:
+  temperature:
+    kind: linspace
+    start: 280
+    stop: 340
+    num: 5
+    unit: K
+  pressure:
+    kind: linspace
+    start: 1
+    stop: 5
+    num: 5
+    unit: bar
+
+properties:
+  - mass_density
+
+outputs:
+  dataset_formats: [csv, parquet]
+
+comparison_plots:
+  format: png
+  plots:
+    - name: propane_density_temperature_by_pressure
+      kind: property_comparison
+      fluid: Propane
+      property: mass_density
+      x: temperature
+      group_by: pressure
+      models: [heos, pr, srk]

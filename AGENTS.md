@@ -99,6 +99,7 @@ Milestone 1 supports:
 - optional Matplotlib property curves, sampled heatmaps, x-y plots, and p-v/T-s
   diagrams;
 - configured post-generation visualization.
+- model-sweep bundles comparing emitted values from multiple CoolProp models.
 
 Out of scope:
 
@@ -180,6 +181,7 @@ carnopy properties
 carnopy fluids [--model heos|pr|srk]
 carnopy validate CONFIG.yaml
 carnopy generate CONFIG.yaml [--out PATH] [--figures-out PATH]
+carnopy sweep SWEEP.yaml [--out PATH]
 carnopy inspect SOURCE
 carnopy plot SOURCE ...
 ```
@@ -197,6 +199,7 @@ The supported Python API intentionally remains narrow:
 - `load_config`;
 - `validate_config`;
 - `generate_dataset`;
+- `generate_model_sweep`;
 - public configuration and result models;
 - explicit visualization functions.
 
@@ -231,6 +234,23 @@ state-dependent failures as row diagnostics.
 Optional `outputs:` and `visualization:` sections are allowed. Dataset format
 selection affects artifact-generation context but not scientific `spec_id`.
 Visualization must not affect scientific or artifact-generation identity.
+
+Model-sweep configurations use:
+
+```yaml
+schema_version: 2
+document_type: model_sweep
+backend:
+  name: coolprop
+  models: [heos, pr, srk]
+  reference_model: heos
+```
+
+Sweeps produce child dataset runs and comparison Parquet files. Comparison
+alignment uses deterministic state keys from normalized sample indices, not
+backend-computed floating-point coordinates. Comparison plots are explicit
+sweep-level `property_comparison` requests under `comparison_plots:`. Do not
+reuse dataset `visualization:` inside sweep configs.
 
 Dataset formats:
 

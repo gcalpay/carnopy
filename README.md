@@ -134,6 +134,7 @@ Available modes:
 property_table
 saturation_table
 vapor_mass_fraction_table
+model_sweep
 ```
 
 Discover backend fluids and semantic properties:
@@ -264,6 +265,66 @@ Reference-dependent enthalpy, entropy, and internal energy can differ between
 models even after each model-qualified fluid is reset to CoolProp `DEF`.
 Absolute values must not be compared across model/reference conventions without
 an explicit scientific basis.
+
+### Model sweeps
+
+Model sweeps compare emitted values from several CoolProp models without
+performing extra thermodynamic evaluations during comparison:
+
+```bash
+carnopy init model_sweep sweep.yaml
+carnopy sweep sweep.yaml
+```
+
+The sweep document type is separate from dataset generation:
+
+```yaml
+schema_version: 2
+document_type: model_sweep
+backend:
+  name: coolprop
+  models: [heos, pr, srk]
+  reference_model: heos
+mode: property_table
+fluids: [Propane]
+grid:
+  temperature: {kind: linspace, start: 280, stop: 340, num: 5, unit: K}
+  pressure: {kind: linspace, start: 1, stop: 5, num: 5, unit: bar}
+properties: [mass_density]
+```
+
+Each selected model creates a normal immutable child run under the sweep bundle.
+Comparison artifacts are written as tidy Parquet tables:
+
+```text
+comparison/values.parquet
+comparison/deltas.parquet
+```
+
+State alignment uses deterministic keys derived from normalized sample indices,
+not backend-computed floating-point saturation coordinates. The selected
+reference model is a comparison baseline, not experimental truth.
+Reference-dependent properties such as enthalpy, entropy, and internal energy
+are excluded from delta metrics.
+
+Optional sweep-level comparison plots are explicit and separate from child-run
+visualization:
+
+```yaml
+comparison_plots:
+  format: png
+  plots:
+    - name: propane_density_temperature_by_pressure
+      kind: property_comparison
+      fluid: Propane
+      property: mass_density
+      x: temperature
+      group_by: pressure
+      models: [heos, pr, srk]
+```
+
+Stage 4 comparison plots are one-fluid, one-property, one-x-axis side-by-side
+model comparisons. Multiple fluids require multiple plot entries.
 
 ### Modes
 
@@ -843,9 +904,9 @@ efficiencies, critical-point and operating limits, and minimum turbine-exhaust
 quality. Saturated liquid alone is not a pump cavitation margin; NPSH may be
 reported only when sufficient hydraulic-system and pump data are supplied.
 
-Deferred work includes TFC screening, mixtures, Peng–Robinson and SRK models,
-3D visualization, and a PySide6 desktop interface. These capabilities will use
-the same core Python API rather than duplicate scientific logic.
+Deferred work includes TFC screening, mixtures, 3D visualization, and a PySide6
+desktop interface. These capabilities will use the same core Python API rather
+than duplicate scientific logic.
 
 Use [GitHub issues](https://github.com/gcalpay/carnopy/issues) for bug reports,
 scientific discrepancies, and focused feature requests. See

@@ -6,11 +6,11 @@ from typing import TYPE_CHECKING, Any
 from carnopy._version import __version__
 
 if TYPE_CHECKING:
-    from carnopy.api import generate_dataset, load_config, validate_config
+    from carnopy.api import generate_dataset, generate_model_sweep, load_config, validate_config
     from carnopy.config.models import BackendConfig, CarnopyConfig, CoolPropModel, NormalizedConfig
     from carnopy.config.outputs import OutputConfig
     from carnopy.config.visualization import VisualizationConfig, VisualizationPlotConfig
-    from carnopy.results import RunResult, ValidationResult, VisualizationSummary
+    from carnopy.results import RunResult, SweepResult, ValidationResult, VisualizationSummary
 
 __all__ = [
     "BackendConfig",
@@ -19,12 +19,14 @@ __all__ = [
     "NormalizedConfig",
     "OutputConfig",
     "RunResult",
+    "SweepResult",
     "ValidationResult",
     "VisualizationConfig",
     "VisualizationPlotConfig",
     "VisualizationSummary",
     "__version__",
     "generate_dataset",
+    "generate_model_sweep",
     "load_config",
     "validate_config",
 ]
@@ -36,6 +38,7 @@ _LAZY_EXPORTS = {
     "NormalizedConfig": ("carnopy.config.models", "NormalizedConfig"),
     "OutputConfig": ("carnopy.config.outputs", "OutputConfig"),
     "RunResult": ("carnopy.results", "RunResult"),
+    "SweepResult": ("carnopy.results", "SweepResult"),
     "ValidationResult": ("carnopy.results", "ValidationResult"),
     "VisualizationConfig": ("carnopy.config.visualization", "VisualizationConfig"),
     "VisualizationPlotConfig": (
@@ -44,6 +47,7 @@ _LAZY_EXPORTS = {
     ),
     "VisualizationSummary": ("carnopy.results", "VisualizationSummary"),
     "generate_dataset": ("carnopy.api", "generate_dataset"),
+    "generate_model_sweep": ("carnopy.api", "generate_model_sweep"),
     "load_config": ("carnopy.api", "load_config"),
     "validate_config": ("carnopy.api", "validate_config"),
 }

@@ -19,6 +19,13 @@ class BackendConfig(BaseModel):
     name: Literal["coolprop"]
     model: CoolPropModel
 
+    @field_validator("model", mode="before")
+    @classmethod
+    def canonical_model(cls, model: object) -> str:
+        if not isinstance(model, str):
+            raise ValueError("backend model must be a string")
+        return model.strip().lower()
+
 
 class CarnopyConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)

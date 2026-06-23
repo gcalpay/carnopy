@@ -55,3 +55,25 @@ class RunResult:
     output_request_id: str
     dataset_formats: tuple[str, ...]
     visualization: VisualizationSummary | None = None
+
+
+SweepStatus = Literal["completed", "incomplete", "failed"]
+
+
+@dataclass(frozen=True)
+class SweepResult:
+    sweep_id: str
+    sweep_run_id: str
+    sweep_status: SweepStatus
+    output_directory: Path
+    backend: str
+    backend_version: str
+    models: tuple[str, ...]
+    reference_model: str
+    mode: str
+    child_runs: tuple[RunResult, ...]
+    values_path: Path | None
+    deltas_path: Path | None
+    comparison_plot_directory: Path | None
+    comparison_report_path: Path | None
+    failure_message: str | None = None
