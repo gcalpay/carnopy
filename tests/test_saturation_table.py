@@ -25,8 +25,11 @@ def test_pressure_saturation_is_supported(tmp_path: Path) -> None:
     path = tmp_path / "pressure.yaml"
     path.write_text(
         """
-schema_version: 1
-backend: coolprop
+schema_version: 2
+document_type: dataset
+backend:
+  name: coolprop
+  model: heos
 mode: saturation_table
 fluids: [Propane]
 grid:

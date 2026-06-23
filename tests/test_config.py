@@ -9,20 +9,46 @@ from carnopy.config.io import load_config_file
 from carnopy.domain.failures import ConfigError
 
 
+def test_schema_version_one_fails_with_concise_migration_message(tmp_path: Path) -> None:
+    path = tmp_path / "schema-v1.yaml"
+    path.write_text(
+        """
+schema_version: 1
+backend: coolprop
+mode: property_table
+fluids: [Propane]
+grid:
+  temperature: {kind: explicit, values: [300], unit: K}
+  pressure: {kind: explicit, values: [1], unit: bar}
+properties: [mass_density]
+""",
+        encoding="utf-8",
+    )
+    with pytest.raises(ConfigError, match="schema version 1 is no longer supported") as error:
+        validate_config(path)
+    assert "document_type: dataset" in str(error.value)
+    assert "model: heos" in str(error.value)
+
+
 def test_valid_example_config(property_config_path: Path) -> None:
     result = validate_config(property_config_path)
     assert result.projected_rows == 2
     assert result.canonical_fluids == ("n-Propane",)
     assert result.dataset_formats == ("csv", "parquet")
     assert result.output_request_id.startswith("out-")
+    assert result.backend == "coolprop"
+    assert result.backend_model == "heos"
 
 
 def test_invalid_vapor_mass_fraction_fails(tmp_path: Path) -> None:
     path = tmp_path / "invalid.yaml"
     path.write_text(
         """
-schema_version: 1
-backend: coolprop
+schema_version: 2
+document_type: dataset
+backend:
+  name: coolprop
+  model: heos
 mode: vapor_mass_fraction_table
 fluids: [Propane]
 grid:
@@ -40,8 +66,11 @@ def test_unsupported_property_fails_before_backend_calls(tmp_path: Path) -> None
     path = tmp_path / "invalid.yaml"
     path.write_text(
         """
-schema_version: 1
-backend: coolprop
+schema_version: 2
+document_type: dataset
+backend:
+  name: coolprop
+  model: heos
 mode: property_table
 fluids: [Propane]
 grid:
@@ -59,8 +88,11 @@ def test_expanded_row_limit_is_enforced(tmp_path: Path) -> None:
     path = tmp_path / "large.yaml"
     path.write_text(
         """
-schema_version: 1
-backend: coolprop
+schema_version: 2
+document_type: dataset
+backend:
+  name: coolprop
+  model: heos
 mode: property_table
 fluids: [Propane]
 grid:
@@ -78,8 +110,11 @@ def test_dataset_formats_are_canonical_and_validated(tmp_path: Path) -> None:
     path = tmp_path / "parquet.yaml"
     path.write_text(
         """
-schema_version: 1
-backend: coolprop
+schema_version: 2
+document_type: dataset
+backend:
+  name: coolprop
+  model: heos
 mode: property_table
 fluids: [Propane]
 grid:

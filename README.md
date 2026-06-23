@@ -139,7 +139,8 @@ vapor_mass_fraction_table
 Discover backend fluids and semantic properties:
 
 ```bash
-carnopy fluids
+carnopy fluids                 # HEOS default
+carnopy fluids --model pr      # model-specific availability
 carnopy properties
 ```
 
@@ -205,11 +206,15 @@ carnopy plot --help
 
 ## Configuration
 
-Schema version 1 requires:
+Schema version 2 requires an explicit dataset document type and CoolProp
+thermodynamic model:
 
 ```yaml
-schema_version: 1
-backend: coolprop
+schema_version: 2
+document_type: dataset
+backend:
+  name: coolprop
+  model: heos
 mode: property_table
 fluids: [Propane]
 
@@ -235,6 +240,30 @@ outputs:
   # Omit this section to keep the same default.
   dataset_formats: [csv, parquet]
 ```
+
+Schema version 1 configuration files are intentionally rejected with a concise
+migration message. Existing generated run directories remain readable.
+
+### CoolProp models
+
+Supported model names:
+
+| Model | Meaning | Current capability notes |
+|---|---|---|
+| `heos` | CoolProp Helmholtz-energy equations and associated ancillary/transport models | Supports the full current Carnopy property registry, subject to fluid/state limitations. |
+| `pr` | Peng-Robinson cubic equation of state | No viscosity, thermal conductivity, Prandtl number, surface tension, or usable triple-point temperature. |
+| `srk` | Soave-Redlich-Kwong cubic equation of state | No viscosity, thermal conductivity, Prandtl number, surface tension, or usable triple-point temperature. |
+
+Model selection is part of the executable scientific specification and changes
+`spec_id`. The selected model is recorded in every generated row, metadata,
+reports, and normalized configuration. HEOS is the starter default, not
+experimental truth. PR and SRK are alternative model assumptions, not
+accuracy rankings.
+
+Reference-dependent enthalpy, entropy, and internal energy can differ between
+models even after each model-qualified fluid is reset to CoolProp `DEF`.
+Absolute values must not be compared across model/reference conventions without
+an explicit scientific basis.
 
 ### Modes
 
@@ -330,7 +359,9 @@ promise that every fluid, state, phase, and requested property will be valid.
 
 ## Properties
 
-Use `carnopy properties` for the authoritative installed registry.
+Use `carnopy properties` for the authoritative installed registry and its
+HEOS/PR/SRK support columns. Properties globally unsupported by a selected
+model fail configuration validation before row generation.
 
 | Semantic name | Dataset column | Classification |
 |---|---|---|
@@ -651,9 +682,10 @@ Identity layers:
 
 Configuration provenance includes SHA-256 hashes of exact source YAML and
 canonical materialized SI configuration bytes. Metadata records software
-versions, reference-state policy, canonical fluids and properties, sampling,
-failure counts, units, fluid constants, and artifact hashes. Carnopy does not
-store the host source-config path.
+versions, backend model, model-qualified reference-state targets, canonical
+fluids and properties, model capabilities, sampling, failure counts, units,
+fluid constants, and artifact hashes. Carnopy does not store the host
+source-config path.
 
 Parquet schema metadata includes the dataset schema version and unit mapping.
 Figures are derived artifacts outside the run and are not added to immutable
@@ -708,6 +740,8 @@ exported. Modifying it does not update the image or provenance sidecar.
 ## Scientific limitations
 
 - CoolProp is the only backend in Milestone 1.
+- CoolProp model selection supports HEOS, Peng-Robinson, and
+  Soave-Redlich-Kwong.
 - Pure fluids only; mixtures are deferred.
 - Generated data is backend output, not experimental evidence.
 - All backend calls and generated numeric columns use SI.
@@ -723,7 +757,10 @@ exported. Modifying it does not update the image or provenance sidecar.
   published by the NIST Chemistry WebBook. These checks do not establish
   universal experimental accuracy.
 - Absolute reference-dependent values are not directly comparable across
-  different reference conventions.
+  different reference conventions or model/reference combinations.
+- PR/SRK transport properties, surface tension, and triple-point temperature
+  are rejected during validation because CoolProp 7.2.0 does not provide the
+  required model capability.
 - Visualization reads emitted columns only and is not a second property
   evaluation layer.
 - ORC generation, additional backends, ML training, GUI, web services,

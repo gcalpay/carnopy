@@ -70,8 +70,11 @@ def test_csv_only_run_is_a_verified_plot_source(tmp_path: Path) -> None:
     config = tmp_path / "csv-only.yaml"
     config.write_text(
         """
-schema_version: 1
-backend: coolprop
+schema_version: 2
+document_type: dataset
+backend:
+  name: coolprop
+  model: heos
 mode: property_table
 fluids: [Propane]
 grid:

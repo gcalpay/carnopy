@@ -7,13 +7,15 @@ from carnopy._version import __version__
 
 if TYPE_CHECKING:
     from carnopy.api import generate_dataset, load_config, validate_config
-    from carnopy.config.models import CarnopyConfig, NormalizedConfig
+    from carnopy.config.models import BackendConfig, CarnopyConfig, CoolPropModel, NormalizedConfig
     from carnopy.config.outputs import OutputConfig
     from carnopy.config.visualization import VisualizationConfig, VisualizationPlotConfig
     from carnopy.results import RunResult, ValidationResult, VisualizationSummary
 
 __all__ = [
+    "BackendConfig",
     "CarnopyConfig",
+    "CoolPropModel",
     "NormalizedConfig",
     "OutputConfig",
     "RunResult",
@@ -28,7 +30,9 @@ __all__ = [
 ]
 
 _LAZY_EXPORTS = {
+    "BackendConfig": ("carnopy.config.models", "BackendConfig"),
     "CarnopyConfig": ("carnopy.config.models", "CarnopyConfig"),
+    "CoolPropModel": ("carnopy.config.models", "CoolPropModel"),
     "NormalizedConfig": ("carnopy.config.models", "NormalizedConfig"),
     "OutputConfig": ("carnopy.config.outputs", "OutputConfig"),
     "RunResult": ("carnopy.results", "RunResult"),

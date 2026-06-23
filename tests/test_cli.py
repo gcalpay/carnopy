@@ -25,8 +25,32 @@ MISSING_VISUALIZATION_MESSAGE = (
 def test_validate_reports_row_validity_is_deferred(property_config_path: Path) -> None:
     result = runner.invoke(app, ["validate", str(property_config_path)])
     assert result.exit_code == 0
+    assert "Backend: coolprop" in result.stdout
+    assert "(model: heos)" in result.stdout
     assert "Thermodynamic row validity will be determined during generation" in result.stdout
     assert "Dataset formats: csv, parquet" in result.stdout
+
+
+def test_properties_reports_model_capabilities() -> None:
+    result = runner.invoke(app, ["properties"])
+    assert result.exit_code == 0
+    assert "MODELS" in result.stdout
+    assert "mass_density" in result.stdout
+    assert "heos,pr,srk" in result.stdout
+    dynamic_line = next(
+        line for line in result.stdout.splitlines() if line.startswith("dynamic_viscosity")
+    )
+    assert "no        heos         -" in dynamic_line
+    assert "heos,pr,srk" not in dynamic_line
+
+
+def test_fluids_can_be_listed_for_a_selected_model() -> None:
+    result = runner.invoke(app, ["fluids", "--model", "pr"])
+    assert result.exit_code == 0
+    assert "CoolProp" in result.stdout
+    assert "(model: pr)" in result.stdout
+    assert "n-Propane:" in result.stdout
+    assert "\nAir:" not in result.stdout
 
 
 def test_generate_creates_output(property_config_path: Path, tmp_path: Path) -> None:
@@ -36,6 +60,7 @@ def test_generate_creates_output(property_config_path: Path, tmp_path: Path) -> 
     )
     assert result.exit_code == 0
     assert "Run status: completed" in result.stdout
+    assert "(model: heos)" in result.stdout
     assert list(tmp_path.iterdir())
 
 
@@ -43,8 +68,11 @@ def test_zero_valid_rows_exit_three(tmp_path: Path) -> None:
     config = tmp_path / "invalid_rows.yaml"
     config.write_text(
         """
-schema_version: 1
-backend: coolprop
+schema_version: 2
+document_type: dataset
+backend:
+  name: coolprop
+  model: heos
 mode: property_table
 fluids: [Propane]
 grid:
@@ -70,7 +98,8 @@ def test_help_uses_backend_neutral_wording() -> None:
     assert "from configured backends" in result.stdout
     fluids = runner.invoke(app, ["fluids", "--help"])
     assert fluids.exit_code == 0
-    assert "available from the current backend" in fluids.stdout
+    assert "available from one CoolProp model" in fluids.stdout
+    assert "--model [heos|pr|srk]" in fluids.stdout
 
 
 def test_version_is_lightweight_and_exact() -> None:
@@ -100,7 +129,7 @@ def test_subcommand_help_retains_detailed_descriptions() -> None:
     expectations = {
         "validate": "without evaluating thermodynamic rows",
         "generate": "Generation performs configuration",
-        "fluids": "available from the current backend",
+        "fluids": "available from one CoolProp model",
         "properties": "semantic properties accepted",
         "inspect": "without backend calls",
         "init": "commented configuration template",
@@ -446,8 +475,11 @@ def test_plot_command_exports_xy_and_pv(
     config = tmp_path / "diagram.yaml"
     config.write_text(
         """
-schema_version: 1
-backend: coolprop
+schema_version: 2
+document_type: dataset
+backend:
+  name: coolprop
+  model: heos
 mode: property_table
 fluids: [Propane]
 grid:

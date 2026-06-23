@@ -23,8 +23,11 @@ def test_pressure_driven_vapor_fraction_table(tmp_path: Path) -> None:
     path = tmp_path / "pressure.yaml"
     path.write_text(
         """
-schema_version: 1
-backend: coolprop
+schema_version: 2
+document_type: dataset
+backend:
+  name: coolprop
+  model: heos
 mode: vapor_mass_fraction_table
 fluids: [Propane]
 grid:

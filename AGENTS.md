@@ -88,7 +88,8 @@ Milestone 1 supports:
 
 - CoolProp only;
 - pure fluids only;
-- YAML schema version 1;
+- YAML schema version 2;
+- explicit CoolProp model selection: `heos`, `pr`, or `srk`;
 - `property_table`;
 - `saturation_table`;
 - `vapor_mass_fraction_table`;
@@ -176,7 +177,7 @@ The public CLI is:
 carnopy --version
 carnopy init MODE OUTPUT [--create-parents] [--full]
 carnopy properties
-carnopy fluids
+carnopy fluids [--model heos|pr|srk]
 carnopy validate CONFIG.yaml
 carnopy generate CONFIG.yaml [--out PATH] [--figures-out PATH]
 carnopy inspect SOURCE
@@ -206,13 +207,26 @@ Keep CLI handlers thin and scientific logic outside `cli.py`.
 Every configuration contains:
 
 ```yaml
-schema_version: 1
-backend: coolprop
+schema_version: 2
+document_type: dataset
+backend:
+  name: coolprop
+  model: heos
 mode: property_table
 fluids: [...]
 grid: ...
 properties: [...]
 ```
+
+Schema version 1 inputs fail with migration guidance. Existing generated run
+directories remain readable.
+
+The selected model is part of normalized scientific identity and must appear in
+rows, metadata, and reports. HEOS is not experimental truth. PR and SRK are
+alternative cubic model assumptions and do not provide Carnopy transport
+properties, surface tension, or a usable triple-point temperature. Reject
+globally unsupported properties during configuration validation; preserve
+state-dependent failures as row diagnostics.
 
 Optional `outputs:` and `visualization:` sections are allowed. Dataset format
 selection affects artifact-generation context but not scientific `spec_id`.
@@ -303,6 +317,7 @@ case_id
 mode
 fluid
 backend
+backend_model
 backend_version
 phase
 backend_phase

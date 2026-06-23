@@ -2,8 +2,11 @@
 # Each coordinate emits saturated-liquid and saturated-vapor rows.
 # Discover names with: carnopy fluids
 # Discover output properties with: carnopy properties
-schema_version: 1
-backend: coolprop
+schema_version: 2
+document_type: dataset
+backend:
+  name: coolprop
+  model: heos
 mode: saturation_table
 fluids:
   - Propane

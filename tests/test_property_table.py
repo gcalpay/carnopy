@@ -21,8 +21,11 @@ def test_strict_invalid_row_retains_successful_properties(tmp_path: Path) -> Non
     path = tmp_path / "surface.yaml"
     path.write_text(
         """
-schema_version: 1
-backend: coolprop
+schema_version: 2
+document_type: dataset
+backend:
+  name: coolprop
+  model: heos
 mode: property_table
 fluids: [Propane]
 grid:

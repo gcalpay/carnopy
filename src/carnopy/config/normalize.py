@@ -18,6 +18,19 @@ def normalize_config(
     config: CarnopyConfig,
     backend: PropertyBackend,
 ) -> NormalizedConfig:
+    if backend.name != config.backend.name or backend.model != config.backend.model:
+        raise ConfigError(
+            "configured backend does not match the initialized backend: "
+            f"configured={config.backend.name}/{config.backend.model}, "
+            f"initialized={backend.name}/{backend.model}"
+        )
+    unsupported_properties = backend.unsupported_properties(config.properties)
+    if unsupported_properties:
+        raise ConfigError(
+            f"CoolProp model {config.backend.model} does not support properties: "
+            f"{', '.join(unsupported_properties)}"
+        )
+
     canonical_fluids: list[str] = []
     for requested in config.fluids:
         try:
@@ -57,8 +70,9 @@ def normalize_config(
 
     original_grid = {axis: sampler.model_dump(mode="json") for axis, sampler in config.grid.items()}
     return NormalizedConfig(
-        schema_version=1,
-        backend="coolprop",
+        schema_version=2,
+        document_type="dataset",
+        backend=config.backend,
         mode=config.mode,
         fluids=canonical_fluids,
         grid=materialized_grid,

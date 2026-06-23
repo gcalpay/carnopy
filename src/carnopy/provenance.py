@@ -8,7 +8,7 @@ from pathlib import Path
 
 from carnopy._version import __version__
 
-CONFIG_SCHEMA_VERSION = 1
+CONFIG_SCHEMA_VERSION = 2
 DATASET_SCHEMA_VERSION = 1
 METADATA_SCHEMA_VERSION = 1
 REPORT_SCHEMA_VERSION = 1
@@ -50,6 +50,8 @@ def build_identity(
     raw_config: bytes,
     normalized_config: bytes,
     backend_version: str,
+    backend_name: str,
+    backend_model: str,
     output_request_id: str | None = None,
 ) -> Identity:
     from carnopy.config.normalize import canonical_json_bytes
@@ -64,7 +66,10 @@ def build_identity(
         "dataset_schema_version": DATASET_SCHEMA_VERSION,
         "metadata_schema_version": METADATA_SCHEMA_VERSION,
         "report_schema_version": REPORT_SCHEMA_VERSION,
-        "backend": "coolprop",
+        "backend": {
+            "name": backend_name,
+            "model": backend_model,
+        },
         "backend_version": backend_version,
         "reference_state_policy": REFERENCE_STATE_POLICY,
         "output_request_id": selected_output_request_id,

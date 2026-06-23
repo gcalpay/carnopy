@@ -30,6 +30,12 @@ def load_config_file(path: str | Path) -> LoadedConfig:
         raise ConfigError(f"invalid YAML in {config_path}: {exc}") from exc
     if not isinstance(payload, dict):
         raise ConfigError("configuration root must be a YAML mapping")
+    if payload.get("schema_version") == 1:
+        raise ConfigError(
+            "configuration schema version 1 is no longer supported. Migrate to "
+            "schema_version: 2, add document_type: dataset, and replace "
+            "`backend: coolprop` with `backend: {name: coolprop, model: heos}`"
+        )
     try:
         model = CarnopyConfig.model_validate(payload)
     except ValidationError as exc:

@@ -25,8 +25,11 @@ def _write_property_config(
 ) -> Path:
     path.write_text(
         f"""
-schema_version: 1
-backend: coolprop
+schema_version: 2
+document_type: dataset
+backend:
+  name: coolprop
+  model: heos
 mode: property_table
 fluids: [{fluids}]
 grid:
@@ -202,8 +205,11 @@ def test_inspect_supports_saturation_modes(
     config = tmp_path / f"{mode}.yaml"
     config.write_text(
         f"""
-schema_version: 1
-backend: coolprop
+schema_version: 2
+document_type: dataset
+backend:
+  name: coolprop
+  model: heos
 mode: {mode}
 fluids: [Propane]
 grid:

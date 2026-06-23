@@ -25,6 +25,24 @@
 # - visualization_request_id is separate from dataset identity.
 # - run_id identifies one concrete generation attempt.
 #
+# Configuration schema and CoolProp models:
+#
+# schema_version: 2
+# document_type: dataset
+# backend:
+#   name: coolprop
+#   model: heos
+#
+# Supported model values:
+#   heos  Helmholtz-energy equations and CoolProp ancillary/transport models
+#   pr    Peng-Robinson cubic equation of state
+#   srk   Soave-Redlich-Kwong cubic equation of state
+#
+# HEOS is the default starter model, not experimental truth. PR and SRK are
+# alternative thermodynamic models with different assumptions and reference
+# values. PR/SRK do not provide CoolProp transport properties, surface tension,
+# or a usable triple-point temperature in Carnopy schema version 2.
+#
 # Modes and required grids:
 #
 # property_table:

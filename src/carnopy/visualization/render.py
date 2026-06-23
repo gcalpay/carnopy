@@ -67,9 +67,21 @@ def finish_figure(
     for axis, fluid in zip(axes, fluids, strict=True):
         axis.set_title(fluid)
     figure.suptitle(title)
-    footer_parts = [
+    backend_model = (
+        _single_or_joined(frame["backend_model"])
+        if "backend_model" in frame.columns
+        else (
+            plot_source.metadata.get("backend_model") if plot_source.metadata is not None else None
+        )
+    )
+    backend_label = (
         f"Backend: {_single_or_joined(frame['backend'])} "
-        f"{_single_or_joined(frame['backend_version'])}",
+        f"{_single_or_joined(frame['backend_version'])}"
+    )
+    if isinstance(backend_model, str) and backend_model:
+        backend_label += f" ({backend_model})"
+    footer_parts = [
+        backend_label,
         f"Run: {plot_source.run_id[:8]}",
         f"Excluded rows: {invalid_rows_excluded}",
         f"Integrity: {plot_source.source_integrity}",

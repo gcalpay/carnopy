@@ -31,6 +31,12 @@ class InspectFormatCli(str, Enum):
     json = "json"
 
 
+class CoolPropModelCli(str, Enum):
+    heos = "heos"
+    pr = "pr"
+    srk = "srk"
+
+
 def _version_callback(value: bool) -> None:
     if value:
         typer.echo(f"carnopy {__version__}")
@@ -84,7 +90,9 @@ def validate_command(
     except CarnopyError as exc:
         typer.echo(f"Validation environment failed: {exc}", err=True)
         raise typer.Exit(code=1) from exc
-    typer.echo(f"Backend: {result.backend} {result.backend_version}")
+    typer.echo(
+        f"Backend: {result.backend} {result.backend_version} (model: {result.backend_model})"
+    )
     typer.echo(f"Mode: {result.mode}")
     typer.echo(f"Projected rows: {result.projected_rows}")
     typer.echo(f"Dataset formats: {', '.join(result.dataset_formats)}")
@@ -141,6 +149,9 @@ def generate_command(
         typer.echo(f"Generation failed: {exc}", err=True)
         raise typer.Exit(code=1) from exc
     typer.echo(f"Mode: {result.mode}")
+    typer.echo(
+        f"Backend: {result.backend} {result.backend_version} (model: {result.backend_model})"
+    )
     typer.echo(f"Rows: {result.row_count}")
     typer.echo(f"Valid rows: {result.valid_row_count}")
     typer.echo(f"Invalid rows: {result.invalid_row_count}")
@@ -162,12 +173,17 @@ def generate_command(
 
 
 @app.command("fluids", short_help="List backend fluids.")
-def fluids_command() -> None:
-    """List pure fluids available from the current backend."""
+def fluids_command(
+    model: Annotated[
+        CoolPropModelCli,
+        typer.Option("--model", help="CoolProp thermodynamic model."),
+    ] = CoolPropModelCli.heos,
+) -> None:
+    """List pure fluids available from one CoolProp model."""
     from carnopy.backends import CoolPropBackend
 
-    backend = CoolPropBackend()
-    typer.echo(f"CoolProp {backend.version}")
+    backend = CoolPropBackend(model=model.value)
+    typer.echo(f"CoolProp {backend.version} (model: {backend.model})")
     for fluid in backend.list_fluids():
         aliases = ", ".join(backend.aliases_for(fluid))
         typer.echo(f"{fluid}: {aliases}")
@@ -175,21 +191,29 @@ def fluids_command() -> None:
 
 @app.command("properties", short_help="List dataset properties.")
 def properties_command() -> None:
-    """List semantic properties accepted by configuration schema version 1."""
+    """List semantic properties accepted by configuration schema version 2."""
+    from carnopy.backends.coolprop_models import unsupported_properties
+    from carnopy.config.models import CoolPropModel
     from carnopy.domain.properties import PROPERTY_REGISTRY
 
+    models: tuple[CoolPropModel, ...] = ("heos", "pr", "srk")
+    unsupported_by_model = {model: set(unsupported_properties(model)) for model in models}
     header = (
         f"{'PROPERTY':<40} {'COLUMN':<48} {'UNIT':<12} "
-        f"{'CLASSIFICATION':<20} {'REFERENCE':<9} DEPENDENCIES"
+        f"{'CLASSIFICATION':<20} {'REFERENCE':<9} {'MODELS':<12} DEPENDENCIES"
     )
     typer.echo(header)
     for name in sorted(PROPERTY_REGISTRY):
         definition = PROPERTY_REGISTRY[name]
         dependencies = ", ".join(definition.dependencies) or "-"
         reference = "yes" if definition.reference_dependent else "no"
+        supported_models = ",".join(
+            model for model in models if name not in unsupported_by_model[model]
+        )
         typer.echo(
             f"{definition.name:<40} {definition.column:<48} {definition.unit:<12} "
-            f"{definition.classification:<20} {reference:<9} {dependencies}"
+            f"{definition.classification:<20} {reference:<9} "
+            f"{supported_models:<12} {dependencies}"
         )
 
 

@@ -6,6 +6,11 @@ from typing import Any
 import pandas as pd
 
 from carnopy._version import __version__
+from carnopy.backends.coolprop_models import (
+    MODEL_PREFIXES,
+    supported_properties,
+    unsupported_properties,
+)
 from carnopy.config.models import NormalizedConfig
 from carnopy.domain.properties import (
     PROPERTY_REGISTRY,
@@ -49,9 +54,14 @@ def build_metadata(
         "mode": config.mode,
         "created_at_utc": created_at_utc,
         "carnopy_version": __version__,
-        "backend": config.backend,
+        "backend": config.backend.name,
+        "backend_model": config.backend.model,
         "backend_version": backend_version,
         "reference_state_policy": REFERENCE_STATE_POLICY,
+        "reference_state_backend_model": config.backend.model,
+        "reference_state_targets": [
+            f"{MODEL_PREFIXES[config.backend.model]}::{fluid}" for fluid in config.fluids
+        ],
         "reference_state_mutated_at_backend_initialization": True,
         "reference_state_changed_during_generation": False,
         "raw_config_sha256": identity.raw_config_sha256,
@@ -78,7 +88,15 @@ def build_metadata(
         },
         "canonical_units": unit_map,
         "property_registry_metadata": {
-            name: PROPERTY_REGISTRY[name].metadata() for name in config.properties
+            name: {
+                **PROPERTY_REGISTRY[name].metadata(),
+                "supported_by_backend_model": True,
+            }
+            for name in config.properties
+        },
+        "backend_model_capabilities": {
+            "supported_properties": list(supported_properties(config.backend.model)),
+            "unsupported_properties": list(unsupported_properties(config.backend.model)),
         },
         "reference_dependent_properties": [
             name for name in config.properties if name in REFERENCE_DEPENDENT_PROPERTIES

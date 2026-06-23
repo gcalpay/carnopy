@@ -207,6 +207,12 @@ def _build_sidecar(
             "generation_context_id": plot_source.generation_context_id,
             "mode": plot_source.mode,
             "backend": _single_or_joined(plot_source.frame["backend"]),
+            "backend_model": _metadata_text(plot_source, "backend_model")
+            or (
+                _single_or_joined(plot_source.frame["backend_model"])
+                if "backend_model" in plot_source.frame.columns
+                else None
+            ),
             "backend_version": _single_or_joined(plot_source.frame["backend_version"]),
             "reference_state_policy": _metadata_text(plot_source, "reference_state_policy"),
         },

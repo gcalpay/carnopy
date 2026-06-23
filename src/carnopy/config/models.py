@@ -10,13 +10,22 @@ from carnopy.domain.properties import PROPERTY_REGISTRY
 from carnopy.sampling.models import Sampler
 
 Mode = Literal["property_table", "saturation_table", "vapor_mass_fraction_table"]
+CoolPropModel = Literal["heos", "pr", "srk"]
+
+
+class BackendConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    name: Literal["coolprop"]
+    model: CoolPropModel
 
 
 class CarnopyConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_version: Literal[1]
-    backend: Literal["coolprop"]
+    schema_version: Literal[2]
+    document_type: Literal["dataset"]
+    backend: BackendConfig
     mode: Mode
     fluids: list[str] = Field(min_length=1)
     grid: dict[str, Sampler]
@@ -72,8 +81,9 @@ class CarnopyConfig(BaseModel):
 class NormalizedConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_version: Literal[1]
-    backend: Literal["coolprop"]
+    schema_version: Literal[2]
+    document_type: Literal["dataset"]
+    backend: BackendConfig
     mode: Mode
     fluids: list[str]
     grid: dict[str, list[float]]
@@ -88,7 +98,8 @@ class NormalizedConfig(BaseModel):
     def executable_dict(self) -> dict[str, object]:
         return {
             "schema_version": self.schema_version,
-            "backend": self.backend,
+            "document_type": self.document_type,
+            "backend": self.backend.model_dump(mode="json"),
             "mode": self.mode,
             "fluids": self.fluids,
             "grid": {

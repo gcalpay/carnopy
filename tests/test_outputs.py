@@ -112,8 +112,11 @@ def test_generation_writes_selected_dataset_formats(
     config = tmp_path / "formats.yaml"
     config.write_text(
         f"""
-schema_version: 1
-backend: coolprop
+schema_version: 2
+document_type: dataset
+backend:
+  name: coolprop
+  model: heos
 mode: property_table
 fluids: [Propane]
 grid:
@@ -161,8 +164,11 @@ def test_new_runs_do_not_modify_existing_run_reference(
 
 def test_output_formats_change_context_but_not_scientific_spec(tmp_path: Path) -> None:
     base = """
-schema_version: 1
-backend: coolprop
+schema_version: 2
+document_type: dataset
+backend:
+  name: coolprop
+  model: heos
 mode: property_table
 fluids: [Propane]
 grid:

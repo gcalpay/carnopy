@@ -25,6 +25,9 @@ def build_report(
     run_status: RunStatus,
     output_directory: Path,
     input_columns: list[str],
+    backend: str,
+    backend_model: str,
+    backend_version: str,
 ) -> dict[str, Any]:
     numeric = frame.select_dtypes(include="number")
     min_max = {
@@ -38,6 +41,9 @@ def build_report(
         "report_schema_version": REPORT_SCHEMA_VERSION,
         "run_id": run_id,
         "run_status": run_status,
+        "backend": backend,
+        "backend_model": backend_model,
+        "backend_version": backend_version,
         "row_count": len(frame),
         "valid_row_count": int(frame["valid"].sum()),
         "invalid_row_count": int((~frame["valid"]).sum()),

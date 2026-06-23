@@ -48,6 +48,7 @@ def base_row(
         "mode": mode,
         "fluid": fluid,
         "backend": backend.name,
+        "backend_model": backend.model,
         "backend_version": backend.version,
         "phase": None,
         "backend_phase": None,

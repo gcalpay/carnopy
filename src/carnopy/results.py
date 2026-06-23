@@ -16,6 +16,7 @@ VisualizationStatus = Literal[
 @dataclass(frozen=True)
 class ValidationResult:
     backend: str
+    backend_model: str
     backend_version: str
     mode: str
     projected_rows: int
@@ -42,6 +43,9 @@ class RunResult:
     run_id: str
     run_status: RunStatus
     mode: str
+    backend: str
+    backend_model: str
+    backend_version: str
     output_directory: Path
     row_count: int
     valid_row_count: int

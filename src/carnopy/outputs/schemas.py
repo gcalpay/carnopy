@@ -9,6 +9,7 @@ REQUIRED_ROW_COLUMNS = [
     "mode",
     "fluid",
     "backend",
+    "backend_model",
     "backend_version",
     "phase",
     "backend_phase",

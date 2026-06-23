@@ -57,7 +57,7 @@ def validate_loaded_config(
     loaded: LoadedConfig,
     backend: CoolPropBackend | None = None,
 ) -> ValidatedRunConfig:
-    selected_backend = backend or CoolPropBackend()
+    selected_backend = backend or CoolPropBackend(model=loaded.model.backend.model)
     normalized = normalize_config(loaded.model, selected_backend)
     normalized_bytes = canonical_json_bytes(normalized.executable_dict())
     dataset_formats = loaded.model.outputs.dataset_formats
@@ -65,11 +65,14 @@ def validate_loaded_config(
     identity = build_identity(
         raw_config=loaded.raw_bytes,
         normalized_config=normalized_bytes,
+        backend_name=selected_backend.name,
+        backend_model=selected_backend.model,
         backend_version=selected_backend.version,
         output_request_id=output_request_id,
     )
     result = ValidationResult(
         backend=selected_backend.name,
+        backend_model=selected_backend.model,
         backend_version=selected_backend.version,
         mode=normalized.mode,
         projected_rows=normalized.projected_rows,
@@ -99,13 +102,15 @@ def run_generation(
     output_root: Path,
     figures_root: Path = Path("figures"),
 ) -> RunResult:
-    backend = CoolPropBackend()
+    backend = CoolPropBackend(model=loaded.model.backend.model)
     validated = validate_loaded_config(loaded, backend)
     normalized = validated.normalized
     normalized_bytes = validated.normalized_bytes
     identity = build_identity(
         raw_config=loaded.raw_bytes,
         normalized_config=normalized_bytes,
+        backend_name=backend.name,
+        backend_model=backend.model,
         backend_version=backend.version,
         output_request_id=validated.output_request_id,
     )
@@ -165,6 +170,9 @@ def run_generation(
         run_status=run_status,
         output_directory=layout.final_directory,
         input_columns=input_columns,
+        backend=backend.name,
+        backend_model=backend.model,
+        backend_version=backend.version,
     )
     write_json(layout.staging_directory / "report.json", report)
     hashed_names = [
@@ -208,6 +216,9 @@ def run_generation(
         run_id=run_id,
         run_status=run_status,
         mode=normalized.mode,
+        backend=backend.name,
+        backend_model=backend.model,
+        backend_version=backend.version,
         output_directory=layout.final_directory,
         row_count=len(frame),
         valid_row_count=int(frame["valid"].sum()),

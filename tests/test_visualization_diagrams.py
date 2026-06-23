@@ -67,8 +67,11 @@ def _write_diagram_config(
 """
     path.write_text(
         f"""
-schema_version: 1
-backend: coolprop
+schema_version: 2
+document_type: dataset
+backend:
+  name: coolprop
+  model: heos
 mode: {mode}
 fluids: [Propane]
 grid:

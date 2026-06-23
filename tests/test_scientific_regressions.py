@@ -45,8 +45,11 @@ def test_property_table_matches_direct_coolprop(tmp_path: Path) -> None:
         tmp_path,
         name="water-property",
         config_text=f"""
-schema_version: 1
-backend: coolprop
+schema_version: 2
+document_type: dataset
+backend:
+  name: coolprop
+  model: heos
 mode: property_table
 fluids: [{fluid}]
 grid:
@@ -97,8 +100,11 @@ def test_saturation_table_matches_direct_coolprop(tmp_path: Path) -> None:
         tmp_path,
         name="cyclopentane-saturation",
         config_text=f"""
-schema_version: 1
-backend: coolprop
+schema_version: 2
+document_type: dataset
+backend:
+  name: coolprop
+  model: heos
 mode: saturation_table
 fluids: [{fluid}]
 grid:
@@ -153,8 +159,11 @@ def test_vapor_mass_fraction_table_matches_coolprop_and_mixture_invariants(
         tmp_path,
         name="isopentane-vapor-fraction",
         config_text=f"""
-schema_version: 1
-backend: coolprop
+schema_version: 2
+document_type: dataset
+backend:
+  name: coolprop
+  model: heos
 mode: vapor_mass_fraction_table
 fluids: [{fluid}]
 grid:
@@ -256,8 +265,11 @@ def test_normal_boiling_point_is_within_nist_interval(
         tmp_path,
         name=f"{fluid.casefold()}-normal-boiling",
         config_text=f"""
-schema_version: 1
-backend: coolprop
+schema_version: 2
+document_type: dataset
+backend:
+  name: coolprop
+  model: heos
 mode: saturation_table
 fluids: [{fluid}]
 grid:

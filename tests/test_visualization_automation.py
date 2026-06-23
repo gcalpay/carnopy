@@ -24,8 +24,11 @@ def _write_property_config(
 ) -> Path:
     path.write_text(
         f"""
-schema_version: 1
-backend: coolprop
+schema_version: 2
+document_type: dataset
+backend:
+  name: coolprop
+  model: heos
 mode: property_table
 fluids: [Propane]
 grid:
@@ -145,8 +148,11 @@ def test_visualization_fluid_aliases_use_existing_normalization_mapping(
     config = tmp_path / "multifluid.yaml"
     config.write_text(
         """
-schema_version: 1
-backend: coolprop
+schema_version: 2
+document_type: dataset
+backend:
+  name: coolprop
+  model: heos
 mode: property_table
 fluids: [Propane, Water]
 grid:

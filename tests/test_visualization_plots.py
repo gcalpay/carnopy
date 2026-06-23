@@ -75,8 +75,11 @@ def _write_config(
 """
     path.write_text(
         f"""
-schema_version: 1
-backend: coolprop
+schema_version: 2
+document_type: dataset
+backend:
+  name: coolprop
+  model: heos
 mode: {mode}
 fluids: [{fluid_text}]
 grid:
