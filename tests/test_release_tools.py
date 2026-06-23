@@ -110,8 +110,11 @@ def test_distribution_path_filters_and_source_version() -> None:
 def test_distribution_checker_requires_model_sweep_artifacts() -> None:
     assert {
         "carnopy/config/sweep.py",
+        "carnopy/preparation/layout.py",
         "carnopy/preparation/pipeline.py",
         "carnopy/preparation/models.py",
+        "carnopy/preparation/reporting.py",
+        "carnopy/preparation/rows.py",
         "carnopy/sweeps/pipeline.py",
         "carnopy/sweeps/comparison.py",
         "carnopy/templates/model_sweep.yaml",
@@ -120,8 +123,11 @@ def test_distribution_checker_requires_model_sweep_artifacts() -> None:
     assert {
         "configs/model_sweep_example.yaml",
         "src/carnopy/config/sweep.py",
+        "src/carnopy/preparation/layout.py",
         "src/carnopy/preparation/pipeline.py",
         "src/carnopy/preparation/models.py",
+        "src/carnopy/preparation/reporting.py",
+        "src/carnopy/preparation/rows.py",
         "src/carnopy/sweeps/pipeline.py",
         "src/carnopy/templates/model_sweep.yaml",
         "src/carnopy/templates/preparation.yaml",

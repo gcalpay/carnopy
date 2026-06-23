@@ -19,6 +19,12 @@ def _write(path: Path, text: str) -> Path:
     return path
 
 
+def _relative_files(directory: Path) -> set[str]:
+    return {
+        path.relative_to(directory).as_posix() for path in directory.rglob("*") if path.is_file()
+    }
+
+
 def _prep_config(
     path: Path,
     *,
@@ -138,6 +144,42 @@ def test_prepare_dataset_run_writes_manifest_and_preserves_order(
     assert manifest["semantic_field_mapping"]["temperature"]["unit"] == "K"
     assert manifest["eligible_row_count"] == len(source)
     assert pd.read_parquet(result.exclusions_path).empty
+    assert _relative_files(result.output_directory) == {
+        "data/exclusions.parquet",
+        "data/unsplit.parquet",
+        "dataset_card.md",
+        "diagnostics.json",
+        "manifest.json",
+        "preparation.normalized.json",
+        "preparation.original.yaml",
+    }
+    assert {
+        "preparation_schema_version",
+        "preparation_request_id",
+        "preparation_context_id",
+        "preparation_run_id",
+        "status",
+        "source",
+        "source_artifacts",
+        "semantic_field_mapping",
+        "features",
+        "targets",
+        "auxiliary",
+        "eligible_row_count",
+        "excluded_row_count",
+        "artifact_hashes",
+    }.issubset(manifest)
+    diagnostics = json.loads(result.diagnostics_path.read_text(encoding="utf-8"))
+    assert {
+        "status",
+        "source_kind",
+        "source_row_count",
+        "excluded_row_count",
+        "exclusion_counts_by_reason",
+    }.issubset(diagnostics)
+    assert result.dataset_card_path.read_text(encoding="utf-8").startswith(
+        "# Carnopy prepared dataset\n"
+    )
 
 
 def test_prepare_includes_invalid_rows_when_requested_values_exist(tmp_path: Path) -> None:
