@@ -1,17 +1,21 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import get_args
 
 import pytest
 
 from carnopy.config.io import load_config_file
+from carnopy.domain.properties import PROPERTY_REGISTRY
 from carnopy.sampling.generate import materialize_sampler
 from carnopy.templates import (
+    FULL_REFERENCE_FILENAME,
     TEMPLATE_FILENAMES,
     TemplateError,
     initialize_config,
     template_text,
 )
+from carnopy.visualization.requests import PlotFormat, PlotKindV2, PlotScale
 
 
 def test_packaged_templates_match_repository_examples_and_validate() -> None:
@@ -61,3 +65,48 @@ def test_interactive_initialization_default_refusal_leaves_no_file(tmp_path: Pat
             confirm_create=lambda _parent: False,
         )
     assert not output.exists()
+
+
+@pytest.mark.parametrize("mode", list(TEMPLATE_FILENAMES))
+def test_full_templates_are_valid_and_append_one_authoritative_reference(
+    tmp_path: Path,
+    mode: str,
+) -> None:
+    concise = template_text(mode)
+    full = template_text(mode, full=True)
+    reference = (
+        Path(__file__).resolve().parents[1]
+        / "src"
+        / "carnopy"
+        / "templates"
+        / FULL_REFERENCE_FILENAME
+    ).read_text(encoding="utf-8")
+    assert full == concise.rstrip() + "\n" + reference
+    assert "Carnopy configuration reference" in full
+    assert "kind: explicit" in full
+    assert "kind: linspace" in full
+    assert "kind: stepspace" in full
+    assert "kind: geomspace" in full
+    assert "kind: logspace" in full
+    output = tmp_path / f"{mode}.yaml"
+    initialize_config(mode, output, full=True)
+    assert output.read_text(encoding="utf-8") == full
+    assert load_config_file(output).model.mode == mode
+
+
+def test_full_reference_tracks_public_registries_and_enums() -> None:
+    reference = (
+        Path(__file__).resolve().parents[1]
+        / "src"
+        / "carnopy"
+        / "templates"
+        / FULL_REFERENCE_FILENAME
+    ).read_text(encoding="utf-8")
+    for property_name in PROPERTY_REGISTRY:
+        assert f"#   {property_name}" in reference
+    for plot_kind in get_args(PlotKindV2):
+        assert str(plot_kind) in reference
+    for plot_format in get_args(PlotFormat):
+        assert str(plot_format) in reference
+    for plot_scale in get_args(PlotScale):
+        assert str(plot_scale) in reference

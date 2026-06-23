@@ -130,6 +130,11 @@ def main() -> int:
     runs = [path for path in output_root.iterdir() if path.is_dir()]
     if len(runs) != 1:
         raise RuntimeError(f"expected one generated run, found {runs}")
+    reference = runs[0] / "config.reference.yaml"
+    if not reference.is_file() or "Carnopy configuration reference" not in reference.read_text(
+        encoding="utf-8"
+    ):
+        raise RuntimeError("generated run does not contain the packaged configuration reference")
     inspection = run_command(["inspect", str(runs[0])], cwd=work_directory)
     if "Compatible plot kinds:" not in inspection.stdout:
         raise RuntimeError(

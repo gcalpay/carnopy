@@ -17,17 +17,22 @@ TEMPLATE_FILENAMES: Final[dict[ConfigTemplateMode, str]] = {
     "saturation_table": "saturation_table.yaml",
     "vapor_mass_fraction_table": "vapor_mass_fraction_table.yaml",
 }
+FULL_REFERENCE_FILENAME: Final = "full_reference.yaml"
 
 
 class TemplateError(Exception):
     """A starter configuration cannot be created safely."""
 
 
-def template_text(mode: ConfigTemplateMode) -> str:
+def template_text(mode: ConfigTemplateMode, *, full: bool = False) -> str:
     """Return the packaged starter configuration for one dataset mode."""
     resource = files(__package__).joinpath(TEMPLATE_FILENAMES[mode])
     try:
-        return resource.read_text(encoding="utf-8")
+        concise = resource.read_text(encoding="utf-8")
+        if not full:
+            return concise
+        reference = files(__package__).joinpath(FULL_REFERENCE_FILENAME).read_text(encoding="utf-8")
+        return concise.rstrip() + "\n" + reference
     except OSError as exc:
         raise TemplateError(f"could not read packaged template for {mode}: {exc}") from exc
 
@@ -39,6 +44,7 @@ def initialize_config(
     create_parents: bool = False,
     interactive: bool = False,
     confirm_create: Callable[[Path], bool] | None = None,
+    full: bool = False,
 ) -> Path:
     """Create one configuration from a packaged template without overwriting."""
     output_path = Path(output).expanduser()
@@ -69,7 +75,7 @@ def initialize_config(
     try:
         with output_path.open("x", encoding="utf-8", newline="\n") as stream:
             created = True
-            stream.write(template_text(mode))
+            stream.write(template_text(mode, full=full))
     except FileExistsError as exc:
         raise TemplateError(f"refusing to overwrite existing file: {output_path}") from exc
     except OSError as exc:

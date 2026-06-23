@@ -11,7 +11,8 @@ import pytest
 from carnopy.api import generate_dataset
 from carnopy.outputs.layout import create_run_layout
 from carnopy.outputs.writers import hash_artifacts
-from carnopy.provenance import sha256_bytes
+from carnopy.provenance import sha256_bytes, sha256_file
+from carnopy.templates import template_text
 
 
 @pytest.mark.parametrize(
@@ -64,6 +65,7 @@ def test_generation_writes_complete_immutable_artifacts(
         "dataset.parquet",
         "config.original.yaml",
         "config.normalized.json",
+        "config.reference.yaml",
         "metadata.json",
         "report.json",
     }
@@ -80,6 +82,16 @@ def test_generation_writes_complete_immutable_artifacts(
     assert metadata["dataset_formats"] == ["csv", "parquet"]
     assert str(property_config_path.resolve()) not in json.dumps(metadata)
     assert metadata["artifact_hashes"]["dataset.csv"]
+    reference = result.output_directory / "config.reference.yaml"
+    assert metadata["artifact_hashes"]["config.reference.yaml"]
+    assert reference.read_text(encoding="utf-8").startswith(
+        "# Pure-fluid states on a temperature-pressure Cartesian grid."
+    )
+    assert reference.read_text(encoding="utf-8") == template_text(
+        "property_table",
+        full=True,
+    )
+    assert metadata["artifact_hashes"]["config.reference.yaml"] == sha256_file(reference)
     schema_metadata = pq.read_schema(result.output_directory / "dataset.parquet").metadata
     assert schema_metadata is not None
     assert b"carnopy.units" in schema_metadata
@@ -125,6 +137,26 @@ outputs:
         expected_dataset_files
     )
     assert metadata["dataset_formats"] == dataset_formats
+    assert "config.reference.yaml" in metadata["output_files"]
+    assert "config.reference.yaml" in metadata["artifact_hashes"]
+
+
+def test_new_runs_do_not_modify_existing_run_reference(
+    property_config_path: Path,
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "runs"
+    first = generate_dataset(property_config_path, output_root=output_root)
+    reference = first.output_directory / "config.reference.yaml"
+    reference.write_text("preserve existing immutable run\n", encoding="utf-8")
+
+    second = generate_dataset(property_config_path, output_root=output_root)
+
+    assert second.output_directory != first.output_directory
+    assert reference.read_text(encoding="utf-8") == "preserve existing immutable run\n"
+    assert (second.output_directory / "config.reference.yaml").read_text(
+        encoding="utf-8"
+    ) != "preserve existing immutable run\n"
 
 
 def test_output_formats_change_context_but_not_scientific_spec(tmp_path: Path) -> None:

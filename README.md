@@ -113,9 +113,20 @@ creates:
 ```
 
 from the packaged `property_table.yaml` template. It does not modify or move
-the packaged template, and it refuses to overwrite an existing
-`property.yaml`. A relative output path is resolved from the current working
-directory; an absolute path is written exactly where specified.
+the packaged source.
+
+Use `--full` to append the exhaustive commented reference for current
+samplers, properties, units, output formats, visualization kinds, filters,
+series selection, scales, and identity rules:
+
+```bash
+carnopy init property_table my-dataset.yaml --full
+```
+
+The active mode-specific configuration remains valid. Normal templates remain
+concise. Both forms refuse to overwrite an existing `property.yaml`. A relative
+output path is resolved from the current working directory; an absolute path
+is written exactly where specified.
 
 Available modes:
 
@@ -615,12 +626,18 @@ outputs/<run>/
 ├── dataset.parquet      # when requested
 ├── config.original.yaml
 ├── config.normalized.json
+├── config.reference.yaml # full mode-specific commented configuration helper
 ├── metadata.json
 └── report.json
 ```
 
 Runs are staged and then finalized atomically as one directory. Existing final
 or staging paths are never overwritten.
+
+`config.reference.yaml` comes from the same packaged source as `carnopy init
+MODE OUTPUT --full`. It is created only while staging a new run, included in
+the artifact inventory and hashes, and never added to or overwritten in an
+existing run.
 
 Identity layers:
 

@@ -261,6 +261,13 @@ def init_command(
             help="Create missing parent directories without prompting.",
         ),
     ] = False,
+    full: Annotated[
+        bool,
+        typer.Option(
+            "--full",
+            help="Append the exhaustive commented configuration reference.",
+        ),
+    ] = False,
 ) -> None:
     """Create a commented configuration template without overwriting files."""
     from carnopy.templates import TemplateError, initialize_config
@@ -275,6 +282,7 @@ def init_command(
             create_parents=create_parents,
             interactive=sys.stdin.isatty(),
             confirm_create=confirm_create,
+            full=full,
         )
     except TemplateError as exc:
         typer.echo(f"Configuration initialization failed: {exc}", err=True)

@@ -1,0 +1,203 @@
+
+# ---------------------------------------------------------------------------
+# Carnopy configuration reference
+# ---------------------------------------------------------------------------
+# This commented catalog is appended to a valid mode-specific configuration by
+# `carnopy init MODE OUTPUT --full` and copied into every newly generated
+# immutable run as `config.reference.yaml`.
+#
+# The active configuration is above. Everything below is commentary: copy only
+# the options you need into the active YAML and keep exactly one active mode.
+#
+# Workflow:
+#   carnopy init property_table study.yaml --full
+#   edit study.yaml
+#   carnopy validate study.yaml
+#   carnopy generate study.yaml
+#   carnopy inspect outputs/<run>
+#   carnopy plot outputs/<run> ...
+#
+# Identity:
+# - config.original.yaml preserves the exact submitted YAML bytes.
+# - config.normalized.json contains the canonical executable SI specification.
+# - spec_id identifies that scientific specification.
+# - output_request_id identifies the requested CSV/Parquet formats.
+# - visualization_request_id is separate from dataset identity.
+# - run_id identifies one concrete generation attempt.
+#
+# Modes and required grids:
+#
+# property_table:
+#   grid: temperature + pressure
+#   emits the Cartesian product for every selected pure fluid
+#
+# saturation_table:
+#   grid: exactly one of temperature or pressure
+#   emits saturated-liquid (x_vap=0) and saturated-vapor (x_vap=1) rows
+#
+# vapor_mass_fraction_table:
+#   grid: vapor_mass_fraction + exactly one of temperature or pressure
+#   0 < x_vap < 1 represents equilibrium two-phase mixture states
+#
+# Public samplers:
+#
+# explicit:
+#   kind: explicit
+#   values: [1.0, 2.0, 5.0]
+#   unit: bar
+#   # Preserves order and rejects duplicate SI values.
+#
+# linspace:
+#   kind: linspace
+#   start: 1.0
+#   stop: 5.0
+#   num: 5
+#   unit: bar
+#   # Includes both endpoints.
+#
+# stepspace:
+#   kind: stepspace
+#   start: 1.0
+#   stop: 5.0
+#   step: 1.0
+#   unit: bar
+#   # Includes both endpoints; stop must be reachable by an integral step count.
+#
+# geomspace:
+#   kind: geomspace
+#   start: 1.0
+#   stop: 100.0
+#   num: 5
+#   unit: bar
+#   # Positive physical endpoints only. Use Kelvin for geometric temperatures.
+#
+# logspace:
+#   kind: logspace
+#   start_exp: 0.0
+#   stop_exp: 2.0
+#   num: 5
+#   base: 10.0
+#   unit: bar
+#   # Produces base**exponent values. Offset Celsius and vapor mass fraction
+#   # are not supported by geometric/logarithmic samplers.
+#
+# Supported input units:
+#   temperature: K, degC
+#   pressure: Pa, kPa, MPa, bar
+#   vapor_mass_fraction: "1"
+#
+# Current semantic properties:
+#   specific_enthalpy
+#   specific_entropy
+#   specific_internal_energy
+#   mass_density
+#   isobaric_specific_heat_capacity
+#   isochoric_specific_heat_capacity
+#   dynamic_viscosity
+#   kinematic_viscosity
+#   thermal_conductivity
+#   prandtl_number
+#   speed_of_sound
+#   molar_mass
+#   critical_temperature
+#   critical_pressure
+#   triple_point_temperature
+#   surface_tension
+#
+# Reference-state warning:
+#   specific_enthalpy, specific_entropy, and specific_internal_energy depend on
+#   the CoolProp reference-state convention. Carnopy resets requested fluids to
+#   CoolProp DEF before generation and records that policy in metadata.
+#
+# Mode-limited warning:
+#   surface_tension is defined only where the backend supports a liquid-vapor
+#   interface. Requesting it over a broad property_table grid can intentionally
+#   produce invalid rows under strict row validity.
+#
+# Dataset formats:
+#
+# outputs:
+#   dataset_formats: [csv, parquet]
+#
+# Supported values are csv and parquet. At least one is required. Omission
+# defaults to both. Parquet is preferred for typed scientific/ML workflows;
+# CSV is useful for inspection and interoperability.
+#
+# Configured visualization (optional):
+#
+# visualization:
+#   format: png                     # png, pdf, or svg
+#   fluids: [Propane]               # optional shared facet selection
+#   filters:                        # exact SI row filters, combined with AND
+#     phase: gas
+#   display_units:                  # optional shared engineering display units
+#     pressure: bar
+#
+#   plots:
+#     - name: density-curves
+#       kind: property_curves
+#       property: mass_density
+#       x: temperature              # required for property_table curves
+#       series:                     # exact curve-family levels
+#         pressure: [1bar, 3bar, 5bar]
+#       display_units:
+#         temperature: degC
+#       value_scale: linear         # linear or log
+#
+#     - name: density-map
+#       kind: property_heatmap
+#       property: mass_density
+#       color_scale: linear         # linear or log
+#
+#     - name: enthalpy-entropy
+#       kind: xy
+#       x: specific_enthalpy
+#       y: specific_entropy
+#       group_by: pressure
+#       x_scale: linear
+#       y_scale: linear
+#
+#     - name: pressure-specific-volume
+#       kind: pv
+#       x_scale: linear
+#       y_scale: linear
+#
+#     - name: temperature-entropy
+#       kind: ts
+#       x_scale: linear
+#       y_scale: linear
+#
+# Visualization rules:
+# - property_curves plots sampled markers and straight connectivity guides.
+# - property_heatmap uses non-interpolated sampled cells.
+# - xy requires explicit x/y fields and may require group_by.
+# - pv derives specific_volume = 1 / mass_density from emitted density.
+# - ts requires emitted entropy and recorded reference-state metadata.
+# - no visualization calls CoolProp or invents thermodynamic states.
+# - exact filters use canonical SI values.
+# - `series` accepts unit-bearing engineering values and selects exact levels.
+# - display-unit support currently covers temperature, pressure, enthalpy,
+#   internal energy, entropy, and specific heat capacities.
+# - output paths and interactive `show` behavior are CLI concerns, not stored in
+#   configured visualization YAML.
+# - automatic configured figures are written outside the immutable run.
+#
+# Manual plotting examples:
+#
+# carnopy plot outputs/<run> \
+#   --kind property-curves \
+#   --property specific_enthalpy \
+#   --x temperature \
+#   --series pressure=1bar \
+#   --series pressure=3bar \
+#   --display-unit temperature=degC \
+#   --display-unit pressure=bar \
+#   --display-unit specific_enthalpy=kJ/kg
+#
+# carnopy plot outputs/<run> \
+#   --kind property-heatmap \
+#   --property mass_density \
+#   --output figures/density.svg
+#
+# Use `carnopy inspect outputs/<run> --format json` for machine-readable source
+# capabilities or `--write-visualization plots.yaml` for a concise batch starter.

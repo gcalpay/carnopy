@@ -32,6 +32,7 @@ from carnopy.outputs import (
 )
 from carnopy.provenance import build_identity, build_output_request_id
 from carnopy.results import RunResult, ValidationResult
+from carnopy.templates import TemplateError, template_text
 from carnopy.visualization.automation import (
     ensure_visualization_dependencies,
     render_configured_visualizations,
@@ -148,6 +149,16 @@ def run_generation(
         layout.staging_directory / "config.normalized.json",
         normalized_bytes,
     )
+    try:
+        reference_bytes = template_text(normalized.mode, full=True).encode("utf-8")
+    except TemplateError as exc:
+        raise OutputError(
+            f"could not load the packaged run configuration reference: {exc}"
+        ) from exc
+    write_bytes(
+        layout.staging_directory / "config.reference.yaml",
+        reference_bytes,
+    )
     report = build_report(
         frame=frame,
         run_id=run_id,
@@ -160,6 +171,7 @@ def run_generation(
         *dataset_files,
         "config.original.yaml",
         "config.normalized.json",
+        "config.reference.yaml",
         "report.json",
     ]
     artifact_hashes = hash_artifacts(layout.staging_directory, hashed_names)

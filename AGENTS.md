@@ -174,7 +174,7 @@ The public CLI is:
 
 ```text
 carnopy --version
-carnopy init MODE OUTPUT [--create-parents]
+carnopy init MODE OUTPUT [--create-parents] [--full]
 carnopy properties
 carnopy fluids
 carnopy validate CONFIG.yaml
@@ -342,9 +342,15 @@ dataset.csv
 dataset.parquet
 config.original.yaml
 config.normalized.json
+config.reference.yaml
 metadata.json
 report.json
 ```
+
+`config.reference.yaml` is the mode-specific full commented template produced
+from the same authoritative packaged source as `carnopy init MODE OUTPUT
+--full`. Write it only into the fresh staging directory, include it in artifact
+hashes and metadata, and never retrofit or overwrite it in an existing run.
 
 Human-facing names use:
 

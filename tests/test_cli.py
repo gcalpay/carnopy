@@ -314,6 +314,27 @@ def test_init_creates_packaged_template_and_prints_workflow(tmp_path: Path) -> N
     assert f"carnopy generate {output.resolve()}" in result.stdout
 
 
+def test_init_full_appends_exhaustive_reference(tmp_path: Path) -> None:
+    output = tmp_path / "full.yaml"
+    result = runner.invoke(
+        app,
+        ["init", "property_table", str(output), "--full"],
+    )
+    assert result.exit_code == 0, result.output
+    content = output.read_text(encoding="utf-8")
+    assert "mode: property_table" in content
+    assert "Carnopy configuration reference" in content
+    assert "property_heatmap" in content
+    assert "kind: logspace" in content
+
+
+def test_init_help_documents_full_reference() -> None:
+    result = runner.invoke(app, ["init", "--help"])
+    assert result.exit_code == 0
+    assert "--full" in result.stdout
+    assert "exhaustive commented configuration reference" in result.stdout
+
+
 def test_init_refuses_wrong_suffix_existing_file_and_missing_noninteractive_parent(
     tmp_path: Path,
 ) -> None:

@@ -31,6 +31,7 @@ WHEEL_REQUIRED = {
     "carnopy/cli.py",
     "carnopy/py.typed",
     "carnopy/templates/__init__.py",
+    "carnopy/templates/full_reference.yaml",
     "carnopy/templates/property_table.yaml",
     "carnopy/templates/saturation_table.yaml",
     "carnopy/templates/vapor_mass_fraction_table.yaml",
@@ -50,6 +51,7 @@ SDIST_REQUIRED = {
     "src/carnopy/__init__.py",
     "src/carnopy/py.typed",
     "src/carnopy/templates/property_table.yaml",
+    "src/carnopy/templates/full_reference.yaml",
     "tests/test_cli.py",
     "uv.lock",
 }
