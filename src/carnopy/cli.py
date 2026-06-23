@@ -52,8 +52,8 @@ app = typer.Typer(
     rich_markup_mode=None,
     help="Generate reproducible thermophysical datasets from configured backends.",
     epilog=(
-        "Workflow: init → edit → optional validate → generate → inspect report/metadata "
-        "→ optional plot."
+        "Workflow: init → edit → optional validate → generate/sweep → inspect "
+        "→ optional plot → optional prepare."
     ),
 )
 
@@ -248,7 +248,11 @@ def prepare_command(
         ),
     ] = Path("prepared"),
 ) -> None:
-    """Prepare deterministic unsplit Parquet artifacts without backend calls."""
+    """Prepare deterministic Parquet artifacts without backend calls.
+
+    Preparation can write an unsplit table or optional split scenarios with
+    log10, standard, and minmax numeric transformations.
+    """
     from carnopy.api import prepare_dataset
     from carnopy.domain.failures import CarnopyError, ConfigError
 

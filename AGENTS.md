@@ -269,8 +269,9 @@ writes Parquet derived-data artifacts. It must resolve semantic fields
 through source metadata/schema, preserve source row order, retain row-level
 source identity, and never import or call thermodynamic backends. Preparation
 may create explicit leakage-aware scenarios and deterministic numeric
-transformations. It does not train, optimize, use scikit-learn, or export
-array/tensor files in this release.
+transformations (`log10`, `standard`, `minmax`). It exports Parquet only and
+does not train, optimize, use scikit-learn, or export NumPy, SafeTensors,
+PyTorch, or other array/tensor files in this release.
 
 Dataset formats:
 

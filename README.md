@@ -64,7 +64,7 @@ carnopy plot outputs/<run> \
 The normal workflow is:
 
 ```text
-init → edit → optional validate → generate → inspect → optional plot
+init → edit → optional validate → generate/sweep → inspect → optional plot → optional prepare
 ```
 
 For repository development:
@@ -338,10 +338,10 @@ model comparisons. Multiple fluids require multiple plot entries.
 
 ### ML preparation foundation
 
-Preparation is an optional derived-data workflow for downstream ML and
-surrogate-model pipelines. It reads an existing immutable run or model-sweep
-bundle and writes deterministic Parquet artifacts without calling a
-thermodynamic backend. Omit `scenarios:` for a single unsplit prepared table:
+Preparation is the current ML-pipeline bridge. It reads an existing immutable
+run or model-sweep bundle and writes deterministic Parquet artifacts without
+calling a thermodynamic backend. Omit `scenarios:` for a single unsplit
+prepared table:
 
 ```bash
 carnopy init preparation preparation.yaml
@@ -372,13 +372,14 @@ If no source rows can produce the requested representation, Carnopy writes a
 clearly marked `no_eligible_rows` bundle without `data/unsplit.parquet`.
 
 Optional leakage-aware scenarios add deterministic partition artifacts and
-plain-JSON transformation parameters:
+plain-JSON transformation parameters. Current numeric transformations are
+`log10`, `standard`, and `minmax`:
 
 ```yaml
 scenarios:
   - name: shuffle_baseline
     kind: shuffle
-    seed: 12345
+    seed: 42
     partitions:
       train: 0.8
       validation: 0.1
@@ -396,7 +397,8 @@ scenarios:
 
 Supported scenarios are `unsplit`, `shuffle`, `coordinate_block`,
 `range_holdout`, `leave_fluid_out`, `phase_holdout`, and `model_holdout`.
-Preparation still does not train models or export arrays/tensors in
+Preparation currently exports Parquet only. It does not train models and does
+not export NumPy arrays, SafeTensors, PyTorch tensors, or other tensor files in
 `0.1.0a2`.
 
 ### Modes

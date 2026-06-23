@@ -463,7 +463,7 @@ def test_prepare_shuffle_scenario_is_deterministic_and_seeded(tmp_path: Path) ->
     scenarios = """scenarios:
   - name: shuffle_baseline
     kind: shuffle
-    seed: 12345
+    seed: 42
     partitions:
       train: 0.5
       test: 0.5
@@ -492,7 +492,7 @@ def test_prepare_shuffle_scenario_is_deterministic_and_seeded(tmp_path: Path) ->
 
     changed_seed = _prep_config_with_scenarios(
         tmp_path / "changed-seed.yaml",
-        scenarios.replace("12345", "54321"),
+        scenarios.replace("42", "7"),
         categorical="[]",
         derived="[]",
     )
@@ -518,7 +518,7 @@ def test_prepare_scenario_transformations_use_train_statistics(tmp_path: Path) -
         """scenarios:
   - name: shuffle_baseline
     kind: shuffle
-    seed: 12345
+    seed: 42
     partitions:
       train: 0.5
       test: 0.5

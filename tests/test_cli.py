@@ -125,6 +125,8 @@ def test_root_help_has_complete_summaries_at_narrow_width() -> None:
         assert command in result.stdout
         assert summary in result.stdout
     assert "init → edit → optional validate" in result.stdout
+    assert "generate/sweep" in result.stdout
+    assert "optional prepare" in result.stdout
 
 
 def test_subcommand_help_retains_detailed_descriptions() -> None:
@@ -132,7 +134,7 @@ def test_subcommand_help_retains_detailed_descriptions() -> None:
         "validate": "without evaluating thermodynamic rows",
         "generate": "Generation performs configuration",
         "sweep": "multiple backend models",
-        "prepare": "without backend calls",
+        "prepare": "optional split scenarios",
         "fluids": "available from one CoolProp model",
         "properties": "semantic properties accepted",
         "inspect": "without backend calls",
@@ -149,6 +151,18 @@ def test_generate_help_includes_configured_figure_root() -> None:
     result = runner.invoke(app, ["generate", "--help"])
     assert result.exit_code == 0
     assert "--figures-out DIRECTORY" in result.stdout
+
+
+def test_prepare_help_documents_current_artifacts_without_future_tensor_exports() -> None:
+    result = runner.invoke(app, ["prepare", "--help"])
+    assert result.exit_code == 0
+    assert "deterministic Parquet artifacts" in result.stdout
+    assert "optional split scenarios" in result.stdout
+    assert "log10" in result.stdout
+    assert "standard" in result.stdout
+    assert "minmax" in result.stdout
+    assert "SafeTensors" not in result.stdout
+    assert "PyTorch" not in result.stdout
 
 
 def test_plot_help_describes_inputs_and_constrained_choices() -> None:

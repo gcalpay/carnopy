@@ -39,7 +39,7 @@ auxiliary:
 # scenarios:
 #   - name: shuffle_baseline
 #     kind: shuffle
-#     seed: 12345
+#     seed: 42
 #     partitions:
 #       train: 0.8
 #       validation: 0.1

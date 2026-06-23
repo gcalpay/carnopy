@@ -70,6 +70,8 @@ def test_preparation_template_is_valid() -> None:
     assert payload["schema_version"] == 1
     assert payload["document_type"] == "preparation"
     assert payload["outputs"]["formats"] == ["parquet"]
+    assert "seed: 42" in concise
+    assert "seed: 12345" not in concise
 
 
 def test_interactive_initialization_can_confirm_parent_creation(tmp_path: Path) -> None:
