@@ -58,6 +58,7 @@ def render_xy(
             y_field=y_field,
             sampling_fields=sampling_fields,
             resolution=resolution,
+            request=request,
         )
         for fluid in fluids
     }
@@ -121,6 +122,7 @@ def _generic_xy_series(
     y_field: str,
     sampling_fields: tuple[str, ...],
     resolution: GroupingResolution,
+    request: PlotRequest,
 ) -> list[SeriesData]:
     group_field = resolution.group_by
     if group_field is None:
@@ -148,7 +150,7 @@ def _generic_xy_series(
             series_from_frame(
                 plot_source=plot_source,
                 frame=group,
-                label=series_label(group_field, level),
+                label=series_label(plot_source, request, group_field, level),
                 ordering_field=ordering_field,
                 split_phase=plot_source.mode == "property_table",
                 markers_only=ordering_field is None,

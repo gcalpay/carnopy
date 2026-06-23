@@ -1,15 +1,16 @@
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any
 
 import numpy as np
 import pandas as pd
 
-from carnopy.domain.units import UNITS
 from carnopy.visualization.fields import FieldDefinition, get_field
-from carnopy.visualization.io import display_unit_for_field
+from carnopy.visualization.io import (
+    convert_numeric_for_display,
+    effective_display_unit,
+)
 from carnopy.visualization.models import (
-    PlotCoordinate,
     PlotSource,
     RenderedPlot,
     VisualizationError,
@@ -45,8 +46,9 @@ def render_property_heatmap(
     invalid_rows_excluded: int,
 ) -> RenderedPlot:
     x_field, y_field = _heatmap_fields(plot_source, request)
-    x_unit = _display_unit(plot_source, x_field)
-    y_unit = _display_unit(plot_source, y_field)
+    x_unit = effective_display_unit(plot_source, request, x_field)
+    y_unit = effective_display_unit(plot_source, request, y_field)
+    property_unit = effective_display_unit(plot_source, request, property_field.name)
     valid_values = frame.loc[frame["_plot_valid"], "_plot_value"]
     value_min = float(valid_values.min())
     value_max = float(valid_values.max())
@@ -64,16 +66,26 @@ def render_property_heatmap(
     for axis, fluid in zip(axes, fluids, strict=True):
         fluid_frame = frame.loc[frame["fluid"] == fluid].copy()
         _reject_duplicate_cells(fluid_frame, x_field, y_field)
-        x_values = _sorted_display_levels(plot_source, fluid_frame, x_field)
-        y_values = _sorted_display_levels(plot_source, fluid_frame, y_field)
+        x_values = _sorted_display_levels(plot_source, request, fluid_frame, x_field)
+        y_values = _sorted_display_levels(plot_source, request, fluid_frame, y_field)
         if len(x_values) < 2 or len(y_values) < 2:
             raise VisualizationError(HEATMAP_DIMENSION_ERROR)
         all_x_values.extend(x_values)
         all_y_values.extend(y_values)
         x_column = get_field(x_field).column
         y_column = get_field(y_field).column
-        fluid_frame["_x_display"] = _display_series(plot_source, fluid_frame, x_field)
-        fluid_frame["_y_display"] = _display_series(plot_source, fluid_frame, y_field)
+        fluid_frame["_x_display"] = _display_series(
+            plot_source,
+            request,
+            fluid_frame,
+            x_field,
+        )
+        fluid_frame["_y_display"] = _display_series(
+            plot_source,
+            request,
+            fluid_frame,
+            y_field,
+        )
         pivot = fluid_frame.pivot(
             index="_y_display",
             columns="_x_display",
@@ -122,7 +134,7 @@ def render_property_heatmap(
     scalar_mappable = mpl["ScalarMappable"](norm=norm, cmap=cmap)
     scalar_mappable.set_array([])
     colorbar = figure.colorbar(scalar_mappable, ax=axes)
-    colorbar.set_label(property_field.display_label)
+    colorbar.set_label(property_field.label_for_unit(property_unit))
     finish_figure(
         figure=figure,
         axes=axes,
@@ -139,7 +151,7 @@ def render_property_heatmap(
             "x": _axis_metadata(x_field, x_unit),
             "y": _axis_metadata(y_field, y_unit),
             "series": None,
-            "color": _axis_metadata(property_field.name, property_field.unit),
+            "color": _axis_metadata(property_field.name, property_unit),
         },
         scales={"x": "linear", "y": "linear", "color": request.color_scale},
         settings={
@@ -194,25 +206,27 @@ def _reject_duplicate_cells(frame: pd.DataFrame, x_field: str, y_field: str) -> 
 
 def _sorted_display_levels(
     plot_source: PlotSource,
+    request: PlotRequest,
     frame: pd.DataFrame,
     field: str,
 ) -> list[float]:
-    values = _display_series(plot_source, frame, field)
+    values = _display_series(plot_source, request, frame, field)
     return sorted(float(value) for value in values.dropna().unique().tolist())
 
 
 def _display_series(
     plot_source: PlotSource,
+    request: PlotRequest,
     frame: pd.DataFrame,
     field: str,
 ) -> pd.Series:
     column = get_field(field).column
-    numeric = pd.to_numeric(frame[column], errors="coerce")
-    if field in {"temperature", "pressure"}:
-        unit = display_unit_for_field(plot_source, cast(PlotCoordinate, field))
-        converter = UNITS[unit].from_si
-        return numeric.map(converter)
-    return numeric
+    return convert_numeric_for_display(
+        frame[column],
+        plot_source=plot_source,
+        request=request,
+        field=field,
+    )
 
 
 def _cell_boundaries(values: np.ndarray[Any, np.dtype[np.float64]]) -> np.ndarray[Any, Any]:
@@ -222,12 +236,6 @@ def _cell_boundaries(values: np.ndarray[Any, np.dtype[np.float64]]) -> np.ndarra
     first = values[0] - (values[1] - values[0]) / 2.0
     last = values[-1] + (values[-1] - values[-2]) / 2.0
     return np.concatenate(([first], midpoints, [last]))
-
-
-def _display_unit(plot_source: PlotSource, field: str) -> str | None:
-    if field in {"temperature", "pressure"}:
-        return display_unit_for_field(plot_source, cast(PlotCoordinate, field))
-    return get_field(field).unit
 
 
 def _axis_metadata(field: str, unit: str | None) -> dict[str, object]:

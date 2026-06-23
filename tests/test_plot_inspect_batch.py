@@ -72,6 +72,81 @@ def test_inspect_reports_available_plot_contracts(tmp_path: Path) -> None:
     assert "Compatible plot kinds:" in result.output
 
 
+def test_inspect_json_reports_identity_ranges_failures_and_display_units(
+    tmp_path: Path,
+) -> None:
+    run = generate_dataset(
+        _write_property_config(
+            tmp_path / "inspect.yaml",
+            properties="mass_density, specific_enthalpy, specific_entropy",
+        ),
+        output_root=tmp_path / "runs",
+    )
+    result = runner.invoke(
+        app,
+        ["inspect", str(run.output_directory), "--format", "json"],
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    assert payload["inspection_schema_version"] == 1
+    assert payload["source"]["integrity"] == "verified"
+    assert payload["identity"]["run_id"] == run.run_id
+    assert payload["backend"]["name"] == "coolprop"
+    assert payload["rows"] == {"total": 4, "valid": 4, "invalid": 0}
+    assert payload["phase_counts"]
+    assert payload["failure_counts"] == {
+        "code": {},
+        "layer": {},
+        "property": {},
+    }
+    enthalpy = next(item for item in payload["properties"] if item["name"] == "specific_enthalpy")
+    assert enthalpy["minimum"] is not None
+    assert enthalpy["maximum"] is not None
+    assert payload["display_units"]["pressure"] == ["Pa", "kPa", "MPa", "bar"]
+    property_curves = next(
+        item for item in payload["plot_capabilities"] if item["kind"] == "property-curves"
+    )
+    assert property_curves["series_fields"] == ["pressure", "temperature"]
+
+
+def test_inspect_writes_exclusive_visualization_starter(tmp_path: Path) -> None:
+    run = generate_dataset(
+        _write_property_config(tmp_path / "config.yaml"),
+        output_root=tmp_path / "runs",
+    )
+    output = tmp_path / "plots.yaml"
+    result = runner.invoke(
+        app,
+        [
+            "inspect",
+            str(run.output_directory),
+            "--write-visualization",
+            str(output),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert output.read_text(encoding="utf-8") == (
+        "visualization:\n"
+        "  format: png\n"
+        "  plots:\n"
+        "  - name: mass-density-curves\n"
+        "    kind: property_curves\n"
+        "    property: mass_density\n"
+        "    x: temperature\n"
+    )
+    second = runner.invoke(
+        app,
+        [
+            "inspect",
+            str(run.output_directory),
+            "--write-visualization",
+            str(output),
+        ],
+    )
+    assert second.exit_code == 2
+    assert "refusing to overwrite" in second.output
+
+
 def test_inspect_conditionally_excludes_unavailable_diagrams(tmp_path: Path) -> None:
     run = generate_dataset(
         _write_property_config(
@@ -246,6 +321,61 @@ visualization:
     report = json.loads(Path(report_line.partition(":")[2].strip()).read_text(encoding="utf-8"))
     assert report["status"] == "completed"
     assert report["outcomes"][0]["name"] == "density-map"
+
+
+def test_batch_plot_supports_series_and_display_units(
+    tmp_path: Path,
+) -> None:
+    run = generate_dataset(
+        _write_property_config(
+            tmp_path / "config.yaml",
+            properties="mass_density, specific_enthalpy",
+        ),
+        output_root=tmp_path / "runs",
+    )
+    plots = tmp_path / "plots.yaml"
+    plots.write_text(
+        """
+visualization:
+  display_units:
+    pressure: bar
+  plots:
+    - name: enthalpy-curves
+      kind: property_curves
+      property: specific_enthalpy
+      x: temperature
+      series:
+        pressure: [1bar]
+      display_units:
+        temperature: degC
+        specific_enthalpy: kJ/kg
+""",
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app,
+        [
+            "plot",
+            str(run.output_directory),
+            "--config",
+            str(plots),
+            "--figures-out",
+            str(tmp_path / "figures"),
+        ],
+        env={"MPLBACKEND": "Agg", "MPLCONFIGDIR": str(tmp_path / "mpl-units")},
+    )
+    assert result.exit_code == 0, result.output
+    report_line = next(
+        line for line in result.output.splitlines() if line.startswith("Visualization report:")
+    )
+    report = json.loads(Path(report_line.partition(":")[2].strip()).read_text(encoding="utf-8"))
+    sidecar = json.loads(Path(report["outcomes"][0]["sidecar_path"]).read_text(encoding="utf-8"))
+    assert sidecar["data_selection"]["series"][0]["matched_values"] == [100000.0]
+    assert sidecar["data_selection"]["display_units"] == {
+        "pressure": "bar",
+        "specific_enthalpy": "kJ/kg",
+        "temperature": "degC",
+    }
 
 
 def test_batch_plot_rejects_manual_options_files_and_existing_destination(

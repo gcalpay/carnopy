@@ -149,7 +149,20 @@ carnopy inspect outputs/<run>
 ```
 
 The inspection lists fluids, sampling levels, emitted properties, compatible
-plot kinds, and copyable commands.
+plot kinds, valid/invalid rows, phase and failure counts, property ranges,
+available curve-series fields, supported display units, and copyable commands.
+
+Use structured output in scripts or create a visualization-only starter file
+for the immutable run:
+
+```bash
+carnopy inspect outputs/<run> --format json
+carnopy inspect outputs/<run> --write-visualization plots.yaml
+carnopy plot outputs/<run> --config plots.yaml
+```
+
+The writer uses exclusive creation and refuses to replace an existing YAML
+file. It does not evaluate thermodynamic states or create a figure.
 
 To choose a different output root:
 
@@ -449,6 +462,28 @@ Repeat `--filter` to combine filters with logical AND. Current filter fields are
 temperature, pressure, vapor mass fraction, phase, and saturation endpoint.
 Repeat `--fluid` to select multiple fluids; each fluid receives its own facet.
 
+Select specific members of a curve family with repeatable unit-aware
+`--series` options. Values for the same field are combined with logical OR:
+
+```bash
+carnopy plot outputs/<property-run> \
+  --kind property-curves \
+  --property specific_enthalpy \
+  --x temperature \
+  --series pressure=1bar \
+  --series pressure=3bar \
+  --series pressure=5bar \
+  --display-unit temperature=degC \
+  --display-unit pressure=bar \
+  --display-unit specific_enthalpy=kJ/kg
+```
+
+Series selection is exact after conversion to canonical SI; Carnopy never
+chooses the nearest emitted level. Supported engineering display conversions
+cover temperature, pressure, enthalpy, internal energy, entropy, and specific
+heat capacities. Display conversion changes only figure values and labels, not
+the immutable SI dataset.
+
 `SOURCE` may be a run directory, CSV, or Parquet file. Run directories prefer
 Parquet and verify it against `metadata.json`. Standalone saturation and
 vapor-quality files may require `--saturation-coordinate pressure` or
@@ -468,12 +503,18 @@ immutable dataset run is finalized:
 visualization:
   format: png
   fluids: [Propane]
+  display_units:
+    pressure: bar
 
   plots:
     - name: density-vs-temperature
       kind: property_curves
       property: mass_density
       x: temperature
+      series:
+        pressure: [1bar, 3bar, 5bar]
+      display_units:
+        temperature: degC
       value_scale: linear
 
     - name: density-map

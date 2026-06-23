@@ -9,7 +9,13 @@ from carnopy.config.visualization import VisualizationConfig
 from carnopy.domain.failures import ConfigError
 from carnopy.visualization.fields import FIELD_REGISTRY, get_field
 from carnopy.visualization.models import PlotSource, VisualizationError
-from carnopy.visualization.requests import ExactFilter, PlotRequest, request_id
+from carnopy.visualization.requests import (
+    ExactFilter,
+    PlotRequest,
+    normalize_display_units,
+    normalize_series_selections,
+    request_id,
+)
 
 
 @dataclass(frozen=True)
@@ -46,6 +52,10 @@ def normalize_visualization(
                 y_field=plot.y_field,
                 group_by=plot.group_by,
                 filters=filters,
+                series=normalize_series_selections(plot.series),
+                display_units=normalize_display_units(
+                    {**visualization.display_units, **plot.display_units}
+                ),
                 fluids=fluids,
                 value_scale=plot.value_scale,
                 color_scale=plot.color_scale,
@@ -85,6 +95,10 @@ def normalize_visualization_for_source(
                 y_field=plot.y_field,
                 group_by=plot.group_by,
                 filters=filters,
+                series=normalize_series_selections(plot.series),
+                display_units=normalize_display_units(
+                    {**visualization.display_units, **plot.display_units}
+                ),
                 fluids=fluids,
                 value_scale=plot.value_scale,
                 color_scale=plot.color_scale,
@@ -219,12 +233,26 @@ def _validate_static_request(
         request.y_field,
         request.group_by,
         *(exact_filter.field for exact_filter in request.filters),
+        *(selection.field for selection in request.series),
+        *(selection.field for selection in request.display_units),
     ]
     for field in referenced:
         if field is not None and field not in available:
             raise ConfigError(
                 f"visualization field {field!r} is not emitted by this dataset specification"
             )
+    _validate_series_field(
+        request,
+        mode=scientific_config.mode,
+        saturation_coordinate=_config_saturation_coordinate(scientific_config),
+        error_type=ConfigError,
+    )
+    _validate_display_fields(
+        request,
+        mode=scientific_config.mode,
+        saturation_coordinate=_config_saturation_coordinate(scientific_config),
+        error_type=ConfigError,
+    )
 
     required_properties: set[str] = set()
     for field in (request.property_name, request.x_field, request.y_field):
@@ -289,12 +317,26 @@ def _validate_source_request(
         request.y_field,
         request.group_by,
         *(exact_filter.field for exact_filter in request.filters),
+        *(selection.field for selection in request.series),
+        *(selection.field for selection in request.display_units),
     ]
     for field in referenced:
         if field is not None and field not in available:
             raise VisualizationError(
                 f"visualization field {field!r} is not emitted by this dataset"
             )
+    _validate_series_field(
+        request,
+        mode=plot_source.mode,
+        saturation_coordinate=plot_source.saturation_coordinate,
+        error_type=VisualizationError,
+    )
+    _validate_display_fields(
+        request,
+        mode=plot_source.mode,
+        saturation_coordinate=plot_source.saturation_coordinate,
+        error_type=VisualizationError,
+    )
     required: set[str] = set()
     for field in (request.property_name, request.x_field, request.y_field):
         if field is None:
@@ -324,3 +366,121 @@ def _source_available_fields(plot_source: PlotSource) -> set[str]:
     if "mass_density" in available:
         available.add("specific_volume")
     return available
+
+
+def _config_saturation_coordinate(config: NormalizedConfig) -> str | None:
+    if config.mode == "property_table":
+        return None
+    coordinates = [field for field in ("temperature", "pressure") if field in config.grid]
+    return coordinates[0] if len(coordinates) == 1 else None
+
+
+def _validate_series_field(
+    request: PlotRequest,
+    *,
+    mode: str,
+    saturation_coordinate: str | None,
+    error_type: type[Exception],
+) -> None:
+    if not request.series:
+        return
+    expected: str | None
+    if request.kind == "property_heatmap":
+        expected = None
+    elif request.kind == "property_curves":
+        if mode == "property_table":
+            expected = (
+                "pressure"
+                if request.x_field == "temperature"
+                else "temperature"
+                if request.x_field == "pressure"
+                else None
+            )
+        elif mode == "saturation_table":
+            expected = "saturation_endpoint"
+        else:
+            expected = saturation_coordinate
+    elif request.kind == "xy":
+        expected = request.group_by
+    elif mode == "property_table":
+        expected = "temperature" if request.kind == "pv" else "pressure"
+    elif mode == "saturation_table":
+        expected = "saturation_endpoint"
+    else:
+        expected = saturation_coordinate
+    selected = request.series[0].field
+    if expected is None:
+        raise error_type(f"{request.kind} does not support series selection")
+    if selected != expected:
+        raise error_type(
+            f"{request.kind} uses {expected!r} as its series field; "
+            f"received series selection for {selected!r}"
+        )
+
+
+def _validate_display_fields(
+    request: PlotRequest,
+    *,
+    mode: str,
+    saturation_coordinate: str | None,
+    error_type: type[Exception],
+) -> None:
+    if not request.display_units:
+        return
+    allowed: set[str] = set()
+    if request.kind == "property_curves":
+        if request.property_name is not None:
+            allowed.add(request.property_name)
+        if mode == "property_table" and request.x_field is not None:
+            allowed.update(
+                {
+                    request.x_field,
+                    "pressure" if request.x_field == "temperature" else "temperature",
+                }
+            )
+        elif mode == "saturation_table":
+            if saturation_coordinate is not None:
+                allowed.add(saturation_coordinate)
+        elif saturation_coordinate is not None:
+            allowed.update({"vapor_mass_fraction", saturation_coordinate})
+    elif request.kind == "property_heatmap":
+        if request.property_name is not None:
+            allowed.add(request.property_name)
+        if mode == "property_table":
+            allowed.update({"temperature", "pressure"})
+        elif saturation_coordinate is not None:
+            allowed.update({"vapor_mass_fraction", saturation_coordinate})
+    elif request.kind == "xy":
+        allowed.update(
+            field
+            for field in (request.x_field, request.y_field, request.group_by)
+            if field is not None
+        )
+    elif request.kind == "pv":
+        allowed.update({"specific_volume", "pressure"})
+        allowed.add(
+            "temperature"
+            if mode == "property_table"
+            else "saturation_endpoint"
+            if mode == "saturation_table"
+            else saturation_coordinate or ""
+        )
+    else:
+        allowed.update({"specific_entropy", "temperature"})
+        allowed.add(
+            "pressure"
+            if mode == "property_table"
+            else "saturation_endpoint"
+            if mode == "saturation_table"
+            else saturation_coordinate or ""
+        )
+    allowed.discard("")
+    invalid = sorted(
+        selection.field for selection in request.display_units if selection.field not in allowed
+    )
+    if invalid:
+        raise error_type(
+            "display units were requested for fields not used by this plot: "
+            f"{', '.join(invalid)}; available plotted fields: "
+            f"{', '.join(sorted(allowed)) or 'none'}"
+        )

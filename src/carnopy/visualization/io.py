@@ -2,13 +2,18 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import pandas as pd
 
 from carnopy.domain.units import AXIS_SI_UNITS, UNITS, validate_axis_unit
 from carnopy.provenance import sha256_file
+from carnopy.visualization.fields import get_field
 from carnopy.visualization.models import PlotCoordinate, PlotSource, VisualizationError
+from carnopy.visualization.units import DISPLAY_UNITS
+
+if TYPE_CHECKING:
+    from carnopy.visualization.requests import PlotRequest
 
 SUPPORTED_MODES = {
     "property_table",
@@ -120,6 +125,45 @@ def convert_field_for_display(
 
 def display_unit_for_field(plot_source: PlotSource, field: PlotCoordinate) -> str:
     return _display_unit(plot_source.metadata, field)
+
+
+def effective_display_unit(
+    plot_source: PlotSource,
+    request: PlotRequest,
+    field: str,
+) -> str | None:
+    requested = {selection.field: selection.unit for selection in request.display_units}.get(field)
+    if requested is not None:
+        return requested
+    if field in {"temperature", "pressure"} and request.kind in {
+        "property_curves",
+        "property_heatmap",
+    }:
+        return display_unit_for_field(plot_source, cast(PlotCoordinate, field))
+    return get_field(field).unit
+
+
+def convert_numeric_for_display(
+    values: pd.Series,
+    *,
+    plot_source: PlotSource,
+    request: PlotRequest,
+    field: str,
+) -> pd.Series:
+    unit = effective_display_unit(plot_source, request, field)
+    native = get_field(field).unit
+    numeric = pd.to_numeric(values, errors="coerce").astype(float)
+    if unit is None or unit == native:
+        return numeric
+    try:
+        converter = DISPLAY_UNITS[unit]
+    except KeyError as exc:
+        raise VisualizationError(
+            f"display unit {unit!r} has no conversion for field {field!r}"
+        ) from exc
+    if converter.field_unit != native:
+        raise VisualizationError(f"display unit {unit!r} is incompatible with field {field!r}")
+    return numeric.map(converter.from_si)
 
 
 def _resolve_dataset_path(source: Path) -> Path:

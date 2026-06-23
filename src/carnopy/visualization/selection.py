@@ -9,7 +9,7 @@ import pandas as pd
 
 from carnopy.visualization.fields import get_field
 from carnopy.visualization.models import Advisory, VisualizationError
-from carnopy.visualization.requests import ExactFilter, PlotScale
+from carnopy.visualization.requests import ExactFilter, PlotScale, SeriesSelection
 
 NUMERIC_FILTER_RTOL = 1e-9
 NUMERIC_FILTER_ATOL = 1e-12
@@ -24,10 +24,18 @@ class FilterMatch:
 
 
 @dataclass(frozen=True)
+class SeriesMatch:
+    field: str
+    requested_values: tuple[float | str, ...]
+    matched_values: tuple[float | str, ...]
+
+
+@dataclass(frozen=True)
 class SelectionResult:
     frame: pd.DataFrame
     selected_fluids: tuple[str, ...]
     filter_matches: tuple[FilterMatch, ...]
+    series_matches: tuple[SeriesMatch, ...]
 
 
 @dataclass(frozen=True)
@@ -41,6 +49,8 @@ def select_rows(
     *,
     fluids: Sequence[str] | None = None,
     filters: Sequence[ExactFilter] = (),
+    series: Sequence[SeriesSelection] = (),
+    expected_series_field: str | None = None,
 ) -> SelectionResult:
     selected_fluids = select_fluids(frame, fluids)
     selected = frame.loc[frame["fluid"].isin(selected_fluids)].copy()
@@ -48,9 +58,25 @@ def select_rows(
     for exact_filter in filters:
         selected, match = _apply_filter(selected, exact_filter)
         matches.append(match)
+    series_matches: list[SeriesMatch] = []
+    for selection in series:
+        if expected_series_field is None:
+            raise VisualizationError("this plot kind does not support --series")
+        if selection.field != expected_series_field:
+            raise VisualizationError(
+                f"this plot uses {expected_series_field!r} as its series field; "
+                f"received --series {selection.field}=..."
+            )
+        selected, series_match = _apply_series_selection(selected, selection)
+        series_matches.append(series_match)
     if selected.empty:
         raise VisualizationError("visualization selection produced no rows")
-    return SelectionResult(selected, tuple(selected_fluids), tuple(matches))
+    return SelectionResult(
+        selected,
+        tuple(selected_fluids),
+        tuple(matches),
+        tuple(series_matches),
+    )
 
 
 def select_fluids(frame: pd.DataFrame, requested: Sequence[str] | None) -> list[str]:
@@ -280,6 +306,74 @@ def _apply_filter(
             field=exact_filter.field,
             requested_value=requested_value,
             matched_values=matched_values,
+        ),
+    )
+
+
+def _apply_series_selection(
+    frame: pd.DataFrame,
+    selection: SeriesSelection,
+) -> tuple[pd.DataFrame, SeriesMatch]:
+    definition = get_field(selection.field)
+    if definition.column not in frame.columns:
+        raise VisualizationError(
+            f"series field {selection.field!r} is not present in the source dataset"
+        )
+    series = frame[definition.column]
+    combined = pd.Series(False, index=frame.index)
+    matched_values: list[float | str] = []
+    missing_values: list[float | str] = []
+    if definition.kind == "numeric":
+        numeric = pd.to_numeric(series, errors="coerce")
+        available = sorted({float(value) for value in numeric.dropna().tolist()})
+        for raw_value in selection.values:
+            requested = float(raw_value)
+            mask = numeric.map(
+                lambda value, requested_value=requested: bool(
+                    pd.notna(value)
+                    and math.isclose(
+                        float(value),
+                        requested_value,
+                        rel_tol=NUMERIC_FILTER_RTOL,
+                        abs_tol=NUMERIC_FILTER_ATOL,
+                    )
+                )
+            )
+            matches = sorted({float(value) for value in numeric.loc[mask].dropna().tolist()})
+            if not matches:
+                missing_values.append(requested)
+                continue
+            combined |= mask
+            matched_values.extend(matches)
+    else:
+        available = sorted(series.dropna().astype(str).unique().tolist())
+        normalized = series.astype("string").str.strip().str.casefold()
+        for raw_value in selection.values:
+            requested_text = str(raw_value).strip().casefold()
+            mask = normalized.eq(requested_text).fillna(False)
+            matches = sorted(series.loc[mask].dropna().astype(str).unique().tolist())
+            if not matches:
+                missing_values.append(str(raw_value))
+                continue
+            combined |= mask
+            matched_values.extend(matches)
+    if missing_values:
+        rendered_missing = ", ".join(str(value) for value in missing_values)
+        rendered_available = ", ".join(str(value) for value in available) or "none"
+        raise VisualizationError(
+            f"series selection {selection.field}={rendered_missing} matches no emitted level; "
+            f"available levels: {rendered_available}"
+        )
+    unique_matches: list[float | str] = []
+    for value in matched_values:
+        if value not in unique_matches:
+            unique_matches.append(value)
+    return (
+        frame.loc[combined].copy(),
+        SeriesMatch(
+            field=selection.field,
+            requested_values=selection.values,
+            matched_values=tuple(unique_matches),
         ),
     )
 

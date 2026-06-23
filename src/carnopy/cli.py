@@ -26,6 +26,11 @@ class ConfigModeCli(str, Enum):
     vapor_mass_fraction_table = "vapor_mass_fraction_table"
 
 
+class InspectFormatCli(str, Enum):
+    text = "text"
+    json = "json"
+
+
 def _version_callback(value: bool) -> None:
     if value:
         typer.echo(f"carnopy {__version__}")
@@ -188,7 +193,7 @@ def properties_command() -> None:
         )
 
 
-@app.command("inspect", short_help="Inspect plotting options.")
+@app.command("inspect", short_help="Inspect a generated dataset.")
 def inspect_command(
     source: Annotated[
         Path,
@@ -198,6 +203,19 @@ def inspect_command(
             help="Run directory, CSV, or Parquet file.",
         ),
     ],
+    output_format: Annotated[
+        InspectFormatCli,
+        typer.Option("--format", help="Inspection output format."),
+    ] = InspectFormatCli.text,
+    write_visualization: Annotated[
+        Path | None,
+        typer.Option(
+            "--write-visualization",
+            dir_okay=False,
+            metavar="PATH",
+            help="Write a visualization-only starter YAML without overwriting files.",
+        ),
+    ] = None,
 ) -> None:
     """List emitted fields and compatible plots without backend calls."""
     from carnopy.visualization.inspect import inspect_plot_source
@@ -205,10 +223,21 @@ def inspect_command(
 
     try:
         inspection = inspect_plot_source(source)
+        if write_visualization is not None:
+            created = inspection.write_visualization(write_visualization)
     except VisualizationError as exc:
         typer.echo(f"Inspection failed: {exc}", err=True)
         raise typer.Exit(code=2) from exc
-    typer.echo(inspection.format_text())
+    typer.echo(
+        inspection.format_json()
+        if output_format is InspectFormatCli.json
+        else inspection.format_text()
+    )
+    if write_visualization is not None:
+        typer.echo(
+            f"Created visualization configuration: {created}",
+            err=output_format is InspectFormatCli.json,
+        )
 
 
 @app.command("init", short_help="Create a starter configuration.")
@@ -341,6 +370,25 @@ def plot_command(
             help="Exact canonical-value filter; repeat to combine with AND.",
         ),
     ] = None,
+    series: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--series",
+            metavar="FIELD=VALUE",
+            help=(
+                "Select exact curve-series levels; repeat values for the same "
+                "field to combine with OR."
+            ),
+        ),
+    ] = None,
+    display_units: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--display-unit",
+            metavar="FIELD=UNIT",
+            help="Override a plotted engineering display unit; repeat by field.",
+        ),
+    ] = None,
     value_scale: Annotated[
         PlotScaleCli | None,
         typer.Option(
@@ -404,7 +452,9 @@ def plot_command(
     )
     from carnopy.visualization.requests import (
         normalize_public_plot_kind,
+        parse_display_units,
         parse_exact_filter,
+        parse_series_selections,
     )
 
     try:
@@ -417,6 +467,8 @@ def plot_command(
                 "--group-by": group_by,
                 "--fluid": fluids,
                 "--filter": filters,
+                "--series": series,
+                "--display-unit": display_units,
                 "--value-scale": value_scale,
                 "--color-scale": color_scale,
                 "--x-scale": x_scale,
@@ -480,6 +532,8 @@ def plot_command(
         ):
             raise VisualizationError("--x-scale and --y-scale are valid only with xy, pv, or ts")
         exact_filters = tuple(parse_exact_filter(value) for value in (filters or ()))
+        series_selections = parse_series_selections(series or ())
+        unit_selections = parse_display_units(display_units or ())
         result = plot_dataset(
             source,
             property_name=property_name,
@@ -489,6 +543,8 @@ def plot_command(
             group_by=group_by,
             fluids=fluids,
             filters=exact_filters,
+            series=series_selections,
+            display_units={selection.field: selection.unit for selection in unit_selections},
             value_scale=(value_scale or PlotScaleCli.linear).value,
             color_scale=(color_scale or PlotScaleCli.linear).value,
             x_scale=(x_scale or PlotScaleCli.linear).value,

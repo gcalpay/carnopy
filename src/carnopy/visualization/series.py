@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 
 from carnopy.visualization.fields import get_field
+from carnopy.visualization.io import effective_display_unit
 from carnopy.visualization.models import PlotSource, RenderedPlot, VisualizationError
 from carnopy.visualization.render import create_faceted_figure, finish_figure
 from carnopy.visualization.requests import PlotRequest
@@ -43,6 +44,11 @@ def render_series_facets(
     figure, axes = create_faceted_figure(mpl=mpl, fluids=fluids)
     maximum_series = max((len(items) for items in facet_series.values()), default=0)
     colors = _series_colors(mpl, maximum_series)
+    x_unit = effective_display_unit(plot_source, request, x_field)
+    y_unit = effective_display_unit(plot_source, request, y_field)
+    group_unit = (
+        effective_display_unit(plot_source, request, group_by) if group_by is not None else None
+    )
     for axis, fluid in zip(axes, fluids, strict=True):
         for index, item in enumerate(facet_series[fluid]):
             axis.plot(
@@ -59,8 +65,8 @@ def render_series_facets(
                 linewidth=1.2,
                 label=item.label,
             )
-        axis.set_xlabel(get_field(x_field).display_label)
-        axis.set_ylabel(get_field(y_field).display_label)
+        axis.set_xlabel(get_field(x_field).label_for_unit(x_unit))
+        axis.set_ylabel(get_field(y_field).label_for_unit(y_unit))
         axis.set_xscale(request.x_scale)
         axis.set_yscale(request.y_scale)
         axis.minorticks_on()
@@ -86,9 +92,9 @@ def render_series_facets(
     return RenderedPlot(
         figure=figure,
         axes={
-            "x": axis_metadata(x_field),
-            "y": axis_metadata(y_field),
-            "series": axis_metadata(group_by) if group_by is not None else None,
+            "x": axis_metadata(x_field, x_unit),
+            "y": axis_metadata(y_field, y_unit),
+            "series": (axis_metadata(group_by, group_unit) if group_by is not None else None),
             "color": None,
         },
         scales={"x": request.x_scale, "y": request.y_scale, "color": None},
@@ -239,12 +245,25 @@ def level_mask(
     )
 
 
-def series_label(field: str, value: float | str) -> str:
+def series_label(
+    plot_source: PlotSource,
+    request: PlotRequest,
+    field: str,
+    value: float | str,
+) -> str:
     if isinstance(value, str):
         return value.replace("_", " ")
-    unit = get_field(field).unit
-    suffix = f" {unit}" if unit not in (None, "1") else ""
-    return f"{get_field(field).symbol or field} = {float(value):.6g}{suffix}"
+    unit = effective_display_unit(plot_source, request, field)
+    native = get_field(field).unit
+    display_value = float(value)
+    if unit is not None and unit != native:
+        from carnopy.visualization.units import DISPLAY_UNITS
+
+        display_value = DISPLAY_UNITS[unit].from_si(display_value)
+    from carnopy.visualization.units import plain_unit_label
+
+    suffix = f" {plain_unit_label(unit)}" if unit not in (None, "1") else ""
+    return f"{get_field(field).symbol or field} = {display_value:.6g}{suffix}"
 
 
 def required_saturation_coordinate(plot_source: PlotSource) -> str:
@@ -256,14 +275,17 @@ def required_saturation_coordinate(plot_source: PlotSource) -> str:
     return plot_source.saturation_coordinate
 
 
-def axis_metadata(field: str | None) -> dict[str, object] | None:
+def axis_metadata(
+    field: str | None,
+    unit: str | None = None,
+) -> dict[str, object] | None:
     if field is None:
         return None
     definition = get_field(field)
     return {
         "field": field,
         "column": definition.column,
-        "unit": definition.unit,
+        "unit": definition.unit if unit is None else unit,
     }
 
 

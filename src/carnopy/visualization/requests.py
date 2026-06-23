@@ -3,11 +3,18 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
+from collections.abc import Mapping, Sequence
 from typing import Literal, cast
 
 from pydantic import BaseModel, ConfigDict, ValidationInfo, field_validator, model_validator
 
 from carnopy.visualization.fields import get_field
+from carnopy.visualization.units import (
+    canonical_display_unit,
+    to_si,
+    validate_display_unit,
+)
 
 PlotKindV2 = Literal[
     "property_curves",
@@ -20,6 +27,11 @@ PlotScale = Literal["linear", "log"]
 PlotFormat = Literal["png", "pdf", "svg"]
 SaturationCoordinate = Literal["pressure", "temperature"]
 FilterValue = float | str
+_NUMBER_WITH_UNIT = re.compile(
+    r"^\s*"
+    r"(?P<number>[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)"
+    r"\s*(?P<unit>.*\S)?\s*$"
+)
 
 
 class ExactFilter(BaseModel):
@@ -65,6 +77,66 @@ class ExactFilter(BaseModel):
         return self
 
 
+class SeriesSelection(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    field: str
+    values: tuple[FilterValue, ...]
+
+    @field_validator("field")
+    @classmethod
+    def supported_series_field(cls, field: str) -> str:
+        definition = get_field(field)
+        if not definition.group_allowed:
+            raise ValueError(f"field {field!r} cannot identify plot series")
+        return field
+
+    @model_validator(mode="after")
+    def valid_values(self) -> SeriesSelection:
+        if not self.values:
+            raise ValueError("series selection requires at least one value")
+        definition = get_field(self.field)
+        canonical: set[str] = set()
+        for value in self.values:
+            if definition.kind == "numeric":
+                try:
+                    numeric = float(value)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(
+                        f"numeric series field {self.field!r} requires numeric values"
+                    ) from exc
+                if not math.isfinite(numeric):
+                    raise ValueError(f"numeric series field {self.field!r} requires finite values")
+                key = format(0.0 if numeric == 0.0 else numeric, ".15g")
+            else:
+                key = str(value).strip().casefold()
+                if not key:
+                    raise ValueError(
+                        f"categorical series field {self.field!r} requires non-empty values"
+                    )
+            if key in canonical:
+                raise ValueError(f"series selection for {self.field!r} contains duplicate values")
+            canonical.add(key)
+        return self
+
+
+class DisplayUnitSelection(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    field: str
+    unit: str
+
+    @field_validator("unit", mode="before")
+    @classmethod
+    def canonical_unit(cls, unit: object) -> str:
+        return canonical_display_unit(str(unit))
+
+    @model_validator(mode="after")
+    def supported_unit(self) -> DisplayUnitSelection:
+        validate_display_unit(self.field, self.unit)
+        return self
+
+
 class PlotRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -74,6 +146,8 @@ class PlotRequest(BaseModel):
     y_field: str | None = None
     group_by: str | None = None
     filters: tuple[ExactFilter, ...] = ()
+    series: tuple[SeriesSelection, ...] = ()
+    display_units: tuple[DisplayUnitSelection, ...] = ()
     fluids: tuple[str, ...] = ()
     value_scale: PlotScale = "linear"
     color_scale: PlotScale = "linear"
@@ -108,6 +182,12 @@ class PlotRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_kind_contract(self) -> PlotRequest:
+        series_fields = [selection.field for selection in self.series]
+        if len(set(series_fields)) != len(series_fields):
+            raise ValueError("plot request contains duplicate series fields")
+        display_fields = [selection.field for selection in self.display_units]
+        if len(set(display_fields)) != len(display_fields):
+            raise ValueError("plot request contains duplicate display-unit fields")
         if self.kind == "property_curves":
             if self.property_name is None:
                 raise ValueError("property_curves requires property_name")
@@ -120,11 +200,15 @@ class PlotRequest(BaseModel):
                 raise ValueError(
                     "property_heatmap uses mode-defined axes and rejects x_field/y_field/group_by"
                 )
+            if self.series:
+                raise ValueError("property_heatmap rejects series selection")
         elif self.kind == "xy":
             if self.x_field is None or self.y_field is None:
                 raise ValueError("xy requires both x_field and y_field")
             if self.property_name is not None:
                 raise ValueError("xy rejects property_name")
+            if self.series and self.group_by is None:
+                raise ValueError("xy series selection requires an explicit group_by field")
         elif any(
             value is not None
             for value in (
@@ -154,6 +238,20 @@ class PlotRequest(BaseModel):
             (item.model_dump(mode="json") for item in self.filters),
             key=lambda item: (str(item["field"]), str(item["value"])),
         )
+        value["series"] = sorted(
+            (
+                {
+                    "field": item.field,
+                    "values": sorted(item.values, key=_series_sort_key),
+                }
+                for item in self.series
+            ),
+            key=lambda item: str(item["field"]),
+        )
+        value["display_units"] = sorted(
+            (item.model_dump(mode="json") for item in self.display_units),
+            key=lambda item: str(item["field"]),
+        )
         return value
 
 
@@ -170,6 +268,8 @@ def property_plot_request(
     fluids: tuple[str, ...],
     x_field: str | None = None,
     filters: tuple[ExactFilter, ...] = (),
+    series: tuple[SeriesSelection, ...] = (),
+    display_units: tuple[DisplayUnitSelection, ...] = (),
     value_scale: PlotScale = "linear",
     color_scale: PlotScale = "linear",
     saturation_coordinate: SaturationCoordinate | None = None,
@@ -180,6 +280,8 @@ def property_plot_request(
         property_name=property_name,
         x_field=x_field,
         filters=filters,
+        series=series,
+        display_units=display_units,
         fluids=fluids,
         value_scale=value_scale,
         color_scale=color_scale,
@@ -213,6 +315,8 @@ def xy_plot_request(
     group_by: str | None,
     fluids: tuple[str, ...],
     filters: tuple[ExactFilter, ...] = (),
+    series: tuple[SeriesSelection, ...] = (),
+    display_units: tuple[DisplayUnitSelection, ...] = (),
     x_scale: PlotScale = "linear",
     y_scale: PlotScale = "linear",
     saturation_coordinate: SaturationCoordinate | None = None,
@@ -224,6 +328,8 @@ def xy_plot_request(
         y_field=y_field,
         group_by=group_by,
         filters=filters,
+        series=series,
+        display_units=display_units,
         fluids=fluids,
         x_scale=x_scale,
         y_scale=y_scale,
@@ -237,6 +343,8 @@ def thermodynamic_diagram_request(
     kind: Literal["pv", "ts"],
     fluids: tuple[str, ...],
     filters: tuple[ExactFilter, ...] = (),
+    series: tuple[SeriesSelection, ...] = (),
+    display_units: tuple[DisplayUnitSelection, ...] = (),
     x_scale: PlotScale = "linear",
     y_scale: PlotScale = "linear",
     saturation_coordinate: SaturationCoordinate | None = None,
@@ -245,6 +353,8 @@ def thermodynamic_diagram_request(
     return PlotRequest(
         kind=kind,
         filters=filters,
+        series=series,
+        display_units=display_units,
         fluids=fluids,
         x_scale=x_scale,
         y_scale=y_scale,
@@ -267,6 +377,108 @@ def parse_exact_filter(value: str) -> ExactFilter:
     else:
         parsed = raw_value.strip()
     return ExactFilter(field=field.strip(), value=parsed)
+
+
+def parse_series_selection(value: str) -> SeriesSelection:
+    field, separator, raw_value = value.partition("=")
+    if not separator or not field.strip() or not raw_value.strip():
+        raise ValueError("series selections must use FIELD=VALUE")
+    return normalize_series_selections({field.strip(): (raw_value.strip(),)})[0]
+
+
+def parse_series_selections(values: Sequence[str]) -> tuple[SeriesSelection, ...]:
+    grouped: dict[str, list[str]] = {}
+    for value in values:
+        field, separator, raw_value = value.partition("=")
+        if not separator or not field.strip() or not raw_value.strip():
+            raise ValueError("series selections must use FIELD=VALUE")
+        grouped.setdefault(field.strip(), []).append(raw_value.strip())
+    return normalize_series_selections(grouped)
+
+
+def normalize_series_selections(
+    selections: Mapping[str, Sequence[object]],
+) -> tuple[SeriesSelection, ...]:
+    normalized: list[SeriesSelection] = []
+    for field in sorted(selections):
+        definition = get_field(field)
+        values: list[FilterValue] = []
+        for raw_value in selections[field]:
+            if definition.kind == "categorical":
+                value = str(raw_value).strip()
+                if not value:
+                    raise ValueError(
+                        f"categorical series field {field!r} requires a non-empty value"
+                    )
+                values.append(value.casefold())
+                continue
+            values.append(_numeric_series_value_to_si(field, raw_value))
+        normalized.append(SeriesSelection(field=field, values=tuple(values)))
+    return tuple(normalized)
+
+
+def normalize_display_units(
+    selections: Mapping[str, object],
+) -> tuple[DisplayUnitSelection, ...]:
+    return tuple(
+        DisplayUnitSelection(field=field, unit=validate_display_unit(field, str(unit)))
+        for field, unit in sorted(selections.items())
+    )
+
+
+def parse_display_unit(value: str) -> DisplayUnitSelection:
+    field, separator, raw_unit = value.partition("=")
+    if not separator or not field.strip() or not raw_unit.strip():
+        raise ValueError("display units must use FIELD=UNIT")
+    return normalize_display_units({field.strip(): raw_unit.strip()})[0]
+
+
+def parse_display_units(values: Sequence[str]) -> tuple[DisplayUnitSelection, ...]:
+    selections: dict[str, str] = {}
+    for value in values:
+        field, separator, raw_unit = value.partition("=")
+        if not separator or not field.strip() or not raw_unit.strip():
+            raise ValueError("display units must use FIELD=UNIT")
+        name = field.strip()
+        if name in selections:
+            raise ValueError(f"display unit for {name!r} was specified more than once")
+        selections[name] = raw_unit.strip()
+    return normalize_display_units(selections)
+
+
+def display_unit_map(request: PlotRequest) -> dict[str, str]:
+    return {selection.field: selection.unit for selection in request.display_units}
+
+
+def _numeric_series_value_to_si(field: str, raw_value: object) -> float:
+    if isinstance(raw_value, (int, float)):
+        value = float(raw_value)
+        if not math.isfinite(value):
+            raise ValueError(f"numeric series field {field!r} requires a finite value")
+        return 0.0 if value == 0.0 else value
+    text = str(raw_value).strip()
+    match = _NUMBER_WITH_UNIT.fullmatch(text)
+    if match is None:
+        raise ValueError(
+            f"numeric series value {raw_value!r} for {field!r} must be a number "
+            "with an optional supported unit"
+        )
+    value = float(match.group("number"))
+    unit = match.group("unit")
+    if unit is None:
+        return 0.0 if value == 0.0 else value
+    try:
+        return to_si(field, value, unit)
+    except ValueError as exc:
+        raise ValueError(
+            f"invalid unit-bearing series value {raw_value!r} for {field!r}: {exc}"
+        ) from exc
+
+
+def _series_sort_key(value: FilterValue) -> tuple[int, float, str]:
+    if isinstance(value, (int, float)):
+        return (0, float(value), "")
+    return (1, 0.0, value.casefold())
 
 
 def _canonical_json_bytes(value: dict[str, object]) -> bytes:

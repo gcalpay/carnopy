@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -13,7 +13,10 @@ from carnopy.visualization.diagrams import render_thermodynamic_diagram
 from carnopy.visualization.export import DEFAULT_RASTER_DPI, export_figure
 from carnopy.visualization.fields import FieldDefinition, get_field
 from carnopy.visualization.heatmaps import render_property_heatmap
-from carnopy.visualization.io import load_plot_source
+from carnopy.visualization.io import (
+    convert_numeric_for_display,
+    load_plot_source,
+)
 from carnopy.visualization.models import (
     Advisory,
     PlotCoordinate,
@@ -28,6 +31,8 @@ from carnopy.visualization.requests import (
     ExactFilter,
     PlotFormat,
     PlotRequest,
+    SeriesSelection,
+    normalize_display_units,
     normalize_public_plot_kind,
     property_plot_request,
     request_id,
@@ -36,12 +41,15 @@ from carnopy.visualization.requests import (
 )
 from carnopy.visualization.selection import (
     FilterMatch,
+    SeriesMatch,
     dynamic_range_advisories,
     numeric_field_values,
     row_valid_mask,
     select_rows,
 )
 from carnopy.visualization.xy import render_xy
+
+SeriesInput = Mapping[str, Sequence[object]] | Sequence[SeriesSelection]
 
 
 def plot_dataset(
@@ -54,6 +62,8 @@ def plot_dataset(
     group_by: str | None = None,
     fluids: Sequence[str] | None = None,
     filters: Sequence[ExactFilter] = (),
+    series: SeriesInput = (),
+    display_units: Mapping[str, str] | None = None,
     value_scale: PlotScale = "linear",
     color_scale: PlotScale = "linear",
     x_scale: PlotScale = "linear",
@@ -83,6 +93,8 @@ def plot_dataset(
             x=x,
             fluids=fluids,
             filters=filters,
+            series=series,
+            display_units=display_units,
             value_scale=value_scale,
             output=output,
             show=show,
@@ -98,6 +110,7 @@ def plot_dataset(
             property_name=cast(str, property_name),
             fluids=fluids,
             filters=filters,
+            display_units=display_units,
             color_scale=color_scale,
             output=output,
             show=show,
@@ -117,6 +130,8 @@ def plot_dataset(
             group_by=group_by,
             fluids=fluids,
             filters=filters,
+            series=series,
+            display_units=display_units,
             x_scale=x_scale,
             y_scale=y_scale,
             output=output,
@@ -132,6 +147,8 @@ def plot_dataset(
         kind=normalized_kind,
         fluids=fluids,
         filters=filters,
+        series=series,
+        display_units=display_units,
         x_scale=x_scale,
         y_scale=y_scale,
         output=output,
@@ -147,6 +164,8 @@ def plot_property_curves(
     x: str | None = None,
     fluids: Sequence[str] | None = None,
     filters: Sequence[ExactFilter] = (),
+    series: SeriesInput = (),
+    display_units: Mapping[str, str] | None = None,
     value_scale: PlotScale = "linear",
     output: str | Path | None = None,
     show: bool = False,
@@ -158,6 +177,8 @@ def plot_property_curves(
             kind="property_curves",
             x_field=x,
             filters=tuple(filters),
+            series=_normalize_public_series(series),
+            display_units=normalize_display_units(display_units or {}),
             fluids=tuple(fluids or ()),
             value_scale=value_scale,
             color_scale="linear",
@@ -175,6 +196,7 @@ def plot_property_heatmap(
     property_name: str,
     fluids: Sequence[str] | None = None,
     filters: Sequence[ExactFilter] = (),
+    display_units: Mapping[str, str] | None = None,
     color_scale: PlotScale = "linear",
     output: str | Path | None = None,
     show: bool = False,
@@ -186,6 +208,7 @@ def plot_property_heatmap(
             kind="property_heatmap",
             x_field=None,
             filters=tuple(filters),
+            display_units=normalize_display_units(display_units or {}),
             fluids=tuple(fluids or ()),
             value_scale="linear",
             color_scale=color_scale,
@@ -205,6 +228,8 @@ def plot_xy(
     group_by: str | None = None,
     fluids: Sequence[str] | None = None,
     filters: Sequence[ExactFilter] = (),
+    series: SeriesInput = (),
+    display_units: Mapping[str, str] | None = None,
     x_scale: PlotScale = "linear",
     y_scale: PlotScale = "linear",
     output: str | Path | None = None,
@@ -218,6 +243,8 @@ def plot_xy(
             group_by=group_by,
             fluids=tuple(fluids or ()),
             filters=tuple(filters),
+            series=_normalize_public_series(series),
+            display_units=normalize_display_units(display_units or {}),
             x_scale=x_scale,
             y_scale=y_scale,
             saturation_coordinate=saturation_coordinate,
@@ -234,6 +261,8 @@ def plot_thermodynamic_diagram(
     kind: Literal["pv", "ts"],
     fluids: Sequence[str] | None = None,
     filters: Sequence[ExactFilter] = (),
+    series: SeriesInput = (),
+    display_units: Mapping[str, str] | None = None,
     x_scale: PlotScale = "linear",
     y_scale: PlotScale = "linear",
     output: str | Path | None = None,
@@ -245,6 +274,8 @@ def plot_thermodynamic_diagram(
             kind=kind,
             fluids=tuple(fluids or ()),
             filters=tuple(filters),
+            series=_normalize_public_series(series),
+            display_units=normalize_display_units(display_units or {}),
             x_scale=x_scale,
             y_scale=y_scale,
             saturation_coordinate=saturation_coordinate,
@@ -319,11 +350,20 @@ def _plot_property_request(
         plot_source.frame,
         fluids=request.fluids,
         filters=request.filters,
+        series=request.series,
+        expected_series_field=_expected_series_field(plot_source, request),
+    )
+    x_field, series_field = _property_plot_fields(plot_source, request)
+    _validate_display_unit_fields(
+        request,
+        allowed={property_name, x_field, series_field},
     )
     property_field = _property_field(property_name)
     prepared, valid_count, excluded_count = _prepare_property_frame(
         selection.frame,
         property_field,
+        plot_source=plot_source,
+        request=request,
     )
     valid_values = prepared.loc[prepared["_plot_valid"], "_plot_value"]
     if valid_values.empty:
@@ -374,6 +414,7 @@ def _plot_property_request(
         valid_count=valid_count,
         excluded_count=excluded_count,
         filter_matches=selection.filter_matches,
+        series_matches=selection.series_matches,
         advisories=advisories,
         show=show,
         visualization_request_id=visualization_request_id,
@@ -412,11 +453,28 @@ def _plot_axes_request(
         plot_source.frame,
         fluids=request.fluids,
         filters=request.filters,
+        series=request.series,
+        expected_series_field=_expected_series_field(plot_source, request),
+    )
+    _validate_display_unit_fields(
+        request,
+        allowed={
+            x_field,
+            y_field,
+            *((request.group_by,) if request.group_by is not None else ()),
+            *(
+                (_expected_series_field(plot_source, request),)
+                if _expected_series_field(plot_source, request) is not None
+                else ()
+            ),
+        },
     )
     prepared, valid_count, excluded_count = _prepare_axes_frame(
         selection.frame,
         x_field=x_field,
         y_field=y_field,
+        plot_source=plot_source,
+        request=request,
     )
     valid = prepared.loc[prepared["_plot_valid"]]
     if valid.empty:
@@ -454,6 +512,7 @@ def _plot_axes_request(
         valid_count=valid_count,
         excluded_count=excluded_count,
         filter_matches=selection.filter_matches,
+        series_matches=selection.series_matches,
         advisories=advisories,
         show=show,
         visualization_request_id=visualization_request_id,
@@ -472,6 +531,7 @@ def _finalize_plot(
     valid_count: int,
     excluded_count: int,
     filter_matches: tuple[FilterMatch, ...],
+    series_matches: tuple[SeriesMatch, ...],
     advisories: tuple[Advisory, ...],
     show: bool,
     visualization_request_id: str | None,
@@ -489,6 +549,7 @@ def _finalize_plot(
         request=request,
         visualization_request_id=effective_request_id,
         filter_matches=filter_matches,
+        series_matches=series_matches,
         advisories=advisories,
     )
     if show:
@@ -530,13 +591,97 @@ def _property_field(property_name: str) -> FieldDefinition:
     return definition
 
 
+def _property_plot_fields(
+    plot_source: PlotSource,
+    request: PlotRequest,
+) -> tuple[str, str]:
+    if request.kind == "property_heatmap":
+        if plot_source.mode == "property_table":
+            return "temperature", "pressure"
+        if plot_source.mode == "vapor_mass_fraction_table":
+            if plot_source.saturation_coordinate is None:
+                raise VisualizationError(
+                    "vapor_mass_fraction_table property-heatmap requires metadata or "
+                    "--saturation-coordinate"
+                )
+            return "vapor_mass_fraction", plot_source.saturation_coordinate
+        raise VisualizationError(f"{plot_source.mode} does not support property_heatmap")
+    if plot_source.mode == "property_table":
+        if request.x_field not in {"temperature", "pressure"}:
+            raise VisualizationError(
+                "property-table property-curves requires --x temperature or --x pressure"
+            )
+        return (
+            request.x_field,
+            "pressure" if request.x_field == "temperature" else "temperature",
+        )
+    if plot_source.mode == "saturation_table":
+        if plot_source.saturation_coordinate is None:
+            raise VisualizationError(
+                "saturation_table property-curves requires metadata or --saturation-coordinate"
+            )
+        return plot_source.saturation_coordinate, "saturation_endpoint"
+    if plot_source.mode == "vapor_mass_fraction_table":
+        if plot_source.saturation_coordinate is None:
+            raise VisualizationError(
+                "vapor_mass_fraction_table property-curves requires metadata or "
+                "--saturation-coordinate"
+            )
+        return "vapor_mass_fraction", plot_source.saturation_coordinate
+    raise VisualizationError(f"unsupported property plot mode {plot_source.mode!r}")
+
+
+def _expected_series_field(
+    plot_source: PlotSource,
+    request: PlotRequest,
+) -> str | None:
+    if request.kind == "property_curves":
+        return _property_plot_fields(plot_source, request)[1]
+    if request.kind == "property_heatmap":
+        return None
+    if request.kind == "xy":
+        return request.group_by
+    if plot_source.mode == "property_table":
+        return "temperature" if request.kind == "pv" else "pressure"
+    if plot_source.mode == "saturation_table":
+        return "saturation_endpoint"
+    return plot_source.saturation_coordinate
+
+
+def _validate_display_unit_fields(
+    request: PlotRequest,
+    *,
+    allowed: set[str | None],
+) -> None:
+    allowed_fields = {field for field in allowed if field is not None}
+    invalid = sorted(
+        selection.field
+        for selection in request.display_units
+        if selection.field not in allowed_fields
+    )
+    if invalid:
+        rendered_allowed = ", ".join(sorted(allowed_fields)) or "none"
+        raise VisualizationError(
+            "display units were requested for fields not used by this plot: "
+            f"{', '.join(invalid)}; available plotted fields: {rendered_allowed}"
+        )
+
+
 def _prepare_property_frame(
     frame: pd.DataFrame,
     property_field: FieldDefinition,
+    *,
+    plot_source: PlotSource,
+    request: PlotRequest,
 ) -> tuple[pd.DataFrame, int, int]:
     selected = frame.copy()
     values, supported = numeric_field_values(selected, property_field.name)
-    selected["_plot_value"] = values
+    selected["_plot_value"] = convert_numeric_for_display(
+        values,
+        plot_source=plot_source,
+        request=request,
+        field=property_field.name,
+    )
     selected["_plot_valid"] = row_valid_mask(selected) & supported
     selected.loc[~selected["_plot_valid"], "_plot_value"] = np.nan
     valid_count = int(selected["_plot_valid"].sum())
@@ -548,14 +693,26 @@ def _prepare_axes_frame(
     *,
     x_field: str,
     y_field: str,
+    plot_source: PlotSource,
+    request: PlotRequest,
 ) -> tuple[pd.DataFrame, int, int]:
     selected = frame.copy()
     x_values, x_supported = numeric_field_values(selected, x_field)
     y_values, y_supported = numeric_field_values(selected, y_field)
     valid = row_valid_mask(selected) & x_supported & y_supported
     selected["_plot_valid"] = valid
-    selected["_x_plot"] = x_values.where(valid, np.nan)
-    selected["_y_plot"] = y_values.where(valid, np.nan)
+    selected["_x_plot"] = convert_numeric_for_display(
+        x_values,
+        plot_source=plot_source,
+        request=request,
+        field=x_field,
+    ).where(valid, np.nan)
+    selected["_y_plot"] = convert_numeric_for_display(
+        y_values,
+        plot_source=plot_source,
+        request=request,
+        field=y_field,
+    ).where(valid, np.nan)
     valid_count = int(valid.sum())
     return selected, valid_count, len(selected) - valid_count
 
@@ -650,3 +807,11 @@ def _output_format(output: str | Path | None) -> PlotFormat:
     if suffix not in {"png", "pdf", "svg"}:
         raise VisualizationError("figure output must use a .png, .pdf, or .svg extension")
     return cast(PlotFormat, suffix)
+
+
+def _normalize_public_series(series: SeriesInput) -> tuple[SeriesSelection, ...]:
+    if isinstance(series, Mapping):
+        from carnopy.visualization.requests import normalize_series_selections
+
+        return normalize_series_selections(series)
+    return tuple(series)

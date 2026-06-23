@@ -20,7 +20,7 @@ from carnopy.visualization.models import (
     VisualizationError,
 )
 from carnopy.visualization.requests import PlotRequest
-from carnopy.visualization.selection import FilterMatch
+from carnopy.visualization.selection import FilterMatch, SeriesMatch
 
 PLOT_SCHEMA_VERSION = 2
 DEFAULT_RASTER_DPI = 300
@@ -40,6 +40,7 @@ def export_figure(
     request: PlotRequest,
     visualization_request_id: str,
     filter_matches: tuple[FilterMatch, ...],
+    series_matches: tuple[SeriesMatch, ...],
     advisories: tuple[Advisory, ...],
 ) -> tuple[Path, Path]:
     image_path = _resolve_output_path(
@@ -93,6 +94,7 @@ def export_figure(
             request=request,
             visualization_request_id=visualization_request_id,
             filter_matches=filter_matches,
+            series_matches=series_matches,
             advisories=advisories,
         )
         with staged_sidecar.open("x", encoding="utf-8", newline="\n") as stream:
@@ -184,6 +186,7 @@ def _build_sidecar(
     request: PlotRequest,
     visualization_request_id: str,
     filter_matches: tuple[FilterMatch, ...],
+    series_matches: tuple[SeriesMatch, ...],
     advisories: tuple[Advisory, ...],
 ) -> dict[str, Any]:
     return {
@@ -225,6 +228,17 @@ def _build_sidecar(
                 }
                 for match in filter_matches
             ],
+            "series": [
+                {
+                    "field": match.field,
+                    "requested_values": list(match.requested_values),
+                    "matched_values": list(match.matched_values),
+                }
+                for match in series_matches
+            ],
+            "display_units": {
+                selection.field: selection.unit for selection in request.display_units
+            },
             "saturation_coordinate": plot_source.saturation_coordinate,
             "saturation_coordinate_display_unit": (plot_source.saturation_coordinate_display_unit),
         },

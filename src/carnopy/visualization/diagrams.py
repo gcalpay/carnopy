@@ -39,7 +39,7 @@ def render_thermodynamic_diagram(
         fluid: _thermodynamic_series(
             plot_source=plot_source,
             frame=frame.loc[frame["fluid"] == fluid].copy(),
-            kind=request.kind,
+            request=request,
         )
         for fluid in fluids
     }
@@ -64,8 +64,9 @@ def _thermodynamic_series(
     *,
     plot_source: PlotSource,
     frame: pd.DataFrame,
-    kind: str,
+    request: PlotRequest,
 ) -> list[SeriesData]:
+    kind = request.kind
     if plot_source.mode == "property_table":
         group_field = "temperature" if kind == "pv" else "pressure"
         ordering_field = "pressure" if kind == "pv" else "temperature"
@@ -73,7 +74,7 @@ def _thermodynamic_series(
             series_from_frame(
                 plot_source=plot_source,
                 frame=frame.loc[level_mask(frame, group_field, level)].copy(),
-                label=series_label(group_field, level),
+                label=series_label(plot_source, request, group_field, level),
                 ordering_field=ordering_field,
                 split_phase=True,
                 markers_only=False,
@@ -98,20 +99,21 @@ def _thermodynamic_series(
             )
         ]
     if plot_source.mode == "vapor_mass_fraction_table":
-        return _vapor_quality_series(plot_source, frame)
+        return _vapor_quality_series(plot_source, frame, request)
     raise VisualizationError(f"unsupported thermodynamic diagram mode {plot_source.mode!r}")
 
 
 def _vapor_quality_series(
     plot_source: PlotSource,
     frame: pd.DataFrame,
+    request: PlotRequest,
 ) -> list[SeriesData]:
     coordinate = required_saturation_coordinate(plot_source)
     result = [
         series_from_frame(
             plot_source=plot_source,
             frame=frame.loc[level_mask(frame, coordinate, level)].copy(),
-            label=f"{series_label(coordinate, level)} vapor-fraction line",
+            label=(f"{series_label(plot_source, request, coordinate, level)} vapor-fraction line"),
             ordering_field="vapor_mass_fraction",
             split_phase=False,
             markers_only=False,

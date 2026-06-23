@@ -1,16 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any
 
 import numpy as np
 import pandas as pd
 
-from carnopy.domain.units import UNITS
 from carnopy.visualization.fields import FieldDefinition, get_field
-from carnopy.visualization.io import display_unit_for_field
+from carnopy.visualization.io import effective_display_unit
 from carnopy.visualization.models import (
-    PlotCoordinate,
     PlotSource,
     RenderedPlot,
     VisualizationError,
@@ -42,8 +40,9 @@ def render_property_curves(
 ) -> RenderedPlot:
     x_field, series_field = _curve_fields(plot_source, request)
     x_definition = get_field(x_field)
-    x_unit = _display_unit(plot_source, x_field)
-    series_unit = _display_unit(plot_source, series_field)
+    x_unit = effective_display_unit(plot_source, request, x_field)
+    series_unit = effective_display_unit(plot_source, request, series_field)
+    property_unit = effective_display_unit(plot_source, request, property_field.name)
     figure, axes = create_faceted_figure(mpl=mpl, fluids=fluids)
     facet_series: dict[str, list[SeriesSpec]] = {}
     maximum_series = 0
@@ -54,6 +53,7 @@ def render_property_curves(
             frame=fluid_frame,
             x_field=x_field,
             series_field=series_field,
+            request=request,
         )
         facet_series[fluid] = series
         maximum_series = max(maximum_series, len(series))
@@ -70,7 +70,7 @@ def render_property_curves(
                 label=item.label,
             )
         axis.set_xlabel(x_definition.label_for_unit(x_unit))
-        axis.set_ylabel(property_field.display_label)
+        axis.set_ylabel(property_field.label_for_unit(property_unit))
         axis.minorticks_on()
         axis.tick_params(which="both", direction="in", top=True, right=True)
         axis.grid(True, which="major", color="0.80", linewidth=0.6)
@@ -117,7 +117,7 @@ def render_property_curves(
         figure=figure,
         axes={
             "x": _axis_metadata(x_field, x_unit),
-            "y": _axis_metadata(property_field.name, property_field.unit),
+            "y": _axis_metadata(property_field.name, property_unit),
             "series": _axis_metadata(series_field, series_unit),
             "color": None,
         },
@@ -169,10 +169,11 @@ def _series_for_fluid(
     frame: pd.DataFrame,
     x_field: str,
     series_field: str,
+    request: PlotRequest,
 ) -> list[SeriesSpec]:
     x_levels = _ordered_levels(plot_source, frame, x_field)
     series_levels = _ordered_levels(plot_source, frame, series_field)
-    x_display = _display_values(plot_source, x_field, x_levels)
+    x_display = _display_values(plot_source, request, x_field, x_levels)
     result: list[SeriesSpec] = []
     for level in series_levels:
         group = frame.loc[_level_mask(frame, series_field, level)].copy()
@@ -206,7 +207,7 @@ def _series_for_fluid(
             phases,
             enabled=plot_source.mode == "property_table",
         )
-        label = _series_label(plot_source, series_field, level)
+        label = _series_label(plot_source, request, series_field, level)
         gap_count = int(np.isnan(np.asarray(y_values, dtype=float)).sum())
         result.append(
             SeriesSpec(
@@ -311,27 +312,35 @@ def _level_mask(frame: pd.DataFrame, field: str, value: float | str) -> pd.Serie
 
 def _display_values(
     plot_source: PlotSource,
+    request: PlotRequest,
     field: str,
     values: list[float | str],
 ) -> list[float | str]:
-    if field not in {"temperature", "pressure"}:
+    unit = effective_display_unit(plot_source, request, field)
+    native = get_field(field).unit
+    if unit is None or unit == native:
         return values
-    unit = display_unit_for_field(plot_source, cast(PlotCoordinate, field))
-    converter = UNITS[unit].from_si
+    from carnopy.visualization.units import DISPLAY_UNITS
+
+    converter = DISPLAY_UNITS[unit].from_si
     return [converter(float(value)) for value in values]
 
 
-def _display_unit(plot_source: PlotSource, field: str) -> str | None:
-    if field in {"temperature", "pressure"}:
-        return display_unit_for_field(plot_source, cast(PlotCoordinate, field))
-    return get_field(field).unit
-
-
-def _series_label(plot_source: PlotSource, field: str, value: float | str) -> str:
+def _series_label(
+    plot_source: PlotSource,
+    request: PlotRequest,
+    field: str,
+    value: float | str,
+) -> str:
     if field == "saturation_endpoint":
         return str(value).replace("_", " ")
-    display = _display_values(plot_source, field, [value])[0]
-    return _format_value(display)
+    display = _display_values(plot_source, request, field, [value])[0]
+    unit = effective_display_unit(plot_source, request, field)
+    from carnopy.visualization.units import plain_unit_label
+
+    unit_suffix = f" {plain_unit_label(unit)}" if unit not in (None, "1") else ""
+    symbol = get_field(field).symbol or field
+    return f"{symbol} = {_format_value(display)}{unit_suffix}"
 
 
 def _format_value(value: float | str) -> str:

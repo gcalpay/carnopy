@@ -28,6 +28,8 @@ class VisualizationPlotConfig(BaseModel):
     y_field: str | None = Field(default=None, alias="y")
     group_by: str | None = None
     filters: dict[str, float | str] = Field(default_factory=dict)
+    series: dict[str, tuple[float | str, ...]] = Field(default_factory=dict)
+    display_units: dict[str, str] = Field(default_factory=dict)
     fluids: tuple[str, ...] | None = None
     value_scale: PlotScale = "linear"
     color_scale: PlotScale = "linear"
@@ -61,6 +63,7 @@ class VisualizationConfig(BaseModel):
     format: PlotFormat = "png"
     fluids: tuple[str, ...] = ()
     filters: dict[str, float | str] = Field(default_factory=dict)
+    display_units: dict[str, str] = Field(default_factory=dict)
     plots: tuple[VisualizationPlotConfig, ...] = Field(min_length=1)
 
     @field_validator("fluids")

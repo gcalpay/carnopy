@@ -163,6 +163,79 @@ def test_property_table_curves_require_explicit_x_and_group_by_other_coordinate(
     assert "Pressure" in legend.get_title().get_text()
 
 
+def test_property_curves_select_unit_bearing_series_and_convert_display_units(
+    tmp_path: Path,
+) -> None:
+    run = generate_dataset(
+        _write_config(tmp_path / "property.yaml", mode="property_table"),
+        output_root=tmp_path / "runs",
+    )
+    result = plot_property_curves(
+        run.output_directory,
+        property_name="specific_enthalpy",
+        x="temperature",
+        series={"pressure": ("1bar", "3bar")},
+        display_units={
+            "temperature": "degC",
+            "pressure": "bar",
+            "specific_enthalpy": "kJ/kg",
+        },
+        output=tmp_path / "selected-units.png",
+    )
+    assert len(result.figure.axes[0].lines) == 2
+    np.testing.assert_allclose(
+        np.asarray(result.figure.axes[0].lines[0].get_xdata(), dtype=float),
+        np.asarray([-23.15, -13.15, -3.15]),
+        rtol=0.0,
+        atol=1e-12,
+    )
+    frame = pd.read_parquet(run.output_directory / "dataset.parquet")
+    expected = (
+        frame.loc[frame["pressure_Pa"] == 100_000.0]
+        .sort_values("temperature_K")["specific_enthalpy_J_kg"]
+        .to_numpy(dtype=float)
+        / 1_000.0
+    )
+    np.testing.assert_allclose(
+        np.asarray(result.figure.axes[0].lines[0].get_ydata(), dtype=float),
+        expected,
+        rtol=0.0,
+        atol=0.0,
+    )
+    assert "kJ" in result.figure.axes[0].get_ylabel()
+    assert r"^\circ" in result.figure.axes[0].get_xlabel()
+    legend_labels = {text.get_text() for text in result.figure.axes[0].get_legend().get_texts()}
+    assert legend_labels == {r"$p$ = 1 bar", r"$p$ = 3 bar"}
+    sidecar = json.loads(result.sidecar_path.read_text(encoding="utf-8"))
+    assert sidecar["normalized_request"]["series"] == [
+        {"field": "pressure", "values": [100000.0, 300000.0]}
+    ]
+    assert sidecar["axes"]["y"]["unit"] == "kJ/kg"
+
+
+def test_property_curves_reject_missing_or_wrong_series_levels(tmp_path: Path) -> None:
+    run = generate_dataset(
+        _write_config(tmp_path / "property.yaml", mode="property_table"),
+        output_root=tmp_path / "runs",
+    )
+    with pytest.raises(VisualizationError, match="available levels"):
+        plot_property_curves(
+            run.output_directory,
+            property_name="mass_density",
+            x="temperature",
+            series={"pressure": ("9bar",)},
+            output=tmp_path / "missing-series.png",
+        )
+    with pytest.raises(VisualizationError, match="uses 'pressure' as its series field"):
+        plot_property_curves(
+            run.output_directory,
+            property_name="mass_density",
+            x="temperature",
+            series={"temperature": ("250K",)},
+            output=tmp_path / "wrong-series.png",
+        )
+
+
 def test_saturation_curves_render_two_unconnected_endpoint_branches(
     tmp_path: Path,
 ) -> None:

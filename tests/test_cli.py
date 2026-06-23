@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -86,7 +87,7 @@ def test_root_help_has_complete_summaries_at_narrow_width() -> None:
         ("generate", "Generate an immutable run."),
         ("fluids", "List backend fluids."),
         ("properties", "List dataset properties."),
-        ("inspect", "Inspect plotting options."),
+        ("inspect", "Inspect a generated dataset."),
         ("init", "Create a starter configuration."),
         ("plot", "Plot a generated dataset."),
     ):
@@ -134,6 +135,8 @@ def test_plot_help_describes_inputs_and_constrained_choices() -> None:
         "--fluid FLUID",
         "Repeat --fluid to select multiple fluids.",
         "--filter FIELD=VALUE",
+        "--series FIELD=VALUE",
+        "--display-unit FIELD=UNIT",
         "--value-scale [linear|log]",
         "--color-scale [linear|log]",
         "--x-scale [linear|log]",
@@ -144,6 +147,13 @@ def test_plot_help_describes_inputs_and_constrained_choices() -> None:
     )
     for content in required_content:
         assert content in result.stdout
+
+
+def test_inspect_help_exposes_json_and_visualization_writer() -> None:
+    result = runner.invoke(app, ["inspect", "--help"])
+    assert result.exit_code == 0
+    assert "--format [text|json]" in result.stdout
+    assert "--write-visualization PATH" in result.stdout
 
 
 def test_plot_scale_choices_are_rejected_by_cli_parser() -> None:
@@ -362,6 +372,49 @@ def test_plot_command_exports_figure_and_sidecar(
     assert output.is_file()
     assert output.with_suffix(".plot.json").is_file()
     assert "Source integrity: verified" in result.stdout
+
+
+def test_plot_command_accepts_repeated_series_and_display_units(
+    property_config_path: Path,
+    tmp_path: Path,
+) -> None:
+    from carnopy.api import generate_dataset
+
+    run = generate_dataset(property_config_path, output_root=tmp_path / "runs")
+    output = tmp_path / "selected.png"
+    result = runner.invoke(
+        app,
+        [
+            "plot",
+            str(run.output_directory),
+            "--kind",
+            "property-curves",
+            "--property",
+            "mass_density",
+            "--x",
+            "temperature",
+            "--series",
+            "pressure=1bar",
+            "--series",
+            "pressure=5bar",
+            "--display-unit",
+            "temperature=degC",
+            "--display-unit",
+            "pressure=bar",
+            "--output",
+            str(output),
+        ],
+        env={"MPLBACKEND": "Agg", "MPLCONFIGDIR": str(tmp_path / "mpl-series")},
+    )
+    assert result.exit_code == 0, result.output
+    sidecar = json.loads(output.with_suffix(".plot.json").read_text(encoding="utf-8"))
+    assert sidecar["normalized_request"]["series"] == [
+        {"field": "pressure", "values": [100000.0, 500000.0]}
+    ]
+    assert sidecar["data_selection"]["display_units"] == {
+        "pressure": "bar",
+        "temperature": "degC",
+    }
 
 
 def test_plot_command_exports_xy_and_pv(

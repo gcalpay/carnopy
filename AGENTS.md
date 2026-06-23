@@ -404,7 +404,17 @@ Configured visualization:
   `generation_context_id`, or dataset artifact hashes.
 
 `carnopy inspect SOURCE` reports emitted plotting capabilities without backend
-calls. `carnopy plot RUN --config FILE.yaml` batch-renders a top-level
+calls. Text and JSON inspection must include source identity, integrity,
+coordinates, levels, properties, ranges, phases, failures, plot capabilities,
+series fields, and supported display units. Inspection may exclusively create
+a visualization-only starter with `--write-visualization`.
+
+Repeatable `--series FIELD=VALUE` selections choose exact emitted curve-family
+levels after unit conversion and combine values for one field with logical OR.
+Repeatable `--display-unit FIELD=UNIT` options affect figure values and labels
+only; immutable datasets remain SI.
+
+`carnopy plot RUN --config FILE.yaml` batch-renders a top-level
 `visualization:` section against an existing immutable run. Batch rendering
 must ignore scientific fields in a full generation config and validate only
 against emitted run columns.
