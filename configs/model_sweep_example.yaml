@@ -34,6 +34,10 @@ properties:
 outputs:
   dataset_formats: [csv, parquet]
 
+# This repository example includes active comparison plots and therefore
+# requires the visualization extra, for example `carnopy[viz]` or
+# `carnopy[all]`. The concise packaged `carnopy init model_sweep` starter keeps
+# this block commented so no-plot sweeps run in a base installation.
 comparison_plots:
   format: png
   plots:

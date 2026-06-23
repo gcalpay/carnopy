@@ -34,13 +34,22 @@ properties:
 outputs:
   dataset_formats: [csv, parquet]
 
-comparison_plots:
-  format: png
-  plots:
-    - name: propane_density_temperature_by_pressure
-      kind: property_comparison
-      fluid: Propane
-      property: mass_density
-      x: temperature
-      group_by: pressure
-      models: [heos, pr, srk]
+# Optional comparison plots require the visualization extra:
+#
+#   python -m pip install "carnopy[viz]"
+#   # or
+#   python -m pip install "carnopy[all]"
+#
+# Uncomment and edit the block below only when visualization dependencies are
+# installed.
+#
+# comparison_plots:
+#   format: png
+#   plots:
+#     - name: propane_density_temperature_by_pressure
+#       kind: property_comparison
+#       fluid: Propane
+#       property: mass_density
+#       x: temperature
+#       group_by: pressure
+#       models: [heos, pr, srk]

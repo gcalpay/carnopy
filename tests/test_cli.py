@@ -114,6 +114,7 @@ def test_root_help_has_complete_summaries_at_narrow_width() -> None:
     for command, summary in (
         ("validate", "Check a configuration."),
         ("generate", "Generate an immutable run."),
+        ("sweep", "Generate a model sweep."),
         ("fluids", "List backend fluids."),
         ("properties", "List dataset properties."),
         ("inspect", "Inspect a generated dataset."),
@@ -129,6 +130,7 @@ def test_subcommand_help_retains_detailed_descriptions() -> None:
     expectations = {
         "validate": "without evaluating thermodynamic rows",
         "generate": "Generation performs configuration",
+        "sweep": "multiple backend models",
         "fluids": "available from one CoolProp model",
         "properties": "semantic properties accepted",
         "inspect": "without backend calls",
@@ -242,6 +244,7 @@ def test_plot_legacy_kinds_have_migration_guidance(
         ["--version"],
         ["validate", "--help"],
         ["generate", "--help"],
+        ["sweep", "--help"],
         ["fluids", "--help"],
         ["properties", "--help"],
         ["inspect", "--help"],
@@ -360,6 +363,7 @@ def test_init_full_appends_exhaustive_reference(tmp_path: Path) -> None:
 def test_init_help_documents_full_reference() -> None:
     result = runner.invoke(app, ["init", "--help"])
     assert result.exit_code == 0
+    assert "Configuration template type" in result.stdout
     assert "--full" in result.stdout
     assert "exhaustive commented configuration reference" in result.stdout
 

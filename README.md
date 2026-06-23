@@ -128,14 +128,22 @@ concise. Both forms refuse to overwrite an existing `property.yaml`. A relative
 output path is resolved from the current working directory; an absolute path
 is written exactly where specified.
 
-Available modes:
+Available dataset modes:
 
 ```text
 property_table
 saturation_table
 vapor_mass_fraction_table
+```
+
+Additional workflow/template types:
+
+```text
 model_sweep
 ```
+
+`model_sweep` is not a dataset mode. It creates a sweep bundle containing one
+immutable child dataset run per selected model plus comparison artifacts.
 
 Discover backend fluids and semantic properties:
 
@@ -308,7 +316,9 @@ Reference-dependent properties such as enthalpy, entropy, and internal energy
 are excluded from delta metrics.
 
 Optional sweep-level comparison plots are explicit and separate from child-run
-visualization:
+visualization. They require the optional visualization dependencies, installed
+with `carnopy[viz]` or `carnopy[all]`. The concise `carnopy init model_sweep`
+starter keeps this block commented so no-plot sweeps run in a base installation:
 
 ```yaml
 comparison_plots:

@@ -314,7 +314,7 @@ def inspect_command(
 def init_command(
     mode: Annotated[
         ConfigModeCli,
-        typer.Argument(help="Dataset mode for the starter configuration."),
+        typer.Argument(help="Configuration template type for the starter file."),
     ],
     output: Annotated[
         Path,

@@ -250,7 +250,10 @@ Sweeps produce child dataset runs and comparison Parquet files. Comparison
 alignment uses deterministic state keys from normalized sample indices, not
 backend-computed floating-point coordinates. Comparison plots are explicit
 sweep-level `property_comparison` requests under `comparison_plots:`. Do not
-reuse dataset `visualization:` inside sweep configs.
+reuse dataset `visualization:` inside sweep configs. The concise packaged
+`model_sweep` starter must run in the base install without Matplotlib; keep
+active `comparison_plots:` blocks in richer examples only and document that
+they require `carnopy[viz]` or `carnopy[all]`.
 
 Dataset formats:
 

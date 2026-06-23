@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import get_args
 
 import pytest
+import yaml
 
 from carnopy.config.io import load_config_file, load_sweep_config_file
 from carnopy.domain.properties import PROPERTY_REGISTRY
@@ -18,30 +19,48 @@ from carnopy.templates import (
 from carnopy.visualization.requests import PlotFormat, PlotKindV2, PlotScale
 
 
-def test_packaged_templates_match_repository_examples_and_validate() -> None:
+def test_packaged_dataset_templates_match_repository_examples_and_validate() -> None:
     root = Path(__file__).resolve().parents[1]
     example_names = {
         "property_table": "property_table_example.yaml",
         "saturation_table": "saturation_table_example.yaml",
         "vapor_mass_fraction_table": "vapor_mass_fraction_table_example.yaml",
-        "model_sweep": "model_sweep_example.yaml",
     }
     for mode, filename in TEMPLATE_FILENAMES.items():
+        if mode == "model_sweep":
+            continue
         packaged = template_text(mode)
         example = (root / "configs" / example_names[mode]).read_text(encoding="utf-8")
         assert packaged == example
         assert filename.endswith(".yaml")
-        if mode == "model_sweep":
-            assert (
-                load_sweep_config_file(root / "configs" / example_names[mode]).model.document_type
-                == "model_sweep"
-            )
-        else:
-            assert load_config_file(root / "configs" / example_names[mode]).model.mode == mode
+        assert load_config_file(root / "configs" / example_names[mode]).model.mode == mode
 
     property_model = load_config_file(root / "configs" / "property_table_example.yaml").model
     pressure = materialize_sampler(property_model.grid["pressure"])
     assert pressure == [1.0, 5.75, 10.5, 15.25, 20.0]
+
+
+def test_model_sweep_template_is_concise_base_runnable_and_example_is_richer(
+    tmp_path: Path,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    concise = template_text("model_sweep")
+    payload = yaml.safe_load(concise)
+    assert "comparison_plots" not in payload
+    assert "carnopy[viz]" in concise
+    assert "carnopy[all]" in concise
+
+    concise_path = tmp_path / "sweep.yaml"
+    concise_path.write_text(concise, encoding="utf-8")
+    assert load_sweep_config_file(concise_path).model.document_type == "model_sweep"
+
+    example_path = root / "configs" / "model_sweep_example.yaml"
+    example = example_path.read_text(encoding="utf-8")
+    example_payload = yaml.safe_load(example)
+    assert "comparison_plots" in example_payload
+    assert "carnopy[viz]" in example
+    assert "carnopy[all]" in example
+    assert load_sweep_config_file(example_path).model.document_type == "model_sweep"
 
 
 def test_interactive_initialization_can_confirm_parent_creation(tmp_path: Path) -> None:

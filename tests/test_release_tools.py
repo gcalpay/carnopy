@@ -107,6 +107,21 @@ def test_distribution_path_filters_and_source_version() -> None:
     ]
 
 
+def test_distribution_checker_requires_model_sweep_artifacts() -> None:
+    assert {
+        "carnopy/config/sweep.py",
+        "carnopy/sweeps/pipeline.py",
+        "carnopy/sweeps/comparison.py",
+        "carnopy/templates/model_sweep.yaml",
+    }.issubset(check_distribution.WHEEL_REQUIRED)
+    assert {
+        "configs/model_sweep_example.yaml",
+        "src/carnopy/config/sweep.py",
+        "src/carnopy/sweeps/pipeline.py",
+        "src/carnopy/templates/model_sweep.yaml",
+    }.issubset(check_distribution.SDIST_REQUIRED)
+
+
 def test_installed_smoke_plot_arguments_use_current_cli_contract(tmp_path: Path) -> None:
     run_directory = tmp_path / "run"
     figure = tmp_path / "density.png"
@@ -149,4 +164,31 @@ visualization:
         str(tmp_path / "runs"),
         "--figures-out",
         str(tmp_path / "figures"),
+    ]
+
+
+def test_installed_smoke_sweep_arguments_and_comparison_plots(tmp_path: Path) -> None:
+    config = tmp_path / "sweep.yaml"
+    config.write_text("properties: [mass_density]\n", encoding="utf-8")
+    smoke_installed.add_sweep_comparison_plots(config)
+
+    assert config.read_text(encoding="utf-8").endswith(
+        """
+comparison_plots:
+  format: png
+  plots:
+    - name: propane_density_temperature_by_pressure
+      kind: property_comparison
+      fluid: Propane
+      property: mass_density
+      x: temperature
+      group_by: pressure
+      models: [heos, pr, srk]
+"""
+    )
+    assert smoke_installed.build_sweep_arguments(config, tmp_path / "sweeps") == [
+        "sweep",
+        str(config),
+        "--out",
+        str(tmp_path / "sweeps"),
     ]

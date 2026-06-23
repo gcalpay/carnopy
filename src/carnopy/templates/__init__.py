@@ -27,7 +27,7 @@ class TemplateError(Exception):
 
 
 def template_text(mode: ConfigTemplateMode, *, full: bool = False) -> str:
-    """Return the packaged starter configuration for one dataset mode."""
+    """Return the packaged starter configuration for one template type."""
     resource = files(__package__).joinpath(TEMPLATE_FILENAMES[mode])
     try:
         concise = resource.read_text(encoding="utf-8")

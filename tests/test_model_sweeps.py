@@ -10,6 +10,7 @@ from carnopy.api import generate_dataset, generate_model_sweep
 from carnopy.config.io import load_sweep_config_file
 from carnopy.domain.failures import ConfigError, OutputError
 from carnopy.provenance import DATASET_SCHEMA_VERSION
+from carnopy.templates import template_text
 
 
 def _write(path: Path, text: str) -> Path:
@@ -120,6 +121,18 @@ def test_model_sweep_writes_child_runs_and_comparison_tables(tmp_path: Path) -> 
     assert "signed_absolute_difference" in deltas.columns
     assert "signed_relative_difference" in deltas.columns
     assert values["state_key"].notna().all()
+
+
+def test_model_sweep_concise_template_runs_without_comparison_plots(tmp_path: Path) -> None:
+    config = _write(tmp_path / "sweep.yaml", template_text("model_sweep"))
+
+    result = generate_model_sweep(config, output_root=tmp_path / "outputs")
+
+    assert result.sweep_status == "completed"
+    assert result.values_path is not None and result.values_path.is_file()
+    assert result.deltas_path is not None and result.deltas_path.is_file()
+    assert result.comparison_plot_directory is None
+    assert not (result.output_directory / "comparison_plots").exists()
 
 
 def test_model_sweep_excludes_reference_dependent_deltas(tmp_path: Path) -> None:

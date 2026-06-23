@@ -57,6 +57,10 @@ def build_generate_arguments(
     return arguments
 
 
+def build_sweep_arguments(config: Path, output_root: Path) -> list[str]:
+    return ["sweep", str(config), "--out", str(output_root)]
+
+
 def add_configured_visualization(config: Path) -> None:
     with config.open("a", encoding="utf-8", newline="\n") as stream:
         stream.write(
@@ -67,6 +71,24 @@ visualization:
     - name: density-vs-vapor-fraction
       kind: property_curves
       property: mass_density
+"""
+        )
+
+
+def add_sweep_comparison_plots(config: Path) -> None:
+    with config.open("a", encoding="utf-8", newline="\n") as stream:
+        stream.write(
+            """
+comparison_plots:
+  format: png
+  plots:
+    - name: propane_density_temperature_by_pressure
+      kind: property_comparison
+      fluid: Propane
+      property: mass_density
+      x: temperature
+      group_by: pressure
+      models: [heos, pr, srk]
 """
         )
 
@@ -93,6 +115,7 @@ def main() -> int:
     if expected_output is None and not version.stdout.startswith("carnopy "):
         raise RuntimeError(f"unexpected version output: {version.stdout!r}")
     run_command(["--help"], cwd=work_directory)
+    run_command(["sweep", "--help"], cwd=work_directory)
     run_command(["properties"], cwd=work_directory)
 
     config = work_directory / "config.yaml"
@@ -194,6 +217,57 @@ def main() -> int:
         combined = failed.stdout + failed.stderr
         if "Plotting requires the visualization extra." not in combined:
             raise RuntimeError(f"unexpected missing-visualization error:\n{combined}")
+
+    sweep_config = work_directory / "sweep.yaml"
+    run_command(["init", "model_sweep", str(sweep_config)], cwd=work_directory)
+    sweep_text = sweep_config.read_text(encoding="utf-8")
+    if "\ncomparison_plots:" in sweep_text:
+        raise RuntimeError("model_sweep starter must not contain active comparison_plots")
+    sweep_root = work_directory / "sweeps"
+    sweep_environment = command_environment
+    if arguments.with_visualization:
+        add_sweep_comparison_plots(sweep_config)
+        sweep_environment = os.environ.copy()
+        sweep_environment["MPLBACKEND"] = "Agg"
+        sweep_environment["MPLCONFIGDIR"] = str(work_directory / "sweep-mpl-config")
+    run_command(
+        build_sweep_arguments(sweep_config, sweep_root),
+        cwd=work_directory,
+        environment=sweep_environment,
+    )
+    sweep_bundles = [path for path in sweep_root.iterdir() if path.is_dir()]
+    if len(sweep_bundles) != 1:
+        raise RuntimeError(f"expected one generated sweep bundle, found {sweep_bundles}")
+    sweep_bundle = sweep_bundles[0]
+    if not (sweep_bundle / "comparison" / "values.parquet").is_file():
+        raise RuntimeError("model sweep smoke test did not create comparison values")
+    if not (sweep_bundle / "comparison" / "deltas.parquet").is_file():
+        raise RuntimeError("model sweep smoke test did not create comparison deltas")
+    if arguments.with_visualization:
+        comparison_directory = sweep_bundle / "comparison_plots"
+        if not all(
+            path.is_file()
+            for path in (
+                comparison_directory / "propane_density_temperature_by_pressure.png",
+                comparison_directory / "propane_density_temperature_by_pressure.plot.json",
+                comparison_directory / "comparison-report.json",
+            )
+        ):
+            raise RuntimeError("comparison-plot sweep smoke test did not create all artifacts")
+    elif (sweep_bundle / "comparison_plots").exists():
+        raise RuntimeError("no-plot model sweep unexpectedly created comparison plots")
+    else:
+        sweep_with_plots = work_directory / "sweep-with-plots.yaml"
+        run_command(["init", "model_sweep", str(sweep_with_plots)], cwd=work_directory)
+        add_sweep_comparison_plots(sweep_with_plots)
+        failed_sweep = run_command(
+            build_sweep_arguments(sweep_with_plots, work_directory / "sweeps-with-plots"),
+            cwd=work_directory,
+            expected_code=1,
+        )
+        combined = failed_sweep.stdout + failed_sweep.stderr
+        if "Plotting requires the visualization extra." not in combined:
+            raise RuntimeError(f"unexpected missing-visualization sweep error:\n{combined}")
 
     print(f"Installed Carnopy smoke test passed: {version.stdout.strip()}")
     return 0
