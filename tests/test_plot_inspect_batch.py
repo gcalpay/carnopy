@@ -10,8 +10,9 @@ import CoolProp.CoolProp as CP
 import pytest
 from typer.testing import CliRunner
 
-from carnopy.api import generate_dataset
+from carnopy.api import generate_dataset, generate_model_sweep, prepare_dataset
 from carnopy.cli import app
+from carnopy.inspection import inspect_source
 from carnopy.visualization.inspect import inspect_plot_source
 
 runner = CliRunner()
@@ -110,6 +111,87 @@ def test_inspect_json_reports_identity_ranges_failures_and_display_units(
         item for item in payload["plot_capabilities"] if item["kind"] == "property-curves"
     )
     assert property_curves["series_fields"] == ["pressure", "temperature"]
+
+
+def test_inspect_reports_preparation_bundles(tmp_path: Path) -> None:
+    run = generate_dataset(
+        _write_property_config(tmp_path / "config.yaml"),
+        output_root=tmp_path / "runs",
+    )
+    prep_config = tmp_path / "preparation.yaml"
+    prep_config.write_text(
+        """schema_version: 1
+document_type: preparation
+features:
+  numeric: [temperature, pressure, mass_density]
+  derived: [specific_volume]
+categorical_features:
+  - field: phase
+    encoding: one_hot
+    categories: observed
+targets: [specific_entropy]
+auxiliary: [fluid, backend_model]
+outputs:
+  formats: [parquet]
+""",
+        encoding="utf-8",
+    )
+    prepared = prepare_dataset(run.output_directory, config=prep_config, output_root=tmp_path)
+
+    inspection = inspect_source(prepared.output_directory)
+    text = inspection.format_text()
+    payload = json.loads(inspection.format_json())
+
+    assert "Source kind: preparation bundle" in text
+    assert "table.parquet" in text
+    assert payload["source_kind"] == "preparation_bundle"
+    assert payload["artifacts"]["table"].endswith("data/table.parquet")
+    assert "mass_density" in payload["columns"]["table"]
+    assert "source_row_hash" in payload["columns"]["provenance"]
+    assert "source_failure_code" in payload["columns"]["diagnostics"]
+
+    result = runner.invoke(app, ["inspect", str(prepared.output_directory), "--format", "json"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["source_kind"] == "preparation_bundle"
+
+
+def test_inspect_reports_model_sweep_delta_summaries(tmp_path: Path) -> None:
+    config = tmp_path / "sweep.yaml"
+    config.write_text(
+        """schema_version: 2
+document_type: model_sweep
+backend:
+  name: coolprop
+  models: [heos, pr]
+  reference_model: heos
+mode: property_table
+fluids: [Propane]
+grid:
+  temperature: {kind: explicit, values: [300, 310], unit: K}
+  pressure: {kind: explicit, values: [100000], unit: Pa}
+properties: [mass_density]
+outputs:
+  dataset_formats: [parquet]
+""",
+        encoding="utf-8",
+    )
+    sweep = generate_model_sweep(config, output_root=tmp_path / "sweeps")
+
+    inspection = inspect_source(sweep.output_directory)
+    text = inspection.format_text()
+    payload = json.loads(inspection.format_json())
+
+    assert "Source kind: model-sweep bundle" in text
+    assert "Relative delta summaries:" in text
+    assert "comparison_plots:" in text
+    assert payload["source_kind"] == "model_sweep_bundle"
+    assert payload["models"] == ["heos", "pr"]
+    assert payload["comparison_artifacts"]["values_row_count"] == 4
+    assert payload["delta_summaries"]
+
+    result = runner.invoke(app, ["inspect", str(sweep.output_directory)])
+    assert result.exit_code == 0, result.output
+    assert "Comparison plot YAML snippet:" in result.output
 
 
 def test_inspect_writes_exclusive_visualization_starter(tmp_path: Path) -> None:

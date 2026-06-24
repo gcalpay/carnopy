@@ -67,6 +67,8 @@ def build_manifest(
     eligible_row_count: int,
     excluded_row_count: int,
     artifact_hashes: dict[str, str],
+    data_artifacts: dict[str, str | None],
+    table_columns: list[str],
     scenario_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     manifest = {
@@ -119,6 +121,33 @@ def build_manifest(
         },
         "eligible_row_count": eligible_row_count,
         "excluded_row_count": excluded_row_count,
+        "data_artifacts": data_artifacts,
+        "column_roles": {
+            "table": table_columns,
+            "provenance": [
+                "prepared_row_id",
+                "source_kind",
+                "source_run_id",
+                "source_artifact",
+                "source_row_index",
+                "source_row_hash",
+                "backend_model",
+                "state_key",
+                "state_key_version",
+                "sweep_id",
+                "sweep_run_id",
+            ],
+            "diagnostics": [
+                "prepared_row_id",
+                "source_valid",
+                "source_failure_layer",
+                "source_failure_code",
+                "source_failure_message",
+                "source_failure_property",
+                "source_backend_error_type",
+                "source_backend_error_message",
+            ],
+        },
         "runtime_versions": runtime_versions(),
         "output_formats": list(loaded.model.outputs.formats),
         "artifact_hashes": artifact_hashes,
@@ -160,6 +189,13 @@ def build_dataset_card(manifest: dict[str, Any], diagnostics: dict[str, Any]) ->
         f"Excluded rows: {manifest['excluded_row_count']}",
         f"Source kind: `{diagnostics['source_kind']}`",
     ]
+    artifacts = manifest.get("data_artifacts")
+    if isinstance(artifacts, dict):
+        if artifacts.get("table") is not None:
+            lines.append(f"Prepared table: `{artifacts['table']}`")
+        lines.append(f"Provenance: `{artifacts.get('provenance')}`")
+        lines.append(f"Source diagnostics: `{artifacts.get('diagnostics')}`")
+        lines.append(f"Exclusions: `{artifacts.get('exclusions')}`")
     if diagnostics["partial_sweep_source"]:
         lines.append("Partial sweep source: `true`")
         lines.append("Included child models: " + ", ".join(diagnostics["included_child_models"]))

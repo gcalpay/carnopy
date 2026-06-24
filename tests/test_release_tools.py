@@ -110,6 +110,7 @@ def test_distribution_path_filters_and_source_version() -> None:
 def test_distribution_checker_requires_model_sweep_artifacts() -> None:
     assert {
         "carnopy/config/sweep.py",
+        "carnopy/inspection.py",
         "carnopy/preparation/layout.py",
         "carnopy/preparation/pipeline.py",
         "carnopy/preparation/models.py",
@@ -124,6 +125,7 @@ def test_distribution_checker_requires_model_sweep_artifacts() -> None:
     assert {
         "configs/model_sweep_example.yaml",
         "src/carnopy/config/sweep.py",
+        "src/carnopy/inspection.py",
         "src/carnopy/preparation/layout.py",
         "src/carnopy/preparation/pipeline.py",
         "src/carnopy/preparation/models.py",
@@ -198,6 +200,14 @@ comparison_plots:
       x: temperature
       group_by: pressure
       models: [heos, pr, srk]
+    - name: propane_density_relative_delta
+      kind: property_delta
+      fluid: Propane
+      property: mass_density
+      x: temperature
+      group_by: pressure
+      models: [pr, srk]
+      delta_metric: signed_relative_difference
 """
     )
     assert smoke_installed.build_sweep_arguments(config, tmp_path / "sweeps") == [

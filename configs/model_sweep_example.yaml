@@ -48,3 +48,11 @@ comparison_plots:
       x: temperature
       group_by: pressure
       models: [heos, pr, srk]
+    - name: propane_density_relative_delta
+      kind: property_delta
+      fluid: Propane
+      property: mass_density
+      x: temperature
+      group_by: pressure
+      models: [pr, srk]
+      delta_metric: signed_relative_difference

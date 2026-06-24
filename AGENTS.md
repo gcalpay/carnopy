@@ -190,7 +190,7 @@ carnopy plot SOURCE ...
 The documented workflow is:
 
 ```text
-init → edit → optional validate → generate → inspect → optional plot
+init → edit → optional validate → generate/sweep → inspect → optional plot → optional prepare
 ```
 
 Commands remain independently scriptable; do not add implicit chaining.
@@ -251,11 +251,12 @@ backend:
 Sweeps produce child dataset runs and comparison Parquet files. Comparison
 alignment uses deterministic state keys from normalized sample indices, not
 backend-computed floating-point coordinates. Comparison plots are explicit
-sweep-level `property_comparison` requests under `comparison_plots:`. Do not
-reuse dataset `visualization:` inside sweep configs. The concise packaged
-`model_sweep` starter must run in the base install without Matplotlib; keep
-active `comparison_plots:` blocks in richer examples only and document that
-they require `carnopy[viz]` or `carnopy[all]`.
+sweep-level `property_comparison` or `property_delta` requests under
+`comparison_plots:`. Do not reuse dataset `visualization:` inside sweep
+configs. The concise packaged `model_sweep` starter must run in the base
+install without Matplotlib; keep active `comparison_plots:` blocks in richer
+examples only and document that they require `carnopy[viz]` or
+`carnopy[all]`.
 
 Preparation configurations use independent schema versioning:
 
@@ -268,6 +269,8 @@ Preparation reads existing immutable dataset runs or model-sweep bundles and
 writes Parquet derived-data artifacts. It must resolve semantic fields
 through source metadata/schema, preserve source row order, retain row-level
 source identity, and never import or call thermodynamic backends. Preparation
+separates user-facing `data/table.parquet` from `data/provenance.parquet` and
+`data/diagnostics.parquet`, joined by `prepared_row_id`. Preparation
 may create explicit leakage-aware scenarios and deterministic numeric
 transformations (`log10`, `standard`, `minmax`). It exports Parquet only and
 does not train, optimize, use scikit-learn, or export NumPy, SafeTensors,

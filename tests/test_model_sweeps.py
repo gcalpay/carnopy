@@ -159,6 +159,13 @@ def test_model_sweep_comparison_plot_sidecar_records_provenance(tmp_path: Path) 
       property: mass_density
       x: temperature
       models: [heos, pr]
+    - name: propane_density_delta
+      kind: property_delta
+      fluid: Propane
+      property: mass_density
+      x: temperature
+      models: [pr]
+      delta_metric: signed_relative_difference
 """
     config = _write(tmp_path / "sweep.yaml", _property_sweep_config(comparison_plots=comparison))
 
@@ -174,6 +181,42 @@ def test_model_sweep_comparison_plot_sidecar_records_provenance(tmp_path: Path) 
     assert payload["selected_fluid"] == "n-Propane"
     assert payload["x_axis"] == "temperature"
     assert payload["comparison_artifact_hashes"]["comparison/values.parquet"]
+    delta_image = result.comparison_plot_directory / "propane_density_delta.png"
+    delta_sidecar = result.comparison_plot_directory / "propane_density_delta.plot.json"
+    delta_payload = json.loads(delta_sidecar.read_text())
+    assert delta_image.is_file()
+    assert delta_payload["plot_kind"] == "property_delta"
+    assert delta_payload["resolved_models"] == ["pr"]
+    assert delta_payload["reference_model"] == "heos"
+    assert delta_payload["delta_metric"] == "signed_relative_difference"
+    assert result.deltas_path is not None
+    deltas = pd.read_parquet(result.deltas_path)
+    valid_deltas = deltas.loc[
+        (deltas["backend_model"] == "pr")
+        & (deltas["property"] == "mass_density")
+        & deltas["comparison_valid"].astype(bool),
+        "signed_relative_difference",
+    ].dropna()
+    assert delta_payload["metric_summary"]["count"] == len(valid_deltas)
+    assert delta_payload["metric_summary"]["minimum"] == pytest.approx(float(valid_deltas.min()))
+    assert delta_payload["metric_summary"]["maximum"] == pytest.approx(float(valid_deltas.max()))
+
+
+def test_model_sweep_rejects_reference_model_in_delta_plot(tmp_path: Path) -> None:
+    comparison = """comparison_plots:
+  format: png
+  plots:
+    - name: invalid_delta
+      kind: property_delta
+      fluid: Propane
+      property: mass_density
+      x: temperature
+      models: [heos, pr]
+"""
+    config = _write(tmp_path / "sweep.yaml", _property_sweep_config(comparison_plots=comparison))
+
+    with pytest.raises(ConfigError, match="must not select reference_model"):
+        load_sweep_config_file(config)
 
 
 def test_model_sweep_rejects_ambiguous_comparison_plot(tmp_path: Path) -> None:

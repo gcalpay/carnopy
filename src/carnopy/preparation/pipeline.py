@@ -25,7 +25,14 @@ from carnopy.preparation.reporting import (
     normalized_preparation_bytes,
     preparation_context_id,
 )
-from carnopy.preparation.rows import PreparedRows, build_prepared_rows, exclusions_frame
+from carnopy.preparation.rows import (
+    IDENTITY_COLUMNS,
+    PREPARED_ROW_ID_COLUMN,
+    SOURCE_DIAGNOSTIC_COLUMNS,
+    PreparedRows,
+    build_prepared_rows,
+    exclusions_frame,
+)
 from carnopy.preparation.scenarios import ScenarioOutput, build_scenario_outputs
 from carnopy.preparation.source import LoadedPreparationSource, load_preparation_source
 from carnopy.provenance import sha256_bytes
@@ -39,10 +46,21 @@ class BundleWriteResult:
     status: PreparationStatus
     eligible_row_count: int
     excluded_row_count: int
-    unsplit_path: Path | None
+    table_path: Path | None
+    provenance_path: Path
+    source_diagnostics_path: Path
     scenario_report_path: Path | None
     scenario_count: int
     partition_count: int
+
+
+@dataclass(frozen=True)
+class DataArtifactPaths:
+    table_path: Path | None
+    provenance_path: Path
+    source_diagnostics_path: Path
+    exclusions_path: Path
+    table_columns: list[str]
 
 
 @dataclass(frozen=True)
@@ -95,11 +113,13 @@ def prepare_dataset(
             output_directory=layout.final_directory,
             eligible_row_count=result.eligible_row_count,
             excluded_row_count=result.excluded_row_count,
-            unsplit_path=(
+            table_path=(
                 None
-                if result.unsplit_path is None
-                else layout.final_directory / "data" / "unsplit.parquet"
+                if result.table_path is None
+                else layout.final_directory / "data" / "table.parquet"
             ),
+            provenance_path=layout.final_directory / "data" / "provenance.parquet",
+            source_diagnostics_path=layout.final_directory / "data" / "diagnostics.parquet",
             exclusions_path=layout.final_directory / "data" / "exclusions.parquet",
             manifest_path=layout.final_directory / "manifest.json",
             diagnostics_path=layout.final_directory / "diagnostics.json",
@@ -134,7 +154,12 @@ def _write_preparation_bundle(
     data_directory.mkdir()
     rows = build_prepared_rows(loaded.model, source_data, resolved)
     prepared_frame = pd.DataFrame(rows.prepared_rows)
-    unsplit_path = _write_data_artifacts(rows, data_directory, prepared_frame)
+    data_artifacts = _write_data_artifacts(
+        rows,
+        data_directory,
+        prepared_frame,
+        auxiliary_fields=loaded.model.auxiliary,
+    )
     scenario_result = _write_scenario_artifacts(
         loaded=loaded,
         source_data=source_data,
@@ -142,6 +167,7 @@ def _write_preparation_bundle(
         data_directory=data_directory,
         rows=rows,
         prepared_frame=prepared_frame,
+        public_table_columns=data_artifacts.table_columns,
     )
 
     write_bytes(layout.staging_directory / "preparation.original.yaml", loaded.raw_bytes)
@@ -155,10 +181,12 @@ def _write_preparation_bundle(
     artifact_names = [
         "preparation.original.yaml",
         "preparation.normalized.json",
+        "data/provenance.parquet",
+        "data/diagnostics.parquet",
         "data/exclusions.parquet",
     ]
-    if unsplit_path is not None:
-        artifact_names.append("data/unsplit.parquet")
+    if data_artifacts.table_path is not None:
+        artifact_names.append("data/table.parquet")
     if scenario_result is not None:
         artifact_names.extend(scenario_result.artifact_names)
     artifact_hashes = hash_artifacts(layout.staging_directory, artifact_names)
@@ -175,6 +203,13 @@ def _write_preparation_bundle(
         eligible_row_count=len(rows.prepared_rows),
         excluded_row_count=len(rows.exclusion_rows),
         artifact_hashes=artifact_hashes,
+        data_artifacts={
+            "table": None if data_artifacts.table_path is None else "data/table.parquet",
+            "provenance": "data/provenance.parquet",
+            "diagnostics": "data/diagnostics.parquet",
+            "exclusions": "data/exclusions.parquet",
+        },
+        table_columns=data_artifacts.table_columns,
         scenario_summary=None if scenario_result is None else scenario_result.summary,
     )
     write_json(layout.staging_directory / "manifest.json", manifest)
@@ -193,7 +228,9 @@ def _write_preparation_bundle(
         status=rows.status,
         eligible_row_count=len(rows.prepared_rows),
         excluded_row_count=len(rows.exclusion_rows),
-        unsplit_path=unsplit_path,
+        table_path=data_artifacts.table_path,
+        provenance_path=data_artifacts.provenance_path,
+        source_diagnostics_path=data_artifacts.source_diagnostics_path,
         scenario_report_path=None if scenario_result is None else scenario_result.report_path,
         scenario_count=0 if scenario_result is None else scenario_result.scenario_count,
         partition_count=0 if scenario_result is None else scenario_result.partition_count,
@@ -204,13 +241,46 @@ def _write_data_artifacts(
     rows: PreparedRows,
     data_directory: Path,
     prepared_frame: pd.DataFrame,
-) -> Path | None:
-    unsplit_path: Path | None = None
+    *,
+    auxiliary_fields: tuple[str, ...],
+) -> DataArtifactPaths:
+    table_path: Path | None = None
+    table_columns = _public_table_columns(prepared_frame, auxiliary_fields=auxiliary_fields)
     if rows.prepared_rows:
-        unsplit_path = data_directory / "unsplit.parquet"
-        _write_parquet(prepared_frame, unsplit_path)
+        table_path = data_directory / "table.parquet"
+        _write_parquet(prepared_frame.loc[:, table_columns], table_path)
+    provenance_path = data_directory / "provenance.parquet"
+    source_diagnostics_path = data_directory / "diagnostics.parquet"
+    _write_parquet(_provenance_frame(prepared_frame), provenance_path)
+    _write_parquet(_source_diagnostics_frame(prepared_frame), source_diagnostics_path)
     _write_parquet(exclusions_frame(rows.exclusion_rows), data_directory / "exclusions.parquet")
-    return unsplit_path
+    return DataArtifactPaths(
+        table_path=table_path,
+        provenance_path=provenance_path,
+        source_diagnostics_path=source_diagnostics_path,
+        exclusions_path=data_directory / "exclusions.parquet",
+        table_columns=table_columns,
+    )
+
+
+def _public_table_columns(
+    prepared_frame: pd.DataFrame,
+    *,
+    auxiliary_fields: tuple[str, ...],
+) -> list[str]:
+    explicit_auxiliary = set(auxiliary_fields)
+    excluded = (set(IDENTITY_COLUMNS) - explicit_auxiliary) | set(SOURCE_DIAGNOSTIC_COLUMNS)
+    return [column for column in prepared_frame.columns if column not in excluded]
+
+
+def _provenance_frame(prepared_frame: pd.DataFrame) -> pd.DataFrame:
+    columns = [PREPARED_ROW_ID_COLUMN, *IDENTITY_COLUMNS]
+    return pd.DataFrame(prepared_frame, columns=columns)
+
+
+def _source_diagnostics_frame(prepared_frame: pd.DataFrame) -> pd.DataFrame:
+    columns = [PREPARED_ROW_ID_COLUMN, *SOURCE_DIAGNOSTIC_COLUMNS]
+    return pd.DataFrame(prepared_frame, columns=columns)
 
 
 def _write_scenario_artifacts(
@@ -221,6 +291,7 @@ def _write_scenario_artifacts(
     data_directory: Path,
     rows: PreparedRows,
     prepared_frame: pd.DataFrame,
+    public_table_columns: list[str],
 ) -> ScenarioWriteResult | None:
     if not loaded.model.scenarios:
         return None
@@ -250,7 +321,11 @@ def _write_scenario_artifacts(
     for output in outputs:
         scenario_directory = scenario_root / output.name
         scenario_directory.mkdir()
-        partition_artifacts = _write_scenario_partitions(output, scenario_directory)
+        partition_artifacts = _write_scenario_partitions(
+            output,
+            scenario_directory,
+            public_table_columns=public_table_columns,
+        )
         partition_hashes = hash_artifacts(layout.staging_directory, partition_artifacts)
         scenario_metadata = {
             **output.metadata,
@@ -306,11 +381,20 @@ def _write_scenario_artifacts(
 def _write_scenario_partitions(
     output: ScenarioOutput,
     scenario_directory: Path,
+    *,
+    public_table_columns: list[str],
 ) -> list[str]:
     artifacts: list[str] = []
+    transform_columns = [
+        item["output_column"]
+        for item in output.metadata.get("transformations", [])
+        if isinstance(item, dict) and isinstance(item.get("output_column"), str)
+    ]
+    output_columns = list(dict.fromkeys([*public_table_columns, *transform_columns]))
     for partition, frame in output.partitions.items():
         path = scenario_directory / f"{partition}.parquet"
-        _write_parquet(frame, path)
+        clean_frame = frame.loc[:, [column for column in output_columns if column in frame.columns]]
+        _write_parquet(clean_frame, path)
         artifacts.append(f"data/scenarios/{output.name}/{partition}.parquet")
     return artifacts
 

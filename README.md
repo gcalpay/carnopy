@@ -331,10 +331,19 @@ comparison_plots:
       x: temperature
       group_by: pressure
       models: [heos, pr, srk]
+    - name: propane_density_relative_delta
+      kind: property_delta
+      fluid: Propane
+      property: mass_density
+      x: temperature
+      group_by: pressure
+      models: [pr, srk]
+      delta_metric: signed_relative_difference
 ```
 
 Stage 4 comparison plots are one-fluid, one-property, one-x-axis side-by-side
-model comparisons. Multiple fluids require multiple plot entries.
+model value comparisons or model-vs-reference delta plots. Multiple fluids
+require multiple plot entries.
 
 ### ML preparation foundation
 
@@ -367,9 +376,12 @@ outputs:
 ```
 
 Prepared bundles contain `manifest.json`, `diagnostics.json`,
-`dataset_card.md`, `data/unsplit.parquet`, and `data/exclusions.parquet`.
+`dataset_card.md`, `data/table.parquet`, `data/provenance.parquet`,
+`data/diagnostics.parquet`, and `data/exclusions.parquet`.
+`table.parquet` is the user-facing feature/target table. Provenance and source
+diagnostics are separated and join back to the table through `prepared_row_id`.
 If no source rows can produce the requested representation, Carnopy writes a
-clearly marked `no_eligible_rows` bundle without `data/unsplit.parquet`.
+clearly marked `no_eligible_rows` bundle without `data/table.parquet`.
 
 Optional leakage-aware scenarios add deterministic partition artifacts and
 plain-JSON transformation parameters. Current numeric transformations are

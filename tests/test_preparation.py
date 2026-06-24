@@ -161,11 +161,18 @@ def test_prepare_dataset_run_writes_manifest_and_preserves_order(
     result = prepare_dataset(run.output_directory, config=config, output_root=tmp_path / "prepared")
 
     assert result.status == "completed"
-    assert result.unsplit_path is not None
-    prepared = pd.read_parquet(result.unsplit_path)
+    assert result.table_path is not None
+    prepared = pd.read_parquet(result.table_path)
+    provenance = pd.read_parquet(result.provenance_path)
+    source_diagnostics = pd.read_parquet(result.source_diagnostics_path)
     source = pd.read_parquet(run.output_directory / "dataset.parquet")
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
-    assert prepared["source_row_index"].tolist() == list(range(len(source)))
+    assert prepared["prepared_row_id"].tolist() == list(range(len(source)))
+    assert provenance["prepared_row_id"].tolist() == prepared["prepared_row_id"].tolist()
+    assert provenance["source_row_index"].tolist() == list(range(len(source)))
+    assert source_diagnostics["prepared_row_id"].tolist() == prepared["prepared_row_id"].tolist()
+    assert "source_row_hash" not in prepared.columns
+    assert "source_failure_code" not in prepared.columns
     assert prepared["mass_density"].tolist() == source["mass_density_kg_m3"].tolist()
     assert prepared["specific_enthalpy"].tolist() == source["specific_enthalpy_J_kg"].tolist()
     assert prepared["specific_volume"].tolist() == pytest.approx(
@@ -180,8 +187,10 @@ def test_prepare_dataset_run_writes_manifest_and_preserves_order(
     assert result.scenario_count == 0
     assert result.partition_count == 0
     assert _relative_files(result.output_directory) == {
+        "data/diagnostics.parquet",
         "data/exclusions.parquet",
-        "data/unsplit.parquet",
+        "data/provenance.parquet",
+        "data/table.parquet",
         "dataset_card.md",
         "diagnostics.json",
         "manifest.json",
@@ -202,6 +211,8 @@ def test_prepare_dataset_run_writes_manifest_and_preserves_order(
         "auxiliary",
         "eligible_row_count",
         "excluded_row_count",
+        "data_artifacts",
+        "column_roles",
         "artifact_hashes",
     }.issubset(manifest)
     diagnostics = json.loads(result.diagnostics_path.read_text(encoding="utf-8"))
@@ -232,11 +243,13 @@ def test_prepare_includes_invalid_rows_when_requested_values_exist(tmp_path: Pat
     result = prepare_dataset(run.output_directory, config=config, output_root=tmp_path / "prepared")
 
     assert result.status == "completed"
-    assert result.unsplit_path is not None
-    prepared = pd.read_parquet(result.unsplit_path)
-    assert prepared["source_valid"].eq(False).all()
+    assert result.table_path is not None
+    prepared = pd.read_parquet(result.table_path)
+    source_diagnostics = pd.read_parquet(result.source_diagnostics_path)
+    assert source_diagnostics["source_valid"].eq(False).all()
     assert prepared["temperature"].notna().all()
     assert prepared["pressure"].notna().all()
+    assert prepared["valid"].eq(False).all()
 
 
 def test_prepare_no_eligible_rows_is_explicit(tmp_path: Path) -> None:
@@ -254,8 +267,10 @@ def test_prepare_no_eligible_rows_is_explicit(tmp_path: Path) -> None:
     result = prepare_dataset(run.output_directory, config=config, output_root=tmp_path / "prepared")
 
     assert result.status == "no_eligible_rows"
-    assert result.unsplit_path is None
-    assert not (result.output_directory / "data" / "unsplit.parquet").exists()
+    assert result.table_path is None
+    assert not (result.output_directory / "data" / "table.parquet").exists()
+    assert result.provenance_path.is_file()
+    assert result.source_diagnostics_path.is_file()
     exclusions = pd.read_parquet(result.exclusions_path)
     assert len(exclusions) == 2
     assert set(exclusions["primary_reason"]) == {"missing_required_field"}
@@ -280,8 +295,8 @@ def test_prepare_derived_features_use_source_columns_and_metadata_constants(tmp_
 
     result = prepare_dataset(run.output_directory, config=config, output_root=tmp_path / "prepared")
 
-    assert result.unsplit_path is not None
-    prepared = pd.read_parquet(result.unsplit_path)
+    assert result.table_path is not None
+    prepared = pd.read_parquet(result.table_path)
     source = pd.read_parquet(run.output_directory / "dataset.parquet")
     assert prepared["reduced_temperature"].tolist() == pytest.approx(
         (source["temperature_K"] / source["critical_temperature_K"]).tolist()
@@ -366,7 +381,7 @@ def test_prepare_one_hot_categories_are_deterministic_and_explicit_unknowns_fail
         config=observed,
         output_root=tmp_path / "prepared2",
     )
-    assert result.unsplit_path is not None
+    assert result.table_path is not None
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
     phase_vocab = manifest["categorical_vocabularies"]["phase"]
     assert phase_vocab["categories"] == sorted(phase_vocab["categories"], key=str)
@@ -484,7 +499,8 @@ def test_prepare_shuffle_scenario_is_deterministic_and_seeded(tmp_path: Path) ->
     second_train = pd.read_parquet(
         second.output_directory / "data/scenarios/shuffle_baseline/train.parquet"
     )
-    assert first_train["source_row_hash"].tolist() == second_train["source_row_hash"].tolist()
+    assert first_train["prepared_row_id"].tolist() == second_train["prepared_row_id"].tolist()
+    assert "source_row_hash" not in first_train.columns
     assert first.scenario_count == 1
     assert first.partition_count == 2
     assert first.scenario_report_path is not None
@@ -504,7 +520,7 @@ def test_prepare_shuffle_scenario_is_deterministic_and_seeded(tmp_path: Path) ->
     changed_train = pd.read_parquet(
         changed.output_directory / "data/scenarios/shuffle_baseline/train.parquet"
     )
-    assert first_train["source_row_hash"].tolist() != changed_train["source_row_hash"].tolist()
+    assert first_train["prepared_row_id"].tolist() != changed_train["prepared_row_id"].tolist()
 
 
 def test_prepare_scenario_transformations_use_train_statistics(tmp_path: Path) -> None:
@@ -620,8 +636,8 @@ def test_prepare_sweep_source_order_and_partial_policy(tmp_path: Path) -> None:
         output_root=tmp_path / "prepared",
     )
 
-    assert result.unsplit_path is not None
-    prepared = pd.read_parquet(result.unsplit_path)
+    assert result.table_path is not None
+    prepared = pd.read_parquet(result.table_path)
     assert prepared["backend_model"].tolist() == ["heos", "pr"]
     assert prepared["state_key"].notna().all()
 

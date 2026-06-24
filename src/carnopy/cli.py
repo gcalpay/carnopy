@@ -213,6 +213,8 @@ def sweep_command(
         typer.echo(f"Comparison deltas: {result.deltas_path}")
     if result.comparison_plot_directory is not None:
         typer.echo(f"Comparison plots: {result.comparison_plot_directory}")
+    else:
+        typer.echo("Comparison plots: not configured")
     if result.failure_message is not None:
         typer.echo(f"Failure: {result.failure_message}", err=True)
     if result.sweep_status != "completed":
@@ -269,8 +271,10 @@ def prepare_command(
     typer.echo(f"Excluded rows: {result.excluded_row_count}")
     typer.echo(f"Output directory: {result.output_directory}")
     typer.echo(f"Manifest: {result.manifest_path}")
-    if result.unsplit_path is not None:
-        typer.echo(f"Prepared data: {result.unsplit_path}")
+    if result.table_path is not None:
+        typer.echo(f"Prepared table: {result.table_path}")
+    typer.echo(f"Provenance: {result.provenance_path}")
+    typer.echo(f"Diagnostics table: {result.source_diagnostics_path}")
     typer.echo(f"Exclusions: {result.exclusions_path}")
     if result.scenario_report_path is not None:
         typer.echo(f"Scenario report: {result.scenario_report_path}")
@@ -323,14 +327,14 @@ def properties_command() -> None:
         )
 
 
-@app.command("inspect", short_help="Inspect a generated dataset.")
+@app.command("inspect", short_help="Inspect generated artifacts.")
 def inspect_command(
     source: Annotated[
         Path,
         typer.Argument(
             exists=True,
             readable=True,
-            help="Run directory, CSV, or Parquet file.",
+            help="Dataset run, model-sweep bundle, preparation bundle, CSV, or Parquet file.",
         ),
     ],
     output_format: Annotated[
@@ -347,14 +351,17 @@ def inspect_command(
         ),
     ] = None,
 ) -> None:
-    """List emitted fields and compatible plots without backend calls."""
-    from carnopy.visualization.inspect import inspect_plot_source
+    """Inspect dataset, sweep, or preparation artifacts without backend calls."""
+    from carnopy.inspection import inspect_source
     from carnopy.visualization.models import VisualizationError
 
     try:
-        inspection = inspect_plot_source(source)
+        inspection = inspect_source(source)
         if write_visualization is not None:
-            created = inspection.write_visualization(write_visualization)
+            writer = getattr(inspection, "write_visualization", None)
+            if not callable(writer):
+                raise VisualizationError("--write-visualization is only supported for dataset runs")
+            created = writer(write_visualization)
     except VisualizationError as exc:
         typer.echo(f"Inspection failed: {exc}", err=True)
         raise typer.Exit(code=2) from exc

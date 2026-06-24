@@ -40,6 +40,7 @@ SOURCE_DIAGNOSTIC_COLUMNS = [
     "source_backend_error_type",
     "source_backend_error_message",
 ]
+PREPARED_ROW_ID_COLUMN = "prepared_row_id"
 
 
 @dataclass(frozen=True)
@@ -70,9 +71,8 @@ def build_prepared_rows(
         if candidate.exclusion is not None:
             exclusion_rows.append(candidate.exclusion)
             continue
-        prepared_rows.append(
-            _encode_candidate(candidate.values, candidate.categorical_values, categories)
-        )
+        encoded = _encode_candidate(candidate.values, candidate.categorical_values, categories)
+        prepared_rows.append({PREPARED_ROW_ID_COLUMN: len(prepared_rows), **encoded})
 
     status: PreparationStatus
     if not prepared_rows:

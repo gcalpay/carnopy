@@ -118,7 +118,7 @@ def test_root_help_has_complete_summaries_at_narrow_width() -> None:
         ("prepare", "Prepare ML-ready data."),
         ("fluids", "List backend fluids."),
         ("properties", "List dataset properties."),
-        ("inspect", "Inspect a generated dataset."),
+        ("inspect", "Inspect generated artifacts."),
         ("init", "Create a starter configuration."),
         ("plot", "Plot a generated dataset."),
     ):

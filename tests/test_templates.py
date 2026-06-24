@@ -50,6 +50,8 @@ def test_model_sweep_template_is_concise_base_runnable_and_example_is_richer(
     assert "comparison_plots" not in payload
     assert "carnopy[viz]" in concise
     assert "carnopy[all]" in concise
+    assert "flush-left at column 1" in concise
+    assert "kind: property_delta" in concise
 
     concise_path = tmp_path / "sweep.yaml"
     concise_path.write_text(concise, encoding="utf-8")

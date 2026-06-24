@@ -86,6 +86,7 @@ def run_model_sweep(
                     normalized=normalized,
                 ),
                 selected_models=loaded.model.backend.models,
+                reference_model=loaded.model.backend.reference_model,
                 fluid_aliases=_fluid_aliases(normalized),
             )
             if comparison_plot_failure_count:

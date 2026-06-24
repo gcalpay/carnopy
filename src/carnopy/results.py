@@ -53,7 +53,9 @@ class PreparationResult:
     output_directory: Path
     eligible_row_count: int
     excluded_row_count: int
-    unsplit_path: Path | None
+    table_path: Path | None
+    provenance_path: Path
+    source_diagnostics_path: Path
     exclusions_path: Path
     manifest_path: Path
     diagnostics_path: Path

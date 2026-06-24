@@ -10,6 +10,8 @@ from carnopy.domain.properties import PROPERTY_REGISTRY
 from carnopy.sampling.models import Sampler
 from carnopy.visualization.requests import PlotFormat, PlotScale
 
+DeltaMetric = Literal["signed_relative_difference", "signed_absolute_difference"]
+
 
 class SweepBackendConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -45,7 +47,7 @@ class ComparisonPlotConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     name: str = Field(pattern=r"^[a-z0-9]+(?:[-_][a-z0-9]+)*$")
-    kind: Literal["property_comparison"]
+    kind: Literal["property_comparison", "property_delta"]
     fluid: str
     property_name: str = Field(alias="property")
     x_field: Literal["temperature", "pressure", "vapor_mass_fraction"] = Field(alias="x")
@@ -54,6 +56,7 @@ class ComparisonPlotConfig(BaseModel):
     ) = None
     filters: dict[str, float | str] = Field(default_factory=dict)
     models: tuple[CoolPropModel, ...] | None = None
+    delta_metric: DeltaMetric = "signed_relative_difference"
     value_scale: PlotScale = "linear"
     format: PlotFormat | None = None
 
@@ -165,5 +168,13 @@ class ModelSweepConfig(BaseModel):
                 if plot.models is not None and not set(plot.models).issubset(selected):
                     raise ValueError(
                         f"comparison plot {plot.name!r} selects models outside backend.models"
+                    )
+                if (
+                    plot.kind == "property_delta"
+                    and plot.models is not None
+                    and self.backend.reference_model in plot.models
+                ):
+                    raise ValueError(
+                        f"property_delta plot {plot.name!r} must not select reference_model"
                     )
         return self

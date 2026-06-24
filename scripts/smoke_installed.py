@@ -93,6 +93,14 @@ comparison_plots:
       x: temperature
       group_by: pressure
       models: [heos, pr, srk]
+    - name: propane_density_relative_delta
+      kind: property_delta
+      fluid: Propane
+      property: mass_density
+      x: temperature
+      group_by: pressure
+      models: [pr, srk]
+      delta_metric: signed_relative_difference
 """
         )
 
@@ -186,11 +194,16 @@ def main() -> int:
             prepared_bundle / "manifest.json",
             prepared_bundle / "diagnostics.json",
             prepared_bundle / "dataset_card.md",
-            prepared_bundle / "data" / "unsplit.parquet",
+            prepared_bundle / "data" / "table.parquet",
+            prepared_bundle / "data" / "provenance.parquet",
+            prepared_bundle / "data" / "diagnostics.parquet",
             prepared_bundle / "data" / "exclusions.parquet",
         )
     ):
         raise RuntimeError("preparation smoke test did not create required artifacts")
+    preparation_inspection = run_command(["inspect", str(prepared_bundle)], cwd=work_directory)
+    if "Source kind: preparation bundle" not in preparation_inspection.stdout:
+        raise RuntimeError("preparation inspect smoke test returned unexpected output")
 
     figure = work_directory / "density.png"
     plot_arguments = build_plot_arguments(runs[0], figure)
@@ -258,7 +271,7 @@ def main() -> int:
         sweep_environment = os.environ.copy()
         sweep_environment["MPLBACKEND"] = "Agg"
         sweep_environment["MPLCONFIGDIR"] = str(work_directory / "sweep-mpl-config")
-    run_command(
+    sweep_completed = run_command(
         build_sweep_arguments(sweep_config, sweep_root),
         cwd=work_directory,
         environment=sweep_environment,
@@ -271,6 +284,9 @@ def main() -> int:
         raise RuntimeError("model sweep smoke test did not create comparison values")
     if not (sweep_bundle / "comparison" / "deltas.parquet").is_file():
         raise RuntimeError("model sweep smoke test did not create comparison deltas")
+    sweep_inspection = run_command(["inspect", str(sweep_bundle)], cwd=work_directory)
+    if "Source kind: model-sweep bundle" not in sweep_inspection.stdout:
+        raise RuntimeError("sweep inspect smoke test returned unexpected output")
     if arguments.with_visualization:
         comparison_directory = sweep_bundle / "comparison_plots"
         if not all(
@@ -278,6 +294,8 @@ def main() -> int:
             for path in (
                 comparison_directory / "propane_density_temperature_by_pressure.png",
                 comparison_directory / "propane_density_temperature_by_pressure.plot.json",
+                comparison_directory / "propane_density_relative_delta.png",
+                comparison_directory / "propane_density_relative_delta.plot.json",
                 comparison_directory / "comparison-report.json",
             )
         ):
@@ -285,6 +303,8 @@ def main() -> int:
     elif (sweep_bundle / "comparison_plots").exists():
         raise RuntimeError("no-plot model sweep unexpectedly created comparison plots")
     else:
+        if "Comparison plots: not configured" not in sweep_completed.stdout:
+            raise RuntimeError("no-plot model sweep did not report absent comparison plots")
         sweep_with_plots = work_directory / "sweep-with-plots.yaml"
         run_command(["init", "model_sweep", str(sweep_with_plots)], cwd=work_directory)
         add_sweep_comparison_plots(sweep_with_plots)

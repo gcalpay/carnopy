@@ -26,6 +26,7 @@ def render_comparison_plots(
     output_directory: Path,
     sweep_identity: dict[str, str],
     selected_models: tuple[str, ...],
+    reference_model: str,
     fluid_aliases: dict[str, str],
 ) -> tuple[Path, Path, int]:
     try:
@@ -33,6 +34,7 @@ def render_comparison_plots(
     except OSError as exc:
         raise OutputError(f"could not create comparison plot directory: {exc}") from exc
     values = pd.read_parquet(values_path)
+    deltas = pd.read_parquet(deltas_path)
     values_hash = sha256_file(values_path)
     deltas_hash = sha256_file(deltas_path)
     outcomes: list[dict[str, Any]] = []
@@ -43,19 +45,33 @@ def render_comparison_plots(
         image_path = output_directory / f"{plot.name}.{plot.format or comparison_plots.format}"
         sidecar_path = output_directory / f"{plot.name}.plot.json"
         try:
-            _render_property_comparison(
-                plot=plot,
-                values=values,
-                selected_models=selected_models,
-                fluid_aliases=fluid_aliases,
-                image_path=image_path,
-                sidecar_path=sidecar_path,
-                sweep_identity=sweep_identity,
-                comparison_hashes={
-                    "comparison/values.parquet": values_hash,
-                    "comparison/deltas.parquet": deltas_hash,
-                },
-            )
+            comparison_hashes = {
+                "comparison/values.parquet": values_hash,
+                "comparison/deltas.parquet": deltas_hash,
+            }
+            if plot.kind == "property_delta":
+                _render_property_delta(
+                    plot=plot,
+                    deltas=deltas,
+                    selected_models=selected_models,
+                    reference_model=reference_model,
+                    fluid_aliases=fluid_aliases,
+                    image_path=image_path,
+                    sidecar_path=sidecar_path,
+                    sweep_identity=sweep_identity,
+                    comparison_hashes=comparison_hashes,
+                )
+            else:
+                _render_property_comparison(
+                    plot=plot,
+                    values=values,
+                    selected_models=selected_models,
+                    fluid_aliases=fluid_aliases,
+                    image_path=image_path,
+                    sidecar_path=sidecar_path,
+                    sweep_identity=sweep_identity,
+                    comparison_hashes=comparison_hashes,
+                )
         except Exception as exc:
             failed += 1
             outcomes.append(
@@ -205,6 +221,152 @@ def _render_property_comparison(
         },
     }
     _write_json_exclusive(sidecar_path, sidecar)
+
+
+def _render_property_delta(
+    *,
+    plot: Any,
+    deltas: pd.DataFrame,
+    selected_models: tuple[str, ...],
+    reference_model: str,
+    fluid_aliases: dict[str, str],
+    image_path: Path,
+    sidecar_path: Path,
+    sweep_identity: dict[str, str],
+    comparison_hashes: dict[str, str],
+) -> None:
+    if image_path.exists() or sidecar_path.exists():
+        raise OutputError(f"refusing to overwrite comparison plot artifacts for {plot.name}")
+    models = tuple(
+        plot.models or tuple(model for model in selected_models if model != reference_model)
+    )
+    if reference_model in models:
+        raise OutputError("property_delta plots must exclude the reference model")
+    selected_fluid = fluid_aliases.get(plot.fluid.casefold(), plot.fluid)
+    subset = deltas.loc[
+        (deltas["fluid"].astype(str).str.casefold() == selected_fluid.casefold())
+        & (deltas["property"] == plot.property_name)
+        & (deltas["backend_model"].isin(models))
+    ].copy()
+    for field, requested in plot.filters.items():
+        column = _field_column(field)
+        if column not in subset.columns:
+            raise OutputError(f"delta filter field {field!r} is unavailable")
+        if isinstance(requested, (int, float)):
+            expected = float(requested)
+            subset = subset.loc[
+                subset[column].map(lambda value, expected=expected: _float_equal(value, expected))
+            ]
+        else:
+            expected_text = str(requested).casefold()
+            subset = subset.loc[subset[column].astype(str).str.casefold() == expected_text]
+    if subset.empty:
+        raise OutputError(f"delta plot {plot.name!r} matched no values")
+    x_column = _field_column(plot.x_field)
+    group_column = _field_column(plot.group_by) if plot.group_by is not None else None
+    _validate_one_dimensional(subset, x_column=x_column, group_column=group_column)
+    if plot.delta_metric not in {
+        "signed_relative_difference",
+        "signed_absolute_difference",
+    }:
+        raise OutputError(f"unsupported delta metric: {plot.delta_metric}")
+
+    mpl = import_matplotlib()
+    plt = mpl["pyplot"]
+    fig, axes = plt.subplots(1, len(models), figsize=(5.5 * len(models), 4.2), squeeze=False)
+    group_values = (
+        sorted(subset[group_column].dropna().unique().tolist())
+        if group_column is not None
+        else [None]
+    )
+    skipped_reasons: dict[str, int] = {}
+    for model_index, model in enumerate(models):
+        axis = axes[0][model_index]
+        model_frame = subset.loc[subset["backend_model"] == model]
+        for group in group_values:
+            series = model_frame
+            label = "samples"
+            if group_column is not None:
+                series = series.loc[series[group_column] == group]
+                label = f"{plot.group_by}={group}"
+            series = series.sort_values([x_column, "state_key"])
+            x_values = pd.to_numeric(series[x_column], errors="coerce")
+            y_values = pd.to_numeric(series[plot.delta_metric], errors="coerce")
+            valid = series["comparison_valid"].astype(bool) & x_values.notna() & y_values.notna()
+            for reason in series.loc[~valid, "unavailable_reason"].fillna("missing_or_nonfinite"):
+                skipped_reasons[str(reason)] = skipped_reasons.get(str(reason), 0) + 1
+            y_plot = y_values.where(valid)
+            axis.plot(x_values, y_plot, marker="o", label=label)
+        axis.axhline(0.0, color="black", linewidth=0.8, alpha=0.5)
+        axis.set_title(f"{model} vs {reference_model}")
+        axis.set_xlabel(get_field(plot.x_field).display_label)
+        axis.set_ylabel(_delta_ylabel(plot.delta_metric, plot.property_name, reference_model))
+        axis.grid(True, which="both", alpha=0.25)
+        if plot.value_scale == "log":
+            metric_values = pd.to_numeric(model_frame[plot.delta_metric], errors="coerce").dropna()
+            if (metric_values <= 0).any():
+                raise OutputError("log delta plots require positive metric values")
+            axis.set_yscale("log")
+        if group_column is not None:
+            axis.legend()
+    metric_summary = _metric_summary(subset, plot.delta_metric)
+    fig.suptitle(f"{plot.property_name} delta for {selected_fluid}")
+    fig.tight_layout()
+    suffix = image_path.suffix.lower().removeprefix(".")
+    if suffix not in {"png", "pdf", "svg"}:
+        raise OutputError("comparison plot output format must be png, pdf, or svg")
+    kwargs: dict[str, Any] = {"format": suffix}
+    if suffix == "png":
+        kwargs["dpi"] = 300
+    fig.savefig(image_path, **kwargs)
+    image_hash = sha256_file(image_path)
+    sidecar = {
+        "plot_schema_version": 2,
+        "plot_kind": plot.kind,
+        "created_at_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "source_sweep_identity": sweep_identity,
+        "comparison_artifact_hashes": comparison_hashes,
+        "resolved_models": list(models),
+        "reference_model": reference_model,
+        "selected_fluid": selected_fluid,
+        "requested_fluid": plot.fluid,
+        "property": plot.property_name,
+        "delta_metric": plot.delta_metric,
+        "x_axis": plot.x_field,
+        "group_by": plot.group_by,
+        "group_values": [str(value) for value in group_values],
+        "filters": plot.filters,
+        "metric_summary": metric_summary,
+        "skipped_rows": int(sum(skipped_reasons.values())),
+        "missing_or_invalid_reasons": skipped_reasons,
+        "image": {"path": str(image_path), "sha256": image_hash},
+        "runtime_versions": {
+            "carnopy": __version__,
+            "matplotlib": metadata.version("matplotlib"),
+        },
+    }
+    _write_json_exclusive(sidecar_path, sidecar)
+
+
+def _metric_summary(frame: pd.DataFrame, metric: str) -> dict[str, float | int | None]:
+    values = pd.to_numeric(
+        frame.loc[frame["comparison_valid"].astype(bool), metric],
+        errors="coerce",
+    ).dropna()
+    if values.empty:
+        return {"count": 0, "minimum": None, "maximum": None, "mean": None}
+    return {
+        "count": len(values),
+        "minimum": float(values.min()),
+        "maximum": float(values.max()),
+        "mean": float(values.mean()),
+    }
+
+
+def _delta_ylabel(metric: str, property_name: str, reference_model: str) -> str:
+    if metric == "signed_absolute_difference":
+        return f"{property_name} difference vs {reference_model}"
+    return f"{property_name} relative difference vs {reference_model}"
 
 
 def _validate_one_dimensional(

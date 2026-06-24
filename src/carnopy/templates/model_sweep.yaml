@@ -41,7 +41,8 @@ outputs:
 #   python -m pip install "carnopy[all]"
 #
 # Uncomment and edit the block below only when visualization dependencies are
-# installed.
+# installed. The `comparison_plots:` key must be flush-left at column 1 with no
+# leading spaces. No plots are generated unless this block is active.
 #
 # comparison_plots:
 #   format: png
@@ -53,3 +54,11 @@ outputs:
 #       x: temperature
 #       group_by: pressure
 #       models: [heos, pr, srk]
+#     - name: propane_density_relative_delta
+#       kind: property_delta
+#       fluid: Propane
+#       property: mass_density
+#       x: temperature
+#       group_by: pressure
+#       models: [pr, srk]
+#       delta_metric: signed_relative_difference
