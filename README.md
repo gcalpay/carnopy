@@ -31,10 +31,16 @@ Install the current alpha:
 python -m pip install "carnopy==0.1.0a2"
 ```
 
-Install optional plotting support:
+Install all optional user-facing extras:
 
 ```bash
 python -m pip install "carnopy[all]==0.1.0a2"
+```
+
+Install only optional ML export support:
+
+```bash
+python -m pip install "carnopy[ml]==0.1.0a2"
 ```
 
 For an isolated CLI:
@@ -42,11 +48,14 @@ For an isolated CLI:
 ```bash
 uv tool install "carnopy==0.1.0a2"
 uv tool install "carnopy[all]==0.1.0a2"
+uv tool install "carnopy[ml]==0.1.0a2"
 ```
 
-The base package supports generation and validation. The `viz` and `all` extras
-install Matplotlib for manual or configured figure generation. PyArrow remains
-a core dependency because Parquet is a supported first-class output format.
+The base package supports generation and validation. The `viz` extra installs
+Matplotlib for manual or configured figure generation. The `ml` extra installs
+SafeTensors for optional array/tensor preparation exports. The `all` extra is
+the union of user-facing optional extras. PyArrow remains a core dependency
+because Parquet is a supported first-class output format.
 
 ## Quick start
 
@@ -80,7 +89,7 @@ uv run --locked carnopy --help
 - [Configuration](#configuration)
 - [Properties](#properties)
 - [Visualization](#visualization)
-- [Generated artifacts and provenance](#generated-artifacts-and-provenance)
+- [Generated outputs and provenance](#generated-outputs-and-provenance)
 - [Python API](#python-api)
 - [Scientific limitations](#scientific-limitations)
 - [Development and contribution](#development-and-contribution)
@@ -89,7 +98,7 @@ uv run --locked carnopy --help
 ## Workflow details
 
 ```text
-init → edit → optional validate → generate → inspect → optional plot
+init → edit → optional validate → generate/sweep → inspect → optional plot → optional prepare
 ```
 
 Create a starter configuration:
@@ -348,7 +357,7 @@ require multiple plot entries.
 ### ML preparation foundation
 
 Preparation is the current ML-pipeline bridge. It reads an existing immutable
-run or model-sweep bundle and writes deterministic Parquet artifacts without
+run or model-sweep bundle and writes deterministic Parquet outputs without
 calling a thermodynamic backend. Omit `scenarios:` for a single unsplit
 prepared table:
 
@@ -409,9 +418,24 @@ scenarios:
 
 Supported scenarios are `unsplit`, `shuffle`, `coordinate_block`,
 `range_holdout`, `leave_fluid_out`, `phase_holdout`, and `model_holdout`.
-Preparation currently exports Parquet only. It does not train models and does
-not export NumPy arrays, SafeTensors, PyTorch tensors, or other tensor files in
-`0.1.0a2`.
+
+Parquet remains the canonical prepared table. Optional NumPy and SafeTensors
+exports are derived ML-consumption files:
+
+```yaml
+outputs:
+  parquet: true
+  arrays:
+    formats: [npy, npz, safetensors]
+    dtype: float32
+    include_auxiliary: false
+```
+
+Array exports require `carnopy[ml]` or `carnopy[all]` when SafeTensors is
+requested. Carnopy records feature/target order, units, shapes, dtype, file
+hashes, and float32 conversion-error summaries in the manifest. It does not
+train models, depend on PyTorch, or export `.pt`/`.pth` files in this release
+line.
 
 ### Modes
 
@@ -794,10 +818,10 @@ Visualization settings do not change `config.normalized.json`, `spec_id`, or
 `visualization_request_id = viz-<sha256>`. Exact YAML bytes still affect the raw
 configuration hash.
 
-## Generated artifacts and provenance
+## Generated outputs and provenance
 
 Each immutable run contains the selected dataset files plus mandatory
-provenance artifacts:
+provenance outputs:
 
 ```text
 outputs/<run>/

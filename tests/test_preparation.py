@@ -6,11 +6,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
 from carnopy.api import generate_dataset, generate_model_sweep, prepare_dataset
-from carnopy.domain.failures import ConfigError
+from carnopy.domain.failures import ConfigError, OutputError
 from carnopy.preparation.models import load_preparation_config
 
 
@@ -36,6 +37,7 @@ def _prep_config(
     targets: str = "[specific_enthalpy]",
     auxiliary: str = "[fluid, backend_model, phase, run_id, case_id]",
     allow_partial: str = "false",
+    outputs: str = "  formats: [parquet]",
 ) -> Path:
     categorical_block = (
         "categorical_features: []"
@@ -55,7 +57,7 @@ features:
 targets: {targets}
 auxiliary: {auxiliary}
 outputs:
-  formats: [parquet]
+{outputs}
 """,
     )
 
@@ -228,6 +230,166 @@ def test_prepare_dataset_run_writes_manifest_and_preserves_order(
     )
 
 
+def test_prepare_writes_numpy_and_safetensors_exports(
+    tmp_path: Path,
+    property_config_path: Path,
+) -> None:
+    from safetensors.numpy import load_file
+
+    run = generate_dataset(property_config_path, output_root=tmp_path / "runs")
+    config = _prep_config(
+        tmp_path / "preparation.yaml",
+        outputs="""  parquet: true
+  arrays:
+    formats: [npz, safetensors, npy]
+    dtype: float32
+    include_auxiliary: false""",
+    )
+
+    result = prepare_dataset(run.output_directory, config=config, output_root=tmp_path / "prepared")
+
+    assert result.table_path is not None
+    table = pd.read_parquet(result.table_path)
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    arrays = manifest["array_exports"]
+    assert arrays["enabled"] is True
+    assert arrays["formats"] == ["npy", "npz", "safetensors"]
+    assert arrays["dtype"] == "float32"
+    assert arrays["feature_columns"][:4] == [
+        "temperature",
+        "pressure",
+        "mass_density",
+        "specific_volume",
+    ]
+    assert any(column.startswith("phase__") for column in arrays["feature_columns"])
+    assert arrays["target_columns"] == ["specific_enthalpy"]
+    assert arrays["source_table"] == "table.parquet"
+    assert set(arrays["float_conversion"]["features"]) == set(arrays["feature_columns"])
+
+    directory = result.output_directory / "data" / "arrays"
+    features_npy = np.load(directory / "features.float32.npy", allow_pickle=False)
+    targets_npy = np.load(directory / "targets.float32.npy", allow_pickle=False)
+    expected_features = table.loc[:, arrays["feature_columns"]].to_numpy(dtype=np.float32)
+    expected_targets = table.loc[:, arrays["target_columns"]].to_numpy(dtype=np.float32)
+    np.testing.assert_array_equal(features_npy, expected_features)
+    np.testing.assert_array_equal(targets_npy, expected_targets)
+
+    with np.load(directory / "dataset.float32.npz", allow_pickle=False) as archive:
+        assert sorted(archive.files) == ["features", "targets"]
+        np.testing.assert_array_equal(archive["features"], expected_features)
+        np.testing.assert_array_equal(archive["targets"], expected_targets)
+
+    tensors = load_file(directory / "dataset.float32.safetensors")
+    assert sorted(tensors) == ["features", "targets"]
+    np.testing.assert_array_equal(tensors["features"], expected_features)
+    np.testing.assert_array_equal(tensors["targets"], expected_targets)
+    assert not (directory / "dataset.float32.pt").exists()
+    assert not (directory / "dataset.float32.pth").exists()
+
+
+def test_prepare_float64_array_exports_match_table_exactly(
+    tmp_path: Path,
+    property_config_path: Path,
+) -> None:
+    run = generate_dataset(property_config_path, output_root=tmp_path / "runs")
+    config = _prep_config(
+        tmp_path / "preparation.yaml",
+        outputs="""  parquet: true
+  arrays:
+    formats: [npy]
+    dtype: float64
+    include_auxiliary: false""",
+    )
+
+    result = prepare_dataset(run.output_directory, config=config, output_root=tmp_path / "prepared")
+
+    assert result.table_path is not None
+    table = pd.read_parquet(result.table_path)
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    arrays = manifest["array_exports"]
+    expected = table.loc[:, arrays["feature_columns"]].to_numpy(dtype=np.float64)
+    actual = np.load(
+        result.output_directory / "data" / "arrays" / "features.float64.npy",
+        allow_pickle=False,
+    )
+    np.testing.assert_array_equal(actual, expected, strict=True)
+    for summary in arrays["float_conversion"]["features"].values():
+        assert summary == {
+            "max_abs_error": 0.0,
+            "max_rel_error": 0.0,
+            "mean_abs_error": 0.0,
+        }
+
+
+def test_prepare_array_auxiliary_requires_safe_columns(
+    tmp_path: Path, property_config_path: Path
+) -> None:
+    run = generate_dataset(property_config_path, output_root=tmp_path / "runs")
+    unsafe = _prep_config(
+        tmp_path / "unsafe.yaml",
+        outputs="""  parquet: true
+  arrays:
+    formats: [npy]
+    dtype: float32
+    include_auxiliary: true""",
+    )
+
+    with pytest.raises(OutputError, match="unsupported: run_id"):
+        prepare_dataset(run.output_directory, config=unsafe, output_root=tmp_path / "prepared")
+
+    safe = _prep_config(
+        tmp_path / "safe.yaml",
+        auxiliary="[fluid, backend_model, phase, case_id]",
+        outputs="""  parquet: true
+  arrays:
+    formats: [npz]
+    dtype: float32
+    include_auxiliary: true""",
+    )
+
+    result = prepare_dataset(run.output_directory, config=safe, output_root=tmp_path / "prepared2")
+
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    arrays = manifest["array_exports"]
+    assert arrays["auxiliary_columns"] == ["fluid", "backend_model", "phase", "case_id"]
+    assert arrays["categorical_auxiliary"]["fluid"]["encoding"] == "int_code"
+    assert arrays["categorical_auxiliary"]["fluid"]["dtype"] == "int32"
+    with np.load(
+        result.output_directory / "data" / "arrays" / "dataset.float32.npz",
+        allow_pickle=False,
+    ) as archive:
+        assert sorted(archive.files) == [
+            "auxiliary_categorical",
+            "auxiliary_numeric",
+            "features",
+            "targets",
+        ]
+        assert archive["auxiliary_categorical"].dtype == np.int32
+        assert archive["auxiliary_numeric"].dtype == np.float32
+
+
+def test_prepare_rejects_array_formats_in_legacy_formats_field(tmp_path: Path) -> None:
+    config = _prep_config(
+        tmp_path / "preparation.yaml",
+        outputs="  formats: [parquet, npy]",
+    )
+
+    with pytest.raises(ConfigError, match=r"array formats must be declared under outputs\.arrays"):
+        load_preparation_config(config)
+
+
+def test_prepare_rejects_array_outputs_without_dtype(tmp_path: Path) -> None:
+    config = _prep_config(
+        tmp_path / "preparation.yaml",
+        outputs="""  parquet: true
+  arrays:
+    formats: [npy]""",
+    )
+
+    with pytest.raises(ConfigError, match="array output dtype is required"):
+        load_preparation_config(config)
+
+
 def test_prepare_includes_invalid_rows_when_requested_values_exist(tmp_path: Path) -> None:
     dataset = _property_config(tmp_path / "invalid.yaml", properties="[surface_tension]")
     run = generate_dataset(dataset, output_root=tmp_path / "runs")
@@ -274,6 +436,31 @@ def test_prepare_no_eligible_rows_is_explicit(tmp_path: Path) -> None:
     exclusions = pd.read_parquet(result.exclusions_path)
     assert len(exclusions) == 2
     assert set(exclusions["primary_reason"]) == {"missing_required_field"}
+
+
+def test_prepare_no_eligible_rows_skips_array_exports(tmp_path: Path) -> None:
+    dataset = _property_config(tmp_path / "invalid.yaml", properties="[surface_tension]")
+    run = generate_dataset(dataset, output_root=tmp_path / "runs")
+    config = _prep_config(
+        tmp_path / "preparation.yaml",
+        numeric="[temperature]",
+        derived="[]",
+        categorical="[]",
+        targets="[surface_tension]",
+        auxiliary="[]",
+        outputs="""  parquet: true
+  arrays:
+    formats: [npy, npz]
+    dtype: float32
+    include_auxiliary: false""",
+    )
+
+    result = prepare_dataset(run.output_directory, config=config, output_root=tmp_path / "prepared")
+
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    assert result.status == "no_eligible_rows"
+    assert manifest["array_exports"] == {"enabled": False, "exports": []}
+    assert not (result.output_directory / "data" / "arrays").exists()
 
 
 def test_prepare_derived_features_use_source_columns_and_metadata_constants(tmp_path: Path) -> None:
@@ -564,6 +751,47 @@ def test_prepare_scenario_transformations_use_train_statistics(tmp_path: Path) -
     assert train[output_column].mean() == pytest.approx(0.0)
     assert scenario["transformations"][0]["fit_partition"] == "train"
     assert scenario["transformations"][0]["steps"][1]["method"] == "standard"
+
+
+def test_prepare_scenario_partitions_write_array_exports(tmp_path: Path) -> None:
+    run = generate_dataset(
+        _grid_property_config(tmp_path / "grid.yaml"),
+        output_root=tmp_path / "runs",
+    )
+    config = _prep_config_with_scenarios(
+        tmp_path / "preparation.yaml",
+        """scenarios:
+  - name: shuffle_baseline
+    kind: shuffle
+    seed: 42
+    partitions:
+      train: 0.5
+      test: 0.5
+    transformations:
+      - field: pressure
+        methods: [log10]
+""",
+        outputs="""  parquet: true
+  arrays:
+    formats: [npz]
+    dtype: float32
+    include_auxiliary: false""",
+    )
+
+    result = prepare_dataset(run.output_directory, config=config, output_root=tmp_path / "prepared")
+
+    assert result.scenario_report_path is not None
+    report = json.loads(result.scenario_report_path.read_text(encoding="utf-8"))
+    scenario = report["scenarios"][0]
+    train_arrays = scenario["array_exports"]["train"]
+    assert train_arrays["enabled"] is True
+    assert "pressure__log10" in train_arrays["feature_columns"]
+    train_archive = (
+        result.output_directory / "data/scenarios/shuffle_baseline/arrays/train.dataset.float32.npz"
+    )
+    with np.load(train_archive, allow_pickle=False) as archive:
+        assert sorted(archive.files) == ["features", "targets"]
+        assert archive["features"].dtype == np.float32
 
 
 def test_prepare_holdout_scenarios_select_expected_rows(tmp_path: Path) -> None:

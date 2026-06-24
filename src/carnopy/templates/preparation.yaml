@@ -1,8 +1,9 @@
 # Carnopy preparation starter configuration.
 #
 # Preparation converts an existing immutable dataset run or model-sweep bundle
-# into deterministic, unsplit Parquet artifacts for downstream ML/surrogate
-# workflows. It never calls thermodynamic backends.
+# into deterministic Parquet outputs for downstream ML/surrogate workflows.
+# Optional array/tensor exports are derived from the Parquet table. Preparation
+# never calls thermodynamic backends.
 
 schema_version: 1
 document_type: preparation
@@ -56,3 +57,9 @@ auxiliary:
 
 outputs:
   formats: [parquet]
+  # Equivalent structured form:
+  # parquet: true
+  # arrays:
+  #   formats: [npy, npz, safetensors]
+  #   dtype: float32
+  #   include_auxiliary: false

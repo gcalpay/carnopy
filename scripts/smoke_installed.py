@@ -105,10 +105,26 @@ comparison_plots:
         )
 
 
+def enable_preparation_array_exports(config: Path) -> None:
+    text = config.read_text(encoding="utf-8")
+    old = "outputs:\n  formats: [parquet]\n"
+    new = """outputs:
+  parquet: true
+  arrays:
+    formats: [npy, npz, safetensors]
+    dtype: float32
+    include_auxiliary: false
+"""
+    if old not in text:
+        raise RuntimeError("preparation template does not contain the expected outputs block")
+    config.write_text(text.replace(old, new), encoding="utf-8")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Smoke-test an installed Carnopy distribution.")
     parser.add_argument("--work-directory", type=Path, required=True)
     parser.add_argument("--with-visualization", action="store_true")
+    parser.add_argument("--with-ml-exports", action="store_true")
     parser.add_argument("--expected-version")
     arguments = parser.parse_args()
 
@@ -137,6 +153,11 @@ def main() -> int:
         cwd=work_directory,
     )
     matplotlib_available = importlib.util.find_spec("matplotlib") is not None
+    safetensors_available = importlib.util.find_spec("safetensors") is not None
+    if not arguments.with_ml_exports and safetensors_available:
+        raise RuntimeError("base distribution unexpectedly includes SafeTensors")
+    if arguments.with_ml_exports and not safetensors_available:
+        raise RuntimeError("ML export smoke test requires SafeTensors")
     command_environment: dict[str, str] | None = None
     figures_root: Path | None = None
     if arguments.with_visualization:
@@ -179,6 +200,8 @@ def main() -> int:
 
     preparation_config = work_directory / "preparation.yaml"
     run_command(["init", "preparation", str(preparation_config)], cwd=work_directory)
+    if arguments.with_ml_exports:
+        enable_preparation_array_exports(preparation_config)
     prepared_root = work_directory / "prepared"
     run_command(
         build_prepare_arguments(runs[0], preparation_config, prepared_root),
@@ -201,6 +224,20 @@ def main() -> int:
         )
     ):
         raise RuntimeError("preparation smoke test did not create required artifacts")
+    arrays_directory = prepared_bundle / "data" / "arrays"
+    if arguments.with_ml_exports:
+        if not all(
+            path.is_file()
+            for path in (
+                arrays_directory / "features.float32.npy",
+                arrays_directory / "targets.float32.npy",
+                arrays_directory / "dataset.float32.npz",
+                arrays_directory / "dataset.float32.safetensors",
+            )
+        ):
+            raise RuntimeError("ML export smoke test did not create array exports")
+    elif arrays_directory.exists():
+        raise RuntimeError("base preparation smoke test unexpectedly created array exports")
     preparation_inspection = run_command(["inspect", str(prepared_bundle)], cwd=work_directory)
     if "Source kind: preparation bundle" not in preparation_inspection.stdout:
         raise RuntimeError("preparation inspect smoke test returned unexpected output")

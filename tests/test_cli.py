@@ -118,7 +118,7 @@ def test_root_help_has_complete_summaries_at_narrow_width() -> None:
         ("prepare", "Prepare ML-ready data."),
         ("fluids", "List backend fluids."),
         ("properties", "List dataset properties."),
-        ("inspect", "Inspect generated artifacts."),
+        ("inspect", "Inspect Carnopy outputs."),
         ("init", "Create a starter configuration."),
         ("plot", "Plot a generated dataset."),
     ):
@@ -153,15 +153,15 @@ def test_generate_help_includes_configured_figure_root() -> None:
     assert "--figures-out DIRECTORY" in result.stdout
 
 
-def test_prepare_help_documents_current_artifacts_without_future_tensor_exports() -> None:
+def test_prepare_help_documents_current_outputs_and_array_exports() -> None:
     result = runner.invoke(app, ["prepare", "--help"])
     assert result.exit_code == 0
-    assert "deterministic Parquet artifacts" in result.stdout
+    assert "deterministic Parquet and optional array outputs" in result.stdout
     assert "optional split scenarios" in result.stdout
     assert "log10" in result.stdout
     assert "standard" in result.stdout
     assert "minmax" in result.stdout
-    assert "SafeTensors" not in result.stdout
+    assert "SafeTensors" in result.stdout
     assert "PyTorch" not in result.stdout
 
 

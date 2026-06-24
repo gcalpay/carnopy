@@ -111,6 +111,7 @@ def test_distribution_checker_requires_model_sweep_artifacts() -> None:
     assert {
         "carnopy/config/sweep.py",
         "carnopy/inspection.py",
+        "carnopy/preparation/arrays.py",
         "carnopy/preparation/layout.py",
         "carnopy/preparation/pipeline.py",
         "carnopy/preparation/models.py",
@@ -126,6 +127,7 @@ def test_distribution_checker_requires_model_sweep_artifacts() -> None:
         "configs/model_sweep_example.yaml",
         "src/carnopy/config/sweep.py",
         "src/carnopy/inspection.py",
+        "src/carnopy/preparation/arrays.py",
         "src/carnopy/preparation/layout.py",
         "src/carnopy/preparation/pipeline.py",
         "src/carnopy/preparation/models.py",
@@ -231,3 +233,21 @@ def test_installed_smoke_prepare_arguments_use_current_cli_contract(tmp_path: Pa
         "--out",
         str(output),
     ]
+
+
+def test_installed_smoke_enables_preparation_array_exports(tmp_path: Path) -> None:
+    config = tmp_path / "preparation.yaml"
+    config.write_text("outputs:\n  formats: [parquet]\n", encoding="utf-8")
+
+    smoke_installed.enable_preparation_array_exports(config)
+
+    assert (
+        config.read_text(encoding="utf-8")
+        == """outputs:
+  parquet: true
+  arrays:
+    formats: [npy, npz, safetensors]
+    dtype: float32
+    include_auxiliary: false
+"""
+    )

@@ -22,7 +22,9 @@ DerivedFeature = Literal[
     "reduced_pressure",
     "compressibility_factor",
 ]
-PreparationFormat = Literal["parquet"]
+LegacyPreparationFormat = Literal["parquet"]
+ArrayFormat = Literal["npy", "npz", "safetensors"]
+ArrayDType = Literal["float32", "float64"]
 PartitionName = Literal["train", "validation", "test", "all"]
 ScenarioKind = Literal[
     "unsplit",
@@ -96,16 +98,18 @@ class CategoricalFeatureConfig(BaseModel):
         return value
 
 
-class PreparationOutputsConfig(BaseModel):
+class PreparationArrayOutputsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    formats: tuple[PreparationFormat, ...] = ("parquet",)
+    formats: tuple[ArrayFormat, ...] = Field(default_factory=tuple)
+    dtype: ArrayDType | None = None
+    include_auxiliary: bool = False
 
     @field_validator("formats", mode="before")
     @classmethod
     def normalize_formats(cls, value: object) -> object:
         if value is None:
-            return ("parquet",)
+            return ()
         if not isinstance(value, list | tuple):
             return value
         normalized = tuple(str(item).strip().lower() for item in value)
@@ -115,15 +119,64 @@ class PreparationOutputsConfig(BaseModel):
     @classmethod
     def validate_formats(
         cls,
-        formats: tuple[PreparationFormat, ...],
-    ) -> tuple[PreparationFormat, ...]:
+        formats: tuple[ArrayFormat, ...],
+    ) -> tuple[ArrayFormat, ...]:
+        if not formats:
+            raise ValueError("at least one array output format is required")
+        if len(set(formats)) != len(formats):
+            raise ValueError("duplicate array output formats are not allowed")
+        order: tuple[ArrayFormat, ...] = ("npy", "npz", "safetensors")
+        selected = set(formats)
+        return tuple(item for item in order if item in selected)
+
+    @model_validator(mode="after")
+    def validate_dtype(self) -> PreparationArrayOutputsConfig:
+        if self.dtype is None:
+            raise ValueError("array output dtype is required when arrays are requested")
+        return self
+
+
+class PreparationOutputsConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    formats: tuple[str, ...] = ("parquet",)
+    parquet: bool = True
+    arrays: PreparationArrayOutputsConfig | None = None
+
+    @field_validator("formats", mode="before")
+    @classmethod
+    def normalize_formats(cls, value: object) -> object:
+        if value is None:
+            return ("parquet",)
+        if not isinstance(value, list | tuple):
+            return value
+        return tuple(str(item).strip().lower() for item in value)
+
+    @field_validator("formats")
+    @classmethod
+    def validate_formats(
+        cls,
+        formats: tuple[str, ...],
+    ) -> tuple[LegacyPreparationFormat, ...]:
         if not formats:
             raise ValueError("at least one preparation output format is required")
         if len(set(formats)) != len(formats):
             raise ValueError("duplicate preparation output formats are not allowed")
         if formats != ("parquet",):
-            raise ValueError("only parquet preparation output is supported in this stage")
-        return formats
+            raise ValueError("array formats must be declared under outputs.arrays")
+        return ("parquet",)
+
+    @model_validator(mode="after")
+    def validate_parquet(self) -> PreparationOutputsConfig:
+        if not self.parquet:
+            raise ValueError("Parquet output is mandatory in this stage")
+        return self
+
+    @property
+    def output_format_names(self) -> tuple[str, ...]:
+        if self.arrays is None:
+            return ("parquet",)
+        return ("parquet", *self.arrays.formats)
 
 
 class TransformationConfig(BaseModel):

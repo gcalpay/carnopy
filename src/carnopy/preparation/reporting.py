@@ -15,7 +15,11 @@ from carnopy.preparation.fields import (
     derived_formula,
     sanitize_category,
 )
-from carnopy.preparation.models import LoadedPreparationConfig, PreparationConfig
+from carnopy.preparation.models import (
+    LoadedPreparationConfig,
+    PreparationConfig,
+    PreparationOutputsConfig,
+)
 from carnopy.preparation.source import LoadedPreparationSource
 from carnopy.provenance import sha256_bytes
 from carnopy.results import PreparationStatus
@@ -32,7 +36,7 @@ def preparation_context_id(
     *,
     request_id: str,
     source_data: LoadedPreparationSource,
-    formats: tuple[str, ...],
+    outputs: PreparationOutputsConfig,
 ) -> str:
     payload: dict[str, object] = {
         "preparation_request_id": request_id,
@@ -48,7 +52,7 @@ def preparation_context_id(
         ],
         "carnopy_version": __version__,
         "runtime_versions": runtime_versions(),
-        "output_formats": list(formats),
+        "outputs": outputs.model_dump(mode="json"),
     }
     return f"prepctx-{sha256_bytes(canonical_json_bytes(payload))}"
 
@@ -69,6 +73,7 @@ def build_manifest(
     artifact_hashes: dict[str, str],
     data_artifacts: dict[str, str | None],
     table_columns: list[str],
+    array_exports: dict[str, Any],
     scenario_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     manifest = {
@@ -122,6 +127,7 @@ def build_manifest(
         "eligible_row_count": eligible_row_count,
         "excluded_row_count": excluded_row_count,
         "data_artifacts": data_artifacts,
+        "array_exports": array_exports,
         "column_roles": {
             "table": table_columns,
             "provenance": [
@@ -149,7 +155,8 @@ def build_manifest(
             ],
         },
         "runtime_versions": runtime_versions(),
-        "output_formats": list(loaded.model.outputs.formats),
+        "output_formats": list(loaded.model.outputs.output_format_names),
+        "output_settings": loaded.model.outputs.model_dump(mode="json"),
         "artifact_hashes": artifact_hashes,
     }
     if scenario_summary is not None:
@@ -196,6 +203,10 @@ def build_dataset_card(manifest: dict[str, Any], diagnostics: dict[str, Any]) ->
         lines.append(f"Provenance: `{artifacts.get('provenance')}`")
         lines.append(f"Source diagnostics: `{artifacts.get('diagnostics')}`")
         lines.append(f"Exclusions: `{artifacts.get('exclusions')}`")
+    arrays = manifest.get("array_exports")
+    if isinstance(arrays, dict) and arrays.get("enabled"):
+        lines.append("Array exports: enabled")
+        lines.append("Array formats: " + ", ".join(arrays.get("formats", [])))
     if diagnostics["partial_sweep_source"]:
         lines.append("Partial sweep source: `true`")
         lines.append("Included child models: " + ", ".join(diagnostics["included_child_models"]))

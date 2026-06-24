@@ -33,6 +33,7 @@ WHEEL_REQUIRED = {
     "carnopy/config/sweep.py",
     "carnopy/py.typed",
     "carnopy/preparation/__init__.py",
+    "carnopy/preparation/arrays.py",
     "carnopy/preparation/fields.py",
     "carnopy/preparation/layout.py",
     "carnopy/preparation/models.py",
@@ -73,6 +74,7 @@ SDIST_REQUIRED = {
     "src/carnopy/inspection.py",
     "src/carnopy/py.typed",
     "src/carnopy/preparation/__init__.py",
+    "src/carnopy/preparation/arrays.py",
     "src/carnopy/preparation/fields.py",
     "src/carnopy/preparation/layout.py",
     "src/carnopy/preparation/models.py",
@@ -223,7 +225,7 @@ def validate_metadata(metadata: Message, expected_version: str, *, artifact: str
     if keywords != PROJECT_KEYWORDS:
         raise ValueError(f"{artifact} metadata declares unexpected keywords: {sorted(keywords)}")
     extras = set(metadata.get_all("Provides-Extra", []))
-    if extras != {"all", "viz"}:
+    if extras != {"all", "ml", "viz"}:
         raise ValueError(f"{artifact} metadata declares unexpected optional extras: {extras}")
     matplotlib_requirements = [
         requirement
@@ -234,6 +236,15 @@ def validate_metadata(metadata: Message, expected_version: str, *, artifact: str
         "extra ==" not in requirement for requirement in matplotlib_requirements
     ):
         raise ValueError(f"{artifact} must declare Matplotlib only through all and viz extras")
+    safetensors_requirements = [
+        requirement
+        for requirement in metadata.get_all("Requires-Dist", [])
+        if requirement.casefold().startswith("safetensors")
+    ]
+    if len(safetensors_requirements) != 2 or any(
+        "extra ==" not in requirement for requirement in safetensors_requirements
+    ):
+        raise ValueError(f"{artifact} must declare SafeTensors only through all and ml extras")
 
 
 def forbidden_paths(names: set[str], *, strip_root: bool) -> list[str]:

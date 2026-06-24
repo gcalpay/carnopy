@@ -57,8 +57,12 @@ Releases = "https://github.com/gcalpay/carnopy/releases"
 viz = [
   "matplotlib>=3.8",
 ]
+ml = [
+  "safetensors>=0.4.5",
+]
 all = [
   "matplotlib>=3.8",
+  "safetensors>=0.4.5",
 ]
 
 [dependency-groups]

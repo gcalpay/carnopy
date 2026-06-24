@@ -266,15 +266,17 @@ document_type: preparation
 ```
 
 Preparation reads existing immutable dataset runs or model-sweep bundles and
-writes Parquet derived-data artifacts. It must resolve semantic fields
-through source metadata/schema, preserve source row order, retain row-level
-source identity, and never import or call thermodynamic backends. Preparation
+writes Parquet derived-data outputs. It must resolve semantic fields through
+source metadata/schema, preserve source row order, retain row-level source
+identity, and never import or call thermodynamic backends. Preparation
 separates user-facing `data/table.parquet` from `data/provenance.parquet` and
-`data/diagnostics.parquet`, joined by `prepared_row_id`. Preparation
-may create explicit leakage-aware scenarios and deterministic numeric
-transformations (`log10`, `standard`, `minmax`). It exports Parquet only and
-does not train, optimize, use scikit-learn, or export NumPy, SafeTensors,
-PyTorch, or other array/tensor files in this release.
+`data/diagnostics.parquet`, joined by `prepared_row_id`. Preparation may create
+explicit leakage-aware scenarios and deterministic numeric transformations
+(`log10`, `standard`, `minmax`). Parquet remains canonical. Optional NumPy and
+SafeTensors exports are derived ML-consumption files and must record feature
+and target order, units, shapes, dtype, hashes, and conversion-error summaries.
+Carnopy does not train, optimize, use scikit-learn, depend on PyTorch, or
+export `.pt`/`.pth` files in this release line.
 
 Dataset formats:
 
@@ -524,8 +526,9 @@ requires = ["hatchling>=1.27.0"]
 build-backend = "hatchling.build"
 ```
 
-Matplotlib remains optional through `viz`; `all` must remain synchronized with
-all user-facing extras. PyArrow remains core.
+Matplotlib remains optional through `viz`; SafeTensors remains optional through
+`ml`; `all` must remain synchronized with all user-facing extras. PyArrow
+remains core.
 
 Carnopy uses alpha releases before stable `0.1.0`. The release workflow builds
 one wheel and sdist, verifies them, requires human approval, and publishes them

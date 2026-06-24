@@ -72,6 +72,8 @@ def test_preparation_template_is_valid() -> None:
     assert payload["schema_version"] == 1
     assert payload["document_type"] == "preparation"
     assert payload["outputs"]["formats"] == ["parquet"]
+    assert "formats: [npy, npz, safetensors]" in concise
+    assert "dtype: float32" in concise
     assert "seed: 42" in concise
     assert "seed: 12345" not in concise
 

@@ -250,10 +250,11 @@ def prepare_command(
         ),
     ] = Path("prepared"),
 ) -> None:
-    """Prepare deterministic Parquet artifacts without backend calls.
+    """Prepare deterministic Parquet and optional array outputs without backend calls.
 
     Preparation can write an unsplit table or optional split scenarios with
-    log10, standard, and minmax numeric transformations.
+    log10, standard, and minmax numeric transformations. Optional NumPy and
+    SafeTensors exports are derived from the canonical Parquet tables.
     """
     from carnopy.api import prepare_dataset
     from carnopy.domain.failures import CarnopyError, ConfigError
@@ -327,7 +328,7 @@ def properties_command() -> None:
         )
 
 
-@app.command("inspect", short_help="Inspect generated artifacts.")
+@app.command("inspect", short_help="Inspect Carnopy outputs.")
 def inspect_command(
     source: Annotated[
         Path,
@@ -351,7 +352,7 @@ def inspect_command(
         ),
     ] = None,
 ) -> None:
-    """Inspect dataset, sweep, or preparation artifacts without backend calls."""
+    """Inspect dataset, sweep, or preparation outputs without backend calls."""
     from carnopy.inspection import inspect_source
     from carnopy.visualization.models import VisualizationError
 

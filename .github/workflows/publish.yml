@@ -156,6 +156,22 @@ jobs:
           "$RUNNER_TEMP/carnopy-base/bin/python" scripts/smoke_installed.py \
             --work-directory "$RUNNER_TEMP/base-smoke" \
             --expected-version "${GITHUB_REF_NAME#v}"
+      - name: Smoke-test wheel with ML extra outside checkout
+        shell: bash
+        run: |
+          WHEEL="$(find "$PWD/release/dist" -maxdepth 1 -name '*.whl' -print -quit)"
+          python -m venv "$RUNNER_TEMP/carnopy-ml"
+          WHEEL_URI="$("$RUNNER_TEMP/carnopy-ml/bin/python" -c \
+            'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve().as_uri())' \
+            "$WHEEL")"
+          "$RUNNER_TEMP/carnopy-ml/bin/python" -m pip install \
+            --index-url https://pypi.org/simple/ \
+            "carnopy[ml] @ ${WHEEL_URI}"
+          "$RUNNER_TEMP/carnopy-ml/bin/python" -m pip check
+          "$RUNNER_TEMP/carnopy-ml/bin/python" scripts/smoke_installed.py \
+            --work-directory "$RUNNER_TEMP/ml-smoke" \
+            --expected-version "${GITHUB_REF_NAME#v}" \
+            --with-ml-exports
       - name: Smoke-test wheel with all extras outside checkout
         shell: bash
         run: |
@@ -171,7 +187,8 @@ jobs:
           "$RUNNER_TEMP/carnopy-all/bin/python" scripts/smoke_installed.py \
             --work-directory "$RUNNER_TEMP/all-smoke" \
             --expected-version "${GITHUB_REF_NAME#v}" \
-            --with-visualization
+            --with-visualization \
+            --with-ml-exports
       - name: Smoke-test sdist and reconstruct wheel outside checkout
         shell: bash
         run: |
@@ -263,4 +280,5 @@ jobs:
           "$RUNNER_TEMP/pypi-smoke-env/bin/python" scripts/smoke_installed.py \
             --work-directory "$RUNNER_TEMP/pypi-smoke" \
             --expected-version "${GITHUB_REF_NAME#v}" \
-            --with-visualization
+            --with-visualization \
+            --with-ml-exports
