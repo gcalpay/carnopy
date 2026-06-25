@@ -156,9 +156,32 @@ and ask before installing, upgrading, or substituting anything.
 Use:
 
 - `rg` for searches;
+- `graphify query` for broad architecture, dependency, or codebase-navigation
+  questions when `graphify-out/graph.json` exists;
 - `apply_patch` for repository file edits;
 - temporary directories for generated test artifacts;
 - focused tests for every behavior change.
+
+Graphify is optional local analysis tooling. When `graphify-out/graph.json`
+exists, prefer scoped graph queries such as:
+
+```bash
+graphify query "how does preparation resolve semantic fields?" --graph graphify-out/graph.json
+```
+
+Use the graph to narrow the search space before broad `rg` or repeated file
+reads. For exact implementation changes, verify against the source files before
+editing. Commit only the public graph artifacts when intentionally refreshing
+the graph:
+
+```text
+graphify-out/GRAPH_REPORT.md
+graphify-out/graph.html
+graphify-out/graph.json
+```
+
+Do not commit Graphify cache, interpreter, manifest, cost, or `.graphify_*`
+intermediate files.
 
 Avoid:
 

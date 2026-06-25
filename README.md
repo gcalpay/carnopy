@@ -91,6 +91,7 @@ uv run --locked carnopy --help
 - [Visualization](#visualization)
 - [Generated outputs and provenance](#generated-outputs-and-provenance)
 - [Python API](#python-api)
+- [Architecture map](#architecture-map)
 - [Scientific limitations](#scientific-limitations)
 - [Development and contribution](#development-and-contribution)
 - [Project status and roadmap](#project-status-and-roadmap)
@@ -916,6 +917,21 @@ pv = plot_thermodynamic_diagram("outputs/<run>", kind="pv")
 
 The returned Matplotlib figure represents an image that has already been
 exported. Modifying it does not update the image or provenance sidecar.
+
+## Architecture map
+
+The repository includes a generated Graphify codebase map:
+
+```text
+graphify-out/GRAPH_REPORT.md
+graphify-out/graph.html
+graphify-out/graph.json
+```
+
+Open `graphify-out/graph.html` locally after cloning for an interactive view.
+The graph is an aid for navigation and review, not a source of scientific
+truth. Verify exact behavior against the source files and tests before making
+changes.
 
 ## Scientific limitations
 

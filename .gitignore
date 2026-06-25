@@ -26,6 +26,13 @@ outputs/*
 # Generated figures
 figures/
 
+# Generated codebase knowledge graphs
+graphify-out/*
+!graphify-out/
+!graphify-out/GRAPH_REPORT.md
+!graphify-out/graph.html
+!graphify-out/graph.json
+
 # Local environment files
 .env
 .env.*
