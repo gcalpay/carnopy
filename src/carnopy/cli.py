@@ -279,8 +279,28 @@ def prepare_command(
     typer.echo(f"Exclusions: {result.exclusions_path}")
     if result.scenario_report_path is not None:
         typer.echo(f"Scenario report: {result.scenario_report_path}")
+    _echo_preparation_reference_advisory(result.manifest_path)
     if result.status == "no_eligible_rows":
         raise typer.Exit(code=1)
+
+
+def _echo_preparation_reference_advisory(manifest_path: Path) -> None:
+    import json
+
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    reference_state = manifest.get("reference_state")
+    if not isinstance(reference_state, dict):
+        return
+    selected = reference_state.get("selected_reference_dependent_fields")
+    if isinstance(selected, list) and selected:
+        typer.echo(
+            "Reference-state advisory: selected reference-dependent fields "
+            + ", ".join(str(field) for field in selected)
+            + ". Absolute h/u/s values are comparable only within the recorded context."
+        )
 
 
 @app.command("fluids", short_help="List backend fluids.")

@@ -7,14 +7,8 @@ from typing import Any
 
 from carnopy._version import __version__
 from carnopy.config.normalize import canonical_json_bytes
-from carnopy.preparation.fields import (
-    DERIVED_UNITS,
-    GAS_CONSTANT_J_MOL_K,
-    ResolvedPreparation,
-    derived_dependencies,
-    derived_formula,
-    sanitize_category,
-)
+from carnopy.preparation.derived import derived_definition
+from carnopy.preparation.fields import GAS_CONSTANT_J_MOL_K, ResolvedPreparation, sanitize_category
 from carnopy.preparation.models import (
     LoadedPreparationConfig,
     PreparationConfig,
@@ -74,6 +68,7 @@ def build_manifest(
     data_artifacts: dict[str, str | None],
     table_columns: list[str],
     array_exports: dict[str, Any],
+    reference_state: dict[str, Any],
     scenario_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     manifest = {
@@ -109,13 +104,10 @@ def build_manifest(
         "targets": list(loaded.model.targets),
         "auxiliary": list(loaded.model.auxiliary),
         "derived_features": {
-            feature: {
-                "formula": derived_formula(feature),
-                "dependencies": list(derived_dependencies(feature)),
-                "unit": DERIVED_UNITS[feature],
-            }
+            feature: derived_definition(feature).metadata()
             for feature in loaded.model.features.derived
         },
+        "reference_state": reference_state,
         "gas_constant_J_mol_K": GAS_CONSTANT_J_MOL_K,
         "categorical_vocabularies": {
             field: {
@@ -168,6 +160,8 @@ def build_diagnostics(
     source_data: LoadedPreparationSource,
     status: PreparationStatus,
     exclusions: list[dict[str, Any]],
+    *,
+    reference_state: dict[str, Any],
 ) -> dict[str, Any]:
     counts: dict[str, int] = {}
     for row in exclusions:
@@ -182,6 +176,7 @@ def build_diagnostics(
         "source_row_count": sum(len(table.frame) for table in source_data.tables),
         "excluded_row_count": len(exclusions),
         "exclusion_counts_by_reason": dict(sorted(counts.items())),
+        "reference_state": reference_state,
     }
 
 
@@ -207,6 +202,22 @@ def build_dataset_card(manifest: dict[str, Any], diagnostics: dict[str, Any]) ->
     if isinstance(arrays, dict) and arrays.get("enabled"):
         lines.append("Array exports: enabled")
         lines.append("Array formats: " + ", ".join(arrays.get("formats", [])))
+    reference_state = manifest.get("reference_state")
+    if isinstance(reference_state, dict):
+        selected = reference_state.get("selected_reference_dependent_fields")
+        if isinstance(selected, list) and selected:
+            lines.append(
+                "Reference-dependent fields: " + ", ".join(str(field) for field in selected)
+            )
+            context = reference_state.get("compatible_context")
+            if isinstance(context, dict):
+                lines.append(
+                    "Reference-state context: "
+                    + " / ".join(
+                        str(context.get(key, "unreported"))
+                        for key in ("reference_state_policy", "backend", "backend_model")
+                    )
+                )
     if diagnostics["partial_sweep_source"]:
         lines.append("Partial sweep source: `true`")
         lines.append("Included child models: " + ", ".join(diagnostics["included_child_models"]))

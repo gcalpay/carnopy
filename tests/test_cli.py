@@ -393,6 +393,46 @@ def test_init_preparation_prints_prepare_next_step(tmp_path: Path) -> None:
     assert f"carnopy prepare SOURCE --config {output.resolve()}" in result.stdout
 
 
+def test_prepare_prints_reference_state_advisory(
+    tmp_path: Path,
+    property_config_path: Path,
+) -> None:
+    from carnopy.api import generate_dataset
+
+    run = generate_dataset(property_config_path, output_root=tmp_path / "runs")
+    config = tmp_path / "preparation.yaml"
+    config.write_text(
+        """schema_version: 1
+document_type: preparation
+features:
+  numeric: [temperature, pressure, mass_density]
+  derived: []
+categorical_features: []
+targets: [specific_enthalpy]
+auxiliary: [fluid, backend_model]
+outputs:
+  formats: [parquet]
+""",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "prepare",
+            str(run.output_directory),
+            "--config",
+            str(config),
+            "--out",
+            str(tmp_path / "prepared"),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "Reference-state advisory" in result.output
+    assert "specific_enthalpy" in result.output
+
+
 def test_init_refuses_wrong_suffix_existing_file_and_missing_noninteractive_parent(
     tmp_path: Path,
 ) -> None:

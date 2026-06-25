@@ -4,6 +4,11 @@
 # into deterministic Parquet outputs for downstream ML/surrogate workflows.
 # Optional array/tensor exports are derived from the Parquet table. Preparation
 # never calls thermodynamic backends.
+#
+# Reference-dependent fields such as specific_enthalpy, specific_entropy, and
+# specific_internal_energy are allowed only when selected rows share one
+# compatible reference_state_policy/backend/model context. Carnopy records that
+# context in the preparation manifest.
 
 schema_version: 1
 document_type: preparation

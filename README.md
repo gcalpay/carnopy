@@ -392,6 +392,14 @@ diagnostics are separated and join back to the table through `prepared_row_id`.
 If no source rows can produce the requested representation, Carnopy writes a
 clearly marked `no_eligible_rows` bundle without `data/table.parquet`.
 
+If selected features or targets include reference-dependent properties
+(`specific_enthalpy`, `specific_entropy`, or `specific_internal_energy`),
+preparation records the source reference-state context and requires one
+compatible `reference_state_policy`/backend/model context across the selected
+source rows. This allows ordinary same-context training data and rejects
+misleading mixtures of absolute `h`, `s`, or `u` values from incompatible
+contexts.
+
 Optional leakage-aware scenarios add deterministic partition artifacts and
 plain-JSON transformation parameters. Current numeric transformations are
 `log10`, `standard`, and `minmax`:
@@ -920,6 +928,8 @@ exported. Modifying it does not update the image or provenance sidecar.
 - Specific enthalpy, entropy, and internal energy depend on reference state.
 - Carnopy resets every requested fluid to CoolProp `DEF` before generation and
   records that policy.
+- Preparation warns and records reference-state context when selected features
+  or targets include absolute reference-dependent values.
 - CoolProp reference-state mutation is process-global; concurrent embedded use
   with unrelated CoolProp calculations is unsupported in Milestone 1.
 - Release regression tests compare finalized Parquet values with direct
@@ -980,6 +990,13 @@ uv run --locked mypy src/carnopy
 uv run --locked pytest
 uv run --locked python scripts/preflight.py
 uv pip check --python .venv/bin/python
+```
+
+Full local release gate, including a non-destructive build and distribution
+inspection:
+
+```bash
+bash scripts/local_gate.sh prerelease/local-gate
 ```
 
 Keep changes small and explicit. Public configuration names, semantic property

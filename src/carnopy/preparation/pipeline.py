@@ -27,6 +27,7 @@ from carnopy.preparation.models import (
     PreparationArrayOutputsConfig,
     load_preparation_config,
 )
+from carnopy.preparation.reference import build_reference_state_summary
 from carnopy.preparation.reporting import (
     build_dataset_card,
     build_diagnostics,
@@ -101,6 +102,7 @@ def prepare_dataset(
         allow_partial_sweep=loaded.model.source_policy.allow_partial_sweep,
     )
     resolved = resolve_preparation_fields(loaded.model, source_data.tables)
+    reference_state = build_reference_state_summary(source_data, resolved)
     normalized_bytes = normalized_preparation_bytes(loaded.model)
     request_id = f"prep-{sha256_bytes(normalized_bytes)}"
     preparation_run_id = str(uuid4())
@@ -115,6 +117,7 @@ def prepare_dataset(
             loaded=loaded,
             source_data=source_data,
             resolved=resolved,
+            reference_state=reference_state,
             layout=layout,
             request_id=request_id,
             normalized_bytes=normalized_bytes,
@@ -161,6 +164,7 @@ def _write_preparation_bundle(
     loaded: LoadedPreparationConfig,
     source_data: LoadedPreparationSource,
     resolved: ResolvedPreparation,
+    reference_state: dict[str, Any],
     layout: PreparationLayout,
     request_id: str,
     normalized_bytes: bytes,
@@ -232,10 +236,16 @@ def _write_preparation_bundle(
         },
         table_columns=data_artifacts.table_columns,
         array_exports=data_artifacts.array_manifest,
+        reference_state=reference_state,
         scenario_summary=None if scenario_result is None else scenario_result.summary,
     )
     write_json(layout.staging_directory / "manifest.json", manifest)
-    diagnostics = build_diagnostics(source_data, rows.status, rows.exclusion_rows)
+    diagnostics = build_diagnostics(
+        source_data,
+        rows.status,
+        rows.exclusion_rows,
+        reference_state=reference_state,
+    )
     write_json(layout.staging_directory / "diagnostics.json", diagnostics)
     _write_text(
         layout.staging_directory / "dataset_card.md",

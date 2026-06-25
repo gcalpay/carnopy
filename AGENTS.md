@@ -143,6 +143,13 @@ uv run --locked python scripts/preflight.py
 uv pip check --python .venv/bin/python
 ```
 
+Maintainers can run the complete source, package, Twine, and distribution
+inspection gate with:
+
+```bash
+bash scripts/local_gate.sh prerelease/local-gate
+```
+
 If a required command or dependency is unavailable, preserve the exact failure
 and ask before installing, upgrading, or substituting anything.
 
@@ -278,6 +285,13 @@ and target order, units, shapes, dtype, hashes, and conversion-error summaries.
 Carnopy does not train, optimize, use scikit-learn, depend on PyTorch, or
 export `.pt`/`.pth` files in this release line.
 
+If preparation selects reference-dependent properties (`specific_enthalpy`,
+`specific_entropy`, or `specific_internal_energy`) as features, targets, or
+numeric auxiliary fields, it must record the source reference-state context and
+require one compatible `reference_state_policy`/backend/model context across
+the selected source rows. Mixed incompatible absolute `h`, `s`, or `u` values
+must fail before writing a preparation bundle.
+
 Dataset formats:
 
 ```yaml
@@ -340,7 +354,8 @@ and before row evaluation. Do not change reference state during generation.
 
 Specific enthalpy, entropy, and internal energy are reference-state dependent.
 Absolute values are not directly comparable across different reference
-conventions.
+conventions. Differences or ML datasets using these fields are meaningful only
+within a recorded, compatible reference-state context.
 
 If actual CoolProp behavior contradicts an approved contract:
 

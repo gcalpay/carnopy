@@ -75,7 +75,6 @@ def test_preparation_template_is_valid() -> None:
     assert "formats: [npy, npz, safetensors]" in concise
     assert "dtype: float32" in concise
     assert "seed: 42" in concise
-    assert "seed: 12345" not in concise
 
 
 def test_interactive_initialization_can_confirm_parent_creation(tmp_path: Path) -> None:

@@ -905,9 +905,11 @@ def test_prepare_model_holdout_requires_sweep_source(tmp_path: Path) -> None:
     holdouts:
       test: [pr]
     remainder: train
-""",
+        """,
+        numeric="[temperature, pressure]",
         categorical="[]",
         derived="[]",
+        targets="[mass_density]",
         auxiliary="[fluid, backend_model]",
     )
 
@@ -927,6 +929,54 @@ def test_prepare_model_holdout_requires_sweep_source(tmp_path: Path) -> None:
         result.output_directory / "data/scenarios/holdout_model/test.parquet"
     )
     assert set(model_test["backend_model"]) == {"pr"}
+
+
+def test_prepare_records_reference_state_context_for_reference_dependent_fields(
+    tmp_path: Path,
+) -> None:
+    run = generate_dataset(
+        _grid_property_config(
+            tmp_path / "dataset.yaml",
+            fluids="[Propane, Isopentane]",
+        ),
+        output_root=tmp_path / "runs",
+    )
+    config = _prep_config(tmp_path / "preparation.yaml")
+
+    result = prepare_dataset(run.output_directory, config=config, output_root=tmp_path / "prepared")
+
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    reference_state = manifest["reference_state"]
+    assert reference_state["selected_reference_dependent_fields"] == ["specific_enthalpy"]
+    assert reference_state["compatible_context"] == {
+        "reference_state_policy": "coolprop_DEF",
+        "backend": "coolprop",
+        "backend_model": "heos",
+    }
+    targets = {
+        target
+        for context in reference_state["contexts"]
+        for target in context["reference_state_targets"]
+    }
+    assert "HEOS::n-Propane" in targets
+    assert len(targets) == 2
+    assert all(target.startswith("HEOS::") for target in targets)
+    assert "Reference-dependent fields: specific_enthalpy" in result.dataset_card_path.read_text(
+        encoding="utf-8"
+    )
+
+
+def test_prepare_rejects_reference_dependent_fields_across_sweep_models(
+    tmp_path: Path,
+) -> None:
+    sweep = generate_model_sweep(
+        _sweep_config(tmp_path / "sweep.yaml"),
+        output_root=tmp_path / "sweeps",
+    )
+    config = _prep_config(tmp_path / "preparation.yaml")
+
+    with pytest.raises(ConfigError, match="one compatible reference-state context"):
+        prepare_dataset(sweep.output_directory, config=config, output_root=tmp_path / "prepared")
 
 
 def test_prepare_no_eligible_rows_skips_scenario_artifacts(tmp_path: Path) -> None:

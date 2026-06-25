@@ -107,6 +107,11 @@ def test_inspect_json_reports_identity_ranges_failures_and_display_units(
     assert enthalpy["minimum"] is not None
     assert enthalpy["maximum"] is not None
     assert payload["display_units"]["pressure"] == ["Pa", "kPa", "MPa", "bar"]
+    assert payload["reference_state"]["reference_dependent_properties"] == [
+        "specific_enthalpy",
+        "specific_entropy",
+    ]
+    assert payload["reference_state"]["reference_state_policy"] == "coolprop_DEF"
     property_curves = next(
         item for item in payload["plot_capabilities"] if item["kind"] == "property-curves"
     )
@@ -149,6 +154,7 @@ outputs:
     assert "mass_density" in payload["columns"]["table"]
     assert "source_row_hash" in payload["columns"]["provenance"]
     assert "source_failure_code" in payload["columns"]["diagnostics"]
+    assert payload["reference_state"]["selected_reference_dependent_fields"] == ["specific_entropy"]
 
     result = runner.invoke(app, ["inspect", str(prepared.output_directory), "--format", "json"])
     assert result.exit_code == 0, result.output
@@ -188,6 +194,40 @@ outputs:
     assert payload["models"] == ["heos", "pr"]
     assert payload["comparison_artifacts"]["values_row_count"] == 4
     assert payload["delta_summaries"]
+
+
+def test_inspect_reports_model_sweep_reference_dependent_delta_reasons(
+    tmp_path: Path,
+) -> None:
+    config = tmp_path / "sweep.yaml"
+    config.write_text(
+        """schema_version: 2
+document_type: model_sweep
+backend:
+  name: coolprop
+  models: [heos, pr]
+  reference_model: heos
+mode: property_table
+fluids: [Propane]
+grid:
+  temperature: {kind: explicit, values: [300], unit: K}
+  pressure: {kind: explicit, values: [100000], unit: Pa}
+properties: [specific_enthalpy]
+outputs:
+  dataset_formats: [parquet]
+""",
+        encoding="utf-8",
+    )
+    sweep = generate_model_sweep(config, output_root=tmp_path / "sweeps")
+
+    inspection = inspect_source(sweep.output_directory)
+    text = inspection.format_text()
+    payload = json.loads(inspection.format_json())
+
+    assert "reference_dependent_property_excluded" in text
+    assert payload["delta_reason_counts"] == {
+        "reference_dependent_property_excluded": 1,
+    }
 
     result = runner.invoke(app, ["inspect", str(sweep.output_directory)])
     assert result.exit_code == 0, result.output

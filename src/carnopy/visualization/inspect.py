@@ -58,6 +58,7 @@ class PlotInspection:
     series_fields: dict[str, tuple[str, ...]]
     display_units: dict[str, tuple[str, ...]]
     examples: tuple[str, ...]
+    reference_state: dict[str, Any]
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -100,6 +101,7 @@ class PlotInspection:
             ],
             "display_units": {field: list(units) for field, units in self.display_units.items()},
             "examples": list(self.examples),
+            "reference_state": self.reference_state,
         }
 
     def format_json(self) -> str:
@@ -132,6 +134,8 @@ class PlotInspection:
             *_failure_text(self.failure_counts),
             "Properties:",
             *(_property_text(detail) for detail in self.property_details),
+            "Reference state:",
+            *_reference_state_text(self.reference_state),
             "Compatible plot kinds:",
             *(
                 "  "
@@ -258,7 +262,35 @@ def inspect_plot_source(source: str | Path) -> PlotInspection:
             if (units := supported_display_units(field)) and _field_is_available(plot_source, field)
         },
         examples=examples,
+        reference_state=_reference_state_details(plot_source, properties),
     )
+
+
+def _reference_state_details(
+    plot_source: PlotSource,
+    properties: tuple[str, ...],
+) -> dict[str, Any]:
+    metadata = plot_source.metadata if isinstance(plot_source.metadata, dict) else {}
+    selected = [name for name in properties if PROPERTY_REGISTRY[name].reference_dependent]
+    return {
+        "reference_dependent_properties": selected,
+        "reference_state_policy": metadata.get("reference_state_policy"),
+        "reference_state_backend_model": metadata.get("reference_state_backend_model"),
+        "reference_state_targets": metadata.get("reference_state_targets"),
+    }
+
+
+def _reference_state_text(reference_state: dict[str, Any]) -> list[str]:
+    selected = reference_state.get("reference_dependent_properties")
+    if not isinstance(selected, list) or not selected:
+        return ["  no reference-dependent emitted properties"]
+    policy = reference_state.get("reference_state_policy") or "unreported"
+    model = reference_state.get("reference_state_backend_model") or "unreported"
+    return [
+        "  reference-dependent properties: " + ", ".join(str(item) for item in selected),
+        f"  policy: {policy}",
+        f"  backend model: {model}",
+    ]
 
 
 def _coordinate_details(plot_source: PlotSource) -> tuple[dict[str, Any], ...]:

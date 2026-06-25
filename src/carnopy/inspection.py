@@ -33,6 +33,7 @@ class PreparationInspection:
     diagnostics_columns: tuple[str, ...]
     exclusions_columns: tuple[str, ...]
     scenario_summary: dict[str, Any] | None
+    reference_state: dict[str, Any] | None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -65,6 +66,7 @@ class PreparationInspection:
             "source_identity": self.manifest.get("source"),
             "source_artifacts": self.manifest.get("source_artifacts"),
             "artifact_hashes": self.manifest.get("artifact_hashes"),
+            "reference_state": self.reference_state,
         }
 
     def format_json(self) -> str:
@@ -96,6 +98,16 @@ class PreparationInspection:
             "Auxiliary: "
             + (", ".join(self._string_list(self.manifest.get("auxiliary"))) or "none"),
         ]
+        if isinstance(self.reference_state, dict):
+            selected = self.reference_state.get("selected_reference_dependent_fields")
+            if isinstance(selected, list) and selected:
+                lines.extend(
+                    [
+                        "Reference state:",
+                        "  selected reference-dependent fields: "
+                        + ", ".join(str(item) for item in selected),
+                    ]
+                )
         scenarios = self.scenario_summary
         if isinstance(scenarios, dict):
             lines.extend(
@@ -152,6 +164,7 @@ class SweepInspection:
     values_row_count: int | None
     deltas_row_count: int | None
     delta_summaries: tuple[dict[str, Any], ...]
+    delta_reason_counts: dict[str, int]
     comparison_plots_configured: bool
 
     def to_dict(self) -> dict[str, Any]:
@@ -173,6 +186,7 @@ class SweepInspection:
                 "deltas_row_count": self.deltas_row_count,
             },
             "delta_summaries": list(self.delta_summaries),
+            "delta_reason_counts": self.delta_reason_counts,
             "comparison_plots_configured": self.comparison_plots_configured,
             "comparison_plot_snippet": _comparison_plot_snippet(),
             "artifact_hashes": self.metadata.get("artifact_hashes"),
@@ -208,6 +222,11 @@ class SweepInspection:
             )
         else:
             lines.append("  none")
+        if self.delta_reason_counts:
+            lines.append("Delta unavailable reasons:")
+            lines.extend(
+                f"  {reason}: {count}" for reason, count in sorted(self.delta_reason_counts.items())
+            )
         lines.extend(
             [
                 "Comparison plots configured: "
@@ -259,6 +278,11 @@ def _inspect_preparation_bundle(path: Path) -> PreparationInspection:
         scenario_summary=(
             manifest.get("scenarios") if isinstance(manifest.get("scenarios"), dict) else None
         ),
+        reference_state=(
+            manifest.get("reference_state")
+            if isinstance(manifest.get("reference_state"), dict)
+            else None
+        ),
     )
 
 
@@ -280,6 +304,7 @@ def _inspect_sweep_bundle(path: Path) -> SweepInspection:
         values_row_count=None if values is None else len(values),
         deltas_row_count=None if deltas is None else len(deltas),
         delta_summaries=_delta_summaries(deltas),
+        delta_reason_counts=_delta_reason_counts(deltas),
         comparison_plots_configured=metadata.get("comparison_plots") is not None,
     )
 
@@ -360,6 +385,13 @@ def _delta_summaries(deltas: pd.DataFrame | None) -> tuple[dict[str, Any], ...]:
             }
         )
     return tuple(rows)
+
+
+def _delta_reason_counts(deltas: pd.DataFrame | None) -> dict[str, int]:
+    if deltas is None or "unavailable_reason" not in deltas:
+        return {}
+    counts = deltas["unavailable_reason"].dropna().astype(str).value_counts().sort_index()
+    return {str(reason): int(count) for reason, count in counts.items()}
 
 
 def _comparison_plot_snippet() -> str:

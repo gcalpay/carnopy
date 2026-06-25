@@ -9,6 +9,7 @@ import pandas as pd
 
 from carnopy.domain.failures import ConfigError
 from carnopy.domain.properties import PROPERTY_REGISTRY
+from carnopy.preparation.derived import derived_definition
 from carnopy.preparation.models import DerivedFeature, PreparationConfig
 from carnopy.preparation.source import SourceTable
 
@@ -46,12 +47,6 @@ AUXILIARY_SOURCE_FIELDS = {
     "state_key",
     "state_key_version",
     "saturation_endpoint",
-}
-DERIVED_UNITS: dict[str, str] = {
-    "specific_volume": "m^3/kg",
-    "reduced_temperature": "1",
-    "reduced_pressure": "1",
-    "compressibility_factor": "1",
 }
 
 
@@ -101,13 +96,16 @@ def resolve_preparation_fields(
             "source": resolved.source,
         }
     for derived in config.features.derived:
+        definition = derived_definition(derived)
         mapping[derived] = {
             "column": derived,
-            "unit": DERIVED_UNITS[derived],
+            "unit": definition.unit,
             "kind": "numeric",
             "source": "derived",
-            "formula": derived_formula(derived),
-            "dependencies": derived_dependencies(derived),
+            "formula": definition.formula,
+            "dependencies": definition.dependencies,
+            "reference_state_safe": definition.reference_state_safe,
+            "array_export_allowed": definition.array_export_allowed,
         }
     return ResolvedPreparation(
         numeric_features=numeric,
@@ -120,26 +118,11 @@ def resolve_preparation_fields(
 
 
 def derived_formula(feature: DerivedFeature) -> str:
-    return {
-        "specific_volume": "1 / mass_density",
-        "reduced_temperature": "temperature / critical_temperature",
-        "reduced_pressure": "pressure / critical_pressure",
-        "compressibility_factor": ("pressure * molar_mass / (mass_density * R * temperature)"),
-    }[feature]
+    return derived_definition(feature).formula
 
 
 def derived_dependencies(feature: DerivedFeature) -> tuple[str, ...]:
-    return {
-        "specific_volume": ("mass_density",),
-        "reduced_temperature": ("temperature", "critical_temperature"),
-        "reduced_pressure": ("pressure", "critical_pressure"),
-        "compressibility_factor": (
-            "pressure",
-            "molar_mass",
-            "mass_density",
-            "temperature",
-        ),
-    }[feature]
+    return derived_definition(feature).dependencies
 
 
 def compute_derived_value(

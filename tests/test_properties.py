@@ -3,15 +3,26 @@ from __future__ import annotations
 from carnopy.backends import CoolPropBackend
 from carnopy.domain.properties import PROPERTY_REGISTRY
 from carnopy.generation.common import evaluate_properties
+from carnopy.preparation.derived import DERIVED_FEATURE_REGISTRY
 
 
 def test_registry_classifies_reference_and_derived_properties() -> None:
     assert PROPERTY_REGISTRY["specific_enthalpy"].reference_dependent
+    assert PROPERTY_REGISTRY["specific_entropy"].reference_dependent
+    assert PROPERTY_REGISTRY["specific_internal_energy"].reference_dependent
     assert PROPERTY_REGISTRY["kinematic_viscosity"].classification == "derived"
     assert PROPERTY_REGISTRY["kinematic_viscosity"].dependencies == (
         "dynamic_viscosity",
         "mass_density",
     )
+
+
+def test_preparation_derived_feature_registry_records_contracts() -> None:
+    assert DERIVED_FEATURE_REGISTRY["specific_volume"].formula == "1 / mass_density"
+    assert DERIVED_FEATURE_REGISTRY["specific_volume"].dependencies == ("mass_density",)
+    assert DERIVED_FEATURE_REGISTRY["specific_volume"].unit == "m^3/kg"
+    assert DERIVED_FEATURE_REGISTRY["compressibility_factor"].reference_state_safe
+    assert DERIVED_FEATURE_REGISTRY["compressibility_factor"].array_export_allowed
 
 
 def test_derived_dependencies_are_hidden_when_not_requested() -> None:
