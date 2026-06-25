@@ -1,0 +1,5 @@
+# Generated Graphify architecture artifacts are published for navigation.
+# Treat machine-produced graph assets separately from hand-written source.
+graphify-out/graph.html linguist-generated=true
+graphify-out/graph.json linguist-generated=true
+graphify-out/GRAPH_REPORT.md linguist-documentation=true
