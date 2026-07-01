@@ -136,11 +136,11 @@ def test_model_change_keeps_incompatible_property_visible_and_blocks_save(
     payload = yaml.safe_load(template_text("saturation_table"))
     editor._open_document(new_document(payload))
 
-    editor.model.setCurrentText("pr")
+    editor.form.model.setCurrentText("pr")
 
-    values = editor._list_values(editor.properties)
+    values = editor.form.list_values(editor.form.properties)
     surface_row = values.index("surface_tension")
-    item = editor.properties.item(surface_row)
+    item = editor.form.properties.item(surface_row)
     assert item is not None
     assert item.text() == "Unsupported by pr: surface_tension"
     assert not editor._form_valid
@@ -159,12 +159,12 @@ def test_alias_spelling_and_order_are_preserved_without_canonical_duplicates(
     payload["fluids"] = ["R290", "Cyclopentane"]
     editor._open_document(new_document(payload))
 
-    editor.fluids.setCurrentRow(1)
-    editor._move_selected(editor.fluids, -1)
-    editor.fluid_input.setEditText("Propane")
-    editor._add_fluid()
+    editor.form.fluids.setCurrentRow(1)
+    editor.form.move_selected(editor.form.fluids, -1)
+    editor.form.fluid_input.setEditText("Propane")
+    editor.form._add_fluid()
 
-    assert editor._list_values(editor.fluids) == ["Cyclopentane", "R290"]
+    assert editor.form.list_values(editor.form.fluids) == ["Cyclopentane", "R290"]
     assert "already selected" in editor.status.text()
     assert yaml.safe_load(editor.preview.toPlainText())["fluids"] == [
         "Cyclopentane",
@@ -211,15 +211,15 @@ def test_confirmed_mode_change_preserves_shared_fields_and_resets_mode_state(
         ]
     }
     editor._open_document(new_document(payload))
-    original_fluids = editor._list_values(editor.fluids)
-    original_properties = editor._list_values(editor.properties)
+    original_fluids = editor.form.list_values(editor.form.fluids)
+    original_properties = editor.form.list_values(editor.form.properties)
     monkeypatch.setattr(
         QMessageBox,
         "question",
         lambda *_args, **_kwargs: QMessageBox.StandardButton.Yes,
     )
 
-    editor.mode.setCurrentText("saturation_table")
+    editor.form.mode.setCurrentText("saturation_table")
 
     assert editor.document is not None
     changed = editor.document.payload

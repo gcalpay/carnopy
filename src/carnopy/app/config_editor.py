@@ -6,21 +6,14 @@ from typing import Any, cast
 
 import yaml
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QCheckBox,
-    QComboBox,
     QFileDialog,
-    QFormLayout,
     QHBoxLayout,
     QInputDialog,
     QLabel,
-    QListWidget,
-    QListWidgetItem,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
-    QScrollArea,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -37,7 +30,7 @@ from carnopy.app.config_document import (
     source_matches,
     write_new_config,
 )
-from carnopy.app.config_widgets import SamplerEditor
+from carnopy.app.config_form import DatasetConfigForm
 from carnopy.app.workspace import Workspace
 from carnopy.templates import template_text
 
@@ -46,16 +39,10 @@ MODE_LABELS = {
     "saturation_table": "Saturation table",
     "vapor_mass_fraction_table": "Vapor-mass-fraction table",
 }
-REFERENCE_FIELDS = {
-    "specific_enthalpy",
-    "specific_entropy",
-    "specific_internal_energy",
-}
-ITEM_VALUE_ROLE = Qt.ItemDataRole.UserRole
 
 
 class DatasetConfigEditor(QWidget):
-    """Structured editor for the current dataset configuration contract."""
+    """Coordinate worker-backed validation and safe dataset-config file handling."""
 
     draft_changed = Signal(bool)
 
@@ -68,11 +55,7 @@ class DatasetConfigEditor(QWidget):
         self._pending_action: str | None = None
         self._pending_path: Path | None = None
         self._pending_content: bytes | None = None
-        self._loading = False
         self._form_valid = False
-        self._samplers: dict[str, SamplerEditor] = {}
-        self._fluid_aliases: dict[str, str] = {}
-        self._property_catalog: dict[str, dict[str, Any]] = {}
 
         root = QVBoxLayout(self)
         root.addLayout(self._build_actions())
@@ -81,7 +64,8 @@ class DatasetConfigEditor(QWidget):
         root.addWidget(self.file_label)
 
         self.tabs = QTabWidget()
-        self.tabs.addTab(self._build_dataset_tab(), "Dataset")
+        self.form = DatasetConfigForm()
+        self.tabs.addTab(self.form, "Dataset")
         self.tabs.addTab(self._build_visualization_tab(), "Visualization")
         self.tabs.addTab(self._build_preview_tab(), "YAML Preview")
         root.addWidget(self.tabs, 1)
@@ -91,6 +75,10 @@ class DatasetConfigEditor(QWidget):
         self.status.setAccessibleName("Configuration status")
         root.addWidget(self.status)
 
+        self.form.changed.connect(self._refresh_form_state)
+        self.form.mode_change_requested.connect(self._mode_changed)
+        self.form.coordinate_change_requested.connect(self._coordinate_changed)
+        self.form.message.connect(self.status.setText)
         self.client.request_succeeded.connect(self._worker_succeeded)
         self.client.request_failed.connect(self._worker_failed)
         self.client.busy_changed.connect(self._worker_busy_changed)
@@ -116,93 +104,6 @@ class DatasetConfigEditor(QWidget):
         layout.addStretch(1)
         return layout
 
-    def _build_dataset_tab(self) -> QWidget:
-        body = QWidget()
-        body_layout = QVBoxLayout(body)
-        form = QFormLayout()
-        self.model = QComboBox()
-        self.model.setAccessibleName("Thermodynamic model")
-        self.mode = QComboBox()
-        self.mode.setAccessibleName("Dataset mode")
-        form.addRow("Model", self.model)
-        form.addRow("Mode", self.mode)
-        body_layout.addLayout(form)
-
-        body_layout.addWidget(QLabel("Fluids (ordered)"))
-        fluid_entry = QHBoxLayout()
-        self.fluid_input = QComboBox()
-        self.fluid_input.setEditable(True)
-        self.fluid_input.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        self.fluid_input.setAccessibleName("Fluid or alias")
-        self.fluid_feedback = QLabel()
-        self.fluid_feedback.setAccessibleName("Canonical fluid name")
-        add_fluid = QPushButton("Add Fluid")
-        add_fluid.clicked.connect(self._add_fluid)
-        fluid_entry.addWidget(self.fluid_input, 1)
-        fluid_entry.addWidget(add_fluid)
-        body_layout.addLayout(fluid_entry)
-        body_layout.addWidget(self.fluid_feedback)
-        self.fluids = QListWidget()
-        self.fluids.setAccessibleName("Selected fluids")
-        body_layout.addWidget(self.fluids)
-        body_layout.addLayout(self._list_actions(self.fluids, self._remove_fluid, "fluid"))
-
-        body_layout.addWidget(QLabel("Sampling grid"))
-        coordinate_form = QFormLayout()
-        self.coordinate = QComboBox()
-        self.coordinate.addItems(["temperature", "pressure"])
-        self.coordinate.setAccessibleName("Independent saturation coordinate")
-        self.coordinate_label = QLabel("Independent coordinate")
-        self.coordinate_label.setBuddy(self.coordinate)
-        coordinate_form.addRow(self.coordinate_label, self.coordinate)
-        body_layout.addLayout(coordinate_form)
-        self.grid_container = QWidget()
-        self.grid_layout = QVBoxLayout(self.grid_container)
-        self.grid_layout.setContentsMargins(0, 0, 0, 0)
-        body_layout.addWidget(self.grid_container)
-
-        body_layout.addWidget(QLabel("Properties (ordered)"))
-        property_entry = QHBoxLayout()
-        self.property_input = QComboBox()
-        self.property_input.setAccessibleName("Available property")
-        add_property = QPushButton("Add Property")
-        add_property.clicked.connect(self._add_property)
-        property_entry.addWidget(self.property_input, 1)
-        property_entry.addWidget(add_property)
-        body_layout.addLayout(property_entry)
-        self.properties = QListWidget()
-        self.properties.setAccessibleName("Selected properties")
-        body_layout.addWidget(self.properties)
-        body_layout.addLayout(
-            self._list_actions(self.properties, self._remove_property, "property")
-        )
-        self.reference_advisory = QLabel()
-        self.reference_advisory.setWordWrap(True)
-        self.reference_advisory.setAccessibleName("Reference-state advisory")
-        body_layout.addWidget(self.reference_advisory)
-
-        body_layout.addWidget(QLabel("Dataset outputs"))
-        output_row = QHBoxLayout()
-        self.csv_output = QCheckBox("CSV")
-        self.parquet_output = QCheckBox("Parquet")
-        output_row.addWidget(self.csv_output)
-        output_row.addWidget(self.parquet_output)
-        output_row.addStretch(1)
-        body_layout.addLayout(output_row)
-        body_layout.addStretch(1)
-
-        self.model.currentTextChanged.connect(self._model_changed)
-        self.mode.currentTextChanged.connect(self._mode_changed)
-        self.coordinate.currentTextChanged.connect(self._coordinate_changed)
-        self.fluid_input.currentTextChanged.connect(self._fluid_text_changed)
-        self.csv_output.toggled.connect(self._form_changed)
-        self.parquet_output.toggled.connect(self._form_changed)
-
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setWidget(body)
-        return scroll
-
     def _build_visualization_tab(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
@@ -226,25 +127,6 @@ class DatasetConfigEditor(QWidget):
         self.preview.setAccessibleName("YAML preview")
         layout.addWidget(self.preview, 1)
         return page
-
-    def _list_actions(
-        self,
-        widget: QListWidget,
-        remove_slot: Any,
-        noun: str,
-    ) -> QHBoxLayout:
-        layout = QHBoxLayout()
-        remove = QPushButton(f"Remove {noun.title()}")
-        up = QPushButton("Move Up")
-        down = QPushButton("Move Down")
-        remove.clicked.connect(remove_slot)
-        up.clicked.connect(lambda: self._move_selected(widget, -1))
-        down.clicked.connect(lambda: self._move_selected(widget, 1))
-        layout.addWidget(remove)
-        layout.addWidget(up)
-        layout.addWidget(down)
-        layout.addStretch(1)
-        return layout
 
     def set_workspace(self, workspace: Workspace | None) -> None:
         changed = self.workspace != workspace
@@ -294,8 +176,7 @@ class DatasetConfigEditor(QWidget):
         if not accepted:
             return
         mode = next(name for name, label in MODE_LABELS.items() if label == selected)
-        payload = _template_payload(mode)
-        self._open_document(new_document(payload))
+        self._open_document(new_document(_template_payload(mode)))
         self.status.setText("New configuration. Save it under the workspace configs folder.")
 
     def import_dataset(self) -> None:
@@ -402,53 +283,15 @@ class DatasetConfigEditor(QWidget):
 
     def _apply_capabilities(self, payload: dict[str, Any]) -> None:
         self.capabilities = payload
-        self._property_catalog = {
-            str(item["name"]): item
-            for item in payload.get("property_catalog", [])
-            if isinstance(item, dict) and "name" in item
-        }
-        self._fluid_aliases.clear()
-        fluid_values: list[str] = []
-        for entry in payload.get("fluids", []):
-            if not isinstance(entry, dict):
-                continue
-            canonical = str(entry.get("name", ""))
-            for value in [canonical, *entry.get("aliases", [])]:
-                text = str(value)
-                if text and text.casefold() not in self._fluid_aliases:
-                    self._fluid_aliases[text.casefold()] = canonical
-                    fluid_values.append(text)
-        self.fluid_input.clear()
-        self.fluid_input.addItems(sorted(fluid_values, key=str.casefold))
-        completer = self.fluid_input.completer()
-        if completer is not None:
-            completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-            completer.setFilterMode(Qt.MatchFlag.MatchContains)
-
-        self._loading = True
-        self.model.clear()
-        self.model.addItems([str(value) for value in payload.get("models", [])])
-        self.mode.clear()
-        self.mode.addItems([str(value) for value in payload.get("modes", [])])
-        self._loading = False
+        self.form.apply_capabilities(payload)
         self._set_editor_enabled(True)
         self.status.setText("Create a new dataset configuration or import a valid YAML file.")
-        self._update_property_choices()
-        self._update_actions()
 
     def _clear_document(self) -> None:
         self.document = None
         self.file_label.setText("No dataset configuration is open.")
         self.preview.clear()
-        self.fluids.clear()
-        self.properties.clear()
-        while self.grid_layout.count():
-            item = self.grid_layout.takeAt(0)
-            widget = item.widget() if item is not None else None
-            if widget is not None:
-                widget.deleteLater()
-        self._samplers.clear()
-        self.reference_advisory.clear()
+        self.form.clear()
         self.visualization_summary.setText("No dataset configuration is open.")
         self._form_valid = False
         self._update_actions()
@@ -502,62 +345,15 @@ class DatasetConfigEditor(QWidget):
 
     def _open_document(self, document: DatasetConfigDocument) -> None:
         self.document = document
-        self._load_form(document.payload)
+        self.form.load_payload(document.payload)
         self.file_label.setText(
             str(document.source_path) if document.source_path else "Unsaved dataset configuration"
         )
         self.tabs.setCurrentIndex(0)
         self._refresh_form_state()
 
-    def _load_form(self, payload: dict[str, Any]) -> None:
-        if self.capabilities is None:
-            return
-        self._loading = True
-        self.model.setCurrentText(str(payload["backend"]["model"]))
-        self.mode.setCurrentText(str(payload["mode"]))
-        self._load_list(self.fluids, [str(value) for value in payload.get("fluids", [])])
-        self._load_list(
-            self.properties,
-            [str(value) for value in payload.get("properties", [])],
-        )
-        formats = payload.get("outputs", {}).get("dataset_formats", ["csv", "parquet"])
-        self.csv_output.setChecked("csv" in formats)
-        self.parquet_output.setChecked("parquet" in formats)
-        grid = cast(dict[str, dict[str, Any]], payload.get("grid", {}))
-        coordinate = next(
-            (axis for axis in ("temperature", "pressure") if axis in grid),
-            "temperature",
-        )
-        self.coordinate.setCurrentText(coordinate)
-        self._rebuild_grid(grid)
-        self._loading = False
-        self._update_property_choices()
-        self._update_selected_property_states()
-        self._update_reference_advisory()
-        self._update_visualization_summary()
-
-    def _rebuild_grid(self, grid: dict[str, dict[str, Any]]) -> None:
-        while self.grid_layout.count():
-            item = self.grid_layout.takeAt(0)
-            if item is None:
-                continue
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
-        self._samplers.clear()
-        units_by_axis = self.capabilities.get("units_by_axis", {}) if self.capabilities else {}
-        for axis, sampler in grid.items():
-            editor = SamplerEditor(axis)
-            editor.configure_units([str(value) for value in units_by_axis.get(axis, [])])
-            editor.load_sampler(sampler)
-            editor.changed.connect(self._form_changed)
-            self.grid_layout.addWidget(editor)
-            self._samplers[axis] = editor
-        self.coordinate.setVisible(self.mode.currentText() != "property_table")
-        self.coordinate_label.setVisible(self.mode.currentText() != "property_table")
-
     def _mode_changed(self, selected: str) -> None:
-        if self._loading or self.document is None or not selected:
+        if self.document is None:
             return
         previous = str(self.document.payload.get("mode", ""))
         if selected == previous:
@@ -571,28 +367,18 @@ class DatasetConfigEditor(QWidget):
             QMessageBox.StandardButton.No,
         )
         if answer != QMessageBox.StandardButton.Yes:
-            self._loading = True
-            self.mode.setCurrentText(previous)
-            self._loading = False
+            self.form.load_payload(self.document.payload)
             return
         payload = self.document.payload
-        target = _template_payload(selected)
         payload["mode"] = selected
-        payload["grid"] = target["grid"]
+        payload["grid"] = _template_payload(selected)["grid"]
         payload.pop("visualization", None)
         self.document.set_payload(payload)
-        self._load_form(payload)
+        self.form.load_payload(payload)
         self._refresh_form_state()
 
-    def _model_changed(self, _model: str) -> None:
-        if self._loading:
-            return
-        self._update_property_choices()
-        self._update_selected_property_states()
-        self._form_changed()
-
     def _coordinate_changed(self, axis: str) -> None:
-        if self._loading or self.document is None or self.mode.currentText() == "property_table":
+        if self.document is None or self.form.mode_name == "property_table":
             return
         payload = self.document.payload
         grid = cast(dict[str, dict[str, Any]], copy.deepcopy(payload.get("grid", {})))
@@ -601,28 +387,16 @@ class DatasetConfigEditor(QWidget):
             return
         if current is not None:
             grid.pop(current)
-        grid[axis] = self._blank_sampler(axis)
-        if self.mode.currentText() == "vapor_mass_fraction_table":
+        grid[axis] = self.form.blank_sampler(axis)
+        if self.form.mode_name == "vapor_mass_fraction_table":
             grid = {
                 axis: grid[axis],
                 "vapor_mass_fraction": grid["vapor_mass_fraction"],
             }
         payload["grid"] = grid
         self.document.set_payload(payload)
-        self._loading = True
-        self._rebuild_grid(grid)
-        self._loading = False
+        self.form.set_grid(grid)
         self._refresh_form_state()
-
-    def _blank_sampler(self, axis: str) -> dict[str, Any]:
-        units = (
-            self.capabilities.get("units_by_axis", {}).get(axis, []) if self.capabilities else []
-        )
-        return {"kind": "explicit", "values": [1.0], "unit": str(units[0]) if units else ""}
-
-    def _form_changed(self, *_args: object) -> None:
-        if not self._loading:
-            self._refresh_form_state()
 
     def _refresh_form_state(self) -> None:
         document = self.document
@@ -632,8 +406,8 @@ class DatasetConfigEditor(QWidget):
             self._update_actions()
             return
         try:
-            payload = self._payload_from_form()
-            issue = self._obvious_issue(payload)
+            payload = self.form.current_payload(document.payload)
+            issue = self.form.obvious_issue(payload)
             if issue is not None:
                 raise ValueError(issue)
         except ValueError as exc:
@@ -647,141 +421,9 @@ class DatasetConfigEditor(QWidget):
             self._form_valid = True
             self.preview.setPlainText(document.yaml_text)
             self.status.setText("Ready to save. Full validation runs before writing.")
-        self._update_reference_advisory()
         self._update_visualization_summary()
         self._update_actions()
         self.draft_changed.emit(document.needs_save)
-
-    def _payload_from_form(self) -> dict[str, Any]:
-        if self.document is None:
-            raise ValueError("no dataset configuration is open")
-        payload = self.document.payload
-        payload["schema_version"] = 2
-        payload["document_type"] = "dataset"
-        payload["backend"] = {"name": "coolprop", "model": self.model.currentText()}
-        payload["mode"] = self.mode.currentText()
-        payload["fluids"] = self._list_values(self.fluids)
-        payload["grid"] = {
-            axis: editor.sampler_payload() for axis, editor in self._samplers.items()
-        }
-        payload["properties"] = self._list_values(self.properties)
-        formats = [
-            name
-            for name, checked in (
-                ("csv", self.csv_output.isChecked()),
-                ("parquet", self.parquet_output.isChecked()),
-            )
-            if checked
-        ]
-        payload["outputs"] = {"dataset_formats": formats}
-        return payload
-
-    def _obvious_issue(self, payload: dict[str, Any]) -> str | None:
-        if not payload["fluids"]:
-            return "Add at least one fluid."
-        if not payload["properties"]:
-            return "Add at least one property."
-        if not payload["outputs"]["dataset_formats"]:
-            return "Select CSV, Parquet, or both."
-        unsupported = self._unsupported_selected_properties()
-        if unsupported:
-            return f"Remove properties unsupported by {self.model.currentText()}: " + ", ".join(
-                unsupported
-            )
-        return None
-
-    def _add_fluid(self) -> None:
-        requested = self.fluid_input.currentText().strip()
-        if not requested:
-            return
-        if requested.casefold() not in self._fluid_aliases:
-            self.status.setText(f"Unknown fluid or alias: {requested}")
-            return
-        canonical = self._fluid_aliases[requested.casefold()]
-        selected_canonical = {
-            self._fluid_aliases.get(value.casefold(), value).casefold()
-            for value in self._list_values(self.fluids)
-        }
-        if canonical.casefold() in selected_canonical:
-            self.status.setText(f"Fluid or alias is already selected: {canonical}")
-            return
-        self._append_list_item(self.fluids, requested)
-        self._form_changed()
-
-    def _remove_fluid(self) -> None:
-        self._remove_selected(self.fluids)
-
-    def _fluid_text_changed(self, text: str) -> None:
-        canonical = self._fluid_aliases.get(text.strip().casefold())
-        self.fluid_feedback.setText(
-            f"Canonical fluid: {canonical}" if canonical else "Choose a known fluid or alias."
-        )
-
-    def _add_property(self) -> None:
-        name = self.property_input.currentData(ITEM_VALUE_ROLE)
-        if not isinstance(name, str) or not name:
-            return
-        if name in self._list_values(self.properties):
-            self.status.setText(f"Property is already selected: {name}")
-            return
-        if not self._property_supported(name):
-            self.status.setText(f"{name} is not supported by {self.model.currentText()}.")
-            return
-        self._append_list_item(self.properties, name)
-        self._update_selected_property_states()
-        self._form_changed()
-
-    def _remove_property(self) -> None:
-        self._remove_selected(self.properties)
-        self._update_selected_property_states()
-        self._form_changed()
-
-    def _update_property_choices(self) -> None:
-        model = QStandardItemModel(self.property_input)
-        for name, metadata in self._property_catalog.items():
-            supported = self.model.currentText() in metadata.get("supported_models", [])
-            label = name if supported else f"{name} — unsupported by {self.model.currentText()}"
-            item = QStandardItem(label)
-            item.setData(name, ITEM_VALUE_ROLE)
-            item.setEnabled(supported)
-            model.appendRow(item)
-        self.property_input.setModel(model)
-
-    def _update_selected_property_states(self) -> None:
-        model = self.model.currentText()
-        for index in range(self.properties.count()):
-            item = self.properties.item(index)
-            if item is None:
-                continue
-            name = str(item.data(ITEM_VALUE_ROLE))
-            supported = self._property_supported(name)
-            item.setText(name if supported else f"Unsupported by {model}: {name}")
-            item.setToolTip(
-                "Supported by the selected model."
-                if supported
-                else "Remove this property or select a model that supports it."
-            )
-            item.setForeground(QColor() if supported else QColor("#a33a00"))
-
-    def _property_supported(self, name: str) -> bool:
-        metadata = self._property_catalog.get(name, {})
-        return self.model.currentText() in metadata.get("supported_models", [])
-
-    def _unsupported_selected_properties(self) -> list[str]:
-        return [
-            name
-            for name in self._list_values(self.properties)
-            if not self._property_supported(name)
-        ]
-
-    def _update_reference_advisory(self) -> None:
-        selected = REFERENCE_FIELDS.intersection(self._list_values(self.properties))
-        self.reference_advisory.setText(
-            "Reference-state advisory: absolute enthalpy, entropy, and internal-energy values "
-            "depend on the recorded reference-state context."
-            if selected
-            else ""
-        )
 
     def _update_visualization_summary(self) -> None:
         if self.document is None:
@@ -798,44 +440,6 @@ class DatasetConfigEditor(QWidget):
                 "No configured visualization requests. Structured editing is implemented "
                 "in the next Stage 3 slice."
             )
-
-    def _move_selected(self, widget: QListWidget, offset: int) -> None:
-        row = widget.currentRow()
-        target = row + offset
-        if row < 0 or target < 0 or target >= widget.count():
-            return
-        item = widget.takeItem(row)
-        if item is None:
-            return
-        widget.insertItem(target, item)
-        widget.setCurrentRow(target)
-        self._form_changed()
-
-    def _remove_selected(self, widget: QListWidget) -> None:
-        row = widget.currentRow()
-        if row < 0:
-            return
-        widget.takeItem(row)
-        self._form_changed()
-
-    @staticmethod
-    def _append_list_item(widget: QListWidget, value: str) -> None:
-        item = QListWidgetItem(value)
-        item.setData(ITEM_VALUE_ROLE, value)
-        widget.addItem(item)
-
-    def _load_list(self, widget: QListWidget, values: list[str]) -> None:
-        widget.clear()
-        for value in values:
-            self._append_list_item(widget, value)
-
-    @staticmethod
-    def _list_values(widget: QListWidget) -> list[str]:
-        return [
-            str(item.data(ITEM_VALUE_ROLE))
-            for index in range(widget.count())
-            if (item := widget.item(index)) is not None
-        ]
 
     def _handle_external_change(self) -> None:
         if self.document is None or self.document.source_path is None:
