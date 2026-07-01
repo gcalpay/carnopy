@@ -53,16 +53,15 @@ def test_ci_matrix_covers_supported_python_versions() -> None:
         assert f'- "{version}"' in text
 
 
-def test_desktop_dependencies_are_isolated_to_one_offscreen_job() -> None:
+def test_desktop_dependencies_are_isolated_from_python_matrix() -> None:
     expected_qt_jobs = {
-        "ci.yml": {"app", "distribution"},
-        "publish.yml": {"app", "inspect", "smoke-pypi"},
+        "ci.yml": {"quality", "app", "distribution"},
+        "publish.yml": {"quality", "app", "inspect", "smoke-pypi"},
     }
     for name, qt_jobs in expected_qt_jobs.items():
         text = workflow_text(name)
         quality_job = workflow_job(text, "quality")
-        assert "--extra viz --extra ml --group dev" in quality_job
-        assert "--extra all" not in quality_job
+        assert "--extra all --group dev" in quality_job
         assert "--extra viz --extra ml --no-default-groups --group test" in text
         assert "--extra app --no-default-groups --group test" in text
         assert "QT_QPA_PLATFORM: offscreen" in text

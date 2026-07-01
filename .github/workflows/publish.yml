@@ -17,6 +17,10 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+      - name: Install Qt runtime dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends libegl1
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
@@ -37,7 +41,7 @@ jobs:
       - name: Verify lock file
         run: uv lock --check
       - name: Synchronize development dependencies
-        run: uv sync --locked --python 3.12 --extra viz --extra ml --group dev
+        run: uv sync --locked --python 3.12 --extra all --group dev
       - name: Run Ruff
         run: uv run --locked ruff check .
       - name: Check formatting
