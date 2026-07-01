@@ -105,6 +105,10 @@ The `0.1.0a3` development line adds a Linux-first PySide6 desktop frontend for
 the existing dataset workflow. The desktop application is a presentation
 frontend, not a new scientific execution layer.
 
+During GUI-1 development, [GUI_PLAN.md](GUI_PLAN.md) is the temporary source of
+truth for stage boundaries and status. Read it before changing desktop modules,
+update it when a stage completes, and delete it after Stage 7.
+
 Out of scope:
 
 - mixtures;
