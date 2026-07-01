@@ -101,6 +101,10 @@ Milestone 1 supports:
 - configured post-generation visualization.
 - model-sweep bundles comparing emitted values from multiple CoolProp models.
 
+The `0.1.0a3` development line adds a Linux-first PySide6 desktop frontend for
+the existing dataset workflow. The desktop application is a presentation
+frontend, not a new scientific execution layer.
+
 Out of scope:
 
 - mixtures;
@@ -108,7 +112,7 @@ Out of scope:
 - additional property backends;
 - random, Sobol, Latin-hypercube, adaptive, or active-learning sampling;
 - ML training or inference;
-- GUI, web/API services, or databases;
+- web/API services or databases;
 - ThermoML, OCR, RAG, or literature mining.
 
 Do not broaden scope without maintainer approval.
@@ -236,6 +240,13 @@ The supported Python API intentionally remains narrow:
 - explicit visualization functions.
 
 Keep CLI handlers thin and scientific logic outside `cli.py`.
+
+The desktop frontend follows the same boundary. Qt widgets must communicate
+with one short-lived worker process through the private, versioned JSON Lines
+protocol under `carnopy.app`; they must not invoke or parse the public CLI.
+Only the worker may import CoolProp, generation pipelines, pandas, PyArrow, or
+Matplotlib. Progress and cooperative cancellation use private execution hooks;
+do not add these hooks to the public Python API.
 
 ## Configuration and sampling contracts
 
@@ -553,6 +564,7 @@ Keep focused module boundaries:
 - mode generators;
 - output/provenance writers;
 - visualization requests, selection, rendering, and automation.
+- desktop presentation, worker protocol, and process control.
 
 ## Packaging and release safeguards
 

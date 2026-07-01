@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from carnopy._execution import ExecutionControl
 from carnopy.backends.base import PropertyBackend
 from carnopy.config.models import NormalizedConfig
 from carnopy.generation.common import (
@@ -18,6 +19,8 @@ def generate_vapor_mass_fraction_table(
     config: NormalizedConfig,
     backend: PropertyBackend,
     run_id: str,
+    *,
+    execution: ExecutionControl | None = None,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     coordinate_axis = "temperature" if "temperature" in config.grid else "pressure"
@@ -27,6 +30,8 @@ def generate_vapor_mass_fraction_table(
     for fluid in config.fluids:
         for coordinate in config.grid[coordinate_axis]:
             for fraction in config.grid["vapor_mass_fraction"]:
+                if execution is not None:
+                    execution.raise_if_cancelled()
                 row = base_row(
                     run_id=run_id,
                     mode=config.mode,
@@ -95,5 +100,7 @@ def generate_vapor_mass_fraction_table(
                     )
                 )
                 rows.append(finalize_row(row, failures))
+                if execution is not None:
+                    execution.checkpoint(len(rows), config.projected_rows)
     assign_case_ids(rows)
     return rows

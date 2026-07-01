@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import shutil
+import stat
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,6 +22,8 @@ class RunLayout:
     staging_directory: Path
     final_directory: Path
     public_final_directory: Path
+    staging_device: int
+    staging_inode: int
 
 
 def create_run_layout(
@@ -52,15 +56,54 @@ def create_run_layout(
         raise OutputError(f"immutable run path already exists: {final_directory}")
     try:
         staging_directory.mkdir()
+        staging_stat = staging_directory.stat(follow_symlinks=False)
     except OSError as exc:
         raise OutputError(f"could not create staging directory: {exc}") from exc
-    return RunLayout(output_root, staging_directory, final_directory, public_final_directory)
+    return RunLayout(
+        output_root,
+        staging_directory,
+        final_directory,
+        public_final_directory,
+        staging_stat.st_dev,
+        staging_stat.st_ino,
+    )
 
 
 def finalize_run_layout(layout: RunLayout) -> None:
     if layout.final_directory.exists():
         raise OutputError(f"refusing to overwrite existing run directory {layout.final_directory}")
+    _verify_staging_directory(layout)
     try:
         layout.staging_directory.rename(layout.final_directory)
     except OSError as exc:
         raise OutputError(f"could not finalize run directory: {exc}") from exc
+
+
+def cleanup_run_layout(layout: RunLayout) -> None:
+    """Remove only the known, unfinalized staging directory."""
+
+    staging = layout.staging_directory
+    if not staging.exists() and not staging.is_symlink():
+        return
+    _verify_staging_directory(layout)
+    try:
+        shutil.rmtree(staging)
+    except OSError as exc:
+        raise OutputError(f"could not clean staging directory {staging}: {exc}") from exc
+
+
+def _verify_staging_directory(layout: RunLayout) -> None:
+    staging = layout.staging_directory
+    if staging.is_symlink():
+        raise OutputError(f"refusing to use staging symlink {staging}")
+    try:
+        staging_stat = staging.stat(follow_symlinks=False)
+    except OSError as exc:
+        raise OutputError(f"could not inspect staging directory {staging}: {exc}") from exc
+    if not stat.S_ISDIR(staging_stat.st_mode):
+        raise OutputError(f"refusing to use non-directory staging path {staging}")
+    if (staging_stat.st_dev, staging_stat.st_ino) != (
+        layout.staging_device,
+        layout.staging_inode,
+    ):
+        raise OutputError(f"refusing to use replaced staging directory {staging}")

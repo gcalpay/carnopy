@@ -1,4 +1,9 @@
-from carnopy.outputs.layout import RunLayout, create_run_layout, finalize_run_layout
+from carnopy.outputs.layout import (
+    RunLayout,
+    cleanup_run_layout,
+    create_run_layout,
+    finalize_run_layout,
+)
 from carnopy.outputs.metadata import build_metadata
 from carnopy.outputs.reports import build_report, determine_run_status
 from carnopy.outputs.schemas import dataset_columns, dataset_unit_map
@@ -14,6 +19,7 @@ __all__ = [
     "RunLayout",
     "build_metadata",
     "build_report",
+    "cleanup_run_layout",
     "create_run_layout",
     "dataset_columns",
     "dataset_unit_map",

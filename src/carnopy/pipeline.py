@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import pandas as pd
 
+from carnopy._execution import ExecutionControl
 from carnopy.backends.coolprop import CoolPropBackend
 from carnopy.config.io import LoadedConfig
 from carnopy.config.models import NormalizedConfig
@@ -21,6 +22,7 @@ from carnopy.generation import (
 from carnopy.outputs import (
     build_metadata,
     build_report,
+    cleanup_run_layout,
     create_run_layout,
     dataset_columns,
     dataset_unit_map,
@@ -105,7 +107,10 @@ def run_generation(
     *,
     public_output_root: Path | None = None,
     add_state_keys: bool = False,
+    execution: ExecutionControl | None = None,
 ) -> RunResult:
+    if execution is not None:
+        execution.phase("validation")
     backend = CoolPropBackend(model=loaded.model.backend.model)
     validated = validate_loaded_config(loaded, backend)
     normalized = validated.normalized
@@ -127,91 +132,112 @@ def run_generation(
         created_at=created_at,
         public_output_root=public_output_root,
     )
-    if validated.visualization is not None:
-        planned_figure_directory = (
-            figures_root.expanduser().resolve() / layout.public_final_directory.name
-        )
-        if (
-            planned_figure_directory == layout.public_final_directory.resolve()
-            or planned_figure_directory.exists()
-        ):
-            layout.staging_directory.rmdir()
-            raise OutputError(
-                "configured visualization output directory conflicts with the immutable "
-                "run directory or already exists: "
-                f"{planned_figure_directory}"
-            )
-
-    backend.initialize_reference_states(normalized.fluids)
-    rows = _generate_rows(normalized, backend, run_id)
-    columns = dataset_columns(normalized)
-    frame = pd.DataFrame(rows, columns=columns)
-    if add_state_keys:
-        frame = _with_state_key_columns(frame, normalized)
-    run_status = determine_run_status(frame)
-    unit_map = dataset_unit_map(normalized)
-    input_columns = _input_columns(normalized.mode)
-
-    dataset_files = write_dataset_formats(
-        frame,
-        layout.staging_directory,
-        unit_map,
-        dataset_formats=validated.dataset_formats,
-    )
-    write_bytes(layout.staging_directory / "config.original.yaml", loaded.raw_bytes)
-    write_bytes(
-        layout.staging_directory / "config.normalized.json",
-        normalized_bytes,
-    )
     try:
-        reference_bytes = template_text(normalized.mode, full=True).encode("utf-8")
-    except TemplateError as exc:
-        raise OutputError(
-            f"could not load the packaged run configuration reference: {exc}"
-        ) from exc
-    write_bytes(
-        layout.staging_directory / "config.reference.yaml",
-        reference_bytes,
-    )
-    report = build_report(
-        frame=frame,
-        run_id=run_id,
-        run_status=run_status,
-        output_directory=layout.public_final_directory,
-        input_columns=input_columns,
-        backend=backend.name,
-        backend_model=backend.model,
-        backend_version=backend.version,
-    )
-    write_json(layout.staging_directory / "report.json", report)
-    hashed_names = [
-        *dataset_files,
-        "config.original.yaml",
-        "config.normalized.json",
-        "config.reference.yaml",
-        "report.json",
-    ]
-    artifact_hashes = hash_artifacts(layout.staging_directory, hashed_names)
-    output_files = [*hashed_names, "metadata.json"]
-    metadata = build_metadata(
-        frame=frame,
-        config=normalized,
-        identity=identity,
-        run_id=run_id,
-        run_status=run_status,
-        created_at_utc=created_at.isoformat().replace("+00:00", "Z"),
-        backend_version=backend.version,
-        output_directory=layout.public_final_directory,
-        output_files=output_files,
-        artifact_hashes=artifact_hashes,
-        unit_map=unit_map,
-        output_request_id=validated.output_request_id,
-        dataset_formats=validated.dataset_formats,
-    )
-    write_json(layout.staging_directory / "metadata.json", metadata)
-    finalize_run_layout(layout)
+        if validated.visualization is not None:
+            planned_figure_directory = (
+                figures_root.expanduser().resolve() / layout.public_final_directory.name
+            )
+            if (
+                planned_figure_directory == layout.public_final_directory.resolve()
+                or planned_figure_directory.exists()
+            ):
+                raise OutputError(
+                    "configured visualization output directory conflicts with the immutable "
+                    "run directory or already exists: "
+                    f"{planned_figure_directory}"
+                )
+
+        if execution is not None:
+            execution.phase("backend_initialization")
+        backend.initialize_reference_states(normalized.fluids)
+        if execution is not None:
+            execution.phase("generation")
+            execution.checkpoint(0, normalized.projected_rows)
+        rows = _generate_rows(normalized, backend, run_id, execution=execution)
+        columns = dataset_columns(normalized)
+        frame = pd.DataFrame(rows, columns=columns)
+        if add_state_keys:
+            frame = _with_state_key_columns(frame, normalized)
+        run_status = determine_run_status(frame)
+        unit_map = dataset_unit_map(normalized)
+        input_columns = _input_columns(normalized.mode)
+
+        if execution is not None:
+            execution.phase("writing")
+        dataset_files = write_dataset_formats(
+            frame,
+            layout.staging_directory,
+            unit_map,
+            dataset_formats=validated.dataset_formats,
+        )
+        write_bytes(layout.staging_directory / "config.original.yaml", loaded.raw_bytes)
+        write_bytes(
+            layout.staging_directory / "config.normalized.json",
+            normalized_bytes,
+        )
+        try:
+            reference_bytes = template_text(normalized.mode, full=True).encode("utf-8")
+        except TemplateError as exc:
+            raise OutputError(
+                f"could not load the packaged run configuration reference: {exc}"
+            ) from exc
+        write_bytes(
+            layout.staging_directory / "config.reference.yaml",
+            reference_bytes,
+        )
+        report = build_report(
+            frame=frame,
+            run_id=run_id,
+            run_status=run_status,
+            output_directory=layout.public_final_directory,
+            input_columns=input_columns,
+            backend=backend.name,
+            backend_model=backend.model,
+            backend_version=backend.version,
+        )
+        write_json(layout.staging_directory / "report.json", report)
+        hashed_names = [
+            *dataset_files,
+            "config.original.yaml",
+            "config.normalized.json",
+            "config.reference.yaml",
+            "report.json",
+        ]
+        artifact_hashes = hash_artifacts(layout.staging_directory, hashed_names)
+        output_files = [*hashed_names, "metadata.json"]
+        metadata = build_metadata(
+            frame=frame,
+            config=normalized,
+            identity=identity,
+            run_id=run_id,
+            run_status=run_status,
+            created_at_utc=created_at.isoformat().replace("+00:00", "Z"),
+            backend_version=backend.version,
+            output_directory=layout.public_final_directory,
+            output_files=output_files,
+            artifact_hashes=artifact_hashes,
+            unit_map=unit_map,
+            output_request_id=validated.output_request_id,
+            dataset_formats=validated.dataset_formats,
+        )
+        write_json(layout.staging_directory / "metadata.json", metadata)
+        if execution is not None:
+            execution.phase("finalization")
+            execution.raise_if_cancelled()
+        finalize_run_layout(layout)
+    except Exception as exc:
+        try:
+            cleanup_run_layout(layout)
+        except OutputError as cleanup_error:
+            raise OutputError(f"{exc}; staging cleanup also failed: {cleanup_error}") from exc
+        raise
+
+    if execution is not None:
+        execution.disable_cancellation()
     visualization_summary = None
     if validated.visualization is not None:
+        if execution is not None:
+            execution.phase("configured_visualization", cancellable=False)
         visualization_summary = render_configured_visualizations(
             source_run=layout.final_directory,
             figures_root=figures_root,
@@ -244,12 +270,14 @@ def _generate_rows(
     config: NormalizedConfig,
     backend: CoolPropBackend,
     run_id: str,
+    *,
+    execution: ExecutionControl | None = None,
 ) -> list[dict[str, object]]:
     if config.mode == "property_table":
-        return generate_property_table(config, backend, run_id)
+        return generate_property_table(config, backend, run_id, execution=execution)
     if config.mode == "saturation_table":
-        return generate_saturation_table(config, backend, run_id)
-    return generate_vapor_mass_fraction_table(config, backend, run_id)
+        return generate_saturation_table(config, backend, run_id, execution=execution)
+    return generate_vapor_mass_fraction_table(config, backend, run_id, execution=execution)
 
 
 def _input_columns(mode: str) -> list[str]:

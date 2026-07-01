@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from carnopy._execution import ExecutionControl
 from carnopy.backends.base import PropertyBackend
 from carnopy.config.models import NormalizedConfig
 from carnopy.generation.common import (
@@ -17,11 +18,15 @@ def generate_property_table(
     config: NormalizedConfig,
     backend: PropertyBackend,
     run_id: str,
+    *,
+    execution: ExecutionControl | None = None,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for fluid in config.fluids:
         for temperature in config.grid["temperature"]:
             for pressure in config.grid["pressure"]:
+                if execution is not None:
+                    execution.raise_if_cancelled()
                 row = base_row(
                     run_id=run_id,
                     mode=config.mode,
@@ -53,5 +58,7 @@ def generate_property_table(
                     )
                 )
                 rows.append(finalize_row(row, failures))
+                if execution is not None:
+                    execution.checkpoint(len(rows), config.projected_rows)
     assign_case_ids(rows)
     return rows

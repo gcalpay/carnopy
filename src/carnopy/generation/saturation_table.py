@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from carnopy._execution import ExecutionControl
 from carnopy.backends.base import PropertyBackend
 from carnopy.config.models import NormalizedConfig
 from carnopy.generation.common import (
@@ -23,6 +24,8 @@ def generate_saturation_table(
     config: NormalizedConfig,
     backend: PropertyBackend,
     run_id: str,
+    *,
+    execution: ExecutionControl | None = None,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     input_axis = next(iter(config.grid))
@@ -38,6 +41,8 @@ def generate_saturation_table(
                 (0.0, "saturated_liquid"),
                 (1.0, "saturated_vapor"),
             ):
+                if execution is not None:
+                    execution.raise_if_cancelled()
                 row = base_row(
                     run_id=run_id,
                     mode=config.mode,
@@ -123,5 +128,7 @@ def generate_saturation_table(
                     pair_failures[1].insert(0, mismatch)
             for row, failures in zip(pair_rows, pair_failures, strict=True):
                 rows.append(finalize_row(row, failures))
+                if execution is not None:
+                    execution.checkpoint(len(rows), config.projected_rows)
     assign_case_ids(rows)
     return rows

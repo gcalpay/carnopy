@@ -9,7 +9,8 @@ import pyarrow.parquet as pq
 import pytest
 
 from carnopy.api import generate_dataset
-from carnopy.outputs.layout import create_run_layout
+from carnopy.domain.failures import OutputError
+from carnopy.outputs.layout import cleanup_run_layout, create_run_layout
 from carnopy.outputs.writers import hash_artifacts
 from carnopy.provenance import sha256_bytes, sha256_file
 from carnopy.templates import template_text
@@ -53,6 +54,25 @@ def test_run_layout_distinguishes_attempts_with_same_timestamp(tmp_path: Path) -
         created_at=created_at,
     )
     assert first.final_directory != second.final_directory
+
+
+def test_run_layout_cleanup_preserves_replaced_staging_directory(tmp_path: Path) -> None:
+    layout = create_run_layout(
+        output_root=tmp_path,
+        mode="property_table",
+        run_id="11111111-1111-4111-8111-111111111111",
+        created_at=datetime(2026, 6, 21, 17, 20, 6, tzinfo=timezone.utc),
+    )
+    original = tmp_path / "original-staging"
+    layout.staging_directory.rename(original)
+    layout.staging_directory.mkdir()
+    marker = layout.staging_directory / "external.txt"
+    marker.write_text("preserve", encoding="utf-8")
+
+    with pytest.raises(OutputError, match="replaced staging directory"):
+        cleanup_run_layout(layout)
+
+    assert marker.read_text(encoding="utf-8") == "preserve"
 
 
 def test_generation_writes_complete_immutable_artifacts(
