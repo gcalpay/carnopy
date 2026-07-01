@@ -11,6 +11,12 @@ def workflow_text(name: str) -> str:
     return (ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")
 
 
+def workflow_job(text: str, name: str) -> str:
+    match = re.search(rf"(?ms)^  {re.escape(name)}:\n.*?(?=^  [a-z][\w-]*:\n|\Z)", text)
+    assert match is not None
+    return match.group()
+
+
 def test_third_party_actions_are_pinned_to_full_commit_shas() -> None:
     for name in ("ci.yml", "publish.yml"):
         text = workflow_text(name)
@@ -47,10 +53,24 @@ def test_ci_matrix_covers_supported_python_versions() -> None:
         assert f'- "{version}"' in text
 
 
-def test_desktop_dependencies_are_isolated_to_one_offscreen_job() -> None:
-    for name in ("ci.yml", "publish.yml"):
+def test_desktop_dependencies_are_isolated_from_python_matrix() -> None:
+    expected_qt_jobs = {
+        "ci.yml": {"quality", "app", "distribution"},
+        "publish.yml": {"quality", "app", "inspect", "smoke-pypi"},
+    }
+    for name, qt_jobs in expected_qt_jobs.items():
         text = workflow_text(name)
+        quality_job = workflow_job(text, "quality")
+        assert "--extra all --group dev" in quality_job
         assert "--extra viz --extra ml --no-default-groups --group test" in text
         assert "--extra app --no-default-groups --group test" in text
         assert "QT_QPA_PLATFORM: offscreen" in text
         assert "--with-app" in text
+        assert "libegl1" not in workflow_job(text, "tests")
+        for job in qt_jobs:
+            assert "sudo apt-get install --yes --no-install-recommends libegl1" in workflow_job(
+                text, job
+            )
+        assert text.count("sudo apt-get install --yes --no-install-recommends libegl1") == len(
+            qt_jobs
+        )
