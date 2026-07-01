@@ -48,6 +48,16 @@ class WorkerClient(QObject):
     def cached_capabilities(self, model: str) -> dict[str, Any] | None:
         return self._capabilities.get(model)
 
+    def shutdown(self) -> None:
+        """Stop a short-lived worker when its owning window is closing."""
+        process = self._process
+        if process is None:
+            return
+        process.blockSignals(True)
+        process.kill()
+        process.waitForFinished(1_000)
+        self._reset_process()
+
     def start_request(
         self,
         request_type: RequestType,

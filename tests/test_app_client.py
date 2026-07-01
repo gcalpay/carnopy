@@ -11,21 +11,22 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QCoreApplication, QEventLoop, QTimer
+from PySide6.QtCore import QEventLoop, QTimer
+from PySide6.QtWidgets import QApplication
 
 from carnopy.app.client import WorkerClient
 from carnopy.app.protocol import WorkerEvent, encode_event
 
 
 @pytest.fixture(scope="module")
-def application() -> QCoreApplication:
-    existing = QCoreApplication.instance()
-    app = existing if isinstance(existing, QCoreApplication) else QCoreApplication([])
+def application() -> QApplication:
+    existing = QApplication.instance()
+    app = existing if isinstance(existing, QApplication) else QApplication([])
     yield app
 
 
 def wait_for_request(
-    application: QCoreApplication,
+    application: QApplication,
     start: Callable[[WorkerClient], None],
 ) -> tuple[WorkerClient, list[dict[str, object]], list[dict[str, object]]]:
     del application
@@ -52,7 +53,7 @@ def wait_for_request(
 
 
 def test_qprocess_client_runs_and_caches_capability_request(
-    application: QCoreApplication,
+    application: QApplication,
 ) -> None:
     client_holder: list[WorkerClient] = []
     busy_at_success: list[bool] = []
@@ -95,7 +96,7 @@ for name in (
 
 
 def test_qprocess_client_rejects_mismatched_request_events(
-    application: QCoreApplication,
+    application: QApplication,
 ) -> None:
     del application
     client = WorkerClient()

@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from carnopy.app.config_editor import DatasetConfigEditor
 from carnopy.app.workspace import (
     Workspace,
     WorkspaceError,
@@ -56,9 +57,15 @@ class MainWindow(QMainWindow):
         self.navigation = QListWidget()
         self.navigation.setFixedWidth(220)
         self.pages = QStackedWidget()
+        self.configure_page = DatasetConfigEditor()
         for index, title in enumerate(PAGE_TITLES):
             self.navigation.addItem(title)
-            page = self._workspace_page() if index == 0 else self._placeholder_page(title)
+            if index == 0:
+                page = self._workspace_page()
+            elif index == 1:
+                page = self.configure_page
+            else:
+                page = self._placeholder_page(title)
             self.pages.addWidget(page)
         self.navigation.currentRowChanged.connect(self.pages.setCurrentIndex)
         self.navigation.setCurrentRow(0)
@@ -201,10 +208,13 @@ class MainWindow(QMainWindow):
         self._activate_workspace(workspace)
 
     def _activate_workspace(self, workspace: Workspace) -> None:
+        if self.workspace != workspace and not self.configure_page.confirm_discard():
+            return
         self.workspace = workspace
         self.workspace_path.setText(str(workspace.root))
         self.workspace_status.setText(f"Open workspace: {workspace.root}")
         self._set_workspace_pages_enabled(True)
+        self.configure_page.set_workspace(workspace)
         self._remember_workspace(workspace.root)
 
     def _set_workspace_pages_enabled(self, enabled: bool) -> None:
@@ -240,6 +250,10 @@ class MainWindow(QMainWindow):
             self.restoreGeometry(geometry)
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        if not self.configure_page.confirm_discard():
+            event.ignore()
+            return
+        self.configure_page.shutdown()
         self.settings.setValue(WINDOW_GEOMETRY_KEY, self.saveGeometry())
         self.settings.sync()
         super().closeEvent(event)
