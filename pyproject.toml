@@ -60,8 +60,13 @@ viz = [
 ml = [
   "safetensors>=0.4.5",
 ]
+app = [
+  "PySide6-Essentials>=6.8.3,<7",
+  "matplotlib>=3.8",
+]
 all = [
   "matplotlib>=3.8",
+  "PySide6-Essentials>=6.8.3,<7",
   "safetensors>=0.4.5",
 ]
 
@@ -89,6 +94,7 @@ dev = [
 
 [project.scripts]
 carnopy = "carnopy.__main__:main"
+carnopy-app = "carnopy.app.launcher:main"
 
 [tool.hatch.version]
 path = "src/carnopy/_version.py"

@@ -8,6 +8,15 @@ import subprocess
 import sys
 from pathlib import Path
 
+MISSING_APP_EXTRA = """Carnopy desktop application requires the app extra.
+
+With pip:
+  python -m pip install "carnopy[app]"
+
+With uv:
+  uv tool install --force "carnopy[app]"
+"""
+
 
 def run_command(
     arguments: list[str],
@@ -30,6 +39,69 @@ def run_command(
             f"{arguments}\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
         )
     return completed
+
+
+def run_app_command(
+    arguments: list[str],
+    *,
+    cwd: Path,
+    expected_code: int = 0,
+    environment: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    completed = subprocess.run(
+        [str(Path(sys.executable).with_name("carnopy-app")), *arguments],
+        cwd=cwd,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != expected_code:
+        raise RuntimeError(
+            f"carnopy-app failed with {completed.returncode}, expected {expected_code}: "
+            f"{arguments}\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+        )
+    return completed
+
+
+def smoke_app(work_directory: Path) -> None:
+    environment = os.environ.copy()
+    environment["QT_QPA_PLATFORM"] = "offscreen"
+    code = """
+import sys
+from pathlib import Path
+from PySide6.QtCore import QSettings
+from PySide6.QtWidgets import QApplication
+from carnopy.app.window import MainWindow
+from carnopy.app.workspace import initialize_workspace
+
+root = Path(sys.argv[1])
+workspace = initialize_workspace(root / "workspace")
+app = QApplication([])
+window = MainWindow(
+    settings=QSettings(str(root / "settings.ini"), QSettings.Format.IniFormat),
+    initial_workspace=workspace.root,
+)
+window.show()
+app.processEvents()
+if window.workspace != workspace or not window.isVisible():
+    raise SystemExit("desktop shell did not open its workspace")
+window.close()
+app.processEvents()
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", code, str(work_directory / "app-smoke")],
+        cwd=work_directory,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            "offscreen desktop smoke test failed\n"
+            f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+        )
 
 
 def build_plot_arguments(run_directory: Path, figure: Path) -> list[str]:
@@ -125,6 +197,7 @@ def main() -> int:
     parser.add_argument("--work-directory", type=Path, required=True)
     parser.add_argument("--with-visualization", action="store_true")
     parser.add_argument("--with-ml-exports", action="store_true")
+    parser.add_argument("--with-app", action="store_true")
     parser.add_argument("--expected-version")
     arguments = parser.parse_args()
 
@@ -146,6 +219,13 @@ def main() -> int:
     run_command(["sweep", "--help"], cwd=work_directory)
     run_command(["prepare", "--help"], cwd=work_directory)
     run_command(["properties"], cwd=work_directory)
+    app_help = run_app_command(["--help"], cwd=work_directory)
+    if "Open the Carnopy desktop application." not in app_help.stdout:
+        raise RuntimeError(f"unexpected carnopy-app help output: {app_help.stdout!r}")
+    app_version = run_app_command(["--version"], cwd=work_directory)
+    expected_app_version = version.stdout.replace("carnopy ", "carnopy-app ", 1)
+    if app_version.stdout != expected_app_version:
+        raise RuntimeError(f"unexpected carnopy-app version output: {app_version.stdout!r}")
 
     config = work_directory / "config.yaml"
     run_command(
@@ -154,10 +234,21 @@ def main() -> int:
     )
     matplotlib_available = importlib.util.find_spec("matplotlib") is not None
     safetensors_available = importlib.util.find_spec("safetensors") is not None
+    pyside_available = importlib.util.find_spec("PySide6") is not None
     if not arguments.with_ml_exports and safetensors_available:
         raise RuntimeError("base distribution unexpectedly includes SafeTensors")
     if arguments.with_ml_exports and not safetensors_available:
         raise RuntimeError("ML export smoke test requires SafeTensors")
+    if arguments.with_app:
+        if not pyside_available:
+            raise RuntimeError("desktop application smoke test requires PySide6")
+        smoke_app(work_directory)
+    else:
+        if pyside_available:
+            raise RuntimeError("distribution unexpectedly includes PySide6")
+        failed_app = run_app_command([], cwd=work_directory, expected_code=1)
+        if failed_app.stderr != MISSING_APP_EXTRA:
+            raise RuntimeError(f"unexpected missing-app error:\n{failed_app.stderr}")
     command_environment: dict[str, str] | None = None
     figures_root: Path | None = None
     if arguments.with_visualization:

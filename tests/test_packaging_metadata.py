@@ -26,6 +26,17 @@ def test_all_extra_contains_every_user_facing_optional_dependency() -> None:
     assert set(optional["all"]) == feature_dependencies
 
 
+def test_desktop_extra_and_launcher_are_declared() -> None:
+    root = Path(__file__).resolve().parents[1]
+    pyproject: dict[str, Any] = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+
+    assert pyproject["project"]["optional-dependencies"]["app"] == [
+        "PySide6-Essentials>=6.8.3,<7",
+        "matplotlib>=3.8",
+    ]
+    assert pyproject["project"]["scripts"]["carnopy-app"] == "carnopy.app.launcher:main"
+
+
 def test_alpha_metadata_uses_modern_license_and_release_urls() -> None:
     root = Path(__file__).resolve().parents[1]
     pyproject: dict[str, Any] = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))

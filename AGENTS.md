@@ -219,6 +219,7 @@ carnopy sweep SWEEP.yaml [--out PATH]
 carnopy prepare SOURCE --config PREPARATION.yaml [--out PATH]
 carnopy inspect SOURCE
 carnopy plot SOURCE ...
+carnopy-app [--workspace PATH] [--version]
 ```
 
 The documented workflow is:
@@ -577,8 +578,8 @@ build-backend = "hatchling.build"
 ```
 
 Matplotlib remains optional through `viz`; SafeTensors remains optional through
-`ml`; `all` must remain synchronized with all user-facing extras. PyArrow
-remains core.
+`ml`; PySide6 Essentials and Matplotlib remain optional through `app`; `all`
+must remain synchronized with all user-facing extras. PyArrow remains core.
 
 Carnopy uses alpha releases before stable `0.1.0`. The release workflow builds
 one wheel and sdist, verifies them, requires human approval, and publishes them
@@ -650,7 +651,7 @@ Recommended scopes:
 
 ```text
 dataset schema sampler coolprop cli validation metadata tests docs ci
-packaging viz
+packaging viz app
 ```
 
 Examples:

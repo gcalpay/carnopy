@@ -45,3 +45,12 @@ def test_ci_matrix_covers_supported_python_versions() -> None:
     text = workflow_text("ci.yml")
     for version in ("3.10", "3.11", "3.12", "3.13"):
         assert f'- "{version}"' in text
+
+
+def test_desktop_dependencies_are_isolated_to_one_offscreen_job() -> None:
+    for name in ("ci.yml", "publish.yml"):
+        text = workflow_text(name)
+        assert "--extra viz --extra ml --no-default-groups --group test" in text
+        assert "--extra app --no-default-groups --group test" in text
+        assert "QT_QPA_PLATFORM: offscreen" in text
+        assert "--with-app" in text

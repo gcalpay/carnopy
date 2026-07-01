@@ -46,7 +46,6 @@ class EventWriter:
     def __init__(self, stream: IO[str], request_id: UUID) -> None:
         self._stream = stream
         self._request_id = request_id
-        self._lock = threading.Lock()
 
     def emit(self, event_type: EventType, payload: dict[str, Any]) -> None:
         event = WorkerEvent(
@@ -54,9 +53,8 @@ class EventWriter:
             type=event_type,
             payload=cast(dict[str, Any], _jsonable(payload)),
         )
-        with self._lock:
-            self._stream.write(encode_event(event))
-            self._stream.flush()
+        self._stream.write(encode_event(event))
+        self._stream.flush()
 
 
 def main(

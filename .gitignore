@@ -39,3 +39,6 @@ graphify-out/*
 
 # Operator-specific coding-agent instructions
 .agents/local.md
+
+# Workspace-local desktop application state
+.carnopy-gui/

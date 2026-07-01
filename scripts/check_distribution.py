@@ -28,6 +28,13 @@ SOURCE_VERSION_PATTERN = re.compile(r'^__version__\s*=\s*"([^"]+)"\s*$')
 WHEEL_REQUIRED = {
     "carnopy/__init__.py",
     "carnopy/__main__.py",
+    "carnopy/_execution.py",
+    "carnopy/app/__init__.py",
+    "carnopy/app/launcher.py",
+    "carnopy/app/protocol.py",
+    "carnopy/app/window.py",
+    "carnopy/app/worker.py",
+    "carnopy/app/workspace.py",
     "carnopy/cli.py",
     "carnopy/inspection.py",
     "carnopy/config/sweep.py",
@@ -72,6 +79,13 @@ SDIST_REQUIRED = {
     "scripts/smoke_installed.py",
     "scripts/verify_index_release.py",
     "src/carnopy/__init__.py",
+    "src/carnopy/_execution.py",
+    "src/carnopy/app/__init__.py",
+    "src/carnopy/app/launcher.py",
+    "src/carnopy/app/protocol.py",
+    "src/carnopy/app/window.py",
+    "src/carnopy/app/worker.py",
+    "src/carnopy/app/workspace.py",
     "src/carnopy/config/sweep.py",
     "src/carnopy/inspection.py",
     "src/carnopy/py.typed",
@@ -229,17 +243,19 @@ def validate_metadata(metadata: Message, expected_version: str, *, artifact: str
     if keywords != PROJECT_KEYWORDS:
         raise ValueError(f"{artifact} metadata declares unexpected keywords: {sorted(keywords)}")
     extras = set(metadata.get_all("Provides-Extra", []))
-    if extras != {"all", "ml", "viz"}:
+    if extras != {"all", "app", "ml", "viz"}:
         raise ValueError(f"{artifact} metadata declares unexpected optional extras: {extras}")
     matplotlib_requirements = [
         requirement
         for requirement in metadata.get_all("Requires-Dist", [])
         if requirement.casefold().startswith("matplotlib")
     ]
-    if len(matplotlib_requirements) != 2 or any(
+    if len(matplotlib_requirements) != 3 or any(
         "extra ==" not in requirement for requirement in matplotlib_requirements
     ):
-        raise ValueError(f"{artifact} must declare Matplotlib only through all and viz extras")
+        raise ValueError(
+            f"{artifact} must declare Matplotlib only through all, app, and viz extras"
+        )
     safetensors_requirements = [
         requirement
         for requirement in metadata.get_all("Requires-Dist", [])
@@ -249,6 +265,15 @@ def validate_metadata(metadata: Message, expected_version: str, *, artifact: str
         "extra ==" not in requirement for requirement in safetensors_requirements
     ):
         raise ValueError(f"{artifact} must declare SafeTensors only through all and ml extras")
+    pyside_requirements = [
+        requirement
+        for requirement in metadata.get_all("Requires-Dist", [])
+        if requirement.casefold().startswith("pyside6-essentials")
+    ]
+    if len(pyside_requirements) != 2 or any(
+        "extra ==" not in requirement for requirement in pyside_requirements
+    ):
+        raise ValueError(f"{artifact} must declare PySide6 only through all and app extras")
 
 
 def forbidden_paths(names: set[str], *, strip_root: bool) -> list[str]:
@@ -292,6 +317,8 @@ def inspect_wheel(path: Path, expected_version: str) -> None:
         entry_points = reader.read(entry_point_names[0]).decode("utf-8")
         if "carnopy = carnopy.__main__:main" not in entry_points:
             raise ValueError("wheel does not contain the carnopy console entry point")
+        if "carnopy-app = carnopy.app.launcher:main" not in entry_points:
+            raise ValueError("wheel does not contain the carnopy-app console entry point")
 
 
 def inspect_sdist(path: Path, expected_version: str) -> None:

@@ -109,6 +109,12 @@ def test_distribution_path_filters_and_source_version() -> None:
 
 def test_distribution_checker_requires_model_sweep_artifacts() -> None:
     assert {
+        "carnopy/_execution.py",
+        "carnopy/app/launcher.py",
+        "carnopy/app/protocol.py",
+        "carnopy/app/window.py",
+        "carnopy/app/worker.py",
+        "carnopy/app/workspace.py",
         "carnopy/config/sweep.py",
         "carnopy/inspection.py",
         "carnopy/preparation/arrays.py",
@@ -127,6 +133,12 @@ def test_distribution_checker_requires_model_sweep_artifacts() -> None:
     }.issubset(check_distribution.WHEEL_REQUIRED)
     assert {
         "configs/model_sweep_example.yaml",
+        "src/carnopy/_execution.py",
+        "src/carnopy/app/launcher.py",
+        "src/carnopy/app/protocol.py",
+        "src/carnopy/app/window.py",
+        "src/carnopy/app/worker.py",
+        "src/carnopy/app/workspace.py",
         "src/carnopy/config/sweep.py",
         "src/carnopy/inspection.py",
         "src/carnopy/preparation/arrays.py",

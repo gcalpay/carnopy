@@ -75,15 +75,47 @@ jobs:
       - name: Synchronize test dependencies
         run: >-
           uv sync --locked --python "${{ matrix.python-version }}"
-          --extra all --no-default-groups --group test
+          --extra viz --extra ml --no-default-groups --group test
       - name: Run tests
         run: uv run --locked --no-default-groups --group test pytest
+
+  app:
+    name: Release desktop app (Python 3.12)
+    runs-on: ubuntu-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - name: Check out source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          version: "0.11.23"
+          enable-cache: true
+      - name: Synchronize desktop test dependencies
+        run: >-
+          uv sync --locked --python 3.12
+          --extra app --no-default-groups --group test
+      - name: Run desktop tests
+        run: >-
+          uv run --locked --no-default-groups --group test pytest
+          tests/test_app_launcher.py
+          tests/test_app_workspace.py
+          tests/test_app_window.py
+          tests/test_app_worker.py
 
   build:
     name: Build distributions once
     needs:
       - quality
       - tests
+      - app
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -172,6 +204,24 @@ jobs:
             --work-directory "$RUNNER_TEMP/ml-smoke" \
             --expected-version "${GITHUB_REF_NAME#v}" \
             --with-ml-exports
+      - name: Smoke-test wheel with app extra outside checkout
+        shell: bash
+        run: |
+          WHEEL="$(find "$PWD/release/dist" -maxdepth 1 -name '*.whl' -print -quit)"
+          python -m venv "$RUNNER_TEMP/carnopy-app"
+          WHEEL_URI="$("$RUNNER_TEMP/carnopy-app/bin/python" -c \
+            'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve().as_uri())' \
+            "$WHEEL")"
+          "$RUNNER_TEMP/carnopy-app/bin/python" -m pip install \
+            --index-url https://pypi.org/simple/ \
+            "carnopy[app] @ ${WHEEL_URI}"
+          "$RUNNER_TEMP/carnopy-app/bin/python" -m pip check
+          QT_QPA_PLATFORM=offscreen \
+          "$RUNNER_TEMP/carnopy-app/bin/python" scripts/smoke_installed.py \
+            --work-directory "$RUNNER_TEMP/app-smoke" \
+            --expected-version "${GITHUB_REF_NAME#v}" \
+            --with-visualization \
+            --with-app
       - name: Smoke-test wheel with all extras outside checkout
         shell: bash
         run: |
@@ -188,7 +238,8 @@ jobs:
             --work-directory "$RUNNER_TEMP/all-smoke" \
             --expected-version "${GITHUB_REF_NAME#v}" \
             --with-visualization \
-            --with-ml-exports
+            --with-ml-exports \
+            --with-app
       - name: Smoke-test sdist and reconstruct wheel outside checkout
         shell: bash
         run: |
@@ -281,4 +332,5 @@ jobs:
             --work-directory "$RUNNER_TEMP/pypi-smoke" \
             --expected-version "${GITHUB_REF_NAME#v}" \
             --with-visualization \
-            --with-ml-exports
+            --with-ml-exports \
+            --with-app
