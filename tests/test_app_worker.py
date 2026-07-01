@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib
 import io
 import json
@@ -13,7 +14,13 @@ import pytest
 from pydantic import ValidationError
 
 from carnopy._execution import ExecutionCancelled, ExecutionControl
-from carnopy.app.protocol import PROTOCOL_VERSION, WorkerEvent, encode_event, parse_request
+from carnopy.app.protocol import (
+    PROTOCOL_VERSION,
+    WorkerEvent,
+    encode_event,
+    parse_event,
+    parse_request,
+)
 from carnopy.app.worker import _listen_for_cancellation, main
 from carnopy.config.io import load_config_file
 from carnopy.domain.failures import OutputError
@@ -44,11 +51,17 @@ def test_protocol_round_trip_and_version_rejection() -> None:
 
     event = WorkerEvent(request_id=request.request_id, type="accepted")
     assert json.loads(encode_event(event))["protocol_version"] == PROTOCOL_VERSION
+    assert parse_event(encode_event(event)).request_id == request.request_id
 
     invalid = json.loads(line)
     invalid["protocol_version"] = 2
     with pytest.raises(ValidationError):
         parse_request(json.dumps(invalid))
+
+    invalid_event = json.loads(encode_event(event))
+    invalid_event["protocol_version"] = 2
+    with pytest.raises(ValidationError):
+        parse_event(json.dumps(invalid_event))
 
 
 def test_worker_validates_without_calling_cli(property_config_path: Path) -> None:
@@ -78,6 +91,25 @@ def test_worker_describes_model_capabilities() -> None:
     assert isinstance(payload, dict)
     assert payload["backend"] == "coolprop"
     assert payload["model"] == "pr"
+    assert payload["models"] == ["heos", "pr", "srk"]
+    assert payload["modes"] == [
+        "property_table",
+        "saturation_table",
+        "vapor_mass_fraction_table",
+    ]
+    assert payload["dataset_formats"] == ["csv", "parquet"]
+    assert payload["units_by_axis"] == {
+        "temperature": ["K", "degC"],
+        "pressure": ["Pa", "kPa", "MPa", "bar"],
+        "vapor_mass_fraction": ["1"],
+    }
+    assert {item["kind"] for item in payload["samplers"]} == {
+        "explicit",
+        "linspace",
+        "stepspace",
+        "geomspace",
+        "logspace",
+    }
     assert payload["fluids"]
     properties = payload["properties"]
     assert isinstance(properties, list)
@@ -86,6 +118,99 @@ def test_worker_describes_model_capabilities() -> None:
         for property_metadata in properties
         if isinstance(property_metadata, dict)
     }
+    catalog = {item["name"]: item for item in payload["property_catalog"] if isinstance(item, dict)}
+    assert catalog["mass_density"]["supported_models"] == ["heos", "pr", "srk"]
+    assert catalog["dynamic_viscosity"]["supported_models"] == ["heos"]
+    assert payload["reference_dependent_fields"] == [
+        "specific_enthalpy",
+        "specific_entropy",
+        "specific_internal_energy",
+    ]
+    assert payload["visualization"]["plot_kinds"] == [
+        "property_curves",
+        "property_heatmap",
+        "xy",
+        "pv",
+        "ts",
+    ]
+    assert payload["visualization"]["kind_contracts"]["xy"] == {
+        "required": ["x", "y"],
+        "applicable": [
+            "x",
+            "y",
+            "group_by",
+            "filters",
+            "series",
+            "display_units",
+            "fluids",
+            "x_scale",
+            "y_scale",
+            "format",
+        ],
+    }
+
+
+def test_worker_loads_and_fully_validates_dataset_config(
+    property_config_path: Path,
+) -> None:
+    request_id, line = _request(
+        "load_dataset_config",
+        {"config_path": str(property_config_path)},
+    )
+    stdout = io.StringIO()
+
+    assert main(io.StringIO(line + "\n"), stdout, io.StringIO()) == 0
+
+    events = _events(stdout)
+    assert [event["type"] for event in events] == ["accepted", "phase", "result"]
+    assert all(event["request_id"] == request_id for event in events)
+    payload = events[-1]["payload"]
+    assert isinstance(payload, dict)
+    assert payload["config"]["fluids"] == ["Propane"]
+    assert payload["validation"]["projected_rows"] == 2
+    assert payload["requested_fluid_canonical_names"] == ["n-Propane"]
+    assert payload["source_sha256"] == hashlib.sha256(property_config_path.read_bytes()).hexdigest()
+
+
+def test_worker_validates_exact_dataset_yaml_text(property_config_path: Path) -> None:
+    text = property_config_path.read_text(encoding="utf-8")
+    _, line = _request(
+        "validate_dataset_config",
+        {"yaml_text": text, "source_name": "draft.yaml"},
+    )
+    stdout = io.StringIO()
+
+    assert main(io.StringIO(line + "\n"), stdout, io.StringIO()) == 0
+
+    payload = _events(stdout)[-1]["payload"]
+    assert isinstance(payload, dict)
+    assert payload["source_name"] == "draft.yaml"
+    assert payload["source_sha256"] == hashlib.sha256(text.encode()).hexdigest()
+
+
+def test_worker_reports_structured_dataset_config_issues(property_config_path: Path) -> None:
+    text = property_config_path.read_text(encoding="utf-8").replace(
+        "properties:\n  - specific_enthalpy\n  - mass_density",
+        "properties: []",
+    )
+    _, line = _request(
+        "validate_dataset_config",
+        {"yaml_text": text, "source_name": "invalid.yaml"},
+    )
+    stdout = io.StringIO()
+
+    assert main(io.StringIO(line + "\n"), stdout, io.StringIO()) == 1
+
+    event = _events(stdout)[-1]
+    assert event["type"] == "error"
+    payload = event["payload"]
+    assert isinstance(payload, dict)
+    assert payload["category"] == "config"
+    assert len(payload["issues"]) == 1
+    issue = payload["issues"][0]
+    assert issue["path"] == "properties"
+    assert issue["code"] == "too_short"
+    assert "at least 1" in issue["message"]
 
 
 def test_worker_generates_structured_progress_and_result(

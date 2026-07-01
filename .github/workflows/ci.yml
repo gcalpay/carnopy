@@ -112,6 +112,7 @@ jobs:
         run: >-
           uv run --locked --no-default-groups --group test pytest
           tests/test_app_launcher.py
+          tests/test_app_client.py
           tests/test_app_workspace.py
           tests/test_app_window.py
           tests/test_app_worker.py

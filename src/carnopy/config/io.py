@@ -28,6 +28,21 @@ class LoadedSweepConfig:
 
 def load_config_file(path: str | Path) -> LoadedConfig:
     config_path, raw_bytes, payload = _load_yaml_mapping(path)
+    return _load_config_payload(config_path, raw_bytes, payload)
+
+
+def load_config_bytes(raw_bytes: bytes, *, source_name: str = "<memory>") -> LoadedConfig:
+    """Load one dataset configuration from in-memory YAML bytes."""
+    config_path = Path(source_name)
+    payload = _parse_yaml_mapping(config_path, raw_bytes)
+    return _load_config_payload(config_path, raw_bytes, payload)
+
+
+def _load_config_payload(
+    config_path: Path,
+    raw_bytes: bytes,
+    payload: dict[str, Any],
+) -> LoadedConfig:
     if payload.get("schema_version") == 1:
         raise ConfigError(
             "configuration schema version 1 is no longer supported. Migrate to "
@@ -60,10 +75,14 @@ def _load_yaml_mapping(path: str | Path) -> tuple[Path, bytes, dict[str, Any]]:
         raw_bytes = config_path.read_bytes()
     except OSError as exc:
         raise ConfigError(f"could not read configuration {config_path}: {exc}") from exc
+    return config_path, raw_bytes, _parse_yaml_mapping(config_path, raw_bytes)
+
+
+def _parse_yaml_mapping(config_path: Path, raw_bytes: bytes) -> dict[str, Any]:
     try:
         payload: Any = yaml.safe_load(raw_bytes)
     except yaml.YAMLError as exc:
         raise ConfigError(f"invalid YAML in {config_path}: {exc}") from exc
     if not isinstance(payload, dict):
         raise ConfigError("configuration root must be a YAML mapping")
-    return config_path, raw_bytes, payload
+    return payload

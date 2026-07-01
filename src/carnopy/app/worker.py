@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import sys
 import threading
 import traceback
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
-from typing import IO, Any, Literal, cast
+from typing import IO, TYPE_CHECKING, Any, Literal, cast
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -22,6 +23,9 @@ from carnopy.app.protocol import (
 )
 from carnopy.domain.failures import CarnopyError, ConfigError
 
+if TYPE_CHECKING:
+    from carnopy.config.io import LoadedConfig
+
 SYSTEM_REQUEST_ID = UUID(int=0)
 
 
@@ -35,6 +39,13 @@ class ValidatePayload(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     config_path: Path
+
+
+class ValidateDatasetTextPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    yaml_text: str
+    source_name: str = "<gui>"
 
 
 class GeneratePayload(ValidatePayload):
@@ -90,7 +101,7 @@ def main(
         writer.emit("cancelled", {"message": str(exc)})
         return 0
     except ConfigError as exc:
-        writer.emit("error", {"category": "config", "message": str(exc)})
+        writer.emit("error", _config_error_payload(exc))
         return 1
     except CarnopyError as exc:
         writer.emit("error", {"category": "execution", "message": str(exc)})
@@ -115,7 +126,26 @@ def _execute(
     cancelled: threading.Event,
 ) -> dict[str, Any]:
     if request.type == "describe_capabilities":
-        return _describe_capabilities(CapabilitiesPayload.model_validate(request.payload))
+        from carnopy.app.capabilities import describe_capabilities
+
+        capabilities = CapabilitiesPayload.model_validate(request.payload)
+        return cast(dict[str, Any], describe_capabilities(capabilities.model))
+    if request.type == "load_dataset_config":
+        load_payload = ValidatePayload.model_validate(request.payload)
+        writer.emit("phase", {"name": "validation", "cancellable": True})
+        from carnopy.config.io import load_config_file
+
+        return _validated_dataset_payload(load_config_file(load_payload.config_path))
+    if request.type == "validate_dataset_config":
+        text_payload = ValidateDatasetTextPayload.model_validate(request.payload)
+        writer.emit("phase", {"name": "validation", "cancellable": True})
+        from carnopy.config.io import load_config_bytes
+
+        loaded = load_config_bytes(
+            text_payload.yaml_text.encode("utf-8"),
+            source_name=text_payload.source_name,
+        )
+        return _validated_dataset_payload(loaded)
     if request.type == "validate_config":
         payload = ValidatePayload.model_validate(request.payload)
         writer.emit("phase", {"name": "validation", "cancellable": True})
@@ -146,26 +176,40 @@ def _execute(
     raise ValueError(f"worker request type {request.type!r} is not implemented in GUI Stage 1")
 
 
-def _describe_capabilities(payload: CapabilitiesPayload) -> dict[str, Any]:
-    from carnopy.backends.coolprop import CoolPropBackend
-    from carnopy.backends.coolprop_models import supported_properties
-    from carnopy.domain.properties import PROPERTY_REGISTRY
+def _validated_dataset_payload(loaded: LoadedConfig) -> dict[str, Any]:
+    from carnopy.pipeline import validate_loaded_config
 
-    backend = CoolPropBackend(model=payload.model)
-    properties = [
-        PROPERTY_REGISTRY[name].metadata() for name in supported_properties(payload.model)
-    ]
-    fluids = [
-        {"name": fluid, "aliases": list(backend.aliases_for(fluid))}
-        for fluid in backend.list_fluids()
-    ]
+    validated = validate_loaded_config(loaded)
     return {
-        "backend": backend.name,
-        "backend_version": backend.version,
-        "model": backend.model,
-        "fluids": fluids,
-        "properties": properties,
+        "config": loaded.model.model_dump(mode="json", by_alias=True, exclude_none=True),
+        "source_name": str(loaded.path),
+        "source_sha256": hashlib.sha256(loaded.raw_bytes).hexdigest(),
+        "validation": asdict(validated.result),
+        "requested_fluid_canonical_names": list(
+            validated.normalized.requested_fluid_canonical_names
+        ),
     }
+
+
+def _config_error_payload(error: ConfigError) -> dict[str, Any]:
+    payload: dict[str, Any] = {"category": "config", "message": str(error)}
+    cause: BaseException | None = error.__cause__
+    while cause is not None and not isinstance(cause, ValidationError):
+        cause = cause.__cause__
+    if isinstance(cause, ValidationError):
+        payload["issues"] = [
+            {
+                "path": ".".join(str(item) for item in issue["loc"]) or "$",
+                "code": str(issue["type"]),
+                "message": str(issue["msg"]),
+            }
+            for issue in cause.errors(
+                include_url=False,
+                include_context=False,
+                include_input=False,
+            )
+        ]
+    return payload
 
 
 def _listen_for_cancellation(

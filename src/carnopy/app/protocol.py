@@ -9,6 +9,8 @@ PROTOCOL_VERSION: Final[Literal[1]] = 1
 
 RequestType = Literal[
     "describe_capabilities",
+    "load_dataset_config",
+    "validate_dataset_config",
     "validate_config",
     "generate_dataset",
     "inspect_source",
@@ -39,6 +41,10 @@ class WorkerEvent(BaseModel):
 
 def parse_request(line: str) -> WorkerRequest:
     return WorkerRequest.model_validate_json(line)
+
+
+def parse_event(line: str) -> WorkerEvent:
+    return WorkerEvent.model_validate_json(line)
 
 
 def encode_event(event: WorkerEvent) -> str:
