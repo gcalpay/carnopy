@@ -19,8 +19,9 @@ Stage 7 is complete.
   may be saved atomically after worker validation.
 - Generated dataset runs remain immutable. Cooperative cancellation may clean
   worker-owned staging output but never a finalized run.
-- GUI-1 creates dataset configurations only. Sweep and preparation creation are
-  deferred to GUI-2.
+- GUI-1 creates, validates, generates, inspects, and plots dataset
+  configurations. Sweep and preparation bundles are read-only; creating those
+  workflows is deferred to GUI-2.
 
 ## Stage status
 
@@ -28,7 +29,7 @@ Stage 7 is complete.
 | --- | --- | --- |
 | 1 | Worker protocol, generation progress, cancellation, and staging cleanup | Complete |
 | 2 | Optional app packaging, launcher, workspace lifecycle, and desktop shell | Complete |
-| 3 | Dataset configuration editor and deterministic YAML workflow | Active |
+| 3 | Dataset configuration editor and deterministic YAML workflow | Complete |
 | 4 | Validation, generation, source inspection, table previews, jobs, and recovery | Pending |
 | 5 | Manual plot export and PNG/SVG previews | Pending |
 | 6 | CI, documentation, packaging, and `0.1.0a3` release hardening | Pending |
@@ -36,8 +37,8 @@ Stage 7 is complete.
 
 ## Stage 3 decisions
 
-Stage 3 is split into local commits and pushed once after manual inspection and
-the final gate.
+Stage 3 was implemented in focused commits and manually inspected before its
+final documentation pass.
 
 - New Dataset opens a mode-selection dialog and loads the selected packaged
   concise template.
@@ -51,9 +52,14 @@ the final gate.
 - Mode changes require confirmation, preserve shared fields, reset the
   mode-specific grid, and clear configured plot requests.
 - Configured visualization editing is structured and round-trip safe for every
-  current plot field, but Stage 3 does not render plots.
-- README and contributor guidance are updated once the complete editor has been
-  manually verified. Graphify remains unchanged until Stage 7.
+  current plot field. Finite choices such as fields, fluids, categorical
+  values, units, formats, scales, and valid series dimensions use guided
+  controls. Exact numeric filter and series levels remain explicit inputs
+  because no dataset exists yet.
+- Full worker validation remains authoritative before Save. Stage 3 does not
+  render plots.
+- README and contributor guidance describe the implemented editor. Graphify
+  remains unchanged until Stage 7.
 
 ## Remaining stages
 

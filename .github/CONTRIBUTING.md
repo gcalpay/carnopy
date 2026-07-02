@@ -20,6 +20,9 @@ directly to a pull request.
 
 Read [AGENTS.md](../AGENTS.md) before changing code. It records the architecture,
 scientific invariants, compatibility boundaries, and release safeguards.
+During `0.1.0a3` desktop development, also read
+[GUI_PLAN.md](../GUI_PLAN.md). It records the active GUI stage and the boundary
+between Qt presentation code and scientific worker execution.
 
 ## Development setup
 
@@ -60,6 +63,11 @@ full-table snapshots.
 
 Tests must use temporary directories. Do not commit generated datasets, figures,
 caches, virtual environments, or build artifacts.
+
+Desktop changes use the optional `app` extra already included by `all`. Run Qt
+tests headlessly with `QT_QPA_PLATFORM=offscreen`; do not introduce
+pixel-perfect screenshot assertions. The GUI process must remain free of
+CoolProp, pandas, PyArrow, and Matplotlib execution imports.
 
 ## Pull requests
 

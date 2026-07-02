@@ -98,12 +98,15 @@ Milestone 1 supports:
 - metadata and report JSON;
 - optional Matplotlib property curves, sampled heatmaps, x-y plots, and p-v/T-s
   diagrams;
-- configured post-generation visualization.
+- configured post-generation visualization;
 - model-sweep bundles comparing emitted values from multiple CoolProp models.
 
 The `0.1.0a3` development line adds a Linux-first PySide6 desktop frontend for
 the existing dataset workflow. The desktop application is a presentation
-frontend, not a new scientific execution layer.
+frontend, not a new scientific execution layer. GUI-1 Stages 1–3 are complete:
+the worker protocol, optional desktop shell, workspace lifecycle, and
+worker-validated dataset configuration editor are implemented. Stage 4 adds
+dataset execution and read-only output/bundle inspection.
 
 During GUI-1 development, [GUI_PLAN.md](GUI_PLAN.md) is the temporary source of
 truth for stage boundaries and status. Read it before changing desktop modules,

@@ -51,11 +51,16 @@ uv tool install "carnopy[all]==0.1.0a2"
 uv tool install "carnopy[ml]==0.1.0a2"
 ```
 
-The base package supports generation and validation. The `viz` extra installs
-Matplotlib for manual or configured figure generation. The `ml` extra installs
-SafeTensors for optional array/tensor preparation exports. The `all` extra is
-the union of user-facing optional extras. PyArrow remains a core dependency
-because Parquet is a supported first-class output format.
+The published `0.1.0a2` base package supports the command-line dataset
+workflow. Its `viz` extra installs Matplotlib for manual or configured figure
+generation, and its `ml` extra installs SafeTensors for optional array/tensor
+preparation exports. PyArrow remains a core dependency because Parquet is a
+supported first-class output format.
+
+The unreleased `0.1.0a3.dev0` source tree additionally defines an `app` extra
+with PySide6 Essentials and Matplotlib. In current source, `all` is the union
+of `viz`, `ml`, and `app`. The desktop application is not part of the published
+`0.1.0a2` wheel.
 
 ## Quick start
 
@@ -83,6 +88,24 @@ uv sync --locked --extra all --group dev
 uv run --locked carnopy --help
 ```
 
+The current desktop development build can be opened from a source checkout:
+
+```bash
+uv run --locked carnopy-app
+```
+
+To preselect a workspace without initializing it silently:
+
+```bash
+uv run --locked carnopy-app --workspace /path/to/workspace
+```
+
+GUI-1 currently provides workspace lifecycle and a worker-validated editor for
+all three dataset configuration modes. The editor uses structured Dataset and
+Visualization forms and shows the exact deterministic YAML that Save writes.
+Validation/generation controls, source inspection, table previews, job
+diagnostics, and plot previews remain under development for `0.1.0a3`.
+
 ## Guide
 
 - [Workflow details](#workflow-details)
@@ -91,6 +114,7 @@ uv run --locked carnopy --help
 - [Visualization](#visualization)
 - [Generated outputs and provenance](#generated-outputs-and-provenance)
 - [Python API](#python-api)
+- [Desktop development](#desktop-development)
 - [Architecture map](#architecture-map)
 - [Scientific limitations](#scientific-limitations)
 - [Development and contribution](#development-and-contribution)
@@ -918,6 +942,42 @@ pv = plot_thermodynamic_diagram("outputs/<run>", kind="pv")
 The returned Matplotlib figure represents an image that has already been
 exported. Modifying it does not update the image or provenance sidecar.
 
+## Desktop development
+
+The Linux-first desktop frontend is an optional PySide6 Qt Widgets application
+over the same Carnopy Python pipelines used by the CLI. Widgets do not parse or
+invoke CLI output. Scientific validation and execution run in a short-lived
+worker process through a private, versioned JSON Lines protocol.
+
+The current `0.1.0a3.dev0` source implementation includes:
+
+- explicit workspace creation, initialization, and reopening;
+- workspace-local `configs/`, `outputs/`, and `figures/` directories;
+- structured editing for HEOS, PR, and SRK dataset configurations;
+- all three dataset modes, current samplers, units, properties, and output
+  formats;
+- guided configured-visualization requests for every current plot kind;
+- deterministic read-only YAML preview;
+- worker validation before Import or Save;
+- exclusive Save As, atomic normal Save, dirty-state prompts, and external-file
+  modification detection.
+
+Imported invalid YAML files remain untouched and must be repaired in a text
+editor before import. Imported valid files also remain untouched until saved
+under the selected workspace. Exact numeric visualization filters and series
+levels remain explicit inputs; finite choices such as fields, fluids,
+categorical values, units, formats, scales, and valid series dimensions are
+provided by the editor.
+
+GUI-1 does not yet expose dataset generation, bundle inspection, table
+previews, job diagnostics, or exported-plot previews. Sweep and preparation
+creation are reserved for GUI-2; GUI-1 will inspect their completed bundles
+read-only.
+
+Qt is an optional third-party dependency with its own LGPL/GPL/commercial
+licensing terms. Carnopy does not vendor Qt or distribute standalone desktop
+installers in GUI-1.
+
 ## Architecture map
 
 The repository includes a generated Graphify codebase map:
@@ -961,8 +1021,8 @@ changes.
   required model capability.
 - Visualization reads emitted columns only and is not a second property
   evaluation layer.
-- ORC generation, additional backends, ML training, GUI, web services,
-  databases, and mixture models are deferred.
+- ORC generation, additional backends, ML training, web services, databases,
+  and mixture models are deferred.
 
 Post-alpha work may add an optional cycle-feasibility subsystem that produces
 traceable screening datasets without turning the property generator into a
@@ -1037,8 +1097,14 @@ Report security vulnerabilities privately according to the
 ## Project status and roadmap
 
 Carnopy remains alpha software while its public schemas and backend boundaries
-are validated through real use. The next substantive milestone is a separately
-designed pure-fluid ORC feasibility-envelope subsystem. It will produce
+are validated through real use. The active `0.1.0a3` milestone is GUI-1, a
+Linux-first desktop frontend for the existing dataset workflow. The worker,
+workspace shell, and dataset configuration editor are implemented. Dataset
+execution, read-only bundle inspection, table previews, job diagnostics, and
+plot previews remain before release.
+
+After GUI-1 stabilizes, the next scientific milestone may be a separately
+designed pure-fluid ORC feasibility-envelope subsystem. It would produce
 traceable accepted and rejected operating windows rather than silently acting
 as a complete process simulator or optimizer.
 
@@ -1048,9 +1114,10 @@ efficiencies, critical-point and operating limits, and minimum turbine-exhaust
 quality. Saturated liquid alone is not a pump cavitation margin; NPSH may be
 reported only when sufficient hydraulic-system and pump data are supplied.
 
-Deferred work includes TFC screening, mixtures, 3D visualization, and a PySide6
-desktop interface. These capabilities will use the same core Python API rather
-than duplicate scientific logic.
+Deferred work includes GUI-2 sweep/preparation creation, TFC screening,
+mixtures, 3D visualization, additional backends, and standalone desktop
+installers. These capabilities will use the same core Python API rather than
+duplicate scientific logic.
 
 Use [GitHub issues](https://github.com/gcalpay/carnopy/issues) for bug reports,
 scientific discrepancies, and focused feature requests. See
