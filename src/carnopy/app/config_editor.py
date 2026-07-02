@@ -31,6 +31,7 @@ from carnopy.app.config_document import (
     write_new_config,
 )
 from carnopy.app.config_form import DatasetConfigForm
+from carnopy.app.visualization_editor import VisualizationEditor
 from carnopy.app.workspace import Workspace
 from carnopy.templates import template_text
 
@@ -65,8 +66,9 @@ class DatasetConfigEditor(QWidget):
 
         self.tabs = QTabWidget()
         self.form = DatasetConfigForm()
+        self.visualization = VisualizationEditor()
         self.tabs.addTab(self.form, "Dataset")
-        self.tabs.addTab(self._build_visualization_tab(), "Visualization")
+        self.tabs.addTab(self.visualization, "Visualization")
         self.tabs.addTab(self._build_preview_tab(), "YAML Preview")
         root.addWidget(self.tabs, 1)
 
@@ -79,6 +81,7 @@ class DatasetConfigEditor(QWidget):
         self.form.mode_change_requested.connect(self._mode_changed)
         self.form.coordinate_change_requested.connect(self._coordinate_changed)
         self.form.message.connect(self.status.setText)
+        self.visualization.changed.connect(self._refresh_form_state)
         self.client.request_succeeded.connect(self._worker_succeeded)
         self.client.request_failed.connect(self._worker_failed)
         self.client.busy_changed.connect(self._worker_busy_changed)
@@ -103,18 +106,6 @@ class DatasetConfigEditor(QWidget):
             layout.addWidget(button)
         layout.addStretch(1)
         return layout
-
-    def _build_visualization_tab(self) -> QWidget:
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        self.visualization_summary = QLabel(
-            "Configured visualization is preserved when a file is imported. "
-            "Structured plot editing is the next Stage 3 slice."
-        )
-        self.visualization_summary.setWordWrap(True)
-        layout.addWidget(self.visualization_summary)
-        layout.addStretch(1)
-        return page
 
     def _build_preview_tab(self) -> QWidget:
         page = QWidget()
@@ -284,6 +275,7 @@ class DatasetConfigEditor(QWidget):
     def _apply_capabilities(self, payload: dict[str, Any]) -> None:
         self.capabilities = payload
         self.form.apply_capabilities(payload)
+        self.visualization.apply_capabilities(payload)
         self._set_editor_enabled(True)
         self.status.setText("Create a new dataset configuration or import a valid YAML file.")
 
@@ -292,7 +284,7 @@ class DatasetConfigEditor(QWidget):
         self.file_label.setText("No dataset configuration is open.")
         self.preview.clear()
         self.form.clear()
-        self.visualization_summary.setText("No dataset configuration is open.")
+        self.visualization.load_visualization(None)
         self._form_valid = False
         self._update_actions()
 
@@ -346,6 +338,8 @@ class DatasetConfigEditor(QWidget):
     def _open_document(self, document: DatasetConfigDocument) -> None:
         self.document = document
         self.form.load_payload(document.payload)
+        self.visualization.set_dataset_context(document.payload)
+        self.visualization.load_visualization(document.payload.get("visualization"))
         self.file_label.setText(
             str(document.source_path) if document.source_path else "Unsaved dataset configuration"
         )
@@ -375,6 +369,8 @@ class DatasetConfigEditor(QWidget):
         payload.pop("visualization", None)
         self.document.set_payload(payload)
         self.form.load_payload(payload)
+        self.visualization.set_dataset_context(payload)
+        self.visualization.load_visualization(None)
         self._refresh_form_state()
 
     def _coordinate_changed(self, axis: str) -> None:
@@ -407,6 +403,12 @@ class DatasetConfigEditor(QWidget):
             return
         try:
             payload = self.form.current_payload(document.payload)
+            self.visualization.set_dataset_context(payload)
+            visualization = self.visualization.visualization_payload()
+            if visualization is None:
+                payload.pop("visualization", None)
+            else:
+                payload["visualization"] = visualization
             issue = self.form.obvious_issue(payload)
             if issue is not None:
                 raise ValueError(issue)
@@ -421,25 +423,8 @@ class DatasetConfigEditor(QWidget):
             self._form_valid = True
             self.preview.setPlainText(document.yaml_text)
             self.status.setText("Ready to save. Full validation runs before writing.")
-        self._update_visualization_summary()
         self._update_actions()
         self.draft_changed.emit(document.needs_save)
-
-    def _update_visualization_summary(self) -> None:
-        if self.document is None:
-            return
-        visualization = self.document.payload.get("visualization")
-        plots = visualization.get("plots", []) if isinstance(visualization, dict) else []
-        if plots:
-            self.visualization_summary.setText(
-                f"{len(plots)} configured plot request(s) are preserved. "
-                "Structured editing is implemented in the next Stage 3 slice."
-            )
-        else:
-            self.visualization_summary.setText(
-                "No configured visualization requests. Structured editing is implemented "
-                "in the next Stage 3 slice."
-            )
 
     def _handle_external_change(self) -> None:
         if self.document is None or self.document.source_path is None:

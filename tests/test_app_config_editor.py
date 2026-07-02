@@ -18,6 +18,7 @@ from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 from carnopy.app.config_document import new_document
 from carnopy.app.config_editor import DatasetConfigEditor
 from carnopy.app.config_widgets import SamplerEditor
+from carnopy.app.visualization_editor import PLOT_ROLE, PlotRequestDialog, VisualizationEditor
 from carnopy.app.workspace import initialize_workspace
 from carnopy.domain.properties import PROPERTY_REGISTRY
 from carnopy.templates import template_text
@@ -46,6 +47,67 @@ def capabilities() -> dict[str, Any]:
         if name not in cubic_unsupported:
             metadata["supported_models"].extend(["pr", "srk"])
         properties.append(metadata)
+    field_definitions = [
+        {
+            "name": "temperature",
+            "kind": "numeric",
+            "axis_allowed": True,
+            "group_allowed": True,
+            "filter_allowed": True,
+        },
+        {
+            "name": "pressure",
+            "kind": "numeric",
+            "axis_allowed": True,
+            "group_allowed": True,
+            "filter_allowed": True,
+        },
+        {
+            "name": "vapor_mass_fraction",
+            "kind": "numeric",
+            "axis_allowed": True,
+            "group_allowed": True,
+            "filter_allowed": True,
+        },
+        {
+            "name": "phase",
+            "kind": "categorical",
+            "axis_allowed": False,
+            "group_allowed": True,
+            "filter_allowed": True,
+        },
+        {
+            "name": "saturation_endpoint",
+            "kind": "categorical",
+            "axis_allowed": False,
+            "group_allowed": True,
+            "filter_allowed": True,
+        },
+        {
+            "name": "fluid",
+            "kind": "categorical",
+            "axis_allowed": False,
+            "group_allowed": False,
+            "filter_allowed": False,
+        },
+        {
+            "name": "specific_volume",
+            "kind": "numeric",
+            "axis_allowed": True,
+            "group_allowed": False,
+            "filter_allowed": False,
+        },
+        *[
+            {
+                "name": name,
+                "kind": "numeric",
+                "axis_allowed": True,
+                "group_allowed": False,
+                "filter_allowed": False,
+            }
+            for name in PROPERTY_REGISTRY
+        ],
+    ]
     return {
         "model": "heos",
         "models": ["heos", "pr", "srk"],
@@ -66,6 +128,83 @@ def capabilities() -> dict[str, Any]:
             {"name": "Isopentane", "aliases": ["IsoPentane"]},
         ],
         "property_catalog": properties,
+        "visualization": {
+            "plot_kinds": ["property_curves", "property_heatmap", "xy", "pv", "ts"],
+            "formats": ["png", "pdf", "svg"],
+            "scales": ["linear", "log"],
+            "kind_contracts": {
+                "property_curves": {
+                    "required": ["property"],
+                    "applicable": [
+                        "property",
+                        "x",
+                        "filters",
+                        "series",
+                        "display_units",
+                        "fluids",
+                        "value_scale",
+                        "format",
+                    ],
+                },
+                "property_heatmap": {
+                    "required": ["property"],
+                    "applicable": [
+                        "property",
+                        "filters",
+                        "display_units",
+                        "fluids",
+                        "color_scale",
+                        "format",
+                    ],
+                },
+                "xy": {
+                    "required": ["x", "y"],
+                    "applicable": [
+                        "x",
+                        "y",
+                        "group_by",
+                        "filters",
+                        "series",
+                        "display_units",
+                        "fluids",
+                        "x_scale",
+                        "y_scale",
+                        "format",
+                    ],
+                },
+                "pv": {
+                    "required": [],
+                    "applicable": [
+                        "filters",
+                        "series",
+                        "display_units",
+                        "fluids",
+                        "x_scale",
+                        "y_scale",
+                        "format",
+                    ],
+                },
+                "ts": {
+                    "required": [],
+                    "applicable": [
+                        "filters",
+                        "series",
+                        "display_units",
+                        "fluids",
+                        "x_scale",
+                        "y_scale",
+                        "format",
+                    ],
+                },
+            },
+            "fields": field_definitions,
+            "display_units": {
+                "temperature": ["K", "degC"],
+                "pressure": ["Pa", "kPa", "MPa", "bar"],
+                "specific_enthalpy": ["J/kg", "kJ/kg"],
+                "specific_entropy": ["J/(kg*K)", "kJ/(kg*K)"],
+            },
+        },
     }
 
 
@@ -125,6 +264,175 @@ def test_all_dataset_templates_populate_deterministic_valid_previews(
     assert yaml.safe_load(editor.preview.toPlainText())["fluids"] == payload["fluids"]
     assert editor.save_button.isEnabled()
     editor.shutdown()
+
+
+def test_visualization_editor_round_trips_all_plot_kinds_and_fields(
+    tmp_path: Path,
+    application: QApplication,
+) -> None:
+    del application
+    editor = configured_editor(tmp_path)
+    payload = yaml.safe_load(template_text("property_table"))
+    payload["visualization"] = {
+        "format": "svg",
+        "fluids": ["Propane"],
+        "filters": {"phase": "gas"},
+        "display_units": {"pressure": "bar"},
+        "plots": [
+            {
+                "name": "density-curves",
+                "kind": "property_curves",
+                "property": "mass_density",
+                "x": "temperature",
+                "filters": {"pressure": 100000.0},
+                "series": {"pressure": [100000.0, 300000.0]},
+                "display_units": {"temperature": "degC"},
+                "fluids": ["Propane"],
+                "value_scale": "log",
+                "format": "pdf",
+            },
+            {
+                "name": "density-map",
+                "kind": "property_heatmap",
+                "property": "mass_density",
+                "color_scale": "log",
+            },
+            {
+                "name": "enthalpy-entropy",
+                "kind": "xy",
+                "x": "specific_enthalpy",
+                "y": "specific_entropy",
+                "group_by": "pressure",
+                "x_scale": "log",
+                "y_scale": "linear",
+            },
+            {
+                "name": "pressure-volume",
+                "kind": "pv",
+                "series": {"temperature": [293.15, 313.15]},
+                "x_scale": "log",
+                "y_scale": "log",
+            },
+            {
+                "name": "temperature-entropy",
+                "kind": "ts",
+                "filters": {"phase": "gas"},
+                "x_scale": "linear",
+                "y_scale": "linear",
+            },
+        ],
+    }
+
+    editor._open_document(new_document(payload))
+
+    rendered = yaml.safe_load(editor.preview.toPlainText())["visualization"]
+    assert rendered["format"] == "svg"
+    assert rendered["fluids"] == ["Propane"]
+    assert rendered["filters"] == {"phase": "gas"}
+    assert rendered["display_units"] == {"pressure": "bar"}
+    assert [plot["kind"] for plot in rendered["plots"]] == [
+        "property_curves",
+        "property_heatmap",
+        "xy",
+        "pv",
+        "ts",
+    ]
+    assert rendered["plots"][0]["series"]["pressure"] == [100000.0, 300000.0]
+    assert rendered["plots"][0]["format"] == "pdf"
+    assert rendered["plots"][3]["series"]["temperature"] == [293.15, 313.15]
+    assert editor._form_valid
+    editor.shutdown()
+
+
+@pytest.mark.parametrize(
+    ("kind", "plot", "expected_keys"),
+    [
+        (
+            "property_curves",
+            {
+                "name": "curves",
+                "kind": "property_curves",
+                "property": "mass_density",
+                "x": "temperature",
+                "value_scale": "log",
+            },
+            {"name", "kind", "property", "x", "value_scale"},
+        ),
+        (
+            "property_heatmap",
+            {
+                "name": "map",
+                "kind": "property_heatmap",
+                "property": "mass_density",
+                "color_scale": "log",
+            },
+            {"name", "kind", "property", "color_scale"},
+        ),
+        (
+            "xy",
+            {
+                "name": "xy",
+                "kind": "xy",
+                "x": "specific_enthalpy",
+                "y": "specific_entropy",
+                "group_by": "pressure",
+            },
+            {"name", "kind", "x", "y", "group_by", "x_scale", "y_scale"},
+        ),
+        (
+            "pv",
+            {"name": "pv", "kind": "pv", "x_scale": "log"},
+            {"name", "kind", "x_scale", "y_scale"},
+        ),
+        (
+            "ts",
+            {"name": "ts", "kind": "ts", "y_scale": "log"},
+            {"name", "kind", "x_scale", "y_scale"},
+        ),
+    ],
+)
+def test_plot_dialog_applies_kind_specific_fields(
+    application: QApplication,
+    kind: str,
+    plot: dict[str, object],
+    expected_keys: set[str],
+) -> None:
+    del application, kind
+    dataset = yaml.safe_load(template_text("property_table"))
+    dialog = PlotRequestDialog(capabilities(), dataset, plot)
+
+    result = dialog.plot_payload()
+
+    assert set(result) == expected_keys
+    dialog.close()
+
+
+def test_visualization_requires_unique_names_and_preserves_plot_order(
+    application: QApplication,
+) -> None:
+    del application
+    dataset = yaml.safe_load(template_text("property_table"))
+    editor = VisualizationEditor()
+    editor.apply_capabilities(capabilities())
+    editor.set_dataset_context(dataset)
+    editor.load_visualization(
+        {
+            "plots": [
+                {"name": "first", "kind": "pv"},
+                {"name": "second", "kind": "ts"},
+            ]
+        }
+    )
+    editor.plots.setCurrentRow(1)
+    editor.move_plot(-1)
+
+    assert [plot["name"] for plot in editor.plot_payloads()] == ["second", "first"]
+    duplicate = editor.plots.item(1)
+    assert duplicate is not None
+    duplicate.setData(PLOT_ROLE, {"name": "second", "kind": "pv"})
+    with pytest.raises(ValueError, match="unique"):
+        editor.visualization_payload()
+    editor.close()
 
 
 def test_model_change_keeps_incompatible_property_visible_and_blocks_save(
@@ -263,6 +571,16 @@ def test_save_as_validates_exact_preview_and_refuses_overwrite(
 ) -> None:
     editor = configured_editor(tmp_path)
     payload = yaml.safe_load(template_text("property_table"))
+    payload["visualization"] = {
+        "plots": [
+            {
+                "name": "density-curves",
+                "kind": "property_curves",
+                "property": "mass_density",
+                "x": "temperature",
+            }
+        ]
+    }
     editor._open_document(new_document(payload))
     assert editor.workspace is not None
     destination = editor.workspace.configs / "property.yaml"
