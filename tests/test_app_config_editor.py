@@ -13,7 +13,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QEventLoop, QTimer
-from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
+from PySide6.QtWidgets import QApplication, QComboBox, QFileDialog, QLineEdit, QMessageBox
 
 from carnopy.app.config_document import new_document
 from carnopy.app.config_editor import DatasetConfigEditor
@@ -203,6 +203,10 @@ def capabilities() -> dict[str, Any]:
                 "pressure": ["Pa", "kPa", "MPa", "bar"],
                 "specific_enthalpy": ["J/kg", "kJ/kg"],
                 "specific_entropy": ["J/(kg*K)", "kJ/(kg*K)"],
+            },
+            "categorical_values": {
+                "phase": ["gas", "liquid", "two_phase"],
+                "saturation_endpoint": ["saturated_liquid", "saturated_vapor"],
             },
         },
     }
@@ -404,6 +408,84 @@ def test_plot_dialog_applies_kind_specific_fields(
     result = dialog.plot_payload()
 
     assert set(result) == expected_keys
+    dialog.close()
+
+
+def test_visualization_editor_offers_guided_shared_choices(
+    application: QApplication,
+) -> None:
+    del application
+    dataset = yaml.safe_load(template_text("property_table"))
+    editor = VisualizationEditor()
+    editor.apply_capabilities(capabilities())
+    editor.set_dataset_context(dataset)
+    editor.load_visualization(
+        {
+            "fluids": ["Propane"],
+            "filters": {"phase": "gas"},
+            "display_units": {"pressure": "bar"},
+            "plots": [{"name": "density", "kind": "pv"}],
+        }
+    )
+
+    assert editor.fluids.selected_values() == ["Propane"]
+    filter_field = editor.filters.table.cellWidget(0, 0)
+    filter_value = editor.filters.table.cellWidget(0, 1)
+    assert isinstance(filter_field, QComboBox)
+    assert isinstance(filter_value, QComboBox)
+    assert filter_field.currentText() == "phase"
+    assert [filter_value.itemText(index) for index in range(filter_value.count())] == [
+        "gas",
+        "liquid",
+        "two_phase",
+    ]
+    filter_field.setCurrentText("pressure")
+    assert isinstance(editor.filters.table.cellWidget(0, 1), QLineEdit)
+    filter_field.setCurrentText("phase")
+    reset_filter_value = editor.filters.table.cellWidget(0, 1)
+    assert isinstance(reset_filter_value, QComboBox)
+    assert reset_filter_value.currentText() == "gas"
+    unit_field = editor.display_units.table.cellWidget(0, 0)
+    unit_value = editor.display_units.table.cellWidget(0, 1)
+    assert isinstance(unit_field, QComboBox)
+    assert isinstance(unit_value, QComboBox)
+    assert unit_field.currentText() == "pressure"
+    assert [unit_value.itemText(index) for index in range(unit_value.count())] == [
+        "Pa",
+        "kPa",
+        "MPa",
+        "bar",
+    ]
+    editor.close()
+
+
+def test_plot_dialog_guides_series_fields_and_validates_numeric_filters(
+    application: QApplication,
+) -> None:
+    del application
+    dataset = yaml.safe_load(template_text("property_table"))
+    dialog = PlotRequestDialog(
+        capabilities(),
+        dataset,
+        {
+            "name": "density-curves",
+            "kind": "property_curves",
+            "property": "mass_density",
+            "x": "temperature",
+        },
+    )
+
+    dialog.series.add_row("pressure", "100000, 300000")
+    series_field = dialog.series.table.cellWidget(0, 0)
+    series_values = dialog.series.table.cellWidget(0, 1)
+    assert isinstance(series_field, QComboBox)
+    assert isinstance(series_values, QLineEdit)
+    assert [series_field.itemText(index) for index in range(series_field.count())] == ["pressure"]
+    assert dialog.plot_payload()["series"] == {"pressure": [100000.0, 300000.0]}
+
+    dialog.filters.add_row("pressure", "not-a-number")
+    with pytest.raises(ValueError, match="numeric field requires a number"):
+        dialog.plot_payload()
     dialog.close()
 
 

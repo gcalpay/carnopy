@@ -7,6 +7,7 @@ from carnopy.backends.coolprop import CoolPropBackend
 from carnopy.backends.coolprop_models import supported_properties
 from carnopy.config.models import CoolPropModel
 from carnopy.config.outputs import DATASET_FORMAT_ORDER
+from carnopy.domain.phases import PHASE_MAP
 from carnopy.domain.properties import PROPERTY_REGISTRY, REFERENCE_DEPENDENT_PROPERTIES
 from carnopy.domain.units import AXIS_DIMENSIONS, UNITS
 from carnopy.sampling.models import (
@@ -143,6 +144,10 @@ def describe_capabilities(model: CoolPropModel) -> dict[str, object]:
             "fields": [asdict(definition) for definition in FIELD_REGISTRY.values()],
             "display_units": {
                 field: list(units) for field, units in DISPLAY_UNITS_BY_FIELD.items()
+            },
+            "categorical_values": {
+                "phase": sorted(set(PHASE_MAP.values())),
+                "saturation_endpoint": ["saturated_liquid", "saturated_vapor"],
             },
         },
     }

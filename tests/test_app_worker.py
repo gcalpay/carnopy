@@ -148,6 +148,11 @@ def test_worker_describes_model_capabilities() -> None:
             "format",
         ],
     }
+    assert payload["visualization"]["categorical_values"]["saturation_endpoint"] == [
+        "saturated_liquid",
+        "saturated_vapor",
+    ]
+    assert "gas" in payload["visualization"]["categorical_values"]["phase"]
 
 
 def test_worker_loads_and_fully_validates_dataset_config(
