@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from PySide6.QtCore import QLocale, Qt, Signal
+from PySide6.QtCore import QLocale, QModelIndex, QPersistentModelIndex, Qt, Signal
 from PySide6.QtGui import QDoubleValidator
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
+    QCompleter,
     QHBoxLayout,
     QHeaderView,
     QLineEdit,
@@ -29,14 +30,17 @@ class ChoiceMappingTable(QWidget):
         *,
         multiple: bool = False,
         numeric_values: bool = True,
+        allow_text_numeric: bool = True,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.multiple = multiple
         self.numeric_values = numeric_values
+        self.allow_text_numeric = allow_text_numeric
         self.field_choices: list[str] = []
         self.field_kinds: dict[str, str] = {}
-        self.value_choices: dict[str, list[str]] = {}
+        self.value_choices: dict[str, list[tuple[str, str]]] = {}
+        self.value_hints: dict[str, str] = {}
         self._loading = False
         self.table = QTableWidget(0, 2)
         self.table.setHorizontalHeaderLabels([key_label, value_label])
@@ -62,14 +66,17 @@ class ChoiceMappingTable(QWidget):
         fields: list[str],
         *,
         field_kinds: Mapping[str, str] | None = None,
-        value_choices: Mapping[str, list[str]] | None = None,
+        value_choices: Mapping[str, list[str | tuple[str, str]]] | None = None,
+        value_hints: Mapping[str, str] | None = None,
     ) -> None:
         rows = self._raw_rows()
         self.field_choices = list(fields)
         self.field_kinds = dict(field_kinds or {})
         self.value_choices = {
-            field: list(values) for field, values in (value_choices or {}).items()
+            field: [(value, value) if isinstance(value, str) else value for value in values]
+            for field, values in (value_choices or {}).items()
         }
+        self.value_hints = dict(value_hints or {})
         self.add_button.setEnabled(bool(self.field_choices))
         self._load_rows(rows)
 
@@ -122,18 +129,24 @@ class ChoiceMappingTable(QWidget):
                 parts = [part.strip() for part in raw.split(",")]
                 if any(not part for part in parts):
                     raise ValueError(f"series field {key!r} contains an empty value")
-                result[key] = [self._parse_value(part, kind=kind) for part in parts]
+                result[key] = [self._parse_value(part, field=key, kind=kind) for part in parts]
             else:
-                result[key] = self._parse_value(raw, kind=kind)
+                result[key] = self._parse_value(raw, field=key, kind=kind)
         return result
 
-    def _parse_value(self, value: str, *, kind: str | None) -> float | str:
+    def _parse_value(self, value: str, *, field: str, kind: str | None) -> float | str:
+        lookup = {
+            candidate: canonical
+            for label, canonical in self.value_choices.get(field, [])
+            for candidate in (label, canonical)
+        }
+        value = lookup.get(value, value)
         if not self.numeric_values or kind == "categorical":
             return value
         try:
             return float(value)
         except ValueError:
-            if self.multiple:
+            if self.multiple and self.allow_text_numeric:
                 return value
             raise ValueError(f"numeric field requires a number; received {value!r}") from None
 
@@ -168,10 +181,12 @@ class ChoiceMappingTable(QWidget):
 
     def _set_value_widget(self, row: int, field: str, value: str) -> None:
         choices = self.value_choices.get(field, [])
-        if choices:
+        if choices and not self.multiple:
             combo_editor = QComboBox()
-            combo_editor.addItems(choices)
-            if value and value not in choices:
+            for label, canonical in choices:
+                combo_editor.addItem(label, canonical)
+            canonical_values = [canonical for _label, canonical in choices]
+            if value and value not in canonical_values:
                 combo_editor.addItem(f"Unsupported: {value}", value)
             if value:
                 index = combo_editor.findData(value)
@@ -180,14 +195,27 @@ class ChoiceMappingTable(QWidget):
             editor: QWidget = combo_editor
         else:
             line_editor = QLineEdit(value)
+            hint = self.value_hints.get(field)
             if self.multiple:
-                line_editor.setPlaceholderText("Comma-separated exact values, e.g. 1bar, 3bar")
+                line_editor.setPlaceholderText(
+                    hint or "Comma-separated exact values, e.g. 1bar, 3bar"
+                )
+                if choices:
+                    completer = _CommaSeparatedCompleter(
+                        [label for label, _canonical in choices],
+                        line_editor,
+                    )
+                    completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+                    completer.setFilterMode(Qt.MatchFlag.MatchContains)
+                    line_editor.setCompleter(completer)
             elif self.field_kinds.get(field) == "numeric":
                 validator = QDoubleValidator(line_editor)
                 validator.setLocale(QLocale.c())
                 validator.setNotation(QDoubleValidator.Notation.ScientificNotation)
                 line_editor.setValidator(validator)
-                line_editor.setPlaceholderText("Canonical SI numeric value")
+                line_editor.setPlaceholderText(hint or "Canonical SI numeric value")
+            if hint:
+                line_editor.setToolTip(hint)
             line_editor.textChanged.connect(lambda _text: self._emit_changed())
             editor = line_editor
         self.table.setCellWidget(row, 1, editor)
@@ -237,3 +265,16 @@ def _scalar_text(value: object) -> str:
     if isinstance(value, float):
         return format(value, ".15g")
     return str(value)
+
+
+class _CommaSeparatedCompleter(QCompleter):
+    def splitPath(self, path: str) -> list[str]:
+        return [path.rsplit(",", 1)[-1].strip()]
+
+    def pathFromIndex(self, index: QModelIndex | QPersistentModelIndex) -> str:
+        completion = super().pathFromIndex(index)
+        editor = self.widget()
+        if not isinstance(editor, QLineEdit) or "," not in editor.text():
+            return completion
+        prefix = editor.text().rsplit(",", 1)[0].rstrip()
+        return f"{prefix}, {completion}"

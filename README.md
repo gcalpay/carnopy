@@ -114,8 +114,10 @@ omit the option or use `auto` for normal Qt platform detection.
 GUI-1 currently provides workspace lifecycle, a worker-validated editor for all
 three dataset configuration modes, dataset validation and generation, output
 inspection, bounded table previews, job diagnostics, and guarded staging
-recovery. Manual plot export and image previews remain under development for
-`0.1.0a3`.
+recovery. Its in-progress plotting stage already provides inspection-driven
+plot requests plus a backend-free worker export path with guarded,
+no-overwrite-safe image and sidecar promotion. The desktop Render controls and
+PNG/SVG/PDF viewing remain under development for `0.1.0a3`.
 
 ## Guide
 
@@ -981,7 +983,12 @@ The current `0.1.0a3.dev0` source implementation includes:
 - order-preserving table previews fetched in bounded 500-row worker blocks and
   presented as local 100-row pages;
 - workspace-local Validate/Generate job diagnostics and confirmed, guarded
-  cleanup of recognized stale staging directories.
+  cleanup of recognized stale staging directories;
+- inspection-driven, session-only plot-request editing for dataset sources;
+- a private worker plot-rendering contract that uses existing visualization
+  logic without thermodynamic backend calls; and
+- guarded no-overwrite promotion of one image and provenance sidecar into a
+  worker-derived directory under the workspace `figures/` root.
 
 Imported invalid YAML files remain untouched and must be repaired in a text
 editor before import. Imported valid files also remain untouched until saved
@@ -992,8 +999,10 @@ provided by the editor.
 
 Sweep and preparation creation remain reserved for GUI-2; GUI-1 inspects their
 completed bundles read-only. NumPy and SafeTensors outputs are listed from the
-preparation manifest but are not rendered as matrices. Manual plot export and
-PNG/SVG/PDF preview remain Stage 5 work.
+preparation manifest but are not rendered as matrices. The Plot page can build
+a compatible request from inspection results, but its Render action, render
+lifecycle controls, PNG/SVG preview, and explicit PDF opening remain before
+Stage 5 is complete.
 
 Qt is an optional third-party dependency with its own LGPL/GPL/commercial
 licensing terms. Carnopy does not vendor Qt or distribute standalone desktop
@@ -1123,7 +1132,11 @@ Linux-first desktop frontend for the existing dataset workflow. The worker,
 workspace shell, and dataset configuration editor are implemented. Dataset
 execution, read-only bundle inspection, bounded table previews, job diagnostics,
 and guarded staging recovery are implemented. Manual plot export and image
-previews remain before release.
+preview foundations are partly implemented: inspection-driven requests,
+worker-side backend-free rendering, and safe no-overwrite artifact promotion
+are present. Desktop Render controls, force-stop/close ownership, PNG/SVG
+preview, explicit PDF opening, and the final Stage 5 documentation pass remain
+before release.
 
 After GUI-1 stabilizes, the next scientific milestone may be a separately
 designed pure-fluid ORC feasibility-envelope subsystem. It would produce

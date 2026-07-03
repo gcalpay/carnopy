@@ -108,7 +108,9 @@ the worker protocol, optional desktop shell, workspace lifecycle,
 worker-validated dataset configuration editor, saved-config execution,
 workspace-local job diagnostics, guarded staging recovery, read-only
 output/bundle inspection, and bounded table previews are implemented. Stage 5
-adds manual plot exports and previews.
+is in progress. Inspection-driven session plot requests, private worker
+rendering, and guarded no-overwrite image/sidecar promotion are implemented;
+desktop rendering controls and PNG/SVG/PDF viewing remain pending.
 
 During GUI-1 development, [GUI_PLAN.md](GUI_PLAN.md) is the temporary source of
 truth for stage boundaries and status. Read it before changing desktop modules,
@@ -257,6 +259,13 @@ protocol under `carnopy.app`; they must not invoke or parse the public CLI.
 Only the worker may import CoolProp, generation pipelines, pandas, PyArrow, or
 Matplotlib. Progress and cooperative cancellation use private execution hooks;
 do not add these hooks to the public Python API.
+
+Manual desktop plots must use the inspected dataset source and its integrity
+revision. The GUI supplies a session-only public-shaped request; the worker
+revalidates the source, renders through existing visualization code, and never
+calls a thermodynamic backend. Plot images and sidecars belong under a
+worker-derived direct child of the workspace figure root. Parent-side cleanup
+must trust only verified staging leases, manifests, and inode identities.
 
 ## Configuration and sampling contracts
 

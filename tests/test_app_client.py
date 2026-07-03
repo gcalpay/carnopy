@@ -79,6 +79,8 @@ def test_qprocess_client_runs_and_caches_capability_request(
     assert envelopes[0]["request_type"] == "describe_capabilities"
     assert envelopes[0]["terminal_event"]["type"] == "result"
     assert envelopes[0]["force_stopped"] is False
+    client.deleteLater()
+    application.processEvents()
 
 
 def test_importing_qprocess_client_does_not_load_scientific_dependencies() -> None:
@@ -105,7 +107,6 @@ for name in (
 def test_qprocess_client_rejects_mismatched_request_events(
     application: QApplication,
 ) -> None:
-    del application
     client = WorkerClient()
     failures: list[dict[str, object]] = []
     client.request_failed.connect(failures.append)
@@ -120,6 +121,8 @@ def test_qprocess_client_rejects_mismatched_request_events(
             "message": "worker event request ID does not match the active request",
         }
     ]
+    client.deleteLater()
+    application.processEvents()
 
 
 def test_qprocess_client_owns_plot_staging_cleanup(
@@ -178,3 +181,5 @@ def test_qprocess_client_owns_plot_staging_cleanup(
     staging_root = workspace.private_directory / "plot-staging"
     assert staging_root.is_dir()
     assert list(staging_root.iterdir()) == []
+    _client.deleteLater()
+    application.processEvents()

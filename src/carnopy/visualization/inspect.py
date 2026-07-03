@@ -53,6 +53,7 @@ class PlotInspection:
     property_details: tuple[dict[str, Any], ...]
     columns: tuple[dict[str, str], ...]
     phase_counts: dict[str, int]
+    categorical_values: dict[str, tuple[str, ...]]
     failure_counts: dict[str, dict[str, int]]
     plot_kinds: tuple[str, ...]
     series_fields: dict[str, tuple[str, ...]]
@@ -249,6 +250,11 @@ def inspect_plot_source(source: str | Path) -> PlotInspection:
             {"name": str(column), "dtype": str(frame[column].dtype)} for column in frame.columns
         ),
         phase_counts=_counts(frame, "phase"),
+        categorical_values={
+            field: tuple(sorted(frame[field].dropna().astype(str).str.strip().unique().tolist()))
+            for field in ("phase", "saturation_endpoint")
+            if field in frame.columns
+        },
         failure_counts={
             "layer": _counts(frame, "failure_layer"),
             "code": _counts(frame, "failure_code"),

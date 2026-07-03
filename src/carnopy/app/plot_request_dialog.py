@@ -24,12 +24,15 @@ class PlotRequestDialog(QDialog):
         dataset_payload: dict[str, Any],
         plot: dict[str, Any] | None = None,
         parent: QWidget | None = None,
+        *,
+        allow_format: bool = True,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Plot Request")
         self.resize(720, 760)
         self.capabilities = capabilities
         self.dataset_payload = dataset_payload
+        self.allow_format = allow_format
         visualization = capabilities.get("visualization", {})
         self.contracts = visualization.get("kind_contracts", {})
         self.field_kinds = {
@@ -65,6 +68,7 @@ class PlotRequestDialog(QDialog):
             "Series field",
             "Exact values (comma-separated)",
             multiple=True,
+            allow_text_numeric=not bool(visualization.get("numeric_levels")),
         )
         self.display_units = ChoiceMappingTable("Field", "Display unit", numeric_values=False)
         self._configure_filter_controls()
@@ -151,6 +155,8 @@ class PlotRequestDialog(QDialog):
         if not kind:
             raise ValueError("plot kind is required")
         applicable = set(self.contracts.get(kind, {}).get("applicable", []))
+        if not self.allow_format:
+            applicable.discard("format")
         payload: dict[str, Any] = {"name": name, "kind": kind}
         scalar_fields = {
             "property": _combo_value(self.property_name),
@@ -205,6 +211,8 @@ class PlotRequestDialog(QDialog):
 
     def _update_visibility(self, kind: str) -> None:
         applicable = set(self.contracts.get(kind, {}).get("applicable", []))
+        if not self.allow_format:
+            applicable.discard("format")
         if kind == "property_curves" and self.dataset_payload.get("mode") != "property_table":
             applicable.discard("x")
         for field, widget in self._rows.items():
@@ -248,18 +256,11 @@ class PlotRequestDialog(QDialog):
         return [str(value) for value in values] if isinstance(values, list) else []
 
     def _configure_filter_controls(self) -> None:
-        visualization = self.capabilities.get("visualization", {})
-        categorical = visualization.get("categorical_values", {})
         self.filters.configure(
             self._fields_with("filter_allowed"),
             field_kinds=self.field_kinds,
-            value_choices={
-                str(field): [str(value) for value in values]
-                for field, values in categorical.items()
-                if isinstance(values, list)
-            }
-            if isinstance(categorical, dict)
-            else {},
+            value_choices=self._level_choices(),
+            value_hints=self._level_hints(),
         )
 
     def _configure_plot_mappings(self, *_args: object) -> None:
@@ -268,7 +269,8 @@ class PlotRequestDialog(QDialog):
         self.series.configure(
             self._series_fields(),
             field_kinds=self.field_kinds,
-            value_choices=self._categorical_choices(),
+            value_choices=self._level_choices(),
+            value_hints=self._level_hints(),
         )
         display_fields = self._display_fields()
         self.display_units.configure(
@@ -281,15 +283,51 @@ class PlotRequestDialog(QDialog):
             },
         )
 
-    def _categorical_choices(self) -> dict[str, list[str]]:
+    def _level_choices(self) -> dict[str, list[str | tuple[str, str]]]:
         value = self.capabilities.get("visualization", {}).get("categorical_values", {})
-        if not isinstance(value, dict):
-            return {}
-        return {
+        choices: dict[str, list[str | tuple[str, str]]] = {
             str(field): [str(item) for item in items]
-            for field, items in value.items()
+            for field, items in (value.items() if isinstance(value, dict) else ())
             if isinstance(items, list)
         }
+        levels = self.capabilities.get("visualization", {}).get("numeric_levels", {})
+        if not isinstance(levels, dict):
+            return choices
+        for field, details in levels.items():
+            if not isinstance(details, dict) or not isinstance(details.get("choices"), list):
+                continue
+            choices[str(field)] = [
+                (str(item["label"]), _scalar_value(item["value"]))
+                for item in details["choices"]
+                if isinstance(item, dict) and "label" in item and "value" in item
+            ]
+        return choices
+
+    def _level_hints(self) -> dict[str, str]:
+        levels = self.capabilities.get("visualization", {}).get("numeric_levels", {})
+        if not isinstance(levels, dict):
+            return {}
+        hints: dict[str, str] = {}
+        for field, details in levels.items():
+            if not isinstance(details, dict):
+                continue
+            count = details.get("count")
+            minimum = details.get("minimum_display")
+            maximum = details.get("maximum_display")
+            unit = str(details.get("display_unit") or "")
+            if not isinstance(count, int):
+                continue
+            rendered_range = ""
+            if isinstance(minimum, (int, float)) and isinstance(maximum, (int, float)):
+                suffix = f" {unit}" if unit and unit != "1" else ""
+                rendered_range = (
+                    f"; display range {format(float(minimum), '.6g')}-"
+                    f"{format(float(maximum), '.6g')}{suffix}"
+                )
+            hints[str(field)] = (
+                f"{count} emitted level(s){rendered_range}; enter exact canonical SI values"
+            )
+        return hints
 
     def _series_fields(self) -> list[str]:
         kind = self.kind.currentText()
@@ -314,6 +352,11 @@ class PlotRequestDialog(QDialog):
                 expected = "saturation_endpoint"
             else:
                 expected = self._saturation_coordinate()
+        configured = self.capabilities.get("visualization", {}).get("series_fields")
+        if isinstance(configured, dict):
+            allowed = configured.get(kind)
+            if isinstance(allowed, list) and expected not in allowed:
+                expected = None
         return [expected] if expected is not None else []
 
     def _display_fields(self) -> list[str]:
@@ -391,3 +434,7 @@ def _combo(values: object) -> QComboBox:
 def _combo_value(combo: QComboBox) -> str:
     value = combo.currentData()
     return str(value) if isinstance(value, str) else combo.currentText()
+
+
+def _scalar_value(value: object) -> str:
+    return format(value, ".15g") if isinstance(value, float) else str(value)

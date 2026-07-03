@@ -359,6 +359,7 @@ assert main(io.StringIO(preview_request + "\n"), stdout, io.StringIO()) == 0
 assert json.loads(stdout.getvalue().splitlines()[-1])["payload"]["block_count"] == 1
 assert "CoolProp" not in sys.modules
 assert "carnopy.backends.coolprop" not in sys.modules
+assert "carnopy.app.capabilities" not in sys.modules
 """
 
     completed = subprocess.run(

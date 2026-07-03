@@ -108,6 +108,7 @@ def test_window_uses_one_shared_worker_client(tmp_path: Path, application: QAppl
     assert window.configure_page.client is window.client
     assert window.execution_page.client is window.client
     assert window.inspection_page.client is window.client
+    assert window.plot_page.client is window.client
     assert window.jobs_page.client is window.client
     window.close()
 

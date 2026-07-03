@@ -71,6 +71,11 @@ CoolProp, pandas, PyArrow, and Matplotlib execution imports.
 Worker-backed inspection and preview changes must use stable table IDs rather
 than GUI-supplied artifact paths. Cover traversal, symlink, integrity-token,
 bounded-read, and emitted-order behavior when those boundaries change.
+Desktop plot changes must use inspection-derived controls and the private
+worker render contract rather than importing Matplotlib or scientific
+pipelines in the GUI process. Preserve source-revision checks, nested
+workspace containment, no-overwrite image/sidecar behavior, and verified
+parent cleanup of interrupted plot staging.
 
 ## Pull requests
 

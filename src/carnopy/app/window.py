@@ -27,6 +27,7 @@ from carnopy.app.config_editor import DatasetConfigEditor
 from carnopy.app.execution_page import DatasetExecutionPage
 from carnopy.app.inspection_page import InspectionPage
 from carnopy.app.jobs_page import JobsDiagnosticsPage
+from carnopy.app.plot_page import PlotPage
 from carnopy.app.sources_page import WorkspaceSourcesPanel
 from carnopy.app.workspace import (
     Workspace,
@@ -68,6 +69,7 @@ class MainWindow(QMainWindow):
         self.configure_page = DatasetConfigEditor(client=self.client)
         self.execution_page = DatasetExecutionPage(self.client)
         self.inspection_page = InspectionPage(self.client)
+        self.plot_page = PlotPage(self.client)
         self.jobs_page = JobsDiagnosticsPage(self.client, self.execution_page)
         for index, title in enumerate(PAGE_TITLES):
             self.navigation.addItem(title)
@@ -79,6 +81,8 @@ class MainWindow(QMainWindow):
                 page = self.execution_page
             elif index == 3:
                 page = self.inspection_page
+            elif index == 4:
+                page = self.plot_page
             elif index == 5:
                 page = self.jobs_page
             else:
@@ -98,6 +102,7 @@ class MainWindow(QMainWindow):
         self.sources_panel.inspect_requested.connect(self._inspect_source)
         self.inspection_page.inspection_loaded.connect(self.sources_panel.mark_inspectable)
         self.inspection_page.inspection_failed.connect(self.sources_panel.mark_uninspectable)
+        self.inspection_page.inspection_changed.connect(self.plot_page.set_inspection)
         self.execution_page.run_finalized.connect(self._run_finalized)
         self.execution_page.inspect_button.clicked.connect(self._inspect_finalized_run)
         self._restore_preferences()
@@ -243,6 +248,7 @@ class MainWindow(QMainWindow):
         self.configure_page.set_workspace(workspace)
         self.execution_page.set_workspace(workspace)
         self.inspection_page.set_workspace(workspace)
+        self.plot_page.set_workspace(workspace)
         self.jobs_page.set_workspace(workspace)
         self.sources_panel.set_workspace(workspace)
         self._sync_execution_config()

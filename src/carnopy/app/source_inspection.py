@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
+from carnopy.app.plot_context import build_plot_context
 from carnopy.inspection import PreparationInspection, SweepInspection, inspect_source
 from carnopy.provenance import sha256_file
 from carnopy.visualization.inspect import PlotInspection
@@ -40,6 +41,7 @@ class ResolvedInspection:
     revision: str
     tables: tuple[ResolvedTable, ...]
     arrays: tuple[dict[str, Any], ...]
+    plot_context: dict[str, Any] | None = None
 
     def public_payload(self) -> dict[str, Any]:
         return {
@@ -49,6 +51,7 @@ class ResolvedInspection:
             "summary": self.summary,
             "tables": [table.public_descriptor() for table in self.tables],
             "arrays": list(self.arrays),
+            "plot_context": self.plot_context,
         }
 
 
@@ -66,10 +69,13 @@ def inspect_for_app(source: str | Path) -> ResolvedInspection:
     inspection = inspect_source(requested)
     if isinstance(inspection, PlotInspection):
         kind = "dataset"
+        plot_context = build_plot_context(inspection)
     elif isinstance(inspection, SweepInspection):
         kind = "model_sweep"
+        plot_context = None
     elif isinstance(inspection, PreparationInspection):
         kind = "preparation"
+        plot_context = None
     else:  # pragma: no cover - closed inspection union
         raise VisualizationError("unsupported inspection result")
     if kind != catalog.source_kind:
@@ -82,6 +88,7 @@ def inspect_for_app(source: str | Path) -> ResolvedInspection:
         revision=catalog.revision,
         tables=catalog.tables,
         arrays=catalog.arrays,
+        plot_context=plot_context,
     )
 
 

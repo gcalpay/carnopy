@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import get_args
 
+from carnopy.app.plot_context import PLOT_KIND_CONTRACTS
 from carnopy.backends.coolprop import CoolPropBackend
 from carnopy.backends.coolprop_models import supported_properties
 from carnopy.config.models import CoolPropModel
@@ -30,71 +31,6 @@ SAMPLER_MODELS = (
     GeomspaceSampler,
     LogspaceSampler,
 )
-PLOT_KIND_CONTRACTS: dict[str, dict[str, list[str]]] = {
-    "property_curves": {
-        "required": ["property"],
-        "applicable": [
-            "property",
-            "x",
-            "filters",
-            "series",
-            "display_units",
-            "fluids",
-            "value_scale",
-            "format",
-        ],
-    },
-    "property_heatmap": {
-        "required": ["property"],
-        "applicable": [
-            "property",
-            "filters",
-            "display_units",
-            "fluids",
-            "color_scale",
-            "format",
-        ],
-    },
-    "xy": {
-        "required": ["x", "y"],
-        "applicable": [
-            "x",
-            "y",
-            "group_by",
-            "filters",
-            "series",
-            "display_units",
-            "fluids",
-            "x_scale",
-            "y_scale",
-            "format",
-        ],
-    },
-    "pv": {
-        "required": [],
-        "applicable": [
-            "filters",
-            "series",
-            "display_units",
-            "fluids",
-            "x_scale",
-            "y_scale",
-            "format",
-        ],
-    },
-    "ts": {
-        "required": [],
-        "applicable": [
-            "filters",
-            "series",
-            "display_units",
-            "fluids",
-            "x_scale",
-            "y_scale",
-            "format",
-        ],
-    },
-}
 
 
 def describe_capabilities(model: CoolPropModel) -> dict[str, object]:

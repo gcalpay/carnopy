@@ -31,6 +31,7 @@ TABLE_ID_ROLE = Qt.ItemDataRole.UserRole
 class InspectionPage(QWidget):
     inspection_loaded = Signal(object)
     inspection_failed = Signal(object, str)
+    inspection_changed = Signal(object)
 
     def __init__(self, client: WorkerClient, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -136,6 +137,7 @@ class InspectionPage(QWidget):
             return
         self.source = source.expanduser().absolute()
         self.payload = None
+        self.inspection_changed.emit(None)
         self.source_label.setText(str(self.source))
         self.status.setText("Inspecting source…")
         self.summary.clear()
@@ -232,6 +234,7 @@ class InspectionPage(QWidget):
         if self._request_kind != "inspection" or "source_kind" not in payload:
             return
         self.payload = payload
+        self.inspection_changed.emit(payload)
         self._request_id = None
         self._request_kind = None
         self.status.setText(
@@ -267,6 +270,8 @@ class InspectionPage(QWidget):
         self._request_id = None
         self._request_kind = None
         self.status.setText(f"Uninspectable: {message}")
+        if request_kind == "inspection":
+            self.inspection_changed.emit(None)
         if request_kind == "inspection" and self.source is not None:
             self.inspection_failed.emit(self.source, message)
 
