@@ -19,6 +19,11 @@ from carnopy.app.plot_rendering import (
     _output_path,
     _source_name,
 )
+from carnopy.app.plot_staging import (
+    PlotStagingLease,
+    cleanup_plot_staging,
+    create_plot_staging,
+)
 from carnopy.app.protocol import PROTOCOL_VERSION
 from carnopy.app.source_inspection import inspect_for_app
 from carnopy.app.worker import main
@@ -59,7 +64,23 @@ def _payload(workspace: Path, source: Path, revision: str) -> dict[str, object]:
             "property": "mass_density",
             "x": "temperature",
         },
+        "staging": {
+            "staging_id": "a" * 32,
+            "device": 0,
+            "inode": 1,
+        },
     }
+
+
+def _leased_payload(
+    workspace: Path,
+    source: Path,
+    revision: str,
+) -> tuple[dict[str, object], PlotStagingLease]:
+    lease = create_plot_staging(workspace)
+    payload = _payload(workspace, source, revision)
+    payload["staging"] = lease.worker_payload()
+    return payload, lease
 
 
 def _request(payload: dict[str, object]) -> str:
@@ -113,15 +134,26 @@ def test_plot_output_rejects_symlinked_source_directory(tmp_path: Path) -> None:
         _output_path(figures, "dataset", "density", "png")
 
 
+def test_plot_output_refuses_existing_image_or_sidecar(tmp_path: Path) -> None:
+    figures = tmp_path / "figures"
+    figures.mkdir()
+    image = _output_path(figures, "dataset", "density", "png")
+    image.write_bytes(b"existing")
+
+    with pytest.raises(VisualizationError, match="refusing to overwrite"):
+        _output_path(figures, "dataset", "density", "png")
+
+
 def test_worker_renders_nested_plot_and_closes_figure(tmp_path: Path) -> None:
     workspace = initialize_workspace(tmp_path / "workspace")
     dataset = _dataset(tmp_path / "My Dataset.parquet")
     inspection = inspect_for_app(dataset)
+    payload, lease = _leased_payload(workspace.root, dataset, inspection.revision)
     stdout = io.StringIO()
 
     assert (
         main(
-            io.StringIO(_request(_payload(workspace.root, dataset, inspection.revision)) + "\n"),
+            io.StringIO(_request(payload) + "\n"),
             stdout,
             io.StringIO(),
         )
@@ -140,6 +172,12 @@ def test_worker_renders_nested_plot_and_closes_figure(tmp_path: Path) -> None:
     assert payload["sidecar_sha256"] == sha256_file(sidecar)
     assert payload["visualization_request_id"].startswith("viz-")
     assert payload["valid_rows_plotted"] == 4
+    sidecar_payload = json.loads(sidecar.read_text(encoding="utf-8"))
+    assert sidecar_payload["image"]["path"] == str(image)
+    assert sidecar_payload["image"]["sidecar_path"] == str(sidecar)
+    assert (lease.path / "promotion-manifest.json").is_file()
+    cleanup_plot_staging(lease, successful=True)
+    assert not lease.path.exists()
 
     import matplotlib.pyplot as plt
 
@@ -149,11 +187,12 @@ def test_worker_renders_nested_plot_and_closes_figure(tmp_path: Path) -> None:
 def test_render_plot_rejects_changed_inspection_revision(tmp_path: Path) -> None:
     workspace = initialize_workspace(tmp_path / "workspace")
     dataset = _dataset(tmp_path / "dataset.parquet")
+    payload, lease = _leased_payload(workspace.root, dataset, "0" * 64)
     stdout = io.StringIO()
 
     assert (
         main(
-            io.StringIO(_request(_payload(workspace.root, dataset, "0" * 64)) + "\n"),
+            io.StringIO(_request(payload) + "\n"),
             stdout,
             io.StringIO(),
         )
@@ -165,13 +204,15 @@ def test_render_plot_rejects_changed_inspection_revision(tmp_path: Path) -> None
     assert payload["code"] == "execution_failed"
     assert "changed" in str(payload["message"])
     assert list(workspace.figures.iterdir()) == []
+    cleanup_plot_staging(lease, successful=False)
 
 
 def test_worker_plot_rendering_does_not_import_coolprop(tmp_path: Path) -> None:
     workspace = initialize_workspace(tmp_path / "workspace")
     dataset = _dataset(tmp_path / "dataset.parquet")
     revision = inspect_for_app(dataset).revision
-    request = _request(_payload(workspace.root, dataset, revision))
+    payload, lease = _leased_payload(workspace.root, dataset, revision)
+    request = _request(payload)
     code = r"""
 import io
 import json
@@ -200,3 +241,4 @@ assert "carnopy.app.capabilities" not in sys.modules
     )
 
     assert completed.returncode == 0, completed.stdout + completed.stderr
+    cleanup_plot_staging(lease, successful=True)

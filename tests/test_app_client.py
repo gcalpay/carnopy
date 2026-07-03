@@ -4,11 +4,13 @@ import os
 import subprocess
 import sys
 from collections.abc import Callable
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+os.environ.setdefault("MPLBACKEND", "Agg")
 pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QEventLoop, QTimer
@@ -118,3 +120,61 @@ def test_qprocess_client_rejects_mismatched_request_events(
             "message": "worker event request ID does not match the active request",
         }
     ]
+
+
+def test_qprocess_client_owns_plot_staging_cleanup(
+    application: QApplication,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import pandas as pd
+
+    from carnopy.app.source_inspection import inspect_for_app
+    from carnopy.app.workspace import initialize_workspace
+
+    monkeypatch.setenv("MPLCONFIGDIR", str(tmp_path / "mpl"))
+    workspace = initialize_workspace(tmp_path / "workspace")
+    dataset = tmp_path / "dataset.parquet"
+    pd.DataFrame(
+        {
+            "run_id": ["run"] * 4,
+            "case_id": [0, 1, 2, 3],
+            "mode": ["property_table"] * 4,
+            "fluid": ["Propane"] * 4,
+            "backend": ["coolprop"] * 4,
+            "backend_model": ["heos"] * 4,
+            "backend_version": ["test"] * 4,
+            "phase": ["gas"] * 4,
+            "valid": [True] * 4,
+            "temperature_K": [280.0, 300.0, 280.0, 300.0],
+            "pressure_Pa": [100_000.0, 100_000.0, 200_000.0, 200_000.0],
+            "mass_density_kg_m3": [1.9, 1.8, 3.9, 3.7],
+        }
+    ).to_parquet(dataset, index=False)
+    revision = inspect_for_app(dataset).revision
+
+    def start(client: WorkerClient) -> None:
+        client.start_request(
+            "render_plot",
+            {
+                "workspace_path": str(workspace.root),
+                "source_path": str(dataset),
+                "inspection_revision": revision,
+                "plot_name": "density-curves",
+                "format": "png",
+                "plot": {
+                    "kind": "property_curves",
+                    "property": "mass_density",
+                    "x": "temperature",
+                },
+            },
+        )
+
+    _client, succeeded, failed = wait_for_request(application, start)
+
+    assert failed == []
+    assert len(succeeded) == 1
+    assert Path(str(succeeded[0]["image_path"])).is_file()
+    staging_root = workspace.private_directory / "plot-staging"
+    assert staging_root.is_dir()
+    assert list(staging_root.iterdir()) == []

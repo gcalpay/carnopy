@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import os
 import re
 from dataclasses import asdict
 from pathlib import Path
@@ -7,6 +9,12 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from carnopy.app.jobs import write_json_atomic
+from carnopy.app.plot_staging import (
+    PlotStagingPayload,
+    promote_plot_artifacts,
+    validate_plot_staging,
+)
 from carnopy.app.source_inspection import inspect_for_app
 from carnopy.app.workspace import open_workspace
 from carnopy.config.visualization import (
@@ -32,6 +40,7 @@ class RenderPlotPayload(BaseModel):
     plot_name: str = Field(pattern=PLOT_NAME_PATTERN)
     format: PlotFormat
     plot: dict[str, Any]
+    staging: PlotStagingPayload
 
     @model_validator(mode="after")
     def consistent_request_identity(self) -> RenderPlotPayload:
@@ -48,6 +57,7 @@ class RenderPlotPayload(BaseModel):
 
 def render_plot(payload: RenderPlotPayload) -> dict[str, Any]:
     workspace = open_workspace(payload.workspace_path)
+    lease = validate_plot_staging(workspace, payload.staging)
     inspection = inspect_for_app(payload.source_path)
     if inspection.source_kind != "dataset":
         raise VisualizationError("manual plotting supports dataset sources only")
@@ -74,7 +84,14 @@ def render_plot(payload: RenderPlotPayload) -> dict[str, Any]:
 
     source_hash = inspection.tables[0].sha256
     source_name = _source_name(inspection.source, source_hash)
-    image_path = _output_path(workspace.figures, source_name, payload.plot_name, payload.format)
+    final_image = _output_path(
+        workspace.figures,
+        source_name,
+        payload.plot_name,
+        payload.format,
+    )
+    final_sidecar = final_image.with_suffix(".plot.json")
+    staged_image = lease.path / final_image.name
 
     mpl = import_matplotlib()
     pyplot = mpl["pyplot"]
@@ -84,12 +101,22 @@ def render_plot(payload: RenderPlotPayload) -> dict[str, Any]:
         result = render_plot_request(
             inspection.source,
             request=request,
-            output=image_path,
+            output=staged_image,
             show=False,
             visualization_request_id=normalized.visualization_request_id,
         )
+        _rewrite_sidecar_paths(result.sidecar_path, final_image, final_sidecar)
+        promote_plot_artifacts(
+            lease,
+            staged_image=result.image_path,
+            staged_sidecar=result.sidecar_path,
+            final_image=final_image,
+            final_sidecar=final_sidecar,
+        )
         return _result_payload(
             result,
+            image_path=final_image,
+            sidecar_path=final_sidecar,
             source=inspection.source,
             source_name=source_name,
             inspection_revision=inspection.revision,
@@ -134,12 +161,39 @@ def _output_path(
         raise VisualizationError("plot output path escapes the workspace figures directory")
     if sidecar_path.parent != resolved_source or not sidecar_path.is_relative_to(resolved_root):
         raise VisualizationError("plot sidecar path escapes the workspace figures directory")
+    existing = next(
+        (path for path in (image_path, sidecar_path) if os.path.lexists(path)),
+        None,
+    )
+    if existing is not None:
+        raise VisualizationError(f"refusing to overwrite existing plot artifact: {existing}")
     return image_path
+
+
+def _rewrite_sidecar_paths(
+    sidecar_path: Path,
+    final_image: Path,
+    final_sidecar: Path,
+) -> None:
+    try:
+        value = json.loads(sidecar_path.read_text(encoding="utf-8"))
+        if not isinstance(value, dict):
+            raise ValueError("plot sidecar has an invalid structure")
+        image = value.get("image")
+        if not isinstance(image, dict):
+            raise ValueError("plot sidecar has an invalid structure")
+        image["path"] = str(final_image)
+        image["sidecar_path"] = str(final_sidecar)
+        write_json_atomic(sidecar_path, value)
+    except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise VisualizationError(f"could not finalize staged plot sidecar: {exc}") from exc
 
 
 def _result_payload(
     result: PlotResult,
     *,
+    image_path: Path,
+    sidecar_path: Path,
     source: Path,
     source_name: str,
     inspection_revision: str,
@@ -149,12 +203,12 @@ def _result_payload(
         "source": str(source),
         "source_name": source_name,
         "inspection_revision": inspection_revision,
-        "image_path": str(result.image_path),
-        "sidecar_path": str(result.sidecar_path),
-        "image_sha256": sha256_file(result.image_path),
-        "sidecar_sha256": sha256_file(result.sidecar_path),
+        "image_path": str(image_path),
+        "sidecar_path": str(sidecar_path),
+        "image_sha256": sha256_file(image_path),
+        "sidecar_sha256": sha256_file(sidecar_path),
         "kind": result.kind,
-        "format": result.image_path.suffix.removeprefix("."),
+        "format": image_path.suffix.removeprefix("."),
         "property": result.property_name,
         "selected_fluids": list(result.selected_fluids),
         "valid_rows_plotted": result.valid_rows_plotted,

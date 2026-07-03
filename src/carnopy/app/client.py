@@ -2,12 +2,18 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import ValidationError
 from PySide6.QtCore import QObject, QProcess, Signal
 
+from carnopy.app.plot_staging import (
+    PlotStagingLease,
+    cleanup_plot_staging,
+    create_plot_staging,
+)
 from carnopy.app.protocol import (
     PROTOCOL_VERSION,
     ErrorCategory,
@@ -41,6 +47,7 @@ class WorkerClient(QObject):
         self._client_failure: dict[str, object] | None = None
         self._force_stopped = False
         self._capabilities: dict[str, dict[str, Any]] = {}
+        self._plot_staging_lease: PlotStagingLease | None = None
 
     @property
     def is_busy(self) -> bool:
@@ -62,9 +69,11 @@ class WorkerClient(QObject):
         process = self._process
         if process is None:
             return
+        successful = self._terminal_event is not None and self._terminal_event.type == "result"
         process.blockSignals(True)
         process.kill()
         process.waitForFinished(1_000)
+        self._cleanup_plot_staging(successful=successful)
         self._reset_process()
 
     def request_cancel(self) -> bool:
@@ -96,12 +105,21 @@ class WorkerClient(QObject):
         if self.is_busy:
             raise RuntimeError("a Carnopy worker request is already active")
 
+        request_payload = dict(payload or {})
+        lease = None
+        if request_type == "render_plot":
+            workspace_path = request_payload.get("workspace_path")
+            if not isinstance(workspace_path, (str, Path)):
+                raise ValueError("render_plot requires workspace_path")
+            lease = create_plot_staging(Path(workspace_path))
+            request_payload["staging"] = lease.worker_payload()
+
         request_id = uuid4()
         request = WorkerRequest(
             protocol_version=PROTOCOL_VERSION,
             request_id=request_id,
             type=request_type,
-            payload=dict(payload or {}),
+            payload=request_payload,
         )
         process = QProcess(self)
         process.setProcessChannelMode(QProcess.ProcessChannelMode.SeparateChannels)
@@ -120,6 +138,7 @@ class WorkerClient(QObject):
         self._terminal_event = None
         self._client_failure = None
         self._force_stopped = False
+        self._plot_staging_lease = lease
         self.busy_changed.emit(True)
         process.start(sys.executable, ["-m", "carnopy.app.worker"])
         return request_id
@@ -190,6 +209,7 @@ class WorkerClient(QObject):
         if error == QProcess.ProcessError.FailedToStart:
             self._terminal_seen = True
             failure = _client_error("process", "failed_to_start", message)
+            self._cleanup_plot_staging(successful=False)
             envelope = self._terminal_envelope(
                 terminal=None,
                 stderr="".join(self._stderr_parts),
@@ -223,6 +243,14 @@ class WorkerClient(QObject):
             if stderr:
                 message += f": {stderr}"
             failure = _client_error("process", "missing_terminal_event", message)
+        successful = (
+            failure is None
+            and terminal is not None
+            and terminal.type == "result"
+            and exit_code == 0
+            and _exit_status == QProcess.ExitStatus.NormalExit
+        )
+        self._cleanup_plot_staging(successful=successful)
         stderr = "".join(self._stderr_parts)
         envelope = self._terminal_envelope(
             terminal=terminal,
@@ -280,9 +308,21 @@ class WorkerClient(QObject):
         self._terminal_event = None
         self._client_failure = None
         self._force_stopped = False
+        self._plot_staging_lease = None
         if process is not None:
             process.deleteLater()
         self.busy_changed.emit(False)
+
+    def _cleanup_plot_staging(self, *, successful: bool) -> None:
+        lease, self._plot_staging_lease = self._plot_staging_lease, None
+        if lease is None:
+            return
+        try:
+            cleanup_plot_staging(lease, successful=successful)
+        except Exception as exc:  # pragma: no cover - defensive Qt process boundary
+            message = f"plot staging cleanup failed: {exc}\n"
+            self._stderr_parts.append(message)
+            self.stderr_received.emit(message)
 
 
 def _client_error(category: ErrorCategory, code: str, message: str) -> dict[str, object]:

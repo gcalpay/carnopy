@@ -94,7 +94,7 @@ class JobStore:
         request_id = str(record["request_id"])
         self.directory.mkdir(parents=True, exist_ok=True)
         destination = self.directory / f"{request_id}.json"
-        _write_json_atomic(destination, record)
+        write_json_atomic(destination, record)
         return destination
 
     def load(self) -> list[LoadedJob]:
@@ -122,7 +122,7 @@ class JobStore:
         resolved.unlink()
 
 
-def _write_json_atomic(path: Path, value: dict[str, Any]) -> None:
+def write_json_atomic(path: Path, value: dict[str, Any]) -> None:
     descriptor, temporary_name = tempfile.mkstemp(
         dir=path.parent,
         prefix=f".{path.name}.",
