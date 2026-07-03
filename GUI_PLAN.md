@@ -30,7 +30,7 @@ Stage 7 is complete.
 | 1 | Worker protocol, generation progress, cancellation, and staging cleanup | Complete |
 | 2 | Optional app packaging, launcher, workspace lifecycle, and desktop shell | Complete |
 | 3 | Dataset configuration editor and deterministic YAML workflow | Complete |
-| 4 | Validation, generation, source inspection, table previews, jobs, and recovery | Pending |
+| 4 | Validation, generation, source inspection, table previews, jobs, and recovery | Complete |
 | 5 | Manual plot export and PNG/SVG previews | Pending |
 | 6 | CI, documentation, packaging, and `0.1.0a3` release hardening | Pending |
 | 7 | Graphify architecture-map refresh and final boundary review | Pending |
@@ -61,13 +61,29 @@ final documentation pass.
 - README and contributor guidance describe the implemented editor. Graphify
   remains unchanged until Stage 7.
 
+## Stage 4 decisions
+
+- Validate and Generate accept only the exact saved workspace configuration.
+  The worker recomputes its SHA-256 before importing generation pipelines.
+- Each action uses the shared GUI-side client abstraction and one short-lived
+  worker process. Displayed CLI commands remain informational only.
+- Generation reports phases and rows, supports cooperative cancellation, and
+  reveals an explicit force-stop option only after a cancellation wait.
+- Validate and Generate records are persisted as workspace-local JSON with the
+  exact YAML snapshot and verbatim terminal worker envelope. They are never
+  auto-pruned.
+- Stale staging cleanup is opt-in and restricted to exact direct-child names;
+  device and inode identity are revalidated before removal.
+- Workspace discovery is direct-child only. Dataset runs, standalone CSV or
+  Parquet, model-sweep bundles, and preparation bundles are inspected by the
+  worker. Broken recognized candidates remain visible as uninspectable.
+- Preparation manifest paths reject traversal, absolute paths, symlink
+  components, non-files, and recorded-hash mismatches.
+- Table previews preserve emitted order. Workers return at most 500 rows using
+  bounded Parquet or CSV reads; Qt presents local 100-row pages. NumPy and
+  SafeTensors outputs are listed but not rendered.
+
 ## Remaining stages
-
-### Stage 4 — Execution and inspection
-
-Add optional explicit validation, saved-state generation, progress and
-cancellation controls, workspace-local job diagnostics, guarded stale-staging
-recovery, dataset/sweep/preparation inspection, and paginated table previews.
 
 ### Stage 5 — Plot exports and previews
 

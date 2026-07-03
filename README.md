@@ -100,11 +100,11 @@ To preselect a workspace without initializing it silently:
 uv run --locked carnopy-app --workspace /path/to/workspace
 ```
 
-GUI-1 currently provides workspace lifecycle and a worker-validated editor for
-all three dataset configuration modes. The editor uses structured Dataset and
-Visualization forms and shows the exact deterministic YAML that Save writes.
-Validation/generation controls, source inspection, table previews, job
-diagnostics, and plot previews remain under development for `0.1.0a3`.
+GUI-1 currently provides workspace lifecycle, a worker-validated editor for all
+three dataset configuration modes, dataset validation and generation, output
+inspection, bounded table previews, job diagnostics, and guarded staging
+recovery. Manual plot export and image previews remain under development for
+`0.1.0a3`.
 
 ## Guide
 
@@ -960,7 +960,17 @@ The current `0.1.0a3.dev0` source implementation includes:
 - deterministic read-only YAML preview;
 - worker validation before Import or Save;
 - exclusive Save As, atomic normal Save, dirty-state prompts, and external-file
-  modification detection.
+  modification detection;
+- optional explicit validation and independent generation of the exact saved
+  configuration, with phases, row progress, cooperative cancellation, and an
+  informational equivalent CLI command;
+- direct-child workspace source discovery plus read-only external browsing;
+- structured inspection of dataset runs, standalone CSV/Parquet files,
+  model-sweep bundles, and preparation bundles;
+- order-preserving table previews fetched in bounded 500-row worker blocks and
+  presented as local 100-row pages;
+- workspace-local Validate/Generate job diagnostics and confirmed, guarded
+  cleanup of recognized stale staging directories.
 
 Imported invalid YAML files remain untouched and must be repaired in a text
 editor before import. Imported valid files also remain untouched until saved
@@ -969,10 +979,10 @@ levels remain explicit inputs; finite choices such as fields, fluids,
 categorical values, units, formats, scales, and valid series dimensions are
 provided by the editor.
 
-GUI-1 does not yet expose dataset generation, bundle inspection, table
-previews, job diagnostics, or exported-plot previews. Sweep and preparation
-creation are reserved for GUI-2; GUI-1 will inspect their completed bundles
-read-only.
+Sweep and preparation creation remain reserved for GUI-2; GUI-1 inspects their
+completed bundles read-only. NumPy and SafeTensors outputs are listed from the
+preparation manifest but are not rendered as matrices. Manual plot export and
+PNG/SVG/PDF preview remain Stage 5 work.
 
 Qt is an optional third-party dependency with its own LGPL/GPL/commercial
 licensing terms. Carnopy does not vendor Qt or distribute standalone desktop
@@ -1100,8 +1110,9 @@ Carnopy remains alpha software while its public schemas and backend boundaries
 are validated through real use. The active `0.1.0a3` milestone is GUI-1, a
 Linux-first desktop frontend for the existing dataset workflow. The worker,
 workspace shell, and dataset configuration editor are implemented. Dataset
-execution, read-only bundle inspection, table previews, job diagnostics, and
-plot previews remain before release.
+execution, read-only bundle inspection, bounded table previews, job diagnostics,
+and guarded staging recovery are implemented. Manual plot export and image
+previews remain before release.
 
 After GUI-1 stabilizes, the next scientific milestone may be a separately
 designed pure-fluid ORC feasibility-envelope subsystem. It would produce
