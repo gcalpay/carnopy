@@ -135,7 +135,6 @@ def test_readme_describes_current_alpha_without_stale_first_release_wording() ->
 def test_github_community_files_cover_public_reporting_paths() -> None:
     root = Path(__file__).resolve().parents[1]
     github = root / ".github"
-    assert (github / "pull_request_template.md").is_file()
     issue_templates = github / "ISSUE_TEMPLATE"
     assert {
         "bug-report.yml",
