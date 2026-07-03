@@ -307,20 +307,6 @@ assert "CoolProp" not in sys.modules
     assert completed.returncode == 0, completed.stdout + completed.stderr
 
 
-def test_worker_reports_neutral_unsupported_request_error() -> None:
-    _, line = _request("render_plot", {})
-    stdout = io.StringIO()
-
-    assert main(io.StringIO(line + "\n"), stdout, io.StringIO()) == 2
-
-    payload = _events(stdout)[-1]["payload"]
-    assert payload == {
-        "category": "protocol",
-        "code": "unsupported_request",
-        "message": "worker request type 'render_plot' is not implemented by this worker",
-    }
-
-
 def test_worker_inspection_and_preview_do_not_import_coolprop(tmp_path: Path) -> None:
     dataset = tmp_path / "dataset.parquet"
     import pandas as pd

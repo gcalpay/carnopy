@@ -250,6 +250,12 @@ def _execute(
             offset=preview_payload.offset,
             limit=preview_payload.limit,
         )
+    if request.type == "render_plot":
+        from carnopy.app.plot_rendering import RenderPlotPayload, render_plot
+
+        plot_payload = RenderPlotPayload.model_validate(request.payload)
+        writer.emit("phase", {"name": "plot_rendering", "cancellable": False})
+        return render_plot(plot_payload)
     raise UnsupportedRequestError(
         f"worker request type {request.type!r} is not implemented by this worker"
     )
