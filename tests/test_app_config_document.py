@@ -277,3 +277,23 @@ def test_mark_saved_updates_document_identity(tmp_path: Path) -> None:
     assert document.workspace_owned
     assert not document.imported
     assert not document.dirty
+
+
+def test_execution_snapshot_requires_exact_saved_workspace_bytes(tmp_path: Path) -> None:
+    configs = tmp_path / "configs"
+    configs.mkdir()
+    document = new_document(yaml.safe_load(template_text("property_table")))
+    destination = configs / "dataset.yaml"
+    content = document.yaml_bytes
+    destination.write_bytes(content)
+    document.mark_saved(destination, content)
+
+    snapshot = document.execution_snapshot(configs_root=configs)
+
+    assert snapshot.path == destination.resolve()
+    assert snapshot.yaml_bytes == content
+    assert snapshot.sha256 == hashlib.sha256(content).hexdigest()
+
+    destination.write_bytes(content + b"# changed\n")
+    with pytest.raises(ExternalModificationError, match="outside Carnopy"):
+        document.execution_snapshot(configs_root=configs)

@@ -57,10 +57,12 @@ def test_qprocess_client_runs_and_caches_capability_request(
 ) -> None:
     client_holder: list[WorkerClient] = []
     busy_at_success: list[bool] = []
+    envelopes: list[dict[str, object]] = []
 
     def start(client: WorkerClient) -> None:
         client_holder.append(client)
         client.request_succeeded.connect(lambda _payload: busy_at_success.append(client.is_busy))
+        client.request_finished.connect(envelopes.append)
         client.start_request("describe_capabilities", {"model": "heos"})
         with pytest.raises(RuntimeError, match="already active"):
             client.start_request("describe_capabilities", {"model": "pr"})
@@ -72,6 +74,9 @@ def test_qprocess_client_runs_and_caches_capability_request(
     assert client is client_holder[0]
     assert client.cached_capabilities("heos") == succeeded[0]
     assert busy_at_success == [False]
+    assert envelopes[0]["request_type"] == "describe_capabilities"
+    assert envelopes[0]["terminal_event"]["type"] == "result"
+    assert envelopes[0]["force_stopped"] is False
 
 
 def test_importing_qprocess_client_does_not_load_scientific_dependencies() -> None:
@@ -109,6 +114,7 @@ def test_qprocess_client_rejects_mismatched_request_events(
     assert failures == [
         {
             "category": "protocol",
+            "code": "request_id_mismatch",
             "message": "worker event request ID does not match the active request",
         }
     ]

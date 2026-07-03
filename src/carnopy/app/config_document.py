@@ -53,6 +53,15 @@ class ExternalModificationError(ConfigDocumentError):
     """A saved configuration changed after the GUI loaded it."""
 
 
+@dataclass(frozen=True)
+class SavedConfigSnapshot:
+    """Exact saved configuration identity accepted for worker execution."""
+
+    path: Path
+    yaml_bytes: bytes
+    sha256: str
+
+
 @dataclass
 class DatasetConfigDocument:
     _payload: dict[str, Any]
@@ -95,6 +104,29 @@ class DatasetConfigDocument:
         self.workspace_owned = True
         self.imported = False
         self._baseline_yaml = content
+
+    def execution_snapshot(self, *, configs_root: Path) -> SavedConfigSnapshot:
+        path = self.source_path
+        digest = self.source_sha256
+        if path is None or digest is None:
+            raise ConfigDocumentError("save the configuration before execution")
+        if not self.workspace_owned or not is_path_within(path, configs_root):
+            raise ConfigDocumentError(
+                "external configurations must be saved under the workspace configs folder"
+            )
+        if self.dirty:
+            raise ConfigDocumentError("save the current configuration changes before execution")
+        try:
+            content = path.read_bytes()
+        except OSError as exc:
+            raise ConfigDocumentError(f"saved configuration is not readable: {path}") from exc
+        if sha256_bytes(content) != digest:
+            raise ExternalModificationError(f"saved configuration changed outside Carnopy: {path}")
+        if content != self._baseline_yaml:
+            raise ExternalModificationError(
+                f"saved configuration bytes no longer match the open document: {path}"
+            )
+        return SavedConfigSnapshot(path=path, yaml_bytes=content, sha256=digest)
 
 
 def serialize_dataset_config(payload: dict[str, Any]) -> bytes:

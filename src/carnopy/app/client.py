@@ -10,7 +10,9 @@ from PySide6.QtCore import QObject, QProcess, Signal
 
 from carnopy.app.protocol import (
     PROTOCOL_VERSION,
+    ErrorCategory,
     RequestType,
+    WorkerErrorPayload,
     WorkerEvent,
     WorkerRequest,
     parse_event,
@@ -23,6 +25,7 @@ class WorkerClient(QObject):
     event_received = Signal(object)
     request_succeeded = Signal(object)
     request_failed = Signal(object)
+    request_finished = Signal(object)
     stderr_received = Signal(str)
     busy_changed = Signal(bool)
 
@@ -35,6 +38,8 @@ class WorkerClient(QObject):
         self._stderr_parts: list[str] = []
         self._terminal_seen = False
         self._terminal_event: WorkerEvent | None = None
+        self._client_failure: dict[str, object] | None = None
+        self._force_stopped = False
         self._capabilities: dict[str, dict[str, Any]] = {}
 
     @property
@@ -44,6 +49,10 @@ class WorkerClient(QObject):
     @property
     def request_id(self) -> UUID | None:
         return self._request_id
+
+    @property
+    def request_type(self) -> RequestType | None:
+        return self._request_type
 
     def cached_capabilities(self, model: str) -> dict[str, Any] | None:
         return self._capabilities.get(model)
@@ -57,6 +66,27 @@ class WorkerClient(QObject):
         process.kill()
         process.waitForFinished(1_000)
         self._reset_process()
+
+    def request_cancel(self) -> bool:
+        process = self._process
+        request_id = self._request_id
+        if process is None or request_id is None or self._terminal_seen:
+            return False
+        request = WorkerRequest(
+            protocol_version=PROTOCOL_VERSION,
+            request_id=request_id,
+            type="cancel",
+            payload={},
+        )
+        process.write((request.model_dump_json() + "\n").encode("utf-8"))
+        return True
+
+    def force_stop(self) -> bool:
+        if self._process is None or self._terminal_seen:
+            return False
+        self._force_stopped = True
+        self._process.kill()
+        return True
 
     def start_request(
         self,
@@ -88,6 +118,8 @@ class WorkerClient(QObject):
         self._stderr_parts = []
         self._terminal_seen = False
         self._terminal_event = None
+        self._client_failure = None
+        self._force_stopped = False
         self.busy_changed.emit(True)
         process.start(sys.executable, ["-m", "carnopy.app.worker"])
         return request_id
@@ -124,10 +156,13 @@ class WorkerClient(QObject):
         try:
             event = parse_event(line)
         except ValidationError as exc:
-            self._fail_protocol(f"invalid worker event: {exc}")
+            self._fail_protocol(f"invalid worker event: {exc}", code="invalid_event")
             return
         if event.request_id != self._request_id:
-            self._fail_protocol("worker event request ID does not match the active request")
+            self._fail_protocol(
+                "worker event request ID does not match the active request",
+                code="request_id_mismatch",
+            )
             return
 
         self.event_received.emit(event)
@@ -136,22 +171,34 @@ class WorkerClient(QObject):
         self._terminal_seen = True
         self._terminal_event = event
 
-    def _fail_protocol(self, message: str) -> None:
-        if not self._terminal_seen:
-            self._terminal_seen = True
-            self.request_failed.emit({"category": "protocol", "message": message})
-        if self._process is not None:
-            self._process.kill()
+    def _fail_protocol(self, message: str, *, code: str) -> None:
+        if self._terminal_seen:
+            return
+        self._terminal_seen = True
+        failure = _client_error("protocol", code, message)
+        if self._process is None:
+            self.request_failed.emit(failure)
+            return
+        self._client_failure = failure
+        self._process.kill()
 
     def _process_error(self, error: QProcess.ProcessError) -> None:
         if self._terminal_seen:
             return
-        self._terminal_seen = True
         process = self._process
         message = process.errorString() if process is not None else str(error)
-        self.request_failed.emit({"category": "process", "message": message})
         if error == QProcess.ProcessError.FailedToStart:
+            self._terminal_seen = True
+            failure = _client_error("process", "failed_to_start", message)
+            envelope = self._terminal_envelope(
+                terminal=None,
+                stderr="".join(self._stderr_parts),
+                exit_code=None,
+                exit_status="failed_to_start",
+            )
             self._reset_process()
+            self.request_finished.emit(envelope)
+            self.request_failed.emit(failure)
 
     def _process_finished(
         self,
@@ -163,26 +210,65 @@ class WorkerClient(QObject):
         self._read_stdout()
         self._read_stderr()
         terminal = self._terminal_event
-        terminal_seen = self._terminal_seen
-        request_type = self._request_type
-        failure: dict[str, object] | None = None
-        if terminal is None and not terminal_seen:
+        failure = self._client_failure
+        if self._force_stopped:
+            failure = _client_error(
+                "process",
+                "force_stopped",
+                "worker process was force-stopped",
+            )
+        elif terminal is None and failure is None:
             stderr = "".join(self._stderr_parts).strip()
             message = f"worker exited with code {exit_code} without a terminal event"
             if stderr:
                 message += f": {stderr}"
-            failure = {"category": "process", "message": message}
+            failure = _client_error("process", "missing_terminal_event", message)
+        stderr = "".join(self._stderr_parts)
+        envelope = self._terminal_envelope(
+            terminal=terminal,
+            stderr=stderr,
+            exit_code=exit_code,
+            exit_status=("normal" if _exit_status == QProcess.ExitStatus.NormalExit else "crash"),
+        )
         self._reset_process()
+        self.request_finished.emit(envelope)
         if failure is not None:
             self.request_failed.emit(failure)
         elif terminal is not None and terminal.type == "result":
+            request_type = envelope.get("request_type")
             if request_type == "describe_capabilities":
                 model = terminal.payload.get("model")
                 if isinstance(model, str):
                     self._capabilities[model] = terminal.payload
             self.request_succeeded.emit(terminal.payload)
-        elif terminal is not None:
+        elif terminal is not None and terminal.type == "error":
             self.request_failed.emit(terminal.payload)
+        elif terminal is not None:
+            self.request_failed.emit(
+                _client_error(
+                    "execution",
+                    str(terminal.payload.get("code", "cancelled")),
+                    str(terminal.payload.get("message", "worker request was cancelled")),
+                )
+            )
+
+    def _terminal_envelope(
+        self,
+        *,
+        terminal: WorkerEvent | None,
+        stderr: str,
+        exit_code: int | None,
+        exit_status: str,
+    ) -> dict[str, object]:
+        return {
+            "request_id": None if self._request_id is None else str(self._request_id),
+            "request_type": self._request_type,
+            "terminal_event": (None if terminal is None else terminal.model_dump(mode="json")),
+            "stderr": stderr,
+            "exit_code": exit_code,
+            "exit_status": exit_status,
+            "force_stopped": self._force_stopped,
+        }
 
     def _reset_process(self) -> None:
         process, self._process = self._process, None
@@ -192,6 +278,16 @@ class WorkerClient(QObject):
         self._stderr_parts = []
         self._terminal_seen = False
         self._terminal_event = None
+        self._client_failure = None
+        self._force_stopped = False
         if process is not None:
             process.deleteLater()
         self.busy_changed.emit(False)
+
+
+def _client_error(category: ErrorCategory, code: str, message: str) -> dict[str, object]:
+    return WorkerErrorPayload(
+        category=category,
+        code=code,
+        message=message,
+    ).model_dump(exclude_none=True)

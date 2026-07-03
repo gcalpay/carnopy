@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
 import pandas as pd
 
+from carnopy.provenance import sha256_file
 from carnopy.visualization.inspect import PlotInspection, inspect_plot_source
 from carnopy.visualization.models import VisualizationError
 
@@ -259,10 +261,31 @@ def _inspect_preparation_bundle(path: Path) -> PreparationInspection:
     artifacts = manifest.get("data_artifacts")
     if not isinstance(artifacts, dict):
         raise VisualizationError("preparation manifest does not contain data_artifacts")
-    table_path = _optional_artifact_path(path, artifacts.get("table"))
-    provenance_path = _required_artifact_path(path, artifacts.get("provenance"), "provenance")
-    diagnostics_path = _required_artifact_path(path, artifacts.get("diagnostics"), "diagnostics")
-    exclusions_path = _required_artifact_path(path, artifacts.get("exclusions"), "exclusions")
+    hashes = manifest.get("artifact_hashes")
+    artifact_hashes = hashes if isinstance(hashes, dict) else {}
+    table_path = _optional_artifact_path(
+        path,
+        artifacts.get("table"),
+        artifact_hashes=artifact_hashes,
+    )
+    provenance_path = _required_artifact_path(
+        path,
+        artifacts.get("provenance"),
+        "provenance",
+        artifact_hashes=artifact_hashes,
+    )
+    diagnostics_path = _required_artifact_path(
+        path,
+        artifacts.get("diagnostics"),
+        "diagnostics",
+        artifact_hashes=artifact_hashes,
+    )
+    exclusions_path = _required_artifact_path(
+        path,
+        artifacts.get("exclusions"),
+        "exclusions",
+        artifact_hashes=artifact_hashes,
+    )
     return PreparationInspection(
         source=path,
         manifest=manifest,
@@ -319,18 +342,59 @@ def _read_json(path: Path, label: str) -> dict[str, Any]:
     return payload
 
 
-def _optional_artifact_path(root: Path, value: object) -> Path | None:
+def _optional_artifact_path(
+    root: Path,
+    value: object,
+    *,
+    artifact_hashes: dict[str, Any],
+) -> Path | None:
     if value is None:
         return None
-    return _required_artifact_path(root, value, "artifact")
+    return _required_artifact_path(
+        root,
+        value,
+        "artifact",
+        artifact_hashes=artifact_hashes,
+    )
 
 
-def _required_artifact_path(root: Path, value: object, label: str) -> Path:
+def _required_artifact_path(
+    root: Path,
+    value: object,
+    label: str,
+    *,
+    artifact_hashes: dict[str, Any],
+) -> Path:
     if not isinstance(value, str) or not value.strip():
         raise VisualizationError(f"preparation manifest is missing {label} artifact")
-    path = root / value
-    if not path.is_file():
-        raise VisualizationError(f"preparation {label} artifact is missing: {path}")
+    relative = Path(value)
+    if relative.is_absolute() or ".." in relative.parts:
+        raise VisualizationError(
+            f"preparation {label} artifact path must remain relative to the bundle: {value}"
+        )
+    if root.is_symlink():
+        raise VisualizationError("preparation bundle root must not be a symbolic link")
+    resolved_root = root.resolve()
+    current = resolved_root
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            raise VisualizationError(
+                f"preparation {label} artifact path contains a symbolic link: {value}"
+            )
+    try:
+        path = current.resolve(strict=True)
+        path.relative_to(resolved_root)
+        info = path.stat()
+    except (OSError, ValueError) as exc:
+        raise VisualizationError(
+            f"preparation {label} artifact is missing or escapes the bundle: {current}"
+        ) from exc
+    if not stat.S_ISREG(info.st_mode):
+        raise VisualizationError(f"preparation {label} artifact is not a regular file: {path}")
+    expected = artifact_hashes.get(relative.as_posix())
+    if isinstance(expected, str) and sha256_file(path) != expected:
+        raise VisualizationError(f"preparation {label} artifact hash mismatch: {relative}")
     return path
 
 

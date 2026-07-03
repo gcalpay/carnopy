@@ -19,6 +19,16 @@ RequestType = Literal[
     "cancel",
 ]
 EventType = Literal["accepted", "phase", "progress", "result", "error", "cancelled"]
+ErrorCategory = Literal["protocol", "config", "execution", "request", "process", "internal"]
+
+
+class WorkerErrorPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    category: ErrorCategory
+    code: str
+    message: str
+    details: dict[str, Any] | None = None
 
 
 class WorkerRequest(BaseModel):

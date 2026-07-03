@@ -65,7 +65,13 @@ def test_protocol_round_trip_and_version_rejection() -> None:
 
 
 def test_worker_validates_without_calling_cli(property_config_path: Path) -> None:
-    request_id, line = _request("validate_config", {"config_path": str(property_config_path)})
+    request_id, line = _request(
+        "validate_config",
+        {
+            "config_path": str(property_config_path),
+            "expected_config_sha256": hashlib.sha256(property_config_path.read_bytes()).hexdigest(),
+        },
+    )
     stdout = io.StringIO()
     stderr = io.StringIO()
 
@@ -211,8 +217,9 @@ def test_worker_reports_structured_dataset_config_issues(property_config_path: P
     payload = event["payload"]
     assert isinstance(payload, dict)
     assert payload["category"] == "config"
-    assert len(payload["issues"]) == 1
-    issue = payload["issues"][0]
+    assert payload["code"] == "invalid_config"
+    assert len(payload["details"]["issues"]) == 1
+    issue = payload["details"]["issues"][0]
     assert issue["path"] == "properties"
     assert issue["code"] == "too_short"
     assert "at least 1" in issue["message"]
@@ -227,6 +234,7 @@ def test_worker_generates_structured_progress_and_result(
         "generate_dataset",
         {
             "config_path": str(property_config_path),
+            "expected_config_sha256": hashlib.sha256(property_config_path.read_bytes()).hexdigest(),
             "output_root": str(output_root),
             "figures_root": str(tmp_path / "figures"),
         },
@@ -255,6 +263,146 @@ def test_worker_generates_structured_progress_and_result(
     result = events[-1]["payload"]
     assert isinstance(result, dict)
     assert Path(str(result["output_directory"])).is_dir()
+
+
+def test_worker_rejects_changed_config_before_pipeline_import(
+    property_config_path: Path,
+) -> None:
+    request_id = str(uuid4())
+    request = json.dumps(
+        {
+            "protocol_version": PROTOCOL_VERSION,
+            "request_id": request_id,
+            "type": "generate_dataset",
+            "payload": {
+                "config_path": str(property_config_path),
+                "expected_config_sha256": "0" * 64,
+                "output_root": str(property_config_path.parent / "runs"),
+            },
+        }
+    )
+    code = """
+import io
+import json
+import sys
+from carnopy.app.worker import main
+request = sys.argv[1]
+stdout = io.StringIO()
+result = main(io.StringIO(request + "\\n"), stdout, io.StringIO())
+event = json.loads(stdout.getvalue().splitlines()[-1])
+assert result == 1
+assert event["payload"]["category"] == "config"
+assert event["payload"]["code"] == "source_changed"
+assert "carnopy.pipeline" not in sys.modules
+assert "CoolProp" not in sys.modules
+"""
+
+    completed = subprocess.run(
+        [sys.executable, "-c", code, request],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
+def test_worker_reports_neutral_unsupported_request_error() -> None:
+    _, line = _request("render_plot", {})
+    stdout = io.StringIO()
+
+    assert main(io.StringIO(line + "\n"), stdout, io.StringIO()) == 2
+
+    payload = _events(stdout)[-1]["payload"]
+    assert payload == {
+        "category": "protocol",
+        "code": "unsupported_request",
+        "message": "worker request type 'render_plot' is not implemented by this worker",
+    }
+
+
+def test_worker_inspection_and_preview_do_not_import_coolprop(tmp_path: Path) -> None:
+    dataset = tmp_path / "dataset.parquet"
+    import pandas as pd
+
+    pd.DataFrame(
+        {
+            "run_id": ["run"],
+            "case_id": [0],
+            "mode": ["property_table"],
+            "fluid": ["Propane"],
+            "backend": ["coolprop"],
+            "backend_version": ["test"],
+            "phase": ["gas"],
+            "valid": [True],
+            "temperature_K": [300.0],
+            "pressure_Pa": [100000.0],
+        }
+    ).to_parquet(dataset, index=False)
+    code = r"""
+import io
+import json
+import sys
+from carnopy.app.worker import main
+
+source = sys.argv[1]
+request_id = "00000000-0000-0000-0000-000000000001"
+inspect_request = json.dumps({
+    "protocol_version": 1,
+    "request_id": request_id,
+    "type": "inspect_source",
+    "payload": {"source_path": source},
+})
+stdout = io.StringIO()
+assert main(io.StringIO(inspect_request + "\n"), stdout, io.StringIO()) == 0
+inspection = json.loads(stdout.getvalue().splitlines()[-1])["payload"]
+preview_request = json.dumps({
+    "protocol_version": 1,
+    "request_id": "00000000-0000-0000-0000-000000000002",
+    "type": "preview_table",
+    "payload": {
+        "source_path": source,
+        "table_id": "dataset",
+        "inspection_revision": inspection["revision"],
+        "offset": 0,
+        "limit": 1,
+    },
+})
+stdout = io.StringIO()
+assert main(io.StringIO(preview_request + "\n"), stdout, io.StringIO()) == 0
+assert json.loads(stdout.getvalue().splitlines()[-1])["payload"]["block_count"] == 1
+assert "CoolProp" not in sys.modules
+assert "carnopy.backends.coolprop" not in sys.modules
+"""
+
+    completed = subprocess.run(
+        [sys.executable, "-c", code, str(dataset)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
+def test_worker_rejects_preview_over_500_rows_before_source_resolution() -> None:
+    _, line = _request(
+        "preview_table",
+        {
+            "source_path": "missing",
+            "table_id": "dataset",
+            "inspection_revision": "a" * 64,
+            "offset": 0,
+            "limit": 501,
+        },
+    )
+    stdout = io.StringIO()
+
+    assert main(io.StringIO(line + "\n"), stdout, io.StringIO()) == 2
+
+    payload = _events(stdout)[-1]["payload"]
+    assert isinstance(payload, dict)
+    assert payload["code"] == "invalid_payload"
 
 
 def test_importing_worker_protocol_does_not_load_execution_dependencies() -> None:
