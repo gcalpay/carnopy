@@ -1,0 +1,152 @@
+from __future__ import annotations
+
+import json
+import os
+import tempfile
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+JOB_SCHEMA_VERSION = 1
+
+
+@dataclass(frozen=True)
+class LoadedJob:
+    path: Path
+    data: dict[str, Any] | None
+    error: str | None = None
+
+
+class JobStore:
+    """Persist small GUI request records without changing workspace provenance."""
+
+    def __init__(self, private_directory: Path) -> None:
+        self.directory = private_directory / "jobs"
+
+    def start(
+        self,
+        *,
+        request_id: str,
+        operation: str,
+        config_relative_path: str,
+        yaml_snapshot: str,
+        config_sha256: str,
+    ) -> dict[str, Any]:
+        now = _utc_now()
+        record: dict[str, Any] = {
+            "job_schema_version": JOB_SCHEMA_VERSION,
+            "request_id": request_id,
+            "operation": operation,
+            "status": "running",
+            "created_at_utc": now,
+            "updated_at_utc": now,
+            "completed_at_utc": None,
+            "configuration": {
+                "relative_path": config_relative_path,
+                "yaml_snapshot": yaml_snapshot,
+                "sha256": config_sha256,
+            },
+            "phase": "starting",
+            "progress": None,
+            "summary": {},
+            "terminal_envelope": None,
+        }
+        self.write(record)
+        return record
+
+    def update_event(
+        self, record: dict[str, Any], event_type: str, payload: dict[str, Any]
+    ) -> None:
+        if event_type == "phase":
+            record["phase"] = payload.get("name")
+        elif event_type == "progress":
+            record["progress"] = {
+                "completed": payload.get("completed"),
+                "total": payload.get("total"),
+            }
+        else:
+            return
+        record["updated_at_utc"] = _utc_now()
+        self.write(record)
+
+    def finish(self, record: dict[str, Any], envelope: dict[str, Any]) -> None:
+        terminal = envelope.get("terminal_event")
+        terminal_type = terminal.get("type") if isinstance(terminal, dict) else None
+        payload = terminal.get("payload") if isinstance(terminal, dict) else None
+        if envelope.get("force_stopped"):
+            status = "force_stopped"
+        elif terminal_type == "result":
+            status = "completed"
+        elif terminal_type == "cancelled":
+            status = "cancelled"
+        else:
+            status = "failed"
+        now = _utc_now()
+        record["status"] = status
+        record["updated_at_utc"] = now
+        record["completed_at_utc"] = now
+        record["summary"] = payload if isinstance(payload, dict) else {}
+        record["terminal_envelope"] = envelope
+        self.write(record)
+
+    def write(self, record: dict[str, Any]) -> Path:
+        request_id = str(record["request_id"])
+        self.directory.mkdir(parents=True, exist_ok=True)
+        destination = self.directory / f"{request_id}.json"
+        _write_json_atomic(destination, record)
+        return destination
+
+    def load(self) -> list[LoadedJob]:
+        if not self.directory.is_dir():
+            return []
+        jobs: list[LoadedJob] = []
+        for path in self.directory.glob("*.json"):
+            try:
+                value = json.loads(path.read_text(encoding="utf-8"))
+                if not isinstance(value, dict):
+                    raise ValueError("job record root is not an object")
+                if value.get("job_schema_version") != JOB_SCHEMA_VERSION:
+                    raise ValueError("unsupported job record schema")
+            except (OSError, ValueError, json.JSONDecodeError) as exc:
+                jobs.append(LoadedJob(path=path, data=None, error=str(exc)))
+            else:
+                jobs.append(LoadedJob(path=path, data=value))
+        return sorted(jobs, key=_job_mtime, reverse=True)
+
+    def remove(self, path: Path) -> None:
+        resolved_directory = self.directory.resolve()
+        resolved = path.resolve()
+        if resolved.parent != resolved_directory or resolved.suffix != ".json":
+            raise ValueError("job record is not a direct JSON child of the jobs directory")
+        resolved.unlink()
+
+
+def _write_json_atomic(path: Path, value: dict[str, Any]) -> None:
+    descriptor, temporary_name = tempfile.mkstemp(
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
+            json.dump(value, stream, indent=2, sort_keys=True, ensure_ascii=False)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _job_mtime(job: LoadedJob) -> int:
+    try:
+        return job.path.stat().st_mtime_ns
+    except OSError:
+        return 0

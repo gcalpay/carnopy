@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -97,3 +99,37 @@ def test_window_can_show_and_close_offscreen(
     window.close()
     application.processEvents()
     assert not window.isVisible()
+
+
+def test_window_uses_one_shared_worker_client(tmp_path: Path, application: QApplication) -> None:
+    del application
+    window = MainWindow(settings=settings_for(tmp_path / "settings.ini"))
+
+    assert window.configure_page.client is window.client
+    assert window.execution_page.client is window.client
+    assert window.inspection_page.client is window.client
+    assert window.jobs_page.client is window.client
+    window.close()
+
+
+def test_importing_gui_window_does_not_load_scientific_dependencies() -> None:
+    code = """
+import sys
+import carnopy.app.window
+for name in (
+    "CoolProp", "numpy", "pandas", "pyarrow", "matplotlib",
+    "carnopy.cli", "carnopy.pipeline", "carnopy.app.source_inspection",
+    "carnopy.app.table_preview",
+):
+    if name in sys.modules:
+        raise SystemExit(name)
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", code],
+        check=False,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "QT_QPA_PLATFORM": "offscreen"},
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr

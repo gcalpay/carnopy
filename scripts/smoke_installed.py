@@ -104,6 +104,24 @@ app.processEvents()
         )
 
 
+def smoke_app_inspection(*sources: Path) -> None:
+    from carnopy.app.source_inspection import inspect_for_app, resolve_table
+    from carnopy.app.table_preview import preview_table
+
+    expected_kinds = ("dataset", "preparation", "model_sweep")
+    for source, expected_kind in zip(sources, expected_kinds, strict=True):
+        inspection = inspect_for_app(source)
+        if inspection.source_kind != expected_kind or not inspection.tables:
+            raise RuntimeError(
+                f"desktop inspection returned unexpected result for {source}: "
+                f"{inspection.source_kind}, {inspection.tables}"
+            )
+        table = resolve_table(source, inspection.tables[0].table_id, inspection.revision)
+        preview = preview_table(table, offset=0, limit=1)
+        if preview["block_count"] > 1:
+            raise RuntimeError("desktop table preview exceeded its requested limit")
+
+
 def build_plot_arguments(run_directory: Path, figure: Path) -> list[str]:
     return [
         "plot",
@@ -444,6 +462,9 @@ def main() -> int:
         combined = failed_sweep.stdout + failed_sweep.stderr
         if "Plotting requires the visualization extra." not in combined:
             raise RuntimeError(f"unexpected missing-visualization sweep error:\n{combined}")
+
+    if arguments.with_app:
+        smoke_app_inspection(runs[0], prepared_bundle, sweep_bundle)
 
     print(f"Installed Carnopy smoke test passed: {version.stdout.strip()}")
     return 0

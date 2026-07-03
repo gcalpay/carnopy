@@ -24,6 +24,7 @@ from carnopy.app.config_document import (
     ConfigDocumentError,
     DatasetConfigDocument,
     ExternalModificationError,
+    SavedConfigSnapshot,
     document_from_worker_payload,
     new_document,
     replace_config_atomic,
@@ -46,12 +47,19 @@ class DatasetConfigEditor(QWidget):
     """Coordinate worker-backed validation and safe dataset-config file handling."""
 
     draft_changed = Signal(bool)
+    document_state_changed = Signal()
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        *,
+        client: WorkerClient | None = None,
+    ) -> None:
         super().__init__(parent)
         self.workspace: Workspace | None = None
         self.document: DatasetConfigDocument | None = None
-        self.client = WorkerClient(self)
+        self._owns_client = client is None
+        self.client = client or WorkerClient(self)
         self.capabilities: dict[str, Any] | None = None
         self._pending_action: str | None = None
         self._pending_path: Path | None = None
@@ -151,7 +159,15 @@ class DatasetConfigEditor(QWidget):
         return answer == QMessageBox.StandardButton.Discard
 
     def shutdown(self) -> None:
-        self.client.shutdown()
+        if self._owns_client:
+            self.client.shutdown()
+
+    def execution_snapshot(self) -> SavedConfigSnapshot:
+        if self.workspace is None or self.document is None:
+            raise ConfigDocumentError("open and save a dataset configuration before execution")
+        if not self._form_valid:
+            raise ConfigDocumentError("complete the configuration form before execution")
+        return self.document.execution_snapshot(configs_root=self.workspace.configs)
 
     def new_dataset(self) -> None:
         if self.workspace is None or self.capabilities is None or not self.confirm_discard():
@@ -238,6 +254,8 @@ class DatasetConfigEditor(QWidget):
     def _worker_succeeded(self, payload: object) -> None:
         result = cast(dict[str, Any], payload)
         action = self._pending_action
+        if action is None:
+            return
         self._clear_pending(keep_paths=action in {"save_new", "save_replace"})
         if action == "capabilities":
             self._apply_capabilities(result)
@@ -249,9 +267,12 @@ class DatasetConfigEditor(QWidget):
     def _worker_failed(self, payload: object) -> None:
         failure = cast(dict[str, Any], payload)
         action = self._pending_action
+        if action is None:
+            return
         self._clear_pending()
         message = str(failure.get("message", "worker request failed"))
-        issues = failure.get("issues")
+        details = failure.get("details")
+        issues = details.get("issues") if isinstance(details, dict) else None
         if isinstance(issues, list):
             details = [
                 f"{item.get('path', '$')}: {item.get('message', 'invalid value')}"
@@ -287,6 +308,7 @@ class DatasetConfigEditor(QWidget):
         self.visualization.load_visualization(None)
         self._form_valid = False
         self._update_actions()
+        self.document_state_changed.emit()
 
     def _finish_import(self, payload: dict[str, Any]) -> None:
         if self.workspace is None:
@@ -334,6 +356,7 @@ class DatasetConfigEditor(QWidget):
         self.file_label.setText(str(destination))
         self.status.setText(f"Saved valid configuration: {destination}")
         self._refresh_form_state()
+        self.document_state_changed.emit()
 
     def _open_document(self, document: DatasetConfigDocument) -> None:
         self.document = document
@@ -425,6 +448,7 @@ class DatasetConfigEditor(QWidget):
             self.status.setText("Ready to save. Full validation runs before writing.")
         self._update_actions()
         self.draft_changed.emit(document.needs_save)
+        self.document_state_changed.emit()
 
     def _handle_external_change(self) -> None:
         if self.document is None or self.document.source_path is None:
