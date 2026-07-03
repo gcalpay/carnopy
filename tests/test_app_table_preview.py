@@ -80,9 +80,29 @@ def test_csv_preview_scans_in_bounded_chunks_and_preserves_order(
 
     payload = preview_table(_resolved(path), offset=500, limit=500)
 
+    assert payload["total_row_count"] == 1_200
     assert payload["rows"][0] == [500, "row-500"]
     assert payload["rows"][-1] == [999, "row-999"]
-    assert calls and all(call.get("chunksize") == 500 for call in calls)
+    assert calls == [{"chunksize": 500}]
+
+
+@pytest.mark.parametrize(
+    ("contents", "expected_columns"),
+    [("", []), ("case_id,label\n", ["case_id", "label"])],
+)
+def test_csv_preview_handles_empty_inputs_in_one_scan(
+    tmp_path: Path,
+    contents: str,
+    expected_columns: list[str],
+) -> None:
+    path = tmp_path / "table.csv"
+    path.write_text(contents, encoding="utf-8")
+
+    payload = preview_table(_resolved(path), offset=0, limit=10)
+
+    assert payload["total_row_count"] == 0
+    assert [column["name"] for column in payload["columns"]] == expected_columns
+    assert payload["rows"] == []
 
 
 def test_preview_limits_are_strict(tmp_path: Path) -> None:

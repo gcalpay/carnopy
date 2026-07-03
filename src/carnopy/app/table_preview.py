@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import csv
 import math
 from pathlib import Path
 from typing import Any
@@ -92,36 +91,31 @@ def _preview_csv(
     offset: int,
     limit: int,
 ) -> tuple[int, list[tuple[str, str]], list[list[object]]]:
-    with path.open("r", encoding="utf-8", newline="") as stream:
-        reader = csv.reader(stream)
-        try:
-            next(reader)
-        except StopIteration:
-            return 0, [], []
-        total = sum(1 for _row in reader)
-    if offset >= total:
-        header = pd.read_csv(path, nrows=0)
-        return total, [(str(name), str(dtype)) for name, dtype in header.dtypes.items()], []
-
     selected: list[pd.DataFrame] = []
     selected_count = 0
     position = 0
-    for chunk in pd.read_csv(path, chunksize=MAX_PREVIEW_ROWS):
-        end = position + len(chunk)
-        if end <= offset:
-            position = end
-            continue
-        start = max(0, offset - position)
-        take = min(len(chunk) - start, limit - selected_count)
-        if take > 0:
-            selected.append(chunk.iloc[start : start + take])
-            selected_count += take
-        position = end
-        if selected_count >= limit:
-            break
+    columns: list[tuple[str, str]] = []
+    try:
+        with pd.read_csv(path, chunksize=MAX_PREVIEW_ROWS) as reader:
+            header = reader.read(0)
+            columns = [(str(name), str(dtype)) for name, dtype in header.dtypes.items()]
+            for chunk in reader:
+                if position == 0:
+                    columns = [(str(name), str(dtype)) for name, dtype in chunk.dtypes.items()]
+                end = position + len(chunk)
+                if end > offset and selected_count < limit:
+                    start = max(0, offset - position)
+                    take = min(len(chunk) - start, limit - selected_count)
+                    if take > 0:
+                        selected.append(chunk.iloc[start : start + take])
+                        selected_count += take
+                position = end
+    except pd.errors.EmptyDataError:
+        return 0, [], []
     frame = pd.concat(selected, ignore_index=True) if selected else pd.DataFrame()
-    columns = [(str(name), str(dtype)) for name, dtype in frame.dtypes.items()]
-    return total, columns, frame.astype(object).values.tolist()
+    if selected:
+        columns = [(str(name), str(dtype)) for name, dtype in frame.dtypes.items()]
+    return position, columns, frame.astype(object).values.tolist()
 
 
 def _json_value(value: object) -> object:

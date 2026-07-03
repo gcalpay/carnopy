@@ -34,17 +34,15 @@ class DatasetExecutionPage(QWidget):
         self.client = client
         self.workspace: Workspace | None = None
         self.snapshot: SavedConfigSnapshot | None = None
-        self.snapshot_issue = "Open and save a dataset configuration first."
         self._request_id: UUID | None = None
         self._operation: str | None = None
-        self._terminal_envelope: dict[str, object] | None = None
         self._cancellable = False
 
         root = QVBoxLayout(self)
         heading = QLabel("Validate and Generate")
         heading.setStyleSheet("font-size: 18px; font-weight: bold;")
         root.addWidget(heading)
-        self.config_label = QLabel(self.snapshot_issue)
+        self.config_label = QLabel("Open and save a dataset configuration first.")
         self.config_label.setWordWrap(True)
         root.addWidget(self.config_label)
 
@@ -118,7 +116,6 @@ class DatasetExecutionPage(QWidget):
         issue: str | None = None,
     ) -> None:
         self.snapshot = snapshot
-        self.snapshot_issue = issue or ""
         if snapshot is None:
             self.config_label.setText(issue or "No executable configuration is open.")
             self.command.clear()
@@ -139,7 +136,6 @@ class DatasetExecutionPage(QWidget):
         if snapshot is None or workspace is None or self.client.is_busy:
             return
         self._operation = operation
-        self._terminal_envelope = None
         self._cancellable = True
         self.result.setText("Request accepted; waiting for worker progress.")
         self.phase_label.setText("Starting worker…")
@@ -218,7 +214,6 @@ class DatasetExecutionPage(QWidget):
         envelope = cast(dict[str, object], value)
         if str(envelope.get("request_id")) != str(self._request_id):
             return
-        self._terminal_envelope = envelope
         self.request_terminal.emit(envelope)
 
     def _request_succeeded(self, value: object) -> None:
