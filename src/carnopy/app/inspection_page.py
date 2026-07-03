@@ -9,11 +9,13 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QListWidget,
     QListWidgetItem,
     QPlainTextEdit,
     QPushButton,
+    QSplitter,
     QTableView,
     QVBoxLayout,
     QWidget,
@@ -63,38 +65,62 @@ class InspectionPage(QWidget):
         self.status.setWordWrap(True)
         self.status.setAccessibleName("Inspection status")
         root.addWidget(self.status)
-        root.addWidget(QLabel("Summary"))
+        self.splitter = QSplitter(Qt.Orientation.Vertical)
+        details = QWidget()
+        self.details_widget = details
+        details_layout = QVBoxLayout(details)
+        details_layout.setContentsMargins(0, 0, 0, 0)
+        details_layout.addWidget(QLabel("Summary"))
         self.summary = QPlainTextEdit()
         self.summary.setReadOnly(True)
-        root.addWidget(self.summary, 1)
-        root.addWidget(QLabel("Tabular artifacts"))
+        details_layout.addWidget(self.summary, 1)
+        details_layout.addWidget(QLabel("Tabular artifacts"))
         self.tables = QListWidget()
         self.tables.itemDoubleClicked.connect(lambda _item: self.preview_selected())
         self.tables.currentItemChanged.connect(
             lambda _current, _previous: self._update_preview_actions()
         )
-        root.addWidget(self.tables, 1)
+        details_layout.addWidget(self.tables, 1)
         self.arrays_label = QLabel("Array/tensor artifacts: none")
         self.arrays_label.setWordWrap(True)
-        root.addWidget(self.arrays_label)
+        details_layout.addWidget(self.arrays_label)
+
+        preview = QWidget()
+        preview_layout = QVBoxLayout(preview)
+        preview_layout.setContentsMargins(0, 0, 0, 0)
         preview_actions = QHBoxLayout()
         self.preview_button = QPushButton("Preview Selected Table")
         self.previous_button = QPushButton("Previous 100")
         self.next_button = QPushButton("Next 100")
+        self.focus_table_button = QPushButton("Focus Table")
+        self.focus_table_button.setCheckable(True)
+        self.focus_table_button.setAccessibleName("Focus table preview")
         self.preview_button.clicked.connect(self.preview_selected)
         self.previous_button.clicked.connect(self.previous_page)
         self.next_button.clicked.connect(self.next_page)
+        self.focus_table_button.toggled.connect(self._set_table_focus)
         preview_actions.addWidget(self.preview_button)
         preview_actions.addWidget(self.previous_button)
         preview_actions.addWidget(self.next_button)
+        preview_actions.addWidget(self.focus_table_button)
         preview_actions.addStretch(1)
-        root.addLayout(preview_actions)
+        preview_layout.addLayout(preview_actions)
         self.preview_range = QLabel("No table preview loaded.")
-        root.addWidget(self.preview_range)
+        preview_layout.addWidget(self.preview_range)
         self.table_model = PreviewTableModel()
         self.table_view = QTableView()
         self.table_view.setModel(self.table_model)
-        root.addWidget(self.table_view, 2)
+        self.table_view.setSortingEnabled(False)
+        self.table_view.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.table_view.horizontalHeader().setStretchLastSection(True)
+        preview_layout.addWidget(self.table_view, 1)
+
+        self.splitter.addWidget(details)
+        self.splitter.addWidget(preview)
+        self.splitter.setStretchFactor(0, 1)
+        self.splitter.setStretchFactor(1, 3)
+        self.splitter.setSizes([240, 460])
+        root.addWidget(self.splitter, 1)
         self._update_preview_actions()
 
         client.request_succeeded.connect(self._request_succeeded)
@@ -246,6 +272,10 @@ class InspectionPage(QWidget):
 
     def _busy_changed(self, _busy: bool) -> None:
         self._update_preview_actions()
+
+    def _set_table_focus(self, focused: bool) -> None:
+        self.details_widget.setVisible(not focused)
+        self.focus_table_button.setText("Show Details" if focused else "Focus Table")
 
     def _update_preview_range(self) -> None:
         count = self.table_model.rowCount()

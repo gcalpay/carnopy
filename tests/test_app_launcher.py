@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import builtins
 import importlib.util
+import os
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -80,3 +82,39 @@ def test_launcher_passes_workspace_to_application(
 
     assert launcher.main(["--workspace", str(tmp_path)]) == 0
     assert received == [tmp_path]
+
+
+@pytest.mark.parametrize(
+    ("argument", "initial", "expected"),
+    [
+        ("auto", "wayland", "wayland"),
+        ("xcb", "wayland", "xcb"),
+        ("wayland", "xcb", "wayland"),
+    ],
+)
+def test_launcher_applies_explicit_platform_before_importing_pyside(
+    argument: str,
+    initial: str,
+    expected: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_import = builtins.__import__
+    observed: list[str | None] = []
+
+    def inspect_platform(
+        name: str,
+        globals: dict[str, object] | None = None,
+        locals: dict[str, object] | None = None,
+        fromlist: tuple[str, ...] = (),
+        level: int = 0,
+    ) -> object:
+        if name == "carnopy.app.window":
+            observed.append(os.environ.get("QT_QPA_PLATFORM"))
+            return SimpleNamespace(run_application=lambda _workspace: 0)
+        return original_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setenv("QT_QPA_PLATFORM", initial)
+    monkeypatch.setattr(builtins, "__import__", inspect_platform)
+
+    assert launcher.main(["--qt-platform", argument]) == 0
+    assert observed == [expected]

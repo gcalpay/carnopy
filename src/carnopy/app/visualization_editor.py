@@ -50,6 +50,13 @@ class VisualizationEditor(QWidget):
         shared.addRow("Shared display units", self.display_units)
         layout.addLayout(shared)
         layout.addWidget(QLabel("Plot requests (ordered)"))
+        plot_name_help = QLabel(
+            "Plot names are explicit output identifiers and do not follow the "
+            "configuration filename."
+        )
+        plot_name_help.setWordWrap(True)
+        plot_name_help.setAccessibleName("Plot name guidance")
+        layout.addWidget(plot_name_help)
         self.plots = QListWidget()
         layout.addWidget(self.plots, 1)
         actions = QHBoxLayout()

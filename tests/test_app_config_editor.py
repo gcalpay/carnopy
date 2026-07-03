@@ -517,6 +517,27 @@ def test_visualization_requires_unique_names_and_preserves_plot_order(
     editor.close()
 
 
+def test_opening_document_replaces_previous_visualization_state(
+    tmp_path: Path,
+    application: QApplication,
+) -> None:
+    del application
+    editor = configured_editor(tmp_path)
+    first = yaml.safe_load(template_text("property_table"))
+    first["visualization"] = {
+        "plots": [{"name": "old-plot", "kind": "pv"}],
+    }
+    second = yaml.safe_load(template_text("property_table"))
+
+    editor._open_document(new_document(first))
+    assert [plot["name"] for plot in editor.visualization.plot_payloads()] == ["old-plot"]
+
+    editor._open_document(new_document(second))
+    assert editor.visualization.plot_payloads() == []
+    assert "visualization" not in yaml.safe_load(editor.preview.toPlainText())
+    editor.shutdown()
+
+
 def test_model_change_keeps_incompatible_property_visible_and_blocks_save(
     tmp_path: Path,
     application: QApplication,

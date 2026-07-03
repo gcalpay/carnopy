@@ -11,6 +11,11 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication, QHeaderView
+
+from carnopy.app.client import WorkerClient
+from carnopy.app.inspection_page import InspectionPage
 from carnopy.app.source_inspection import inspect_for_app, resolve_table
 from carnopy.app.sources_page import discover_workspace_sources
 from carnopy.inspection import inspect_source
@@ -19,6 +24,48 @@ from carnopy.visualization.models import VisualizationError
 
 def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+@pytest.fixture(scope="module")
+def application() -> QApplication:
+    existing = QApplication.instance()
+    app = existing if isinstance(existing, QApplication) else QApplication([])
+    yield app
+
+
+def test_inspection_page_can_focus_resizable_unsorted_table(
+    application: QApplication,
+) -> None:
+    del application
+    client = WorkerClient()
+    page = InspectionPage(client)
+    page.table_model.set_block(
+        {
+            "columns": [{"name": "temperature", "dtype": "float64", "unit": "K"}],
+            "rows": [[300.0]],
+            "total_row_count": 1,
+            "block_offset": 0,
+        },
+        page_offset=0,
+    )
+
+    assert page.splitter.orientation() == Qt.Orientation.Vertical
+    assert not page.table_view.isSortingEnabled()
+    assert (
+        page.table_view.horizontalHeader().sectionResizeMode(0)
+        == QHeaderView.ResizeMode.Interactive
+    )
+    assert not page.details_widget.isHidden()
+
+    page.focus_table_button.click()
+    assert page.details_widget.isHidden()
+    assert page.focus_table_button.text() == "Show Details"
+
+    page.focus_table_button.click()
+    assert not page.details_widget.isHidden()
+    assert page.focus_table_button.text() == "Focus Table"
+    page.close()
+    client.shutdown()
 
 
 def test_workspace_source_discovery_is_direct_and_lightweight(tmp_path: Path) -> None:
