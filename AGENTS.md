@@ -103,15 +103,14 @@ Milestone 1 supports:
 
 The `0.1.0a3` development line adds a Linux-first PySide6 desktop frontend for
 the existing dataset workflow. The desktop application is a presentation
-frontend, not a new scientific execution layer. GUI-1 Stages 1–4 are complete:
+frontend, not a new scientific execution layer. GUI-1 Stages 1–5 are complete:
 the worker protocol, optional desktop shell, workspace lifecycle,
 worker-validated dataset configuration editor, saved-config execution,
 workspace-local job diagnostics, guarded staging recovery, read-only
-output/bundle inspection, and bounded table previews are implemented. Stage 5
-is in progress. Inspection-driven session plot requests, private worker
-rendering, guarded no-overwrite image/sidecar promotion, desktop Render
-controls, and immediate confirmed force-stop are implemented. PNG/SVG preview
-and explicit PDF opening remain pending.
+output/bundle inspection, bounded table previews, inspection-driven session
+plot requests, private worker rendering, guarded no-overwrite image/sidecar
+promotion, desktop Render controls, immediate confirmed force-stop, Qt-only
+PNG/SVG previews, and explicit PDF opening are implemented.
 
 During GUI-1 development, [GUI_PLAN.md](GUI_PLAN.md) is the temporary source of
 truth for stage boundaries and status. Read it before changing desktop modules,
