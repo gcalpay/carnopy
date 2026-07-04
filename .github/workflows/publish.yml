@@ -17,10 +17,6 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      - name: Install Qt runtime dependency
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends libegl1
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
@@ -41,15 +37,19 @@ jobs:
       - name: Verify lock file
         run: uv lock --check
       - name: Synchronize development dependencies
-        run: uv sync --locked --python 3.12 --extra all --group dev
+        run: >-
+          uv sync --locked --python 3.12
+          --extra viz --extra ml --group dev
       - name: Run Ruff
         run: uv run --locked ruff check .
       - name: Check formatting
         run: uv run --locked ruff format --check .
-      - name: Run strict mypy
-        run: uv run --locked mypy src/carnopy
-      - name: Run preflight
-        run: uv run --locked python scripts/preflight.py
+      - name: Run strict core mypy
+        run: uv run --locked mypy src/carnopy --exclude '^src/carnopy/app/'
+      - name: Smoke-test lightweight help
+        run: uv run --locked python -m carnopy --help
+      - name: Check environment dependencies
+        run: uv pip check --python .venv/bin/python
 
   tests:
     name: Release tests (Python ${{ matrix.python-version }})
@@ -81,7 +81,12 @@ jobs:
           uv sync --locked --python "${{ matrix.python-version }}"
           --extra viz --extra ml --no-default-groups --group test
       - name: Run tests
-        run: uv run --locked --no-default-groups --group test pytest
+        run: >-
+          uv run --locked --extra viz --extra ml
+          --no-default-groups --group test pytest
+          --ignore-glob=tests/test_app_*.py
+      - name: Check environment dependencies
+        run: uv pip check --python .venv/bin/python
 
   app:
     name: Release desktop app (Python 3.12)
@@ -109,11 +114,17 @@ jobs:
       - name: Synchronize desktop test dependencies
         run: >-
           uv sync --locked --python 3.12
-          --extra app --no-default-groups --group test
+          --extra app --no-default-groups --group test --group type
+      - name: Run strict desktop mypy
+        run: >-
+          uv run --locked --extra app --no-default-groups --group type
+          mypy src/carnopy/app
       - name: Run desktop tests
         run: >-
-          uv run --locked --no-default-groups --group test pytest
+          uv run --locked --extra app --no-default-groups --group test pytest
           tests/test_app_*.py
+      - name: Check environment dependencies
+        run: uv pip check --python .venv/bin/python
 
   build:
     name: Build distributions once
@@ -159,10 +170,6 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      - name: Install Qt runtime dependency
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends libegl1
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
@@ -173,7 +180,9 @@ jobs:
           version: "0.11.23"
           enable-cache: true
       - name: Synchronize release dependencies
-        run: uv sync --locked --python 3.12 --extra all --group dev --group release
+        run: >-
+          uv sync --locked --python 3.12
+          --no-default-groups --group release
       - name: Download candidate distributions
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -183,8 +192,10 @@ jobs:
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          uv run --locked --group release python -m twine check release/dist/*
-          uv run --locked python scripts/check_distribution.py \
+          uv run --locked --no-default-groups --group release \
+            python -m twine check release/dist/*
+          uv run --locked --no-default-groups \
+            python scripts/check_distribution.py \
             --expected-version "$VERSION" \
             release/dist/*
       - name: Smoke-test base wheel outside checkout
@@ -213,6 +224,24 @@ jobs:
             --work-directory "$RUNNER_TEMP/ml-smoke" \
             --expected-version "${GITHUB_REF_NAME#v}" \
             --with-ml-exports
+      - name: Smoke-test sdist and reconstruct wheel outside checkout
+        shell: bash
+        run: |
+          SDIST="$(find "$PWD/release/dist" -maxdepth 1 -name '*.tar.gz' -print -quit)"
+          python -m venv "$RUNNER_TEMP/carnopy-sdist"
+          "$RUNNER_TEMP/carnopy-sdist/bin/python" -m pip install "$SDIST"
+          "$RUNNER_TEMP/carnopy-sdist/bin/python" -m pip check
+          "$RUNNER_TEMP/carnopy-sdist/bin/python" scripts/smoke_installed.py \
+            --work-directory "$RUNNER_TEMP/sdist-smoke" \
+            --expected-version "${GITHUB_REF_NAME#v}"
+          "$RUNNER_TEMP/carnopy-sdist/bin/python" -m pip wheel \
+            --no-deps \
+            --wheel-dir "$RUNNER_TEMP/rebuilt-wheel" \
+            "$SDIST"
+      - name: Install Qt runtime dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends libegl1
       - name: Smoke-test wheel with app extra outside checkout
         shell: bash
         run: |
@@ -249,23 +278,10 @@ jobs:
             --with-visualization \
             --with-ml-exports \
             --with-app
-      - name: Smoke-test sdist and reconstruct wheel outside checkout
-        shell: bash
-        run: |
-          SDIST="$(find "$PWD/release/dist" -maxdepth 1 -name '*.tar.gz' -print -quit)"
-          python -m venv "$RUNNER_TEMP/carnopy-sdist"
-          "$RUNNER_TEMP/carnopy-sdist/bin/python" -m pip install "$SDIST"
-          "$RUNNER_TEMP/carnopy-sdist/bin/python" -m pip check
-          "$RUNNER_TEMP/carnopy-sdist/bin/python" scripts/smoke_installed.py \
-            --work-directory "$RUNNER_TEMP/sdist-smoke" \
-            --expected-version "${GITHUB_REF_NAME#v}"
-          "$RUNNER_TEMP/carnopy-sdist/bin/python" -m pip wheel \
-            --no-deps \
-            --wheel-dir "$RUNNER_TEMP/rebuilt-wheel" \
-            "$SDIST"
       - name: Write release checksums
         run: >-
-          uv run --locked python scripts/hash_distributions.py
+          uv run --locked --no-default-groups
+          python scripts/hash_distributions.py
           release/dist/*
           --output release/SHA256SUMS
       - name: Upload verified distributions

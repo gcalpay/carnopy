@@ -1,0 +1,57 @@
+name: Dependency audit
+
+on:
+  schedule:
+    - cron: "29 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Audit ${{ matrix.profile }} dependencies
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        profile:
+          - base
+          - viz
+          - ml
+          - app
+          - all
+    steps:
+      - name: Check out source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          version: "0.11.23"
+          enable-cache: true
+      - name: Export locked dependency profile
+        shell: bash
+        env:
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          args=(
+            --locked
+            --no-dev
+            --no-emit-project
+            --output-file audit-requirements.txt
+          )
+          if [[ "$PROFILE" != "base" ]]; then
+            args+=(--extra "$PROFILE")
+          fi
+          uv export "${args[@]}"
+      - name: Audit known vulnerabilities
+        uses: pypa/gh-action-pip-audit@1220774d901786e6f652ae159f7b6bc8fea6d266 # v1.1.0
+        with:
+          inputs: audit-requirements.txt
+          require-hashes: true

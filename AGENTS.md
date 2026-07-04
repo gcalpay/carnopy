@@ -165,6 +165,13 @@ inspection gate with:
 bash scripts/local_gate.sh prerelease/local-gate
 ```
 
+GitHub verification keeps core and desktop dependencies separate. General
+quality and Python-matrix jobs do not install the `app` extra or Qt runtime
+packages; the dedicated Linux app job owns desktop typing and tests. Pull
+requests also receive dependency review and CodeQL analysis. Scheduled
+workflows audit locked dependency profiles and exercise the core package on
+Linux, Windows, and macOS.
+
 If a required command or dependency is unavailable, preserve the exact failure
 and ask before installing, upgrading, or substituting anything.
 
