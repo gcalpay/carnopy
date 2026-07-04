@@ -20,7 +20,7 @@ prerelease/
 *.egg-info/
 
 # Generated datasets
-outputs/
+/outputs/
 
 # Generated figures
 figures/
