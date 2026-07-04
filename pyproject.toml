@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "carnopy"
 dynamic = ["version"]
-description = "Synthetic thermophysical property dataset generation from thermodynamic databases and simulation backends for physics-informed ML surrogate models."
+description = "CLI-first thermophysical dataset generation and leakage-aware ML preparation from thermodynamic backends, with an optional Linux-first desktop GUI."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
@@ -106,6 +106,7 @@ packages = ["src/carnopy"]
 include = [
   "/AGENTS.md",
   "/LICENSE",
+  "/ML_PREPARATION_ROADMAP.md",
   "/README.md",
   "/configs",
   "/pyproject.toml",

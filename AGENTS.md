@@ -345,6 +345,12 @@ require one compatible `reference_state_policy`/backend/model context across
 the selected source rows. Mixed incompatible absolute `h`, `s`, or `u` values
 must fail before writing a preparation bundle.
 
+[ML_PREPARATION_ROADMAP.md](ML_PREPARATION_ROADMAP.md) records implemented
+preparation behavior separately from future research directions. Read it before
+proposing preparation-quality, feature-engineering, statistical-diagnostic,
+active-learning, or optimization work. Roadmap entries are not implementation
+authority; public contracts still require a reviewed stage plan.
+
 Dataset formats:
 
 ```yaml

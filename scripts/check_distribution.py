@@ -11,8 +11,8 @@ from typing import Protocol
 
 PROJECT_NAME = "carnopy"
 PROJECT_SUMMARY = (
-    "Synthetic thermophysical property dataset generation from thermodynamic "
-    "databases and simulation backends for physics-informed ML surrogate models."
+    "CLI-first thermophysical dataset generation and leakage-aware ML preparation "
+    "from thermodynamic backends, with an optional Linux-first desktop GUI."
 )
 PROJECT_KEYWORDS = {
     "coolprop",
@@ -91,6 +91,7 @@ WHEEL_REQUIRED = {
 SDIST_REQUIRED = {
     "AGENTS.md",
     "LICENSE",
+    "ML_PREPARATION_ROADMAP.md",
     "README.md",
     "configs/model_sweep_example.yaml",
     "configs/property_table_example.yaml",
@@ -162,6 +163,7 @@ SDIST_REQUIRED = {
 }
 SDIST_MARKDOWN = {
     "AGENTS.md",
+    "ML_PREPARATION_ROADMAP.md",
     "README.md",
 }
 FORBIDDEN_ANYWHERE = {
@@ -385,7 +387,7 @@ def inspect_sdist(path: Path, expected_version: str) -> None:
         markdown = {name for name in relative if name.endswith(".md")}
         if markdown != SDIST_MARKDOWN:
             raise ValueError(
-                "sdist Markdown inventory must contain only AGENTS.md and README.md; "
+                "sdist Markdown inventory does not match the approved public documents; "
                 f"found {sorted(markdown)}"
             )
         invalid = forbidden_paths(names, strip_root=True)

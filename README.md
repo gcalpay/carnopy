@@ -5,8 +5,8 @@
 [![Verify](https://github.com/gcalpay/carnopy/actions/workflows/ci.yml/badge.svg)](https://github.com/gcalpay/carnopy/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Synthetic thermophysical property dataset generation from thermodynamic
-databases and simulation backends for physics-informed ML surrogate models.
+CLI-first thermophysical dataset generation and leakage-aware ML preparation
+from thermodynamic backends, with an optional Linux-first desktop GUI.
 
 > Alpha software: public interfaces and generated schemas may still change
 > before the stable `0.1.0` release.
@@ -159,6 +159,7 @@ explicit user action.
 - [Generated outputs and provenance](#generated-outputs-and-provenance)
 - [Python API](#python-api)
 - [Desktop development](#desktop-development)
+- [ML preparation roadmap](https://github.com/gcalpay/carnopy/blob/main/ML_PREPARATION_ROADMAP.md)
 - [Architecture map](#architecture-map)
 - [Scientific limitations](#scientific-limitations)
 - [Development and contribution](#development-and-contribution)
@@ -512,7 +513,8 @@ Array exports require `carnopy[ml]` or `carnopy[all]` when SafeTensors is
 requested. Carnopy records feature/target order, units, shapes, dtype, file
 hashes, and float32 conversion-error summaries in the manifest. It does not
 train models, depend on PyTorch, or export `.pt`/`.pth` files in this release
-line.
+line. Implemented behavior and reviewed future directions are separated in the
+[ML preparation roadmap](https://github.com/gcalpay/carnopy/blob/main/ML_PREPARATION_ROADMAP.md).
 
 ### Modes
 
@@ -1182,10 +1184,16 @@ force-stop/close ownership, Qt-only PNG/SVG previews, explicit PDF opening,
 packaging inventory checks, and installed-wheel smoke coverage are present.
 Release hardening and the final architecture-map review remain before release.
 
-After GUI-1 stabilizes, the next scientific milestone may be a separately
-designed pure-fluid ORC feasibility-envelope subsystem. It would produce
-traceable accepted and rejected operating windows rather than silently acting
-as a complete process simulator or optimizer.
+After GUI-1 stabilizes, the next data-focused milestone is preparation quality
+and evaluation: explicit-bin stratification, auditable physical/data-quality
+flags, split diagnostics, and interpretable prepared-data summaries. The
+[ML preparation roadmap](https://github.com/gcalpay/carnopy/blob/main/ML_PREPARATION_ROADMAP.md)
+separates current behavior from research directions. Carnopy remains a dataset
+and preparation tool rather than a model-training framework.
+
+A later pure-fluid ORC feasibility-envelope subsystem may produce traceable
+accepted and rejected operating windows rather than silently acting as a
+complete process simulator or optimizer.
 
 That design must explicitly cover source and sink profiles, pinch and approach
 temperatures, pressure losses, subcooling and superheat margins, equipment
