@@ -64,6 +64,7 @@ def test_desktop_dependencies_are_isolated_from_python_matrix() -> None:
         assert "--extra all --group dev" in quality_job
         assert "--extra viz --extra ml --no-default-groups --group test" in text
         assert "--extra app --no-default-groups --group test" in text
+        assert "tests/test_app_*.py" in workflow_job(text, "app")
         assert "QT_QPA_PLATFORM: offscreen" in text
         assert "--with-app" in text
         assert "libegl1" not in workflow_job(text, "tests")

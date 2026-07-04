@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, cast
 from uuid import UUID
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -16,11 +16,13 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QSplitter,
     QVBoxLayout,
     QWidget,
 )
 
 from carnopy.app.client import WorkerClient
+from carnopy.app.plot_preview import PlotPreview, PlotPreviewError
 from carnopy.app.plot_request_dialog import PlotRequestDialog
 from carnopy.app.protocol import WorkerEvent
 from carnopy.app.workspace import Workspace
@@ -42,20 +44,24 @@ class PlotPage(QWidget):
         self._cleanup_error: str | None = None
 
         layout = QVBoxLayout(self)
+        self.splitter = QSplitter(Qt.Orientation.Vertical)
+        controls = QWidget()
+        controls_layout = QVBoxLayout(controls)
+        layout.addWidget(self.splitter)
         heading = QLabel("Plot")
         heading.setStyleSheet("font-size: 18px; font-weight: bold;")
-        layout.addWidget(heading)
+        controls_layout.addWidget(heading)
         self.source_label = QLabel("Inspect a dataset source first.")
         self.source_label.setWordWrap(True)
-        layout.addWidget(self.source_label)
+        controls_layout.addWidget(self.source_label)
         self.status = QLabel("Manual plotting is available for inspected datasets only.")
         self.status.setWordWrap(True)
         self.status.setAccessibleName("Plot source status")
-        layout.addWidget(self.status)
+        controls_layout.addWidget(self.status)
         self.reference_advisory = QLabel()
         self.reference_advisory.setWordWrap(True)
         self.reference_advisory.setAccessibleName("Plot reference-state advisory")
-        layout.addWidget(self.reference_advisory)
+        controls_layout.addWidget(self.reference_advisory)
 
         actions = QHBoxLayout()
         self.edit_button = QPushButton("Edit Plot Request…")
@@ -78,28 +84,34 @@ class PlotPage(QWidget):
         self.force_stop_button.setEnabled(False)
         actions.addWidget(self.force_stop_button)
         actions.addStretch(1)
-        layout.addLayout(actions)
+        controls_layout.addLayout(actions)
 
         self.phase_label = QLabel("Idle")
         self.phase_label.setAccessibleName("Plot rendering phase")
-        layout.addWidget(self.phase_label)
-        layout.addWidget(QLabel("Session plot request"))
+        controls_layout.addWidget(self.phase_label)
+        controls_layout.addWidget(QLabel("Session plot request"))
         self.request_summary = QPlainTextEdit()
         self.request_summary.setReadOnly(True)
         self.request_summary.setAccessibleName("Plot request summary")
-        layout.addWidget(self.request_summary, 1)
-        layout.addWidget(QLabel("Equivalent CLI command (informational only)"))
+        controls_layout.addWidget(self.request_summary, 1)
+        controls_layout.addWidget(QLabel("Equivalent CLI command (informational only)"))
         self.command = QPlainTextEdit()
         self.command.setReadOnly(True)
         self.command.setMaximumHeight(85)
         self.command.setAccessibleName("Equivalent plot command")
-        layout.addWidget(self.command)
-        layout.addWidget(QLabel("Render result"))
+        controls_layout.addWidget(self.command)
+        controls_layout.addWidget(QLabel("Render result"))
         self.result_summary = QPlainTextEdit()
         self.result_summary.setReadOnly(True)
         self.result_summary.setMaximumHeight(150)
         self.result_summary.setAccessibleName("Plot render result")
-        layout.addWidget(self.result_summary)
+        controls_layout.addWidget(self.result_summary)
+
+        self.preview = PlotPreview()
+        self.splitter.addWidget(controls)
+        self.splitter.addWidget(self.preview)
+        self.splitter.setStretchFactor(0, 1)
+        self.splitter.setStretchFactor(1, 2)
 
         self.client.event_received.connect(self._event_received)
         self.client.request_succeeded.connect(self._request_succeeded)
@@ -297,6 +309,9 @@ class PlotPage(QWidget):
             lines.extend(["Advisories:", *advisory_lines])
         if cleanup:
             lines.append(f"Cleanup warning: {cleanup}")
+        preview_error = self._load_preview(payload)
+        if preview_error is not None:
+            lines.append(f"Preview unavailable: {preview_error}")
         self.result_summary.setPlainText("\n".join(lines))
         normalized = payload.get("normalized_request")
         image_path = payload.get("image_path")
@@ -344,8 +359,33 @@ class PlotPage(QWidget):
         self._cleanup_error = None
         self.command.clear()
         self.result_summary.clear()
+        self.preview.clear()
         if not self.owns_active_request:
             self.phase_label.setText("Idle")
+
+    def _load_preview(self, payload: dict[str, Any]) -> str | None:
+        workspace = self.workspace
+        image_path = payload.get("image_path")
+        image_format = payload.get("format")
+        image_sha256 = payload.get("image_sha256")
+        if (
+            workspace is None
+            or not isinstance(image_path, str)
+            or not isinstance(image_format, str)
+            or not isinstance(image_sha256, str)
+        ):
+            return "worker result did not contain complete preview metadata"
+        try:
+            self.preview.load_export(
+                workspace.figures,
+                Path(image_path),
+                image_format,
+                image_sha256,
+            )
+        except PlotPreviewError as exc:
+            self.preview.status.setText(f"Preview unavailable: {exc}")
+            return str(exc)
+        return None
 
     def _update_actions(self) -> None:
         editable = self.context is not None

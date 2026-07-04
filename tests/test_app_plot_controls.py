@@ -12,7 +12,8 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Qt, Signal
+from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication, QComboBox, QLineEdit
 
 from carnopy.app.client import WorkerClient
@@ -263,7 +264,6 @@ def test_plot_page_renders_owned_request_and_reports_result(
     tmp_path: Path,
     application: QApplication,
 ) -> None:
-    del application
     from carnopy.app.workspace import initialize_workspace
 
     workspace = initialize_workspace(tmp_path / "workspace")
@@ -308,6 +308,10 @@ def test_plot_page_renders_owned_request_and_reports_result(
     )
     assert page.phase_label.text() == "Starting plot worker…"
     image = workspace.figures / "my-dataset" / "density-curves.png"
+    image.parent.mkdir()
+    rendered = QImage(40, 20, QImage.Format.Format_RGB32)
+    rendered.fill(Qt.GlobalColor.cyan)
+    assert rendered.save(str(image), "PNG")
     normalized = {
         "kind": "property_curves",
         "property_name": "mass_density",
@@ -326,6 +330,8 @@ def test_plot_page_renders_owned_request_and_reports_result(
             "source": str(dataset),
             "image_path": str(image),
             "sidecar_path": str(image.with_suffix(".plot.json")),
+            "image_sha256": sha256_file(image),
+            "format": "png",
             "source_integrity": "verified",
             "valid_rows_plotted": 4,
             "invalid_rows_excluded": 0,
@@ -339,6 +345,8 @@ def test_plot_page_renders_owned_request_and_reports_result(
     assert "Rows plotted: 4" in page.result_summary.toPlainText()
     assert "sparse: few rows" in page.result_summary.toPlainText()
     assert shlex_split(page.command.toPlainText())[-2:] == ["--output", str(image)]
+    application.processEvents()
+    assert page.preview.has_graphic
     page.close()
 
 

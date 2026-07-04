@@ -111,13 +111,7 @@ jobs:
       - name: Run desktop tests
         run: >-
           uv run --locked --no-default-groups --group test pytest
-          tests/test_app_launcher.py
-          tests/test_app_client.py
-          tests/test_app_config_document.py
-          tests/test_app_config_editor.py
-          tests/test_app_workspace.py
-          tests/test_app_window.py
-          tests/test_app_worker.py
+          tests/test_app_*.py
       - name: Check environment dependencies
         run: uv pip check --python .venv/bin/python
 

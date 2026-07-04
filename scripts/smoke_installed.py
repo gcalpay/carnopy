@@ -71,7 +71,9 @@ def smoke_app(work_directory: Path) -> None:
 import sys
 from pathlib import Path
 from PySide6.QtCore import QSettings
+from PySide6.QtSvgWidgets import QGraphicsSvgItem
 from PySide6.QtWidgets import QApplication
+from carnopy.app.plot_preview import PlotPreview
 from carnopy.app.window import MainWindow
 from carnopy.app.workspace import initialize_workspace
 
@@ -86,6 +88,12 @@ window.show()
 app.processEvents()
 if window.workspace != workspace or not window.isVisible():
     raise SystemExit("desktop shell did not open its workspace")
+preview = PlotPreview()
+svg_item = QGraphicsSvgItem()
+if preview.has_graphic or svg_item.renderer() is None:
+    raise SystemExit("desktop plot preview did not initialize")
+preview.close()
+window.client.shutdown()
 window.close()
 app.processEvents()
 """
@@ -100,6 +108,105 @@ app.processEvents()
     if completed.returncode != 0:
         raise RuntimeError(
             "offscreen desktop smoke test failed\n"
+            f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+        )
+
+
+def smoke_app_plot(work_directory: Path, source: Path) -> None:
+    environment = os.environ.copy()
+    environment["QT_QPA_PLATFORM"] = "offscreen"
+    environment["MPLBACKEND"] = "Agg"
+    environment["MPLCONFIGDIR"] = str(work_directory / "app-plot-mpl")
+    code = r"""
+import hashlib
+import sys
+from pathlib import Path
+from PySide6.QtCore import QEventLoop, QTimer
+from PySide6.QtWidgets import QApplication
+from carnopy.app.client import WorkerClient
+from carnopy.app.plot_preview import PlotPreview
+from carnopy.app.workspace import initialize_workspace
+
+root = Path(sys.argv[1])
+source = Path(sys.argv[2])
+workspace = initialize_workspace(root / "workspace")
+app = QApplication([])
+
+def request(kind, payload):
+    client = WorkerClient()
+    results = []
+    failures = []
+    loop = QEventLoop()
+    timer = QTimer()
+    timer.setSingleShot(True)
+    timer.setInterval(30_000)
+    timer.timeout.connect(loop.quit)
+    client.request_succeeded.connect(results.append)
+    client.request_failed.connect(failures.append)
+    client.busy_changed.connect(lambda busy: None if busy else loop.quit())
+    client.start_request(kind, payload)
+    timer.start()
+    loop.exec()
+    timer.stop()
+    if client.is_busy:
+        client.shutdown()
+        raise SystemExit(f"desktop worker timed out: {kind}")
+    client.deleteLater()
+    app.processEvents()
+    if failures or len(results) != 1:
+        raise SystemExit(f"desktop worker failed: {kind}: {failures!r}, {results!r}")
+    return results[0]
+
+inspection = request("inspect_source", {"source_path": str(source)})
+rendered = request(
+    "render_plot",
+    {
+        "workspace_path": str(workspace.root),
+        "source_path": str(source),
+        "inspection_revision": inspection["revision"],
+        "plot_name": "installed-smoke-density",
+        "format": "png",
+        "plot": {
+            "name": "installed-smoke-density",
+            "kind": "property_curves",
+            "property": "mass_density",
+        },
+    },
+)
+image = Path(rendered["image_path"])
+sidecar = Path(rendered["sidecar_path"])
+for path, expected in (
+    (image, rendered["image_sha256"]),
+    (sidecar, rendered["sidecar_sha256"]),
+):
+    if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+        raise SystemExit(f"desktop plot artifact failed verification: {path}")
+preview = PlotPreview()
+preview.load_export(workspace.figures, image, "png", rendered["image_sha256"])
+app.processEvents()
+if not preview.has_graphic:
+    raise SystemExit("desktop plot preview did not load the rendered PNG")
+for name in (
+    "matplotlib",
+    "carnopy.visualization.plots",
+    "carnopy.visualization.render",
+    "carnopy.app.plot_rendering",
+):
+    if name in sys.modules:
+        raise SystemExit(f"GUI parent imported worker rendering module: {name}")
+preview.close()
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", code, str(work_directory / "app-plot"), str(source)],
+        cwd=work_directory,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            "offscreen desktop plot smoke test failed\n"
             f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
         )
 
@@ -465,6 +572,7 @@ def main() -> int:
 
     if arguments.with_app:
         smoke_app_inspection(runs[0], prepared_bundle, sweep_bundle)
+        smoke_app_plot(work_directory, runs[0])
 
     print(f"Installed Carnopy smoke test passed: {version.stdout.strip()}")
     return 0
