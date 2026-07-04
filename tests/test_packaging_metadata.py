@@ -46,8 +46,8 @@ def test_alpha_metadata_uses_modern_license_and_release_urls() -> None:
     }
     project = pyproject["project"]
     assert project["description"] == (
-        "Synthetic thermophysical property dataset generation from thermodynamic "
-        "databases and simulation backends for physics-informed ML surrogate models."
+        "CLI-first thermophysical dataset generation and leakage-aware ML preparation "
+        "from thermodynamic backends, with an optional Linux-first desktop GUI."
     )
     assert project["license"] == "MIT"
     assert project["license-files"] == ["LICENSE"]
@@ -105,6 +105,7 @@ def test_public_and_community_markdown_have_intentional_distribution_boundaries(
     root = Path(__file__).resolve().parents[1]
     assert (root / "README.md").is_file()
     assert (root / "AGENTS.md").is_file()
+    assert (root / "ML_PREPARATION_ROADMAP.md").is_file()
     community = root / ".github"
     for name in ("CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "SECURITY.md"):
         assert (community / name).is_file()
@@ -114,6 +115,7 @@ def test_public_and_community_markdown_have_intentional_distribution_boundaries(
     sdist_includes = set(pyproject["tool"]["hatch"]["build"]["targets"]["sdist"]["include"])
     assert "/README.md" in sdist_includes
     assert "/AGENTS.md" in sdist_includes
+    assert "/ML_PREPARATION_ROADMAP.md" in sdist_includes
     assert not any(path.startswith("/.github") for path in sdist_includes)
     assert "/docs" not in sdist_includes
 
@@ -130,8 +132,8 @@ def test_readme_describes_current_alpha_without_stale_first_release_wording() ->
     assert "pending publisher" not in text.casefold()
     assert "Typing: typed" not in text
     assert (
-        "Synthetic thermophysical property dataset generation from thermodynamic\n"
-        "databases and simulation backends for physics-informed ML surrogate models."
+        "CLI-first thermophysical dataset generation and leakage-aware ML preparation\n"
+        "from thermodynamic backends, with an optional Linux-first desktop GUI."
     ) in text
 
 

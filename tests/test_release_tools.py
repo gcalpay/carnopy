@@ -155,6 +155,7 @@ def test_distribution_checker_requires_model_sweep_artifacts() -> None:
         "carnopy/templates/preparation.yaml",
     }.issubset(check_distribution.WHEEL_REQUIRED)
     assert {
+        "ML_PREPARATION_ROADMAP.md",
         "configs/model_sweep_example.yaml",
         "src/carnopy/_execution.py",
         "src/carnopy/app/capabilities.py",

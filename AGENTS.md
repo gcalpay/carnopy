@@ -103,15 +103,14 @@ Milestone 1 supports:
 
 The `0.1.0a3` development line adds a Linux-first PySide6 desktop frontend for
 the existing dataset workflow. The desktop application is a presentation
-frontend, not a new scientific execution layer. GUI-1 Stages 1–4 are complete:
+frontend, not a new scientific execution layer. GUI-1 Stages 1–5 are complete:
 the worker protocol, optional desktop shell, workspace lifecycle,
 worker-validated dataset configuration editor, saved-config execution,
 workspace-local job diagnostics, guarded staging recovery, read-only
-output/bundle inspection, and bounded table previews are implemented. Stage 5
-is in progress. Inspection-driven session plot requests, private worker
-rendering, guarded no-overwrite image/sidecar promotion, desktop Render
-controls, and immediate confirmed force-stop are implemented. PNG/SVG preview
-and explicit PDF opening remain pending.
+output/bundle inspection, bounded table previews, inspection-driven session
+plot requests, private worker rendering, guarded no-overwrite image/sidecar
+promotion, desktop Render controls, immediate confirmed force-stop, Qt-only
+PNG/SVG previews, and explicit PDF opening are implemented.
 
 During GUI-1 development, [GUI_PLAN.md](GUI_PLAN.md) is the temporary source of
 truth for stage boundaries and status. Read it before changing desktop modules,
@@ -165,6 +164,13 @@ inspection gate with:
 ```bash
 bash scripts/local_gate.sh prerelease/local-gate
 ```
+
+GitHub verification keeps core and desktop dependencies separate. General
+quality and Python-matrix jobs do not install the `app` extra or Qt runtime
+packages; the dedicated Linux app job owns desktop typing and tests. Pull
+requests also receive dependency review and CodeQL analysis. Scheduled
+workflows audit locked dependency profiles and exercise the core package on
+Linux, Windows, and macOS.
 
 If a required command or dependency is unavailable, preserve the exact failure
 and ask before installing, upgrading, or substituting anything.
@@ -345,6 +351,12 @@ numeric auxiliary fields, it must record the source reference-state context and
 require one compatible `reference_state_policy`/backend/model context across
 the selected source rows. Mixed incompatible absolute `h`, `s`, or `u` values
 must fail before writing a preparation bundle.
+
+[ML_PREPARATION_ROADMAP.md](ML_PREPARATION_ROADMAP.md) records implemented
+preparation behavior separately from future research directions. Read it before
+proposing preparation-quality, feature-engineering, statistical-diagnostic,
+active-learning, or optimization work. Roadmap entries are not implementation
+authority; public contracts still require a reviewed stage plan.
 
 Dataset formats:
 

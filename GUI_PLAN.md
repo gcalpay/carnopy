@@ -31,7 +31,7 @@ Stage 7 is complete.
 | 2 | Optional app packaging, launcher, workspace lifecycle, and desktop shell | Complete |
 | 3 | Dataset configuration editor and deterministic YAML workflow | Complete |
 | 4 | Validation, generation, source inspection, table previews, jobs, and recovery | Complete |
-| 5 | Manual plot export and PNG/SVG previews | In progress — rendering complete; previews pending |
+| 5 | Manual plot export and PNG/SVG previews | Complete |
 | 6 | CI, documentation, packaging, and `0.1.0a3` release hardening | Pending |
 | 7 | Graphify architecture-map refresh and final boundary review | Pending |
 
@@ -83,11 +83,7 @@ final documentation pass.
   bounded Parquet or CSV reads; Qt presents local 100-row pages. NumPy and
   SafeTensors outputs are listed but not rendered.
 
-## Remaining stages
-
-### Stage 5 — Plot exports and previews
-
-Completed foundations:
+## Stage 5 decisions
 
 - dataset inspection returns backend-free plotting context;
 - Plot uses the shared structured request editor and clears session state when
@@ -100,14 +96,15 @@ Completed foundations:
 - Plot exposes format selection, Render, row/advisory results, and an
   informational equivalent CLI command;
 - active rendering has an immediate confirmed force-stop action, guarded
-  window-close handling, and structured parent-cleanup errors.
+  window-close handling, and structured parent-cleanup errors;
+- PNG and SVG exports are validated from one byte snapshot and previewed with
+  Qt-only fit, zoom, 100%, and panning controls;
+- PDF exports remain closed until the user explicitly opens a revalidated
+  file; and
+- distribution inventories and installed-app smoke tests cover preview and
+  worker-backed rendering behavior.
 
-Still required to complete Stage 5:
-
-- preview PNG and SVG in Qt with fit, zoom, and 100% controls;
-- open PDF only after an explicit user action;
-- finish Stage 5 documentation, packaging inventory, and installed-wheel smoke
-  coverage.
+## Remaining stages
 
 ### Stage 6 — Release hardening
 

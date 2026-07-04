@@ -11,6 +11,21 @@ permissions:
   contents: read
 
 jobs:
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check out source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+
   quality:
     name: Quality (Python 3.12)
     runs-on: ubuntu-latest
@@ -19,10 +34,6 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      - name: Install Qt runtime dependency
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends libegl1
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
@@ -35,15 +46,15 @@ jobs:
       - name: Verify lock file
         run: uv lock --check
       - name: Synchronize development dependencies
-        run: uv sync --locked --python 3.12 --extra all --group dev
+        run: >-
+          uv sync --locked --python 3.12
+          --extra viz --extra ml --group dev
       - name: Run Ruff
         run: uv run --locked ruff check .
       - name: Check formatting
         run: uv run --locked ruff format --check .
-      - name: Run strict mypy
-        run: uv run --locked mypy src/carnopy
-      - name: Run preflight
-        run: uv run --locked python scripts/preflight.py
+      - name: Run strict core mypy
+        run: uv run --locked mypy src/carnopy --exclude '^src/carnopy/app/'
       - name: Check environment dependencies
         run: uv pip check --python .venv/bin/python
 
@@ -77,7 +88,10 @@ jobs:
           uv sync --locked --python "${{ matrix.python-version }}"
           --extra viz --extra ml --no-default-groups --group test
       - name: Run tests
-        run: uv run --locked --no-default-groups --group test pytest
+        run: >-
+          uv run --locked --extra viz --extra ml
+          --no-default-groups --group test pytest
+          --ignore-glob=tests/test_app_*.py
       - name: Check environment dependencies
         run: uv pip check --python .venv/bin/python
 
@@ -107,10 +121,14 @@ jobs:
       - name: Synchronize desktop test dependencies
         run: >-
           uv sync --locked --python 3.12
-          --extra app --no-default-groups --group test
+          --extra app --no-default-groups --group test --group type
+      - name: Run strict desktop mypy
+        run: >-
+          uv run --locked --extra app --no-default-groups --group type
+          mypy src/carnopy/app
       - name: Run desktop tests
         run: >-
-          uv run --locked --no-default-groups --group test pytest
+          uv run --locked --extra app --no-default-groups --group test pytest
           tests/test_app_*.py
       - name: Check environment dependencies
         run: uv pip check --python .venv/bin/python
@@ -127,10 +145,6 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      - name: Install Qt runtime dependency
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends libegl1
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
@@ -141,13 +155,21 @@ jobs:
           version: "0.11.23"
           enable-cache: true
       - name: Synchronize release dependencies
-        run: uv sync --locked --python 3.12 --extra all --group dev --group release
+        run: >-
+          uv sync --locked --python 3.12
+          --no-default-groups --group release
       - name: Build wheel and sdist once
-        run: uv run --locked --group release python -m build
+        run: >-
+          uv run --locked --no-default-groups --group release
+          python -m build
       - name: Check metadata and README rendering
-        run: uv run --locked --group release python -m twine check dist/*
+        run: >-
+          uv run --locked --no-default-groups --group release
+          python -m twine check dist/*
       - name: Inspect distribution contents
-        run: uv run --locked python scripts/check_distribution.py dist/*
+        run: >-
+          uv run --locked --no-default-groups
+          python scripts/check_distribution.py dist/*
       - name: Smoke-test base wheel outside checkout
         shell: bash
         run: |
@@ -172,6 +194,23 @@ jobs:
           "$RUNNER_TEMP/carnopy-ml/bin/python" scripts/smoke_installed.py \
             --work-directory "$RUNNER_TEMP/ml-smoke" \
             --with-ml-exports
+      - name: Smoke-test sdist and reconstruct wheel outside checkout
+        shell: bash
+        run: |
+          SDIST="$(find "$PWD/dist" -maxdepth 1 -name '*.tar.gz' -print -quit)"
+          python -m venv "$RUNNER_TEMP/carnopy-sdist"
+          "$RUNNER_TEMP/carnopy-sdist/bin/python" -m pip install "$SDIST"
+          "$RUNNER_TEMP/carnopy-sdist/bin/python" -m pip check
+          "$RUNNER_TEMP/carnopy-sdist/bin/python" scripts/smoke_installed.py \
+            --work-directory "$RUNNER_TEMP/sdist-smoke"
+          "$RUNNER_TEMP/carnopy-sdist/bin/python" -m pip wheel \
+            --no-deps \
+            --wheel-dir "$RUNNER_TEMP/rebuilt-wheel" \
+            "$SDIST"
+      - name: Install Qt runtime dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends libegl1
       - name: Smoke-test wheel with app extra outside checkout
         shell: bash
         run: |
@@ -206,16 +245,3 @@ jobs:
             --with-visualization \
             --with-ml-exports \
             --with-app
-      - name: Smoke-test sdist and reconstruct wheel outside checkout
-        shell: bash
-        run: |
-          SDIST="$(find "$PWD/dist" -maxdepth 1 -name '*.tar.gz' -print -quit)"
-          python -m venv "$RUNNER_TEMP/carnopy-sdist"
-          "$RUNNER_TEMP/carnopy-sdist/bin/python" -m pip install "$SDIST"
-          "$RUNNER_TEMP/carnopy-sdist/bin/python" -m pip check
-          "$RUNNER_TEMP/carnopy-sdist/bin/python" scripts/smoke_installed.py \
-            --work-directory "$RUNNER_TEMP/sdist-smoke"
-          "$RUNNER_TEMP/carnopy-sdist/bin/python" -m pip wheel \
-            --no-deps \
-            --wheel-dir "$RUNNER_TEMP/rebuilt-wheel" \
-            "$SDIST"

@@ -85,7 +85,16 @@ Desktop plot changes must use inspection-derived controls and the private
 worker render contract rather than importing Matplotlib or scientific
 pipelines in the GUI process. Preserve source-revision checks, nested
 workspace containment, no-overwrite image/sidecar behavior, and verified
-parent cleanup of interrupted plot staging.
+parent cleanup of interrupted plot staging. Preview changes must use Qt image
+and SVG classes only, validate the worker-returned path and hash before display,
+and keep PDF opening an explicit user action.
+
+GitHub Actions runs core and desktop verification in separate environments.
+Pull requests receive dependency review and CodeQL analysis; scheduled jobs
+audit the locked base and optional dependency profiles and exercise the core
+package across Linux, Windows, and macOS. A scheduled failure still requires
+maintainer review before release even when it is not a required pull-request
+check.
 
 ## Pull requests
 

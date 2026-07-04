@@ -1,0 +1,50 @@
+name: Portability
+
+on:
+  schedule:
+    - cron: "41 4 * * 3"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    name: Core (${{ matrix.os }}, Python 3.12)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          version: "0.11.23"
+          enable-cache: true
+      - name: Verify lock file
+        run: uv lock --check
+      - name: Synchronize core test dependencies
+        run: >-
+          uv sync --locked --python 3.12
+          --extra viz --extra ml --no-default-groups --group test
+      - name: Run core tests
+        run: >-
+          uv run --locked --extra viz --extra ml
+          --no-default-groups --group test pytest
+          --ignore-glob=tests/test_app_*.py
+      - name: Smoke-test lightweight help
+        run: uv run --locked --no-default-groups python -m carnopy --help
+      - name: Check environment dependencies
+        run: uv pip check
