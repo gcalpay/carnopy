@@ -897,6 +897,10 @@ configuration hash.
 
 ## Generated outputs and provenance
 
+`outputs/` is a local generated-data directory and is intentionally ignored by
+Git. Carnopy creates output roots when requested; the repository does not track
+an empty placeholder or generated example runs.
+
 Each immutable run contains the selected dataset files plus mandatory
 provenance outputs:
 
