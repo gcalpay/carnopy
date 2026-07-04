@@ -23,44 +23,74 @@ Milestone 1 supports pure fluids through CoolProp and three modes:
 - `saturation_table`: saturated-liquid and saturated-vapor endpoint rows;
 - `vapor_mass_fraction_table`: two-phase states over vapor mass fraction.
 
+Carnopy has two user interfaces:
+
+- **Command-line interface:** the published `0.1.0a2` package provides the
+  complete dataset, sweep, inspection, plotting, and preparation workflow.
+- **Desktop GUI:** the current `0.1.0a3.dev0` source tree provides a Linux-first
+  PySide6 application for dataset configuration, generation, inspection, and
+  plotting. It is not yet included in a published PyPI release.
+
 ## Installation
 
-Install the current alpha:
+### Published command-line package
+
+Install the current CLI alpha:
 
 ```bash
 python -m pip install "carnopy==0.1.0a2"
 ```
 
-Install all optional user-facing extras:
+Add Matplotlib plotting support:
 
 ```bash
-python -m pip install "carnopy[all]==0.1.0a2"
+python -m pip install "carnopy[viz]==0.1.0a2"
 ```
 
-Install only optional ML export support:
+Add SafeTensors preparation exports:
 
 ```bash
 python -m pip install "carnopy[ml]==0.1.0a2"
 ```
 
-For an isolated CLI:
+Install every optional capability published in `0.1.0a2`:
+
+```bash
+python -m pip install "carnopy[all]==0.1.0a2"
+```
+
+For an isolated CLI tool installation:
 
 ```bash
 uv tool install "carnopy==0.1.0a2"
-uv tool install "carnopy[all]==0.1.0a2"
-uv tool install "carnopy[ml]==0.1.0a2"
 ```
 
-The published `0.1.0a2` base package supports the command-line dataset
-workflow. Its `viz` extra installs Matplotlib for manual or configured figure
-generation, and its `ml` extra installs SafeTensors for optional array/tensor
-preparation exports. PyArrow remains a core dependency because Parquet is a
-supported first-class output format.
+To include every optional capability published with that CLI release:
 
-The unreleased `0.1.0a3.dev0` source tree additionally defines an `app` extra
-with PySide6 Essentials and Matplotlib. In current source, `all` is the union
-of `viz`, `ml`, and `app`. The desktop application is not part of the published
-`0.1.0a2` wheel.
+```bash
+uv tool install "carnopy[all]==0.1.0a2"
+```
+
+The published base package supports the full command-line dataset workflow.
+PyArrow remains a core dependency because Parquet is a first-class output
+format. The `viz` extra installs Matplotlib; `ml` installs SafeTensors; and
+`all` combines the optional capabilities available in that release.
+
+### Desktop GUI development build
+
+The GUI is currently available from a source checkout, not from the published
+`0.1.0a2` wheel:
+
+```bash
+git clone https://github.com/gcalpay/carnopy.git
+cd carnopy
+uv sync --locked --extra app --group dev
+uv run --locked carnopy-app
+```
+
+The source-tree `app` extra installs PySide6 Essentials and Matplotlib. In
+current source, `all` combines `viz`, `ml`, and `app`. The GUI launcher is
+`carnopy-app`; it is intentionally separate from the `carnopy` CLI.
 
 ## Quick start
 
@@ -113,11 +143,11 @@ omit the option or use `auto` for normal Qt platform detection.
 
 GUI-1 currently provides workspace lifecycle, a worker-validated editor for all
 three dataset configuration modes, dataset validation and generation, output
-inspection, bounded table previews, job diagnostics, and guarded staging
-recovery. Its in-progress plotting stage already provides inspection-driven
-plot requests plus a backend-free worker export path with guarded,
-no-overwrite-safe image and sidecar promotion. The desktop Render controls and
-PNG/SVG/PDF viewing remain under development for `0.1.0a3`.
+inspection, bounded table previews, job diagnostics, guarded staging recovery,
+and manual plot rendering with immediate confirmed force-stop. Plot rendering
+uses Matplotlib only in a short-lived worker and writes a no-overwrite-safe
+image plus `.plot.json` sidecar. Embedded PNG/SVG preview and explicit PDF
+opening remain under development for `0.1.0a3`.
 
 ## Guide
 
@@ -988,7 +1018,11 @@ The current `0.1.0a3.dev0` source implementation includes:
 - a private worker plot-rendering contract that uses existing visualization
   logic without thermodynamic backend calls; and
 - guarded no-overwrite promotion of one image and provenance sidecar into a
-  worker-derived directory under the workspace `figures/` root.
+  worker-derived directory under the workspace `figures/` root;
+- Plot-page format selection, manual Render controls, row/advisory reporting,
+  and an informational equivalent CLI command; and
+- immediate confirmed force-stop with parent-owned staging cleanup and guarded
+  close behavior.
 
 Imported invalid YAML files remain untouched and must be repaired in a text
 editor before import. Imported valid files also remain untouched until saved
@@ -1000,8 +1034,8 @@ provided by the editor.
 Sweep and preparation creation remain reserved for GUI-2; GUI-1 inspects their
 completed bundles read-only. NumPy and SafeTensors outputs are listed from the
 preparation manifest but are not rendered as matrices. The Plot page can build
-a compatible request from inspection results, but its Render action, render
-lifecycle controls, PNG/SVG preview, and explicit PDF opening remain before
+a compatible request from inspection results and render PNG, SVG, or PDF through
+the worker. Embedded PNG/SVG preview and explicit PDF opening remain before
 Stage 5 is complete.
 
 Qt is an optional third-party dependency with its own LGPL/GPL/commercial
@@ -1133,10 +1167,10 @@ workspace shell, and dataset configuration editor are implemented. Dataset
 execution, read-only bundle inspection, bounded table previews, job diagnostics,
 and guarded staging recovery are implemented. Manual plot export and image
 preview foundations are partly implemented: inspection-driven requests,
-worker-side backend-free rendering, and safe no-overwrite artifact promotion
-are present. Desktop Render controls, force-stop/close ownership, PNG/SVG
-preview, explicit PDF opening, and the final Stage 5 documentation pass remain
-before release.
+worker-side backend-free rendering, safe no-overwrite artifact promotion,
+desktop Render controls, and confirmed force-stop/close ownership are present.
+PNG/SVG preview, explicit PDF opening, packaging smoke coverage, and the final
+Stage 5 documentation pass remain before release.
 
 After GUI-1 stabilizes, the next scientific milestone may be a separately
 designed pure-fluid ORC feasibility-envelope subsystem. It would produce

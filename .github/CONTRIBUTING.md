@@ -68,6 +68,16 @@ Desktop changes use the optional `app` extra already included by `all`. Run Qt
 tests headlessly with `QT_QPA_PLATFORM=offscreen`; do not introduce
 pixel-perfect screenshot assertions. The GUI process must remain free of
 CoolProp, pandas, PyArrow, and Matplotlib execution imports.
+
+Run the current source-checkout desktop application with:
+
+```bash
+uv run --locked carnopy-app
+```
+
+The GUI is part of the unreleased `0.1.0a3.dev0` source tree and is not present
+in the published `0.1.0a2` wheel.
+
 Worker-backed inspection and preview changes must use stable table IDs rather
 than GUI-supplied artifact paths. Cover traversal, symlink, integrity-token,
 bounded-read, and emitted-order behavior when those boundaries change.

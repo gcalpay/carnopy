@@ -31,7 +31,7 @@ Stage 7 is complete.
 | 2 | Optional app packaging, launcher, workspace lifecycle, and desktop shell | Complete |
 | 3 | Dataset configuration editor and deterministic YAML workflow | Complete |
 | 4 | Validation, generation, source inspection, table previews, jobs, and recovery | Complete |
-| 5 | Manual plot export and PNG/SVG previews | In progress — worker, staging, and controls complete |
+| 5 | Manual plot export and PNG/SVG previews | In progress — rendering complete; previews pending |
 | 6 | CI, documentation, packaging, and `0.1.0a3` release hardening | Pending |
 | 7 | Graphify architecture-map refresh and final boundary review | Pending |
 
@@ -96,14 +96,14 @@ Completed foundations:
   thermodynamic backend;
 - outputs use worker-derived source directories under `workspace/figures/`;
 - image and sidecar promotion is no-overwrite-safe and parent cleanup verifies
-  staging leases and artifact inode identity.
+  staging leases and artifact inode identity;
+- Plot exposes format selection, Render, row/advisory results, and an
+  informational equivalent CLI command;
+- active rendering has an immediate confirmed force-stop action, guarded
+  window-close handling, and structured parent-cleanup errors.
 
 Still required to complete Stage 5:
 
-- connect Plot-page Render controls to the worker and report the final paths,
-  counts, and advisories;
-- add render request ownership, delayed confirmed force-stop, and safe window
-  close behavior;
 - preview PNG and SVG in Qt with fit, zoom, and 100% controls;
 - open PDF only after an explicit user action;
 - finish Stage 5 documentation, packaging inventory, and installed-wheel smoke

@@ -60,6 +60,7 @@ class MainWindow(QMainWindow):
         self.workspace: Workspace | None = None
         self.client = WorkerClient(self)
         self._close_when_idle = False
+        self._close_after_plot_stop = False
         self.setWindowTitle("Carnopy")
         self.resize(1100, 700)
 
@@ -103,6 +104,7 @@ class MainWindow(QMainWindow):
         self.inspection_page.inspection_loaded.connect(self.sources_panel.mark_inspectable)
         self.inspection_page.inspection_failed.connect(self.sources_panel.mark_uninspectable)
         self.inspection_page.inspection_changed.connect(self.plot_page.set_inspection)
+        self.plot_page.render_finished.connect(self._plot_render_finished)
         self.execution_page.run_finalized.connect(self._run_finalized)
         self.execution_page.inspect_button.clicked.connect(self._inspect_finalized_run)
         self._restore_preferences()
@@ -190,6 +192,8 @@ class MainWindow(QMainWindow):
             self.workspace_path.setText(selected)
 
     def _create_workspace(self) -> None:
+        if self._workspace_change_blocked():
+            return
         path = self._selected_path()
         if path is None:
             return
@@ -201,6 +205,8 @@ class MainWindow(QMainWindow):
         self._initialize_path(path)
 
     def _initialize_existing_workspace(self) -> None:
+        if self._workspace_change_blocked():
+            return
         path = self._selected_path()
         if path is None:
             return
@@ -218,6 +224,8 @@ class MainWindow(QMainWindow):
             self._initialize_path(path)
 
     def _initialize_path(self, path: Path) -> None:
+        if self._workspace_change_blocked():
+            return
         try:
             workspace = initialize_workspace(path)
         except (OSError, WorkspaceError) as exc:
@@ -226,11 +234,15 @@ class MainWindow(QMainWindow):
         self._activate_workspace(workspace)
 
     def _open_selected_workspace(self) -> None:
+        if self._workspace_change_blocked():
+            return
         path = self._selected_path()
         if path is not None:
             self._open_workspace_path(path)
 
     def _open_workspace_path(self, path: Path) -> None:
+        if self._workspace_change_blocked():
+            return
         try:
             workspace = open_workspace(path)
         except WorkspaceError as exc:
@@ -239,6 +251,8 @@ class MainWindow(QMainWindow):
         self._activate_workspace(workspace)
 
     def _activate_workspace(self, workspace: Workspace) -> None:
+        if self._workspace_change_blocked():
+            return
         if self.workspace != workspace and not self.configure_page.confirm_discard():
             return
         self.workspace = workspace
@@ -287,9 +301,27 @@ class MainWindow(QMainWindow):
             self.restoreGeometry(geometry)
 
     def closeEvent(self, event: QCloseEvent) -> None:
-        if self.client.is_busy and self.execution_page.owns_active_request:
-            self._close_when_idle = True
-            self.execution_page.cancel()
+        if self.client.is_busy:
+            if self.execution_page.owns_active_request:
+                self._close_when_idle = True
+                self.execution_page.cancel()
+                event.ignore()
+                return
+            if self.plot_page.owns_active_request:
+                if self._close_after_plot_stop:
+                    event.ignore()
+                    return
+                if self._confirm_force_stop_and_close():
+                    self._close_after_plot_stop = True
+                    if not self.plot_page.force_stop(confirm=False):
+                        self._close_after_plot_stop = False
+                event.ignore()
+                return
+            QMessageBox.warning(
+                self,
+                "Carnopy Worker Is Busy",
+                "An active worker request must finish before the application can close.",
+            )
             event.ignore()
             return
         if not self.configure_page.confirm_discard():
@@ -313,6 +345,46 @@ class MainWindow(QMainWindow):
         if not busy and self._close_when_idle:
             self._close_when_idle = False
             QTimer.singleShot(0, self.close)
+
+    def _plot_render_finished(self, value: object) -> None:
+        if not self._close_after_plot_stop:
+            return
+        envelope = cast(dict[str, object], value)
+        cleanup_error = envelope.get("cleanup_error")
+        self._close_after_plot_stop = False
+        if isinstance(cleanup_error, str):
+            self.navigation.setCurrentRow(4)
+            self.workspace_status.setText(
+                "Plot rendering stopped, but private staging cleanup failed. "
+                "Review the Plot page before closing."
+            )
+            return
+        QTimer.singleShot(0, self.close)
+
+    def _workspace_change_blocked(self) -> bool:
+        if not self.client.is_busy:
+            return False
+        self.workspace_status.setText(
+            "A worker request is active. Wait for it to finish or stop it before "
+            "creating, initializing, or opening another workspace."
+        )
+        return True
+
+    def _confirm_force_stop_and_close(self) -> bool:
+        message = QMessageBox(self)
+        message.setIcon(QMessageBox.Icon.Warning)
+        message.setWindowTitle("Plot Rendering Is Active")
+        message.setText(
+            "Force-stop the plot worker and close Carnopy after parent staging cleanup?"
+        )
+        keep_open = message.addButton("Keep Open", QMessageBox.ButtonRole.RejectRole)
+        force_close = message.addButton(
+            "Force Stop and Close",
+            QMessageBox.ButtonRole.DestructiveRole,
+        )
+        message.setDefaultButton(keep_open)
+        message.exec()
+        return message.clickedButton() is force_close
 
     def _run_finalized(self, _path: object) -> None:
         self.sources_panel.refresh()

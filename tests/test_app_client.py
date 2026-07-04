@@ -79,6 +79,7 @@ def test_qprocess_client_runs_and_caches_capability_request(
     assert envelopes[0]["request_type"] == "describe_capabilities"
     assert envelopes[0]["terminal_event"]["type"] == "result"
     assert envelopes[0]["force_stopped"] is False
+    assert envelopes[0]["cleanup_error"] is None
     client.deleteLater()
     application.processEvents()
 
@@ -182,4 +183,34 @@ def test_qprocess_client_owns_plot_staging_cleanup(
     assert staging_root.is_dir()
     assert list(staging_root.iterdir()) == []
     _client.deleteLater()
+    application.processEvents()
+
+
+def test_plot_staging_cleanup_error_is_structured(
+    application: QApplication,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from carnopy.app import client as client_module
+    from carnopy.app.plot_staging import cleanup_plot_staging, create_plot_staging
+    from carnopy.app.workspace import initialize_workspace
+
+    workspace = initialize_workspace(tmp_path / "workspace")
+    lease = create_plot_staging(workspace.root)
+    client = WorkerClient()
+    client._plot_staging_lease = lease
+    stderr: list[str] = []
+    client.stderr_received.connect(stderr.append)
+
+    def fail_cleanup(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("simulated cleanup failure")
+
+    monkeypatch.setattr(client_module, "cleanup_plot_staging", fail_cleanup)
+
+    error = client._cleanup_plot_staging(successful=False)
+
+    assert error == "plot staging cleanup failed: simulated cleanup failure"
+    assert stderr == ["plot staging cleanup failed: simulated cleanup failure\n"]
+    cleanup_plot_staging(lease, successful=False)
+    client.deleteLater()
     application.processEvents()

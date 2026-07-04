@@ -109,8 +109,9 @@ worker-validated dataset configuration editor, saved-config execution,
 workspace-local job diagnostics, guarded staging recovery, read-only
 output/bundle inspection, and bounded table previews are implemented. Stage 5
 is in progress. Inspection-driven session plot requests, private worker
-rendering, and guarded no-overwrite image/sidecar promotion are implemented;
-desktop rendering controls and PNG/SVG/PDF viewing remain pending.
+rendering, guarded no-overwrite image/sidecar promotion, desktop Render
+controls, and immediate confirmed force-stop are implemented. PNG/SVG preview
+and explicit PDF opening remain pending.
 
 During GUI-1 development, [GUI_PLAN.md](GUI_PLAN.md) is the temporary source of
 truth for stage boundaries and status. Read it before changing desktop modules,

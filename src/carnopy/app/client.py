@@ -209,12 +209,13 @@ class WorkerClient(QObject):
         if error == QProcess.ProcessError.FailedToStart:
             self._terminal_seen = True
             failure = _client_error("process", "failed_to_start", message)
-            self._cleanup_plot_staging(successful=False)
+            cleanup_error = self._cleanup_plot_staging(successful=False)
             envelope = self._terminal_envelope(
                 terminal=None,
                 stderr="".join(self._stderr_parts),
                 exit_code=None,
                 exit_status="failed_to_start",
+                cleanup_error=cleanup_error,
             )
             self._reset_process()
             self.request_finished.emit(envelope)
@@ -250,13 +251,14 @@ class WorkerClient(QObject):
             and exit_code == 0
             and _exit_status == QProcess.ExitStatus.NormalExit
         )
-        self._cleanup_plot_staging(successful=successful)
+        cleanup_error = self._cleanup_plot_staging(successful=successful)
         stderr = "".join(self._stderr_parts)
         envelope = self._terminal_envelope(
             terminal=terminal,
             stderr=stderr,
             exit_code=exit_code,
             exit_status=("normal" if _exit_status == QProcess.ExitStatus.NormalExit else "crash"),
+            cleanup_error=cleanup_error,
         )
         self._reset_process()
         self.request_finished.emit(envelope)
@@ -287,6 +289,7 @@ class WorkerClient(QObject):
         stderr: str,
         exit_code: int | None,
         exit_status: str,
+        cleanup_error: str | None,
     ) -> dict[str, object]:
         return {
             "request_id": None if self._request_id is None else str(self._request_id),
@@ -296,6 +299,7 @@ class WorkerClient(QObject):
             "exit_code": exit_code,
             "exit_status": exit_status,
             "force_stopped": self._force_stopped,
+            "cleanup_error": cleanup_error,
         }
 
     def _reset_process(self) -> None:
@@ -313,16 +317,18 @@ class WorkerClient(QObject):
             process.deleteLater()
         self.busy_changed.emit(False)
 
-    def _cleanup_plot_staging(self, *, successful: bool) -> None:
+    def _cleanup_plot_staging(self, *, successful: bool) -> str | None:
         lease, self._plot_staging_lease = self._plot_staging_lease, None
         if lease is None:
-            return
+            return None
         try:
             cleanup_plot_staging(lease, successful=successful)
         except Exception as exc:  # pragma: no cover - defensive Qt process boundary
-            message = f"plot staging cleanup failed: {exc}\n"
-            self._stderr_parts.append(message)
-            self.stderr_received.emit(message)
+            message = f"plot staging cleanup failed: {exc}"
+            self._stderr_parts.append(message + "\n")
+            self.stderr_received.emit(message + "\n")
+            return message
+        return None
 
 
 def _client_error(category: ErrorCategory, code: str, message: str) -> dict[str, object]:

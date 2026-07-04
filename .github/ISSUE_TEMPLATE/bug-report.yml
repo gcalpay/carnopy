@@ -13,8 +13,19 @@ body:
     id: versions
     attributes:
       label: Carnopy and Python versions
-      description: Include the output of `carnopy --version` and `python --version`.
-      placeholder: "carnopy 0.1.0a2; Python 3.12.12"
+      description: Include `carnopy --version` or `carnopy-app --version`, plus `python --version`.
+      placeholder: "carnopy 0.1.0a2 or carnopy-app 0.1.0a3.dev0; Python 3.12.12"
+    validations:
+      required: true
+  - type: dropdown
+    id: interface
+    attributes:
+      label: Interface
+      options:
+        - Command-line interface
+        - Desktop GUI
+        - Python API
+        - Generated files or metadata
     validations:
       required: true
   - type: input
@@ -28,7 +39,7 @@ body:
     id: reproduction
     attributes:
       label: Minimal reproduction
-      description: Provide the smallest configuration and command that reproduce the problem.
+      description: Provide the smallest configuration and command or GUI steps that reproduce the problem.
       render: shell
     validations:
       required: true

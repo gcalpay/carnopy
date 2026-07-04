@@ -29,6 +29,7 @@ body:
       options:
         - No public interface change
         - CLI or Python API
+        - Desktop GUI behavior
         - YAML configuration
         - Dataset, metadata, or report schema
         - Scientific interpretation or backend behavior
