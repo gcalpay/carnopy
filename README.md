@@ -27,9 +27,10 @@ Carnopy has two user interfaces:
 
 - **Command-line interface:** the published `0.1.0a2` package provides the
   complete dataset, sweep, inspection, plotting, and preparation workflow.
-- **Desktop GUI:** the current `0.1.0a3.dev0` source tree provides a Linux-first
-  PySide6 application for dataset configuration, generation, inspection, and
-  plotting. It is not yet included in a published PyPI release.
+- **Desktop GUI:** the next `0.1.0a3` release adds a Linux-first PySide6
+  application for dataset configuration, generation, inspection, and plotting.
+  It is available from the current source tree but is not yet published on
+  PyPI.
 
 ## Installation
 
@@ -76,10 +77,51 @@ PyArrow remains a core dependency because Parquet is a first-class output
 format. The `viz` extra installs Matplotlib; `ml` installs SafeTensors; and
 `all` combines the optional capabilities available in that release.
 
-### Desktop GUI development build
+### After `0.1.0a3` is published
 
-The GUI is currently available from a source checkout, not from the published
-`0.1.0a2` wheel:
+The following commands describe the next release and will work only after
+`0.1.0a3` is published on PyPI.
+
+Install the CLI-first base package:
+
+```bash
+python -m pip install "carnopy==0.1.0a3"
+```
+
+Add Matplotlib plotting support:
+
+```bash
+python -m pip install "carnopy[viz]==0.1.0a3"
+```
+
+Add SafeTensors preparation exports:
+
+```bash
+python -m pip install "carnopy[ml]==0.1.0a3"
+```
+
+Add the desktop application:
+
+```bash
+python -m pip install "carnopy[app]==0.1.0a3"
+```
+
+Install every optional capability:
+
+```bash
+python -m pip install "carnopy[all]==0.1.0a3"
+```
+
+The `0.1.0a3` base install remains CLI-first and does not install Matplotlib,
+SafeTensors, or PySide6. Its lightweight `carnopy-app --help` and `--version`
+entry points remain available, while opening the desktop requires the `app`
+extra. The `app` extra installs PySide6 Essentials and Matplotlib; `all`
+combines `viz`, `ml`, and `app`. The desktop launcher remains separate from
+the CLI as `carnopy-app`.
+
+### Try the `0.1.0a3` desktop from source
+
+The next-release GUI can be run from a source checkout before publication:
 
 ```bash
 git clone https://github.com/gcalpay/carnopy.git
@@ -88,9 +130,8 @@ uv sync --locked --extra app --group dev
 uv run --locked carnopy-app
 ```
 
-The source-tree `app` extra installs PySide6 Essentials and Matplotlib. In
-current source, `all` combines `viz`, `ml`, and `app`. The GUI launcher is
-`carnopy-app`; it is intentionally separate from the `carnopy` CLI.
+The source-tree `app` extra has the same dependency boundary documented for the
+next release.
 
 ## Quick start
 
@@ -158,7 +199,7 @@ explicit user action.
 - [Visualization](#visualization)
 - [Generated outputs and provenance](#generated-outputs-and-provenance)
 - [Python API](#python-api)
-- [Desktop development](#desktop-development)
+- [Desktop GUI](#desktop-gui)
 - [ML preparation roadmap](https://github.com/gcalpay/carnopy/blob/main/ML_PREPARATION_ROADMAP.md)
 - [Architecture map](#architecture-map)
 - [Scientific limitations](#scientific-limitations)
@@ -992,14 +1033,14 @@ pv = plot_thermodynamic_diagram("outputs/<run>", kind="pv")
 The returned Matplotlib figure represents an image that has already been
 exported. Modifying it does not update the image or provenance sidecar.
 
-## Desktop development
+## Desktop GUI
 
 The Linux-first desktop frontend is an optional PySide6 Qt Widgets application
 over the same Carnopy Python pipelines used by the CLI. Widgets do not parse or
 invoke CLI output. Scientific validation and execution run in a short-lived
 worker process through a private, versioned JSON Lines protocol.
 
-The current `0.1.0a3.dev0` source implementation includes:
+The unpublished `0.1.0a3` source implementation includes:
 
 - explicit workspace creation, initialization, and reopening;
 - workspace-local `configs/`, `outputs/`, and `figures/` directories;
@@ -1050,9 +1091,13 @@ symlink, regular-file, suffix, and SHA-256 checks. PDF exports remain closed
 until the user selects **Open PDF** and the file passes the same checks again.
 Preview failures do not remove successful image or sidecar exports.
 
-Qt is an optional third-party dependency with its own LGPL/GPL/commercial
-licensing terms. Carnopy does not vendor Qt or distribute standalone desktop
-installers in GUI-1.
+Qt/PySide6 is an optional third-party dependency with its own
+LGPL/GPL/commercial licensing terms. Carnopy remains MIT licensed, does not
+vendor Qt, and does not distribute standalone desktop installers in GUI-1.
+Downstream redistributors should review the official
+[Qt for Python package details](https://doc.qt.io/qtforpython-6/package_details.html)
+and [Qt licensing terms](https://doc.qt.io/qt-6/licensing.html). This is not
+legal advice.
 
 ## Architecture map
 
