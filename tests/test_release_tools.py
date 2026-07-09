@@ -31,6 +31,10 @@ smoke_installed = load_script("smoke_installed")
 verify_index_release = load_script("verify_index_release")
 
 
+def test_source_version_is_prepared_release() -> None:
+    assert __version__ == "0.1.0a3"
+
+
 def test_distribution_checksums_are_deterministic_and_non_overwriting(tmp_path: Path) -> None:
     wheel = tmp_path / f"carnopy-{FIXTURE_VERSION}-py3-none-any.whl"
     sdist = tmp_path / f"carnopy-{FIXTURE_VERSION}.tar.gz"
