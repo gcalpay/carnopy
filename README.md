@@ -1040,7 +1040,7 @@ over the same Carnopy Python pipelines used by the CLI. Widgets do not parse or
 invoke CLI output. Scientific validation and execution run in a short-lived
 worker process through a private, versioned JSON Lines protocol.
 
-The unpublished `0.1.0a3` source implementation includes:
+The prepared `0.1.0a3` source implementation includes:
 
 - explicit workspace creation, initialization, and reopening;
 - workspace-local `configs/`, `outputs/`, and `figures/` directories;
@@ -1218,16 +1218,18 @@ Report security vulnerabilities privately according to the
 ## Project status and roadmap
 
 Carnopy remains alpha software while its public schemas and backend boundaries
-are validated through real use. The active `0.1.0a3` milestone is GUI-1, a
-Linux-first desktop frontend for the existing dataset workflow. The worker,
-workspace shell, and dataset configuration editor are implemented. Dataset
-execution, read-only bundle inspection, bounded table previews, job diagnostics,
-and guarded staging recovery are implemented. GUI-1 Stage 5 is complete:
-inspection-driven requests, worker-side backend-free rendering, safe
-no-overwrite artifact promotion, desktop Render controls, confirmed
-force-stop/close ownership, Qt-only PNG/SVG previews, explicit PDF opening,
-packaging inventory checks, and installed-wheel smoke coverage are present.
-Release hardening and the final architecture-map review remain before release.
+are validated through real use. The prepared `0.1.0a3` source tree includes
+GUI-1, a Linux-first desktop frontend for the existing dataset workflow. The
+currently published PyPI release remains `0.1.0a2` until `0.1.0a3` is actually
+published. Do not treat the source-tree version as a published artifact.
+
+GUI-1 includes the worker protocol, workspace shell, dataset configuration
+editor, dataset execution, read-only bundle inspection, bounded table previews,
+job diagnostics, guarded staging recovery, inspection-driven plot requests,
+worker-side backend-free rendering, safe no-overwrite artifact promotion,
+desktop Render controls, confirmed force-stop/close ownership, Qt-only PNG/SVG
+previews, explicit PDF opening, packaging inventory checks, installed-wheel
+smoke coverage, release hardening, and final architecture-map review.
 
 After GUI-1 stabilizes, the next data-focused milestone is preparation quality
 and evaluation: explicit-bin stratification, auditable physical/data-quality

@@ -19,10 +19,8 @@ Small fixes to documentation, tests, and clearly incorrect behavior may go
 directly to a pull request.
 
 Read [AGENTS.md](../AGENTS.md) before changing code. It records the architecture,
-scientific invariants, compatibility boundaries, and release safeguards.
-During `0.1.0a3` desktop development, also read
-[GUI_PLAN.md](../GUI_PLAN.md). It records the active GUI stage and the boundary
-between Qt presentation code and scientific worker execution.
+scientific invariants, compatibility boundaries, release safeguards, and the
+boundary between Qt presentation code and scientific worker execution.
 
 ## Development setup
 
