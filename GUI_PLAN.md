@@ -32,7 +32,7 @@ Stage 7 is complete.
 | 3 | Dataset configuration editor and deterministic YAML workflow | Complete |
 | 4 | Validation, generation, source inspection, table previews, jobs, and recovery | Complete |
 | 5 | Manual plot export and PNG/SVG previews | Complete |
-| 6 | CI, documentation, packaging, and `0.1.0a3` release hardening | Pending |
+| 6 | CI, documentation, packaging, and `0.1.0a3` release hardening | Complete |
 | 7 | Graphify architecture-map refresh and final boundary review | Pending |
 
 ## Stage 3 decisions
@@ -104,13 +104,21 @@ final documentation pass.
 - distribution inventories and installed-app smoke tests cover preview and
   worker-backed rendering behavior.
 
+## Stage 6 decisions
+
+- the source version is prepared as `0.1.0a3`;
+- `0.1.0a2` remains the current published PyPI release until actual
+  publication;
+- README release guidance distinguishes the current published release, the next
+  unpublished release, and post-publication install commands;
+- Qt/PySide6 remains optional, externally licensed, and separate from the base
+  CLI-first install;
+- installed smoke coverage and dependency isolation were verified;
+- source and distribution rehearsal gates passed; and
+- no tag, publication, dependency change, GUI feature, Graphify refresh, or
+  Stage 7 work occurred.
+
 ## Remaining stages
-
-### Stage 6 — Release hardening
-
-Finish CI and installed-wheel coverage, document the optional Qt licensing
-boundary and desktop workflow, update the source version to `0.1.0a3`, and run
-the complete source and distribution gates.
 
 ### Stage 7 — Architecture map
 

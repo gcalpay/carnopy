@@ -101,7 +101,7 @@ Milestone 1 supports:
 - configured post-generation visualization;
 - model-sweep bundles comparing emitted values from multiple CoolProp models.
 
-The `0.1.0a3` development line adds a Linux-first PySide6 desktop frontend for
+The `0.1.0a3` release line adds a Linux-first PySide6 desktop frontend for
 the existing dataset workflow. The desktop application is a presentation
 frontend, not a new scientific execution layer. GUI-1 Stages 1–5 are complete:
 the worker protocol, optional desktop shell, workspace lifecycle,
@@ -612,6 +612,10 @@ build-backend = "hatchling.build"
 Matplotlib remains optional through `viz`; SafeTensors remains optional through
 `ml`; PySide6 Essentials and Matplotlib remain optional through `app`; `all`
 must remain synchronized with all user-facing extras. PyArrow remains core.
+Qt/PySide6 remains an externally licensed optional dependency. Carnopy does not
+vendor Qt or ship standalone desktop installers; downstream redistribution
+requires review of the applicable Qt terms rather than assumptions based on
+Carnopy's MIT license.
 
 Carnopy uses alpha releases before stable `0.1.0`. The release workflow builds
 one wheel and sdist, verifies them, requires human approval, and publishes them

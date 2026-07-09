@@ -75,8 +75,8 @@ Run the current source-checkout desktop application with:
 uv run --locked carnopy-app
 ```
 
-The GUI is part of the unreleased `0.1.0a3.dev0` source tree and is not present
-in the published `0.1.0a2` wheel.
+The GUI is part of the next, unpublished `0.1.0a3` source line and is not
+present in the currently published `0.1.0a2` wheel.
 
 Worker-backed inspection and preview changes must use stable table IDs rather
 than GUI-supplied artifact paths. Cover traversal, symlink, integrity-token,
