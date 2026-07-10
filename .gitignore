@@ -41,3 +41,6 @@ graphify-out/*
 
 # Workspace-local desktop application state
 .carnopy-gui/
+
+# Local ML research material
+/mlpdfs/
