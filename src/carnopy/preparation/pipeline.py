@@ -27,6 +27,10 @@ from carnopy.preparation.models import (
     PreparationArrayOutputsConfig,
     load_preparation_config,
 )
+from carnopy.preparation.quality import (
+    build_quality_artifacts,
+    partition_target_summaries,
+)
 from carnopy.preparation.reference import build_reference_state_summary
 from carnopy.preparation.reporting import (
     build_dataset_card,
@@ -82,6 +86,7 @@ class ScenarioWriteResult:
     summary: dict[str, Any]
     scenario_count: int
     partition_count: int
+    partition_target_summaries: list[dict[str, Any]]
 
 
 @dataclass(frozen=True)
@@ -193,6 +198,17 @@ def _write_preparation_bundle(
         public_table_columns=data_artifacts.table_columns,
         resolved=resolved,
     )
+    quality_report, quality_flags = build_quality_artifacts(
+        frame=prepared_frame,
+        rows=rows,
+        resolved=resolved,
+        scenario_summary=None if scenario_result is None else scenario_result.summary,
+        partition_target_summaries=(
+            [] if scenario_result is None else scenario_result.partition_target_summaries
+        ),
+    )
+    write_json(layout.staging_directory / "quality_report.json", quality_report)
+    _write_parquet(quality_flags, data_directory / "quality_flags.parquet")
 
     write_bytes(layout.staging_directory / "preparation.original.yaml", loaded.raw_bytes)
     write_bytes(layout.staging_directory / "preparation.normalized.json", normalized_bytes)
@@ -208,6 +224,8 @@ def _write_preparation_bundle(
         "data/provenance.parquet",
         "data/diagnostics.parquet",
         "data/exclusions.parquet",
+        "data/quality_flags.parquet",
+        "quality_report.json",
     ]
     if data_artifacts.table_path is not None:
         artifact_names.append("data/table.parquet")
@@ -233,6 +251,10 @@ def _write_preparation_bundle(
             "provenance": "data/provenance.parquet",
             "diagnostics": "data/diagnostics.parquet",
             "exclusions": "data/exclusions.parquet",
+        },
+        quality_artifacts={
+            "report": "quality_report.json",
+            "flags": "data/quality_flags.parquet",
         },
         table_columns=data_artifacts.table_columns,
         array_exports=data_artifacts.array_manifest,
@@ -380,6 +402,7 @@ def _write_scenario_artifacts(
             },
             scenario_count=0,
             partition_count=0,
+            partition_target_summaries=[],
         )
     scenario_root = data_directory / "scenarios"
     scenario_root.mkdir()
@@ -390,6 +413,7 @@ def _write_scenario_artifacts(
     )
     artifact_names: list[str] = []
     report_scenarios: list[dict[str, Any]] = []
+    target_summaries: list[dict[str, Any]] = []
     for output in outputs:
         scenario_directory = scenario_root / output.name
         scenario_directory.mkdir()
@@ -401,6 +425,13 @@ def _write_scenario_artifacts(
             resolved=resolved,
             array_config=loaded.model.outputs.arrays,
             auxiliary_fields=loaded.model.auxiliary,
+        )
+        target_summaries.extend(
+            partition_target_summaries(
+                scenario_name=output.name,
+                partitions=output.partitions,
+                resolved=resolved,
+            )
         )
         partition_hashes = hash_artifacts(layout.staging_directory, partition_result.artifact_names)
         scenario_metadata = {
@@ -453,6 +484,7 @@ def _write_scenario_artifacts(
         },
         scenario_count=len(outputs),
         partition_count=sum(len(output.partitions) for output in outputs),
+        partition_target_summaries=target_summaries,
     )
 
 
