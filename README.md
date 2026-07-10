@@ -497,9 +497,15 @@ outputs:
 
 Prepared bundles contain `manifest.json`, `diagnostics.json`,
 `dataset_card.md`, `data/table.parquet`, `data/provenance.parquet`,
-`data/diagnostics.parquet`, and `data/exclusions.parquet`.
+`data/diagnostics.parquet`, `data/exclusions.parquet`,
+`quality_report.json`, and `data/quality_flags.parquet`.
 `table.parquet` is the user-facing feature/target table. Provenance and source
 diagnostics are separated and join back to the table through `prepared_row_id`.
+Quality diagnostics are advisory: they summarize distributions, finite-value
+coverage, target ranges, duplicate state candidates, scenario partitions, and
+structured-grid coverage where that shape can be inferred safely. Quality flags
+stay in a separate long-form table joined through `prepared_row_id`; they do not
+exclude rows or change `table.parquet`.
 If no source rows can produce the requested representation, Carnopy writes a
 clearly marked `no_eligible_rows` bundle without `data/table.parquet`.
 
@@ -556,6 +562,10 @@ hashes, and float32 conversion-error summaries in the manifest. It does not
 train models, depend on PyTorch, or export `.pt`/`.pth` files in this release
 line. Implemented behavior and reviewed future directions are separated in the
 [ML preparation roadmap](https://github.com/gcalpay/carnopy/blob/main/ML_PREPARATION_ROADMAP.md).
+Baseline scikit-learn diagnostics, PCA/SVD reports, active learning, Manim
+animations, PyMC workflows, SINDy, optimization, ORC/TFC work, mixtures, new
+backends, and a professional 3D GUI remain separate reviewed milestones rather
+than part of `prepare`.
 
 ### Modes
 
