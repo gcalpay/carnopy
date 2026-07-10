@@ -367,6 +367,8 @@ def inspect_wheel(path: Path, expected_version: str) -> None:
             raise ValueError("wheel does not contain the carnopy console entry point")
         if "carnopy-app = carnopy.app.launcher:main" not in entry_points:
             raise ValueError("wheel does not contain the carnopy-app console entry point")
+        if "carnopy-gui = carnopy.app.launcher:main_gui" not in entry_points:
+            raise ValueError("wheel does not contain the carnopy-gui console entry point")
 
 
 def inspect_sdist(path: Path, expected_version: str) -> None:

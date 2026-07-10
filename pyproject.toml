@@ -95,6 +95,7 @@ dev = [
 [project.scripts]
 carnopy = "carnopy.__main__:main"
 carnopy-app = "carnopy.app.launcher:main"
+carnopy-gui = "carnopy.app.launcher:main_gui"
 
 [tool.hatch.version]
 path = "src/carnopy/_version.py"

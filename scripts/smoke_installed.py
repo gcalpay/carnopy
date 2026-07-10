@@ -64,6 +64,29 @@ def run_app_command(
     return completed
 
 
+def run_gui_command(
+    arguments: list[str],
+    *,
+    cwd: Path,
+    expected_code: int = 0,
+    environment: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    completed = subprocess.run(
+        [str(Path(sys.executable).with_name("carnopy-gui")), *arguments],
+        cwd=cwd,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != expected_code:
+        raise RuntimeError(
+            f"carnopy-gui failed with {completed.returncode}, expected {expected_code}: "
+            f"{arguments}\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+        )
+    return completed
+
+
 def smoke_app(work_directory: Path) -> None:
     environment = os.environ.copy()
     environment["QT_QPA_PLATFORM"] = "offscreen"
@@ -351,6 +374,13 @@ def main() -> int:
     expected_app_version = version.stdout.replace("carnopy ", "carnopy-app ", 1)
     if app_version.stdout != expected_app_version:
         raise RuntimeError(f"unexpected carnopy-app version output: {app_version.stdout!r}")
+    gui_help = run_gui_command(["--help"], cwd=work_directory)
+    if "Open the Carnopy desktop application." not in gui_help.stdout:
+        raise RuntimeError(f"unexpected carnopy-gui help output: {gui_help.stdout!r}")
+    gui_version = run_gui_command(["--version"], cwd=work_directory)
+    expected_gui_version = version.stdout.replace("carnopy ", "carnopy-gui ", 1)
+    if gui_version.stdout != expected_gui_version:
+        raise RuntimeError(f"unexpected carnopy-gui version output: {gui_version.stdout!r}")
 
     config = work_directory / "config.yaml"
     run_command(
@@ -374,6 +404,9 @@ def main() -> int:
         failed_app = run_app_command([], cwd=work_directory, expected_code=1)
         if failed_app.stderr != MISSING_APP_EXTRA:
             raise RuntimeError(f"unexpected missing-app error:\n{failed_app.stderr}")
+        failed_gui = run_gui_command([], cwd=work_directory, expected_code=1)
+        if failed_gui.stderr != MISSING_APP_EXTRA:
+            raise RuntimeError(f"unexpected missing-gui error:\n{failed_gui.stderr}")
     command_environment: dict[str, str] | None = None
     figures_root: Path | None = None
     if arguments.with_visualization:

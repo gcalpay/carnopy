@@ -35,6 +35,7 @@ def test_desktop_extra_and_launcher_are_declared() -> None:
         "matplotlib>=3.8",
     ]
     assert pyproject["project"]["scripts"]["carnopy-app"] == "carnopy.app.launcher:main"
+    assert pyproject["project"]["scripts"]["carnopy-gui"] == "carnopy.app.launcher:main_gui"
 
 
 def test_alpha_metadata_uses_modern_license_and_release_urls() -> None:
@@ -138,7 +139,7 @@ def test_readme_distinguishes_published_and_next_alpha_releases() -> None:
     assert "the published `0.1.0a2` package" in text
     assert "not yet published on\n  PyPI" in text
     assert "uv sync --locked --extra app --group dev" in text
-    assert "uv run --locked carnopy-app" in text
+    assert "uv run --locked carnopy-gui" in text
     assert "0.1.0a3.dev0" not in text
     assert "After `0.1.0a1` is published" not in text
     assert "pending publisher" not in text.casefold()

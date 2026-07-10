@@ -18,9 +18,9 @@ With uv:
 """
 
 
-def build_parser() -> argparse.ArgumentParser:
+def build_parser(program: str = "carnopy-app") -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="carnopy-app",
+        prog=program,
         description="Open the Carnopy desktop application.",
     )
     parser.add_argument("--workspace", type=Path, help="Workspace to open or initialize.")
@@ -33,12 +33,12 @@ def build_parser() -> argparse.ArgumentParser:
             "Wayland popups do not dismiss correctly."
         ),
     )
-    parser.add_argument("--version", action="version", version=f"carnopy-app {__version__}")
+    parser.add_argument("--version", action="version", version=f"{program} {__version__}")
     return parser
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    arguments = build_parser().parse_args(argv)
+def main(argv: Sequence[str] | None = None, *, program: str = "carnopy-app") -> int:
+    arguments = build_parser(program).parse_args(argv)
     if arguments.qt_platform != "auto":
         os.environ["QT_QPA_PLATFORM"] = arguments.qt_platform
     try:
@@ -49,6 +49,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(MISSING_APP_EXTRA, file=sys.stderr, end="")
         return 1
     return run_application(arguments.workspace)
+
+
+def main_gui(argv: Sequence[str] | None = None) -> int:
+    return main(argv, program="carnopy-gui")
 
 
 if __name__ == "__main__":

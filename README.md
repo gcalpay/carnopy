@@ -113,11 +113,11 @@ python -m pip install "carnopy[all]==0.1.0a3"
 ```
 
 The `0.1.0a3` base install remains CLI-first and does not install Matplotlib,
-SafeTensors, or PySide6. Its lightweight `carnopy-app --help` and `--version`
-entry points remain available, while opening the desktop requires the `app`
-extra. The `app` extra installs PySide6 Essentials and Matplotlib; `all`
-combines `viz`, `ml`, and `app`. The desktop launcher remains separate from
-the CLI as `carnopy-app`.
+SafeTensors, or PySide6. Its lightweight `carnopy-app --help`,
+`carnopy-gui --help`, and version entry points remain available, while opening
+the desktop requires the `app` extra. The `app` extra installs PySide6
+Essentials and Matplotlib; `all` combines `viz`, `ml`, and `app`. The desktop
+launchers remain separate from the CLI as `carnopy-app` and `carnopy-gui`.
 
 ### Try the `0.1.0a3` desktop from source
 
@@ -127,7 +127,7 @@ The next-release GUI can be run from a source checkout before publication:
 git clone https://github.com/gcalpay/carnopy.git
 cd carnopy
 uv sync --locked --extra app --group dev
-uv run --locked carnopy-app
+uv run --locked carnopy-gui
 ```
 
 The source-tree `app` extra has the same dependency boundary documented for the
@@ -162,13 +162,13 @@ uv run --locked carnopy --help
 The current desktop development build can be opened from a source checkout:
 
 ```bash
-uv run --locked carnopy-app
+uv run --locked carnopy-gui
 ```
 
 To preselect a workspace without initializing it silently:
 
 ```bash
-uv run --locked carnopy-app --workspace /path/to/workspace
+uv run --locked carnopy-gui --workspace /path/to/workspace
 ```
 
 Qt normally selects its platform integration automatically. If WSLg leaves
@@ -176,7 +176,7 @@ drop-down popups visible after they close, and the system Qt XCB runtime is
 available, start the application explicitly with XCB:
 
 ```bash
-uv run --locked carnopy-app --qt-platform xcb --workspace /path/to/workspace
+uv run --locked carnopy-gui --qt-platform xcb --workspace /path/to/workspace
 ```
 
 The corresponding explicit Wayland selection is `--qt-platform wayland`;

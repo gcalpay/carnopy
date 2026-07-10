@@ -14,13 +14,21 @@ from carnopy._version import __version__
 from carnopy.app import launcher
 
 
+@pytest.mark.parametrize(
+    ("entrypoint", "program"),
+    [("main", "carnopy-app"), ("main_gui", "carnopy-gui")],
+)
 @pytest.mark.parametrize("argument", ["--help", "--version"])
-def test_launcher_help_and_version_do_not_import_pyside(argument: str) -> None:
+def test_launcher_help_and_version_do_not_import_pyside(
+    argument: str,
+    entrypoint: str,
+    program: str,
+) -> None:
     code = f"""
 import sys
-from carnopy.app.launcher import main
+from carnopy.app.launcher import {entrypoint}
 try:
-    main([{argument!r}])
+    {entrypoint}([{argument!r}])
 except SystemExit as exc:
     if exc.code != 0:
         raise
@@ -36,7 +44,7 @@ if any(name == "PySide6" or name.startswith("PySide6.") for name in sys.modules)
 
     assert completed.returncode == 0, completed.stdout + completed.stderr
     if argument == "--version":
-        assert completed.stdout == f"carnopy-app {__version__}\n"
+        assert completed.stdout == f"{program} {__version__}\n"
 
 
 def test_launcher_reports_exact_missing_app_extra(

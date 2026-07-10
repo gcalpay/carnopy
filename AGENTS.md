@@ -234,6 +234,7 @@ carnopy prepare SOURCE --config PREPARATION.yaml [--out PATH]
 carnopy inspect SOURCE
 carnopy plot SOURCE ...
 carnopy-app [--workspace PATH] [--version]
+carnopy-gui [--workspace PATH] [--version]
 ```
 
 The documented workflow is:
