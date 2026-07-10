@@ -45,7 +45,6 @@ PAGE_TITLES = (
     "Jobs and Diagnostics",
 )
 RECENT_WORKSPACES_KEY = "recent_workspaces"
-WINDOW_GEOMETRY_KEY = "window_geometry"
 
 
 class MainWindow(QMainWindow):
@@ -296,9 +295,14 @@ class MainWindow(QMainWindow):
         stored = cast(list[object], self.settings.value(RECENT_WORKSPACES_KEY, [], type=list))
         recent = [str(value) for value in stored]
         self._load_recent_workspaces(recent)
-        geometry = self.settings.value(WINDOW_GEOMETRY_KEY)
-        if geometry is not None:
-            self.restoreGeometry(geometry)
+
+    def center_on_primary_screen(self) -> None:
+        screen = QApplication.primaryScreen()
+        if screen is None:
+            return
+        frame = self.frameGeometry()
+        frame.moveCenter(screen.availableGeometry().center())
+        self.move(frame.topLeft())
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if self.client.is_busy:
@@ -329,7 +333,6 @@ class MainWindow(QMainWindow):
             return
         self.configure_page.shutdown()
         self.client.shutdown()
-        self.settings.setValue(WINDOW_GEOMETRY_KEY, self.saveGeometry())
         self.settings.sync()
         super().closeEvent(event)
 
@@ -409,5 +412,16 @@ def run_application(initial_workspace: Path | None = None) -> int:
     application.setOrganizationName("Carnopy")
     application.setApplicationName("Carnopy Desktop")
     window = MainWindow(initial_workspace=initial_workspace)
+    window.center_on_primary_screen()
     window.show()
+
+    def bring_to_front() -> None:
+        if window.isMinimized():
+            window.showNormal()
+        window.center_on_primary_screen()
+        window.raise_()
+        window.activateWindow()
+
+    QTimer.singleShot(0, bring_to_front)
+    QTimer.singleShot(250, bring_to_front)
     return application.exec()

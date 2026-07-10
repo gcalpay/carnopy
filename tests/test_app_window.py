@@ -74,7 +74,7 @@ def test_uninitialized_startup_path_is_preselected_but_not_created(
     window.close()
 
 
-def test_recents_and_geometry_are_isolated_in_supplied_settings(
+def test_recents_are_isolated_in_supplied_settings(
     tmp_path: Path,
     application: QApplication,
 ) -> None:
@@ -88,8 +88,27 @@ def test_recents_and_geometry_are_isolated_in_supplied_settings(
 
     settings = settings_for(settings_path)
     assert settings.value("recent_workspaces", [], type=list) == [str(workspace.root)]
-    assert settings.contains("window_geometry")
-    assert set(settings.allKeys()) == {"recent_workspaces", "window_geometry"}
+    assert set(settings.allKeys()) == {"recent_workspaces"}
+
+
+def test_stale_window_geometry_is_ignored(
+    tmp_path: Path,
+    application: QApplication,
+) -> None:
+    settings = settings_for(tmp_path / "settings.ini")
+    stale = MainWindow(settings=settings)
+    stale.move(-100_000, -100_000)
+    settings.setValue("window_geometry", stale.saveGeometry())
+    stale.client.shutdown()
+    stale.close()
+
+    window = MainWindow(settings=settings)
+    window.center_on_primary_screen()
+    primary = application.primaryScreen()
+    assert primary is not None
+    assert primary.availableGeometry().intersects(window.frameGeometry())
+    window.client.shutdown()
+    window.close()
 
 
 def test_window_can_show_and_close_offscreen(
