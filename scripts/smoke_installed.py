@@ -340,11 +340,36 @@ def enable_preparation_array_exports(config: Path) -> None:
     config.write_text(text.replace(old, new), encoding="utf-8")
 
 
+def enable_preparation_baseline_diagnostics(config: Path) -> None:
+    text = config.read_text(encoding="utf-8")
+    marker = "outputs:\n"
+    if marker not in text:
+        raise RuntimeError("preparation template does not contain the expected outputs block")
+    block = """
+scenarios:
+  - name: installed_baseline
+    kind: shuffle
+    seed: 42
+    partitions:
+      train: 0.7
+      test: 0.3
+
+quality:
+  baseline_diagnostics:
+    models: [dummy_mean, ridge]
+    random_seed: 42
+    ridge_alpha: 1.0
+    histogram_max_iterations: 20
+"""
+    config.write_text(text.replace(marker, f"{block}\n{marker}", 1), encoding="utf-8")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Smoke-test an installed Carnopy distribution.")
     parser.add_argument("--work-directory", type=Path, required=True)
     parser.add_argument("--with-visualization", action="store_true")
     parser.add_argument("--with-ml-exports", action="store_true")
+    parser.add_argument("--with-analysis", action="store_true")
     parser.add_argument("--with-app", action="store_true")
     parser.add_argument("--expected-version")
     arguments = parser.parse_args()
@@ -390,10 +415,15 @@ def main() -> int:
     matplotlib_available = importlib.util.find_spec("matplotlib") is not None
     safetensors_available = importlib.util.find_spec("safetensors") is not None
     pyside_available = importlib.util.find_spec("PySide6") is not None
+    sklearn_available = importlib.util.find_spec("sklearn") is not None
     if not arguments.with_ml_exports and safetensors_available:
         raise RuntimeError("base distribution unexpectedly includes SafeTensors")
     if arguments.with_ml_exports and not safetensors_available:
         raise RuntimeError("ML export smoke test requires SafeTensors")
+    if not arguments.with_analysis and sklearn_available:
+        raise RuntimeError("distribution unexpectedly includes scikit-learn")
+    if arguments.with_analysis and not sklearn_available:
+        raise RuntimeError("analysis smoke test requires scikit-learn")
     if arguments.with_app:
         if not pyside_available:
             raise RuntimeError("desktop application smoke test requires PySide6")
@@ -451,6 +481,8 @@ def main() -> int:
     run_command(["init", "preparation", str(preparation_config)], cwd=work_directory)
     if arguments.with_ml_exports:
         enable_preparation_array_exports(preparation_config)
+    if arguments.with_analysis:
+        enable_preparation_baseline_diagnostics(preparation_config)
     prepared_root = work_directory / "prepared"
     run_command(
         build_prepare_arguments(runs[0], preparation_config, prepared_root),
@@ -490,6 +522,14 @@ def main() -> int:
     preparation_inspection = run_command(["inspect", str(prepared_bundle)], cwd=work_directory)
     if "Source kind: preparation bundle" not in preparation_inspection.stdout:
         raise RuntimeError("preparation inspect smoke test returned unexpected output")
+    quality_report = json.loads(
+        prepared_bundle.joinpath("quality_report.json").read_text(encoding="utf-8")
+    )
+    if arguments.with_analysis:
+        if quality_report["baseline_diagnostics"]["status"] != "completed":
+            raise RuntimeError("analysis smoke test did not complete baseline diagnostics")
+    elif quality_report["baseline_diagnostics"]["status"] != "not_requested":
+        raise RuntimeError("base preparation unexpectedly requested baseline diagnostics")
 
     figure = work_directory / "density.png"
     plot_arguments = build_plot_arguments(runs[0], figure)

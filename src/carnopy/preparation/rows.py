@@ -25,6 +25,14 @@ IDENTITY_COLUMNS = [
     "source_artifact",
     "source_row_index",
     "source_row_hash",
+    "source_state_hash",
+    "source_mode",
+    "source_fluid",
+    "source_phase",
+    "source_temperature_K",
+    "source_pressure_Pa",
+    "source_vapor_mass_fraction",
+    "source_saturation_endpoint",
     "backend_model",
     "state_key",
     "state_key_version",
@@ -41,6 +49,8 @@ SOURCE_DIAGNOSTIC_COLUMNS = [
     "source_backend_error_message",
 ]
 PREPARED_ROW_ID_COLUMN = "prepared_row_id"
+
+SOURCE_STATE_HASH_COLUMN = "source_state_hash"
 
 
 @dataclass(frozen=True)
@@ -250,18 +260,47 @@ def _encode_candidate(
 
 
 def _source_identity(row: pd.Series, table: SourceTable, row_index: int) -> dict[str, Any]:
+    backend_model = _text_or_none(row.get("backend_model")) or table.backend_model
+    state = _source_state(row, table)
     return {
         "source_kind": table.kind,
         "source_run_id": _text_or_none(row.get("run_id")) or table.run_id,
         "source_artifact": table.artifact_relative_path,
         "source_row_index": row_index,
         "source_row_hash": _row_hash(row),
-        "backend_model": _text_or_none(row.get("backend_model")) or table.backend_model,
+        SOURCE_STATE_HASH_COLUMN: _state_hash(state, backend_model),
+        **state,
+        "backend_model": backend_model,
         "state_key": _text_or_none(row.get("state_key")),
         "state_key_version": _int_or_none(row.get("state_key_version")),
         "sweep_id": table.sweep_id,
         "sweep_run_id": table.sweep_run_id,
     }
+
+
+def _source_state(row: pd.Series, table: SourceTable) -> dict[str, Any]:
+    return {
+        "source_mode": _text_or_none(row.get("mode")) or _text_or_none(table.metadata.get("mode")),
+        "source_fluid": _text_or_none(row.get("fluid")),
+        "source_phase": _text_or_none(row.get("phase")),
+        "source_temperature_K": _json_value(row.get("temperature_K")),
+        "source_pressure_Pa": _json_value(row.get("pressure_Pa")),
+        "source_vapor_mass_fraction": _json_value(row.get("vapor_mass_fraction")),
+        "source_saturation_endpoint": _text_or_none(row.get("saturation_endpoint")),
+    }
+
+
+def _state_hash(state: dict[str, Any], backend_model: str | None) -> str:
+    payload: dict[str, object] = {
+        "fluid": state["source_fluid"],
+        "backend_model": backend_model,
+        "phase": state["source_phase"],
+        "temperature": state["source_temperature_K"],
+        "pressure": state["source_pressure_Pa"],
+        "vapor_mass_fraction": state["source_vapor_mass_fraction"],
+        "saturation_endpoint": state["source_saturation_endpoint"],
+    }
+    return sha256_bytes(canonical_json_bytes(payload))
 
 
 def _source_diagnostics(row: pd.Series) -> dict[str, Any]:

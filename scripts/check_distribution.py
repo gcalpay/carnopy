@@ -64,9 +64,12 @@ WHEEL_REQUIRED = {
     "carnopy/py.typed",
     "carnopy/preparation/__init__.py",
     "carnopy/preparation/arrays.py",
+    "carnopy/preparation/baselines.py",
     "carnopy/preparation/derived.py",
+    "carnopy/preparation/grid_diagnostics.py",
     "carnopy/preparation/fields.py",
     "carnopy/preparation/layout.py",
+    "carnopy/preparation/matrix_diagnostics.py",
     "carnopy/preparation/models.py",
     "carnopy/preparation/pipeline.py",
     "carnopy/preparation/quality.py",
@@ -74,6 +77,7 @@ WHEEL_REQUIRED = {
     "carnopy/preparation/reporting.py",
     "carnopy/preparation/rows.py",
     "carnopy/preparation/scenarios.py",
+    "carnopy/preparation/stratification.py",
     "carnopy/preparation/source.py",
     "carnopy/sweeps/__init__.py",
     "carnopy/sweeps/comparison.py",
@@ -139,9 +143,12 @@ SDIST_REQUIRED = {
     "src/carnopy/py.typed",
     "src/carnopy/preparation/__init__.py",
     "src/carnopy/preparation/arrays.py",
+    "src/carnopy/preparation/baselines.py",
     "src/carnopy/preparation/derived.py",
     "src/carnopy/preparation/fields.py",
+    "src/carnopy/preparation/grid_diagnostics.py",
     "src/carnopy/preparation/layout.py",
+    "src/carnopy/preparation/matrix_diagnostics.py",
     "src/carnopy/preparation/models.py",
     "src/carnopy/preparation/pipeline.py",
     "src/carnopy/preparation/quality.py",
@@ -149,6 +156,7 @@ SDIST_REQUIRED = {
     "src/carnopy/preparation/reporting.py",
     "src/carnopy/preparation/rows.py",
     "src/carnopy/preparation/scenarios.py",
+    "src/carnopy/preparation/stratification.py",
     "src/carnopy/preparation/source.py",
     "src/carnopy/sweeps/__init__.py",
     "src/carnopy/sweeps/comparison.py",
@@ -293,7 +301,7 @@ def validate_metadata(metadata: Message, expected_version: str, *, artifact: str
     if keywords != PROJECT_KEYWORDS:
         raise ValueError(f"{artifact} metadata declares unexpected keywords: {sorted(keywords)}")
     extras = set(metadata.get_all("Provides-Extra", []))
-    if extras != {"all", "app", "ml", "viz"}:
+    if extras != {"all", "analysis", "app", "ml", "viz"}:
         raise ValueError(f"{artifact} metadata declares unexpected optional extras: {extras}")
     matplotlib_requirements = [
         requirement
@@ -324,6 +332,17 @@ def validate_metadata(metadata: Message, expected_version: str, *, artifact: str
         "extra ==" not in requirement for requirement in pyside_requirements
     ):
         raise ValueError(f"{artifact} must declare PySide6 only through all and app extras")
+    sklearn_requirements = [
+        requirement
+        for requirement in metadata.get_all("Requires-Dist", [])
+        if requirement.casefold().startswith("scikit-learn")
+    ]
+    if len(sklearn_requirements) != 2 or any(
+        "extra ==" not in requirement for requirement in sklearn_requirements
+    ):
+        raise ValueError(
+            f"{artifact} must declare scikit-learn only through all and analysis extras"
+        )
 
 
 def forbidden_paths(names: set[str], *, strip_root: bool) -> list[str]:

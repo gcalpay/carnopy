@@ -12,10 +12,18 @@ import pytest
 
 from carnopy.api import generate_dataset, generate_model_sweep, prepare_dataset
 from carnopy.domain.failures import ConfigError, OutputError
+from carnopy.preparation.baselines import build_baseline_diagnostics
 from carnopy.preparation.fields import ResolvedField, ResolvedPreparation
-from carnopy.preparation.models import load_preparation_config
+from carnopy.preparation.grid_diagnostics import build_structured_grid_summary
+from carnopy.preparation.matrix_diagnostics import build_matrix_diagnostics
+from carnopy.preparation.models import (
+    BaselineDiagnosticsConfig,
+    MatrixDiagnosticsConfig,
+    load_preparation_config,
+)
 from carnopy.preparation.quality import build_quality_artifacts
-from carnopy.preparation.rows import PreparedRows
+from carnopy.preparation.rows import SOURCE_STATE_HASH_COLUMN, PreparedRows
+from carnopy.preparation.scenarios import build_scenario_outputs
 
 
 def _write(path: Path, text: str) -> Path:
@@ -40,6 +48,7 @@ def _prep_config(
     targets: str = "[specific_enthalpy]",
     auxiliary: str = "[fluid, backend_model, phase, run_id, case_id]",
     allow_partial: str = "false",
+    quality: str | None = None,
     outputs: str = "  formats: [parquet]",
 ) -> Path:
     categorical_block = (
@@ -47,6 +56,7 @@ def _prep_config(
         if categorical.strip() == "[]"
         else f"categorical_features:\n{categorical}"
     )
+    quality_block = "" if quality is None else f"quality:\n{quality}\n"
     return _write(
         path,
         f"""schema_version: 1
@@ -59,7 +69,7 @@ features:
 {categorical_block}
 targets: {targets}
 auxiliary: {auxiliary}
-outputs:
+{quality_block}outputs:
 {outputs}
 """,
     )
@@ -181,6 +191,17 @@ def test_prepare_dataset_run_writes_manifest_and_preserves_order(
     assert provenance["source_row_index"].tolist() == list(range(len(source)))
     assert source_diagnostics["prepared_row_id"].tolist() == prepared["prepared_row_id"].tolist()
     assert "source_row_hash" not in prepared.columns
+    assert SOURCE_STATE_HASH_COLUMN not in prepared.columns
+    assert provenance[SOURCE_STATE_HASH_COLUMN].str.fullmatch(r"[0-9a-f]{64}").all()
+    assert {
+        "source_mode",
+        "source_fluid",
+        "source_phase",
+        "source_temperature_K",
+        "source_pressure_Pa",
+        "source_vapor_mass_fraction",
+        "source_saturation_endpoint",
+    }.issubset(provenance.columns)
     assert "source_failure_code" not in prepared.columns
     assert prepared["mass_density"].tolist() == source["mass_density_kg_m3"].tolist()
     assert prepared["specific_enthalpy"].tolist() == source["specific_enthalpy_J_kg"].tolist()
@@ -325,12 +346,240 @@ def test_preparation_quality_duplicate_detection_is_advisory() -> None:
         "duplicate_row_count": 2,
         "conflicting_target_group_count": 1,
     }
-    assert report["structured_grid"]["status"] == "completed"
+    assert report["structured_grid"]["status"] == "skipped_unsupported_shape"
     assert flags["prepared_row_id"].tolist() == [0, 1]
     assert flags["flag_code"].tolist() == [
         "duplicate_state_conflicting_targets",
         "duplicate_state_conflicting_targets",
     ]
+
+
+def test_preparation_quality_reports_defined_robust_statistics() -> None:
+    frame = pd.DataFrame(
+        {
+            "prepared_row_id": range(5),
+            "fluid": ["Propane", "Propane", "n-Butane", "n-Butane", "n-Butane"],
+            "backend_model": ["heos", "heos", "heos", "heos", "pr"],
+            "phase": ["gas", "gas", "liquid", "liquid", "liquid"],
+            "temperature": [300.0, 310.0, 320.0, 330.0, 340.0],
+            "pressure": [100000.0, 200000.0, 300000.0, 400000.0, 500000.0],
+            "mass_density": [1.0, 2.0, 3.0, 4.0, 5.0],
+        }
+    )
+    resolved = ResolvedPreparation(
+        numeric_features=(
+            ResolvedField("temperature", "temperature_K", "K", "numeric", "coordinate"),
+            ResolvedField("pressure", "pressure_Pa", "Pa", "numeric", "coordinate"),
+        ),
+        targets=(
+            ResolvedField("mass_density", "mass_density_kg_m3", "kg/m^3", "numeric", "property"),
+        ),
+        auxiliary=(),
+        categorical_feature_fields=(),
+        derived_features=(),
+        semantic_mapping={},
+    )
+    rows = PreparedRows(
+        prepared_rows=frame.to_dict("records"),
+        exclusion_rows=[],
+        categories={},
+        status="completed",
+    )
+
+    report, _ = build_quality_artifacts(
+        frame=frame,
+        rows=rows,
+        resolved=resolved,
+        scenario_summary=None,
+        partition_target_summaries=[],
+    )
+
+    summary = report["finite_summaries"]["mass_density"]
+    assert report["quality_report_schema_version"] == 2
+    assert summary == {
+        "row_count": 5,
+        "missing_count": 0,
+        "finite_count": 5,
+        "nonfinite_count": 0,
+        "minimum": 1.0,
+        "maximum": 5.0,
+        "mean": 3.0,
+        "std": pytest.approx(2.0**0.5),
+        "std_ddof": 0,
+        "median": 3.0,
+        "first_quartile": 2.0,
+        "third_quartile": 4.0,
+        "interquartile_range": 2.0,
+        "median_absolute_deviation": 1.0,
+        "quantiles": {
+            "0.01": pytest.approx(1.04),
+            "0.05": pytest.approx(1.2),
+            "0.25": 2.0,
+            "0.5": 3.0,
+            "0.75": 4.0,
+            "0.95": pytest.approx(4.8),
+            "0.99": pytest.approx(4.96),
+        },
+        "skewness": pytest.approx(0.0, abs=1e-15),
+        "excess_kurtosis": pytest.approx(-1.2),
+    }
+    fluid_groups = report["numeric_summaries_by_group"]["fluid"]
+    assert [group["value"] for group in fluid_groups] == ["Propane", "n-Butane"]
+    assert [group["row_count"] for group in fluid_groups] == [2, 3]
+    assert fluid_groups[1]["fields"]["mass_density"]["median"] == 4.0
+    assert report["target_summaries_by_partition"][0]["targets"]["mass_density"] == summary
+    assert "Hyndman-Fan type 7" in report["estimator_definitions"]["quartiles_and_quantiles"]
+
+
+def test_matrix_diagnostics_report_rank_conditioning_and_correlations() -> None:
+    frame = pd.DataFrame(
+        {
+            "x": [1.0, 2.0, 3.0, 4.0, 5.0],
+            "x_copy": [2.0, 4.0, 6.0, 8.0, 10.0],
+            "constant": [7.0] * 5,
+            "almost_constant": [
+                1.0,
+                1.0 + 1e-14,
+                1.0 + 4e-14,
+                1.0 + 9e-14,
+                1.0 + 16e-14,
+            ],
+            "target": [1.0, 4.0, 9.0, 16.0, 25.0],
+        }
+    )
+
+    result = build_matrix_diagnostics(
+        frame,
+        feature_columns=["x", "x_copy", "constant", "almost_constant"],
+        target_columns=["target"],
+        config=MatrixDiagnosticsConfig(),
+        scenario="baseline",
+        fit_partition="train",
+    )
+
+    assert result["status"] == "completed"
+    assert result["fit_partition"] == "train"
+    assert result["constant_feature_columns"] == ["constant"]
+    assert result["near_constant_feature_columns"][0]["field"] == "almost_constant"
+    assert result["numerical_rank"] < len(result["variable_feature_columns"])
+    assert result["condition_number"] is None
+    assert result["condition_number_is_infinite"] is True
+    assert result["highly_correlated_feature_pairs"][0] == {
+        "left": "x",
+        "right": "x_copy",
+        "correlation": pytest.approx(1.0),
+    }
+    assert result["feature_target_correlations"][0]["target"] == "target"
+    assert 0.0 < result["effective_rank_fraction"] <= 1.0
+    assert result["rank_tolerance"] > 0.0
+
+
+def test_optional_baseline_diagnostics_fit_train_and_evaluate_test() -> None:
+    pytest.importorskip("sklearn")
+    train = pd.DataFrame(
+        {
+            "x": np.arange(1.0, 21.0),
+            "target": 3.0 * np.arange(1.0, 21.0) + 2.0,
+        }
+    )
+    test = pd.DataFrame(
+        {
+            "x": np.arange(21.0, 26.0),
+            "target": 3.0 * np.arange(21.0, 26.0) + 2.0,
+        }
+    )
+
+    result = build_baseline_diagnostics(
+        {"train": train, "test": test},
+        feature_columns=["x"],
+        target_columns=["target"],
+        config=BaselineDiagnosticsConfig(models=("dummy_mean", "ridge"), ridge_alpha=1e-6),
+        scenario="linear_holdout",
+    )
+
+    assert result["status"] == "completed"
+    assert result["train_row_count"] == 20
+    assert result["evaluation_row_counts"] == {"test": 5}
+    by_model = {item["model"]: item for item in result["models"]}
+    assert by_model["ridge"]["metrics"]["test"]["root_mean_squared_error"] < 1.0
+    assert (
+        by_model["dummy_mean"]["metrics"]["test"]["root_mean_squared_error"]
+        > by_model["ridge"]["metrics"]["test"]["root_mean_squared_error"]
+    )
+
+
+def test_prepare_embeds_optional_baseline_metrics_without_model_artifacts(tmp_path: Path) -> None:
+    pytest.importorskip("sklearn")
+    run = generate_dataset(
+        _grid_property_config(
+            tmp_path / "grid.yaml",
+            pressures="[100000.0, 150000.0, 200000.0, 250000.0, 300000.0, 350000.0]",
+        ),
+        output_root=tmp_path / "runs",
+    )
+    config = _prep_config_with_scenarios(
+        tmp_path / "preparation.yaml",
+        """scenarios:
+  - name: baseline_holdout
+    kind: shuffle
+    seed: 42
+    partitions:
+      train: 0.5
+      test: 0.5
+""",
+        categorical="[]",
+        derived="[]",
+        quality="""  baseline_diagnostics:
+    models: [dummy_mean, ridge]
+    random_seed: 42
+    ridge_alpha: 1.0
+    histogram_max_iterations: 20""",
+    )
+
+    result = prepare_dataset(run.output_directory, config=config, output_root=tmp_path / "prepared")
+
+    report = json.loads(
+        result.output_directory.joinpath("quality_report.json").read_text(encoding="utf-8")
+    )
+    baseline = report["baseline_diagnostics"]
+    assert baseline["status"] == "completed"
+    assert baseline["fits"][0]["scenario"] == "baseline_holdout"
+    assert {item["model"] for item in baseline["fits"][0]["models"]} == {
+        "dummy_mean",
+        "ridge",
+    }
+    assert not list(result.output_directory.rglob("*.pkl"))
+    assert not list(result.output_directory.rglob("*.joblib"))
+
+
+def test_property_grid_diagnostics_report_missing_repeated_and_phase_edges() -> None:
+    frame = pd.DataFrame(
+        {
+            "source_mode": ["property_table"] * 4,
+            "source_run_id": ["run-1"] * 4,
+            "source_fluid": ["Propane"] * 4,
+            "backend_model": ["heos"] * 4,
+            "source_phase": ["gas", "gas", "liquid", "liquid"],
+            "source_temperature_K": [300.0, 300.0, 310.0, 300.0],
+            "source_pressure_Pa": [100000.0, 200000.0, 100000.0, 100000.0],
+        }
+    )
+
+    result = build_structured_grid_summary(frame)
+
+    group = result["groups"][0]
+    assert result["status"] == "completed"
+    assert group["expected_cells"] == 4
+    assert group["expected_cell_basis"] == (
+        "Cartesian product of observed eligible coordinate levels"
+    )
+    assert group["observed_cells"] == 3
+    assert group["missing_cells"] == 1
+    assert group["repeated_cell_count"] == 1
+    assert group["repeated_row_count"] == 1
+    assert group["coordinate_spacing"]["source_temperature_K"]["minimum_spacing"] == 10.0
+    assert group["phase_boundaries"]["multi_phase_cell_count"] == 1
+    assert group["disconnected_ranges"]["status"] == "not_inferred_without_sampler_contract"
 
 
 def test_prepare_writes_numpy_and_safetensors_exports(
@@ -820,6 +1069,151 @@ def test_prepare_shuffle_scenario_is_deterministic_and_seeded(tmp_path: Path) ->
     assert first_train["prepared_row_id"].tolist() != changed_train["prepared_row_id"].tolist()
 
 
+def test_shuffle_keeps_duplicate_thermodynamic_states_in_one_partition(tmp_path: Path) -> None:
+    config = load_preparation_config(
+        _prep_config_with_scenarios(
+            tmp_path / "preparation.yaml",
+            """scenarios:
+  - name: grouped_shuffle
+    kind: shuffle
+    seed: 42
+    partitions:
+      train: 0.5
+      test: 0.5
+""",
+            categorical="[]",
+            derived="[]",
+        )
+    ).model.scenarios
+    frame = pd.DataFrame(
+        {
+            "prepared_row_id": range(6),
+            "source_row_hash": [f"row-{index}" for index in range(6)],
+            SOURCE_STATE_HASH_COLUMN: ["duplicate", "duplicate", "a", "b", "c", "d"],
+            "pressure": [1.0, 1.0, 2.0, 3.0, 4.0, 5.0],
+        }
+    )
+
+    output = build_scenario_outputs(config, frame, source_kind="dataset_run")[0]
+
+    duplicate_partitions = [
+        partition
+        for partition, partition_frame in output.partitions.items()
+        if set(partition_frame["prepared_row_id"]) & {0, 1}
+    ]
+    assert len(duplicate_partitions) == 1
+    assert set(output.partitions[duplicate_partitions[0]]["prepared_row_id"]) >= {0, 1}
+    assert output.metadata["state_leakage"] == {
+        "identity_column": SOURCE_STATE_HASH_COLUMN,
+        "duplicate_state_group_count": 1,
+        "cross_partition_group_count": 0,
+    }
+
+
+def test_stratified_hash_balances_declared_strata_without_state_leakage(
+    tmp_path: Path,
+) -> None:
+    config = load_preparation_config(
+        _prep_config_with_scenarios(
+            tmp_path / "preparation.yaml",
+            """scenarios:
+  - name: balanced_strata
+    kind: stratified_hash
+    seed: 42
+    partitions:
+      train: 0.5
+      test: 0.5
+    strata:
+      categorical: [phase]
+      numeric_bins:
+        temperature: [305.0]
+""",
+            categorical="[]",
+            derived="[]",
+        )
+    ).model.scenarios
+    frame = pd.DataFrame(
+        {
+            "prepared_row_id": range(8),
+            SOURCE_STATE_HASH_COLUMN: [f"state-{index}" for index in range(8)],
+            "phase": ["gas", "gas", "gas", "gas", "liquid", "liquid", "liquid", "liquid"],
+            "temperature": [300.0, 300.0, 310.0, 310.0] * 2,
+        }
+    )
+
+    output = build_scenario_outputs(config, frame, source_kind="dataset_run")[0]
+
+    for partition in ("train", "test"):
+        counts = output.partitions[partition].groupby(["phase", "temperature"]).size()
+        assert counts.tolist() == [1, 1, 1, 1]
+    stratification = output.metadata["stratification"]
+    assert stratification["stratum_count"] == 4
+    assert all(
+        stratum["partition_counts"] == {"train": 1, "test": 1}
+        for stratum in stratification["strata"]
+    )
+    assert output.metadata["state_leakage"]["cross_partition_group_count"] == 0
+
+
+def test_stratified_hash_rejects_empty_declared_numeric_bins(tmp_path: Path) -> None:
+    config = load_preparation_config(
+        _prep_config_with_scenarios(
+            tmp_path / "preparation.yaml",
+            """scenarios:
+  - name: empty_bins
+    kind: stratified_hash
+    seed: 42
+    partitions:
+      train: 0.5
+      test: 0.5
+    strata:
+      numeric_bins:
+        temperature: [290.0, 350.0]
+""",
+            categorical="[]",
+            derived="[]",
+        )
+    ).model.scenarios
+    frame = pd.DataFrame(
+        {
+            "prepared_row_id": range(4),
+            SOURCE_STATE_HASH_COLUMN: [f"state-{index}" for index in range(4)],
+            "temperature": [300.0, 310.0, 320.0, 330.0],
+        }
+    )
+
+    with pytest.raises(ConfigError, match="empty declared bins: 0, 2"):
+        build_scenario_outputs(config, frame, source_kind="dataset_run")
+
+
+def test_explicit_scenario_rejects_cross_partition_state_leakage(tmp_path: Path) -> None:
+    config = load_preparation_config(
+        _prep_config_with_scenarios(
+            tmp_path / "preparation.yaml",
+            """scenarios:
+  - name: leaking_holdout
+    kind: range_holdout
+    field: pressure
+    holdouts:
+      test: {min: 1.0, max: 1.0}
+    remainder: train
+""",
+            categorical="[]",
+            derived="[]",
+        )
+    ).model.scenarios
+    frame = pd.DataFrame(
+        {
+            "prepared_row_id": [0, 1, 2],
+            SOURCE_STATE_HASH_COLUMN: ["same-state", "same-state", "other-state"],
+            "pressure": [1.0, 2.0, 3.0],
+        }
+    )
+
+    with pytest.raises(ConfigError, match="duplicate thermodynamic-state groups across"):
+        build_scenario_outputs(config, frame, source_kind="dataset_run")
+
+
 def test_prepare_scenario_transformations_use_train_statistics(tmp_path: Path) -> None:
     dataset = _grid_property_config(
         tmp_path / "grid.yaml",
@@ -861,6 +1255,86 @@ def test_prepare_scenario_transformations_use_train_statistics(tmp_path: Path) -
     assert train[output_column].mean() == pytest.approx(0.0)
     assert scenario["transformations"][0]["fit_partition"] == "train"
     assert scenario["transformations"][0]["steps"][1]["method"] == "standard"
+
+
+def test_prepare_robust_transformation_uses_train_median_and_iqr(tmp_path: Path) -> None:
+    dataset = _grid_property_config(
+        tmp_path / "grid.yaml",
+        pressures="[100000.0, 150000.0, 200000.0, 250000.0, 300000.0, 350000.0]",
+    )
+    run = generate_dataset(dataset, output_root=tmp_path / "runs")
+    config = _prep_config_with_scenarios(
+        tmp_path / "preparation.yaml",
+        """scenarios:
+  - name: robust_baseline
+    kind: shuffle
+    seed: 42
+    partitions:
+      train: 0.5
+      test: 0.5
+    transformations:
+      - field: pressure
+        methods: [robust]
+""",
+        categorical="[]",
+        derived="[]",
+        quality="""  matrix_diagnostics:
+    correlation_threshold: 0.99
+    near_constant_relative_spread: 1.0e-12""",
+    )
+
+    result = prepare_dataset(run.output_directory, config=config, output_root=tmp_path / "prepared")
+
+    train = pd.read_parquet(
+        result.output_directory / "data/scenarios/robust_baseline/train.parquet"
+    )
+    scenario = json.loads(
+        result.output_directory.joinpath("data/scenarios/robust_baseline/scenario.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    quality_report = json.loads(
+        result.output_directory.joinpath("quality_report.json").read_text(encoding="utf-8")
+    )
+    step = scenario["transformations"][0]["steps"][0]
+    assert train["pressure__robust"].median() == pytest.approx(0.0)
+    assert step["method"] == "robust"
+    assert step["median"] == pytest.approx(train["pressure"].median())
+    assert step["interquartile_range"] == pytest.approx(
+        train["pressure"].quantile(0.75) - train["pressure"].quantile(0.25)
+    )
+    assert step["inverse"] == "value = transformed * interquartile_range + median"
+    matrix_fit = quality_report["matrix_diagnostics"]["fits"][0]
+    assert quality_report["matrix_diagnostics"]["status"] == "completed"
+    assert matrix_fit["scenario"] == "robust_baseline"
+    assert matrix_fit["fit_partition"] == "train"
+    assert "pressure__robust" in matrix_fit["feature_columns"]
+
+
+def test_prepare_robust_transformation_rejects_zero_train_iqr(tmp_path: Path) -> None:
+    run = generate_dataset(
+        _grid_property_config(tmp_path / "grid.yaml"),
+        output_root=tmp_path / "runs",
+    )
+    config = _prep_config_with_scenarios(
+        tmp_path / "preparation.yaml",
+        """scenarios:
+  - name: invalid_robust
+    kind: shuffle
+    seed: 42
+    partitions:
+      train: 0.5
+      test: 0.5
+    transformations:
+      - field: temperature
+        methods: [robust]
+""",
+        categorical="[]",
+        derived="[]",
+    )
+
+    with pytest.raises(ConfigError, match="robust transformation has zero train IQR"):
+        prepare_dataset(run.output_directory, config=config, output_root=tmp_path / "prepared")
 
 
 def test_prepare_scenario_partitions_write_array_exports(tmp_path: Path) -> None:

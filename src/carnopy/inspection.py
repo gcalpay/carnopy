@@ -112,6 +112,18 @@ class PreparationInspection:
             f"  status: {self.quality_summary.get('status', 'unreported')}",
             "  report: " + str(self.quality_artifacts.get("report") or "absent"),
             "  flags: " + str(self.quality_artifacts.get("flags") or "absent"),
+            "  matrix diagnostics: "
+            + str(
+                self.quality_summary.get("matrix_diagnostics", {}).get("status", "unreported")
+                if isinstance(self.quality_summary.get("matrix_diagnostics"), dict)
+                else "unreported"
+            ),
+            "  baseline diagnostics: "
+            + str(
+                self.quality_summary.get("baseline_diagnostics", {}).get("status", "unreported")
+                if isinstance(self.quality_summary.get("baseline_diagnostics"), dict)
+                else "unreported"
+            ),
         ]
         if self.quality_errors:
             lines.append("  errors: " + "; ".join(self.quality_errors))
@@ -370,6 +382,8 @@ def _inspect_preparation_quality(
                 "quality_flags": report.get("quality_flags"),
                 "duplicate_state_candidates": report.get("duplicate_state_candidates"),
                 "structured_grid": report.get("structured_grid"),
+                "matrix_diagnostics": report.get("matrix_diagnostics"),
+                "baseline_diagnostics": report.get("baseline_diagnostics"),
             }
         except VisualizationError as exc:
             errors.append(str(exc))

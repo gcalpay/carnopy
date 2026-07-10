@@ -19,6 +19,7 @@ jobs:
           - base
           - viz
           - ml
+          - analysis
           - app
           - all
     steps:
