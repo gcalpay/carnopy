@@ -38,6 +38,15 @@ def test_desktop_extra_and_launcher_are_declared() -> None:
     assert pyproject["project"]["scripts"]["carnopy-gui"] == "carnopy.app.launcher:main_gui"
 
 
+def test_analysis_extra_is_optional_and_scoped() -> None:
+    root = Path(__file__).resolve().parents[1]
+    pyproject: dict[str, Any] = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+
+    assert pyproject["project"]["optional-dependencies"]["analysis"] == ["scikit-learn>=1.7.2,<2"]
+    assert "scikit-learn>=1.7.2,<2" in pyproject["project"]["optional-dependencies"]["all"]
+    assert "scikit-learn" not in " ".join(pyproject["project"]["dependencies"]).casefold()
+
+
 def test_alpha_metadata_uses_modern_license_and_release_urls() -> None:
     root = Path(__file__).resolve().parents[1]
     pyproject: dict[str, Any] = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
@@ -130,6 +139,7 @@ def test_readme_distinguishes_published_and_next_alpha_releases() -> None:
         "carnopy",
         "carnopy[viz]",
         "carnopy[ml]",
+        "carnopy[analysis]",
         "carnopy[app]",
         "carnopy[all]",
     ):

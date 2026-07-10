@@ -87,6 +87,10 @@ parent cleanup of interrupted plot staging. Preview changes must use Qt image
 and SVG classes only, validate the worker-returned path and hash before display,
 and keep PDF opening an explicit user action.
 
+Preparation baseline-diagnostic changes use the optional `analysis` extra.
+Keep scikit-learn imports lazy, fit only on the declared training partition,
+and never persist estimators or turn Carnopy into a model-training framework.
+
 GitHub Actions runs core and desktop verification in separate environments.
 Pull requests receive dependency review and CodeQL analysis; scheduled jobs
 audit the locked base and optional dependency profiles and exercise the core

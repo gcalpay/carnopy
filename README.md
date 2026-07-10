@@ -100,6 +100,12 @@ Add SafeTensors preparation exports:
 python -m pip install "carnopy[ml]==0.1.0a3"
 ```
 
+Add optional scikit-learn preparation diagnostics:
+
+```bash
+python -m pip install "carnopy[analysis]==0.1.0a3"
+```
+
 Add the desktop application:
 
 ```bash
@@ -113,10 +119,10 @@ python -m pip install "carnopy[all]==0.1.0a3"
 ```
 
 The `0.1.0a3` base install remains CLI-first and does not install Matplotlib,
-SafeTensors, or PySide6. Its lightweight `carnopy-app --help`,
+SafeTensors, scikit-learn, or PySide6. Its lightweight `carnopy-app --help`,
 `carnopy-gui --help`, and version entry points remain available, while opening
 the desktop requires the `app` extra. The `app` extra installs PySide6
-Essentials and Matplotlib; `all` combines `viz`, `ml`, and `app`. The desktop
+Essentials and Matplotlib; `all` combines `viz`, `ml`, `analysis`, and `app`. The desktop
 launchers remain separate from the CLI as `carnopy-app` and `carnopy-gui`.
 
 ### Try the `0.1.0a3` desktop from source
@@ -501,9 +507,10 @@ Prepared bundles contain `manifest.json`, `diagnostics.json`,
 `quality_report.json`, and `data/quality_flags.parquet`.
 `table.parquet` is the user-facing feature/target table. Provenance and source
 diagnostics are separated and join back to the table through `prepared_row_id`.
-Quality diagnostics are advisory: they summarize distributions, finite-value
-coverage, target ranges, duplicate state candidates, scenario partitions, and
-structured-grid coverage where that shape can be inferred safely. Quality flags
+Quality diagnostics are advisory: they summarize robust distributions,
+finite-value coverage, target ranges, duplicate state candidates, scenario
+partitions, and exact eligible property-table grid coverage where that shape can be
+inferred safely. Quality flags
 stay in a separate long-form table joined through `prepared_row_id`; they do not
 exclude rows or change `table.parquet`.
 If no source rows can produce the requested representation, Carnopy writes a
@@ -519,7 +526,7 @@ contexts.
 
 Optional leakage-aware scenarios add deterministic partition artifacts and
 plain-JSON transformation parameters. Current numeric transformations are
-`log10`, `standard`, and `minmax`:
+`log10`, `standard`, `minmax`, and train-fitted median/IQR `robust` scaling:
 
 ```yaml
 scenarios:
@@ -532,7 +539,19 @@ scenarios:
       test: 0.1
     transformations:
       - field: pressure
-        methods: [log10, standard]
+        methods: [log10, robust]
+
+  - name: phase_temperature_strata
+    kind: stratified_hash
+    seed: 42
+    partitions:
+      train: 0.8
+      validation: 0.1
+      test: 0.1
+    strata:
+      categorical: [phase]
+      numeric_bins:
+        reduced_temperature: [0.8, 0.95, 1.05]
 
   - name: leave_fluid_out
     kind: leave_fluid_out
@@ -541,8 +560,34 @@ scenarios:
     remainder: train
 ```
 
-Supported scenarios are `unsplit`, `shuffle`, `coordinate_block`,
+Supported scenarios are `unsplit`, `shuffle`, `stratified_hash`, `coordinate_block`,
 `range_holdout`, `leave_fluid_out`, `phase_holdout`, and `model_holdout`.
+Shuffle and stratified scenarios keep an exact thermodynamic-state hash in one
+partition. Numeric strata use only user-declared boundaries; empty or undersized
+strata fail clearly rather than being silently rebalanced.
+
+Optional matrix and baseline diagnostics are configured separately:
+
+```yaml
+quality:
+  matrix_diagnostics:
+    correlation_threshold: 0.995
+    near_constant_relative_spread: 1.0e-12
+  baseline_diagnostics:
+    models: [dummy_mean, ridge, hist_gradient_boosting]
+    random_seed: 42
+    ridge_alpha: 1.0
+    histogram_max_iterations: 100
+```
+
+Matrix diagnostics use configured features only and report constants,
+near-constants, correlations, singular values, numerical rank, effective rank,
+and conditioning. They fit on each scenario's `train` partition, or state
+explicitly that an unsplit report uses `all`. Baseline diagnostics require
+`carnopy[analysis]`; they fit disposable scikit-learn estimators on `train` and
+report validation/test MAE, RMSE, and R² per target. Carnopy never persists the
+estimators or predictions and does not tune, register, deploy, or use them to
+change prepared rows.
 
 Parquet remains the canonical prepared table. Optional NumPy and SafeTensors
 exports are derived ML-consumption files:
@@ -559,13 +604,13 @@ outputs:
 Array exports require `carnopy[ml]` or `carnopy[all]` when SafeTensors is
 requested. Carnopy records feature/target order, units, shapes, dtype, file
 hashes, and float32 conversion-error summaries in the manifest. It does not
-train models, depend on PyTorch, or export `.pt`/`.pth` files in this release
-line. Implemented behavior and reviewed future directions are separated in the
+depend on PyTorch or export `.pt`/`.pth` files in this release line. Implemented
+behavior and reviewed future directions are separated in the
 [ML preparation roadmap](https://github.com/gcalpay/carnopy/blob/main/ML_PREPARATION_ROADMAP.md).
-Baseline scikit-learn diagnostics, PCA/SVD reports, active learning, Manim
-animations, PyMC workflows, SINDy, optimization, ORC/TFC work, mixtures, new
-backends, and a professional 3D GUI remain separate reviewed milestones rather
-than part of `prepare`.
+Automatic PCA feature replacement, active learning, Manim animations, PyMC
+workflows, SINDy, optimization, ORC/TFC work, mixtures, new backends, and a
+professional 3D GUI remain separate reviewed milestones rather than implicit
+parts of `prepare`.
 
 ### Modes
 
@@ -1241,9 +1286,10 @@ desktop Render controls, confirmed force-stop/close ownership, Qt-only PNG/SVG
 previews, explicit PDF opening, packaging inventory checks, installed-wheel
 smoke coverage, release hardening, and final architecture-map review.
 
-After GUI-1 stabilizes, the next data-focused milestone is preparation quality
-and evaluation: explicit-bin stratification, auditable physical/data-quality
-flags, split diagnostics, and interpretable prepared-data summaries. The
+The prepared source now includes robust distribution reports, exact-state
+split leakage protection, explicit-bin stratification, train-fitted robust
+scaling, opt-in matrix diagnostics, and optional diagnostic-only scikit-learn
+baselines. The
 [ML preparation roadmap](https://github.com/gcalpay/carnopy/blob/main/ML_PREPARATION_ROADMAP.md)
 separates current behavior from research directions. Carnopy remains a dataset
 and preparation tool rather than a model-training framework.
@@ -1258,10 +1304,11 @@ efficiencies, critical-point and operating limits, and minimum turbine-exhaust
 quality. Saturated liquid alone is not a pump cavitation margin; NPSH may be
 reported only when sufficient hydraulic-system and pump data are supplied.
 
-Deferred work includes GUI-2 sweep/preparation creation, TFC screening,
-mixtures, 3D visualization, additional backends, and standalone desktop
-installers. These capabilities will use the same core Python API rather than
-duplicate scientific logic.
+The next application milestone is a cross-platform modern QML presentation
+layer with an optional PyVista/VTK exact-grid 3D property surface. GUI-2
+sweep/preparation creation, TFC screening, mixtures, additional backends, and
+standalone desktop installers remain deferred. These capabilities will use the
+same worker and core Python boundaries rather than duplicate scientific logic.
 
 Use [GitHub issues](https://github.com/gcalpay/carnopy/issues) for bug reports,
 scientific discrepancies, and focused feature requests. See
