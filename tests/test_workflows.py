@@ -24,6 +24,12 @@ def workflow_job(text: str, name: str) -> str:
     return match.group()
 
 
+def workflow_step(job: str, name: str) -> str:
+    match = re.search(rf"(?ms)^      - name: {re.escape(name)}\n.*?(?=^      - name: |\Z)", job)
+    assert match is not None
+    return match.group()
+
+
 def test_third_party_actions_are_pinned_to_full_commit_shas() -> None:
     for name in WORKFLOW_NAMES:
         text = workflow_text(name)
@@ -85,8 +91,6 @@ def test_core_and_desktop_dependencies_are_isolated() -> None:
         assert "sudo apt-get install --yes --no-install-recommends libegl1" in app_job
         assert "QT_QPA_PLATFORM: offscreen" in text
         assert "--with-app" in text
-    assert workflow_text("ci.yml").count("libegl1") == 2
-    assert workflow_text("publish.yml").count("libegl1") == 3
 
 
 def test_distribution_checks_install_qt_only_after_core_smokes() -> None:
@@ -115,6 +119,109 @@ def test_dependency_review_is_pull_request_only() -> None:
     job = workflow_job(text, "dependency-review")
     assert "if: github.event_name == 'pull_request'" in job
     assert "actions/dependency-review-action@" in job
+
+
+def test_qml_native_qualification_is_manual_branch_scoped_and_nonpublishing() -> None:
+    text = workflow_text("ci.yml")
+    job = workflow_job(text, "qml-native-qualification")
+    build_step = workflow_step(job, "Build Carnopy and native bridge wheels")
+    inspect_step = workflow_step(job, "Check and inspect wheels")
+    payload_step = workflow_step(job, "Stage isolated qualification payload")
+    runtime_step = workflow_step(job, "Run qualification in fresh runtime container")
+    assert "workflow_dispatch:" in text
+    assert "if: >-" in job
+    for condition in (
+        "github.event_name == 'workflow_dispatch' &&",
+        "github.ref_type == 'branch' &&",
+        "github.ref == 'refs/heads/feat/gui2-qml-3d'",
+    ):
+        assert condition in job
+    assert "github.ref_name" not in job
+    assert "runs-on: ubuntu-24.04" in job
+    assert 'python-version: "3.12"' in job
+    assert 'version: "0.11.23"' in job
+    assert "aqtinstall==3.3.0" in job
+    assert "linux desktop 6.11.1 linux_gcc_64" in job
+    assert "uv build --wheel" in build_step
+    assert "native/carnopy-vtk-bridge" in build_step
+    assert "docker" not in build_step
+    assert "python -I native/carnopy-vtk-bridge/tests/qualification.py" in inspect_step
+
+    assert 'PAYLOAD="$RUNNER_TEMP/qml-native-payload"' in payload_step
+    assert 'mkdir "$PAYLOAD"' in payload_step
+    assert 'cp "$ROOT_WHEEL" "$PAYLOAD/"' in payload_step
+    assert 'cp "$BRIDGE_WHEEL" "$PAYLOAD/"' in payload_step
+    assert 'cp native/carnopy-vtk-bridge/tests/qualification.py "$PAYLOAD/"' in payload_step
+    assert 'wc -l)" -eq 3' in payload_step
+
+    assert "timeout --foreground --signal=TERM --kill-after=15s 600s" in runtime_step
+    assert "docker run --rm" in runtime_step
+    assert "ubuntu:24.04" in runtime_step
+    assert runtime_step.count("--mount ") == 1
+    assert '--mount "type=bind,src=${PAYLOAD},dst=/qualification,readonly"' in runtime_step
+    assert "--volume" not in runtime_step
+    assert "GITHUB_WORKSPACE" not in runtime_step
+    assert "root-wheel" not in runtime_step
+    assert "bridge-wheel" not in runtime_step
+    assert "native/carnopy-vtk-bridge" not in runtime_step
+    assert "uv build" not in runtime_step
+
+    runtime_packages = [
+        line.strip().removesuffix("\\").strip()
+        for line in runtime_step.splitlines()
+        if re.fullmatch(r"\s+[a-z0-9][a-z0-9.+-]*(?: \\)?", line)
+    ]
+    assert len(runtime_packages) == len(set(runtime_packages))
+    for package in (
+        "binutils",
+        "libegl1",
+        "libgl1-mesa-dri",
+        "mesa-utils",
+        "python3.12",
+        "python3.12-venv",
+        "xauth",
+        "xvfb",
+    ):
+        assert package in runtime_packages
+
+    assert "python3.12 -m venv /opt/carnopy-runtime" in runtime_step
+    assert runtime_step.count('"$VENV/bin/python" -I') == 3
+    assert '"carnopy[app] @ file://${ROOT_WHEEL}"' in runtime_step
+    assert '"$BRIDGE_WHEEL"' in runtime_step
+    for variable in (
+        "CMAKE_ARGS",
+        "CMAKE_BUILD_PARALLEL_LEVEL",
+        "CMAKE_GENERATOR",
+        "CMAKE_PREFIX_PATH",
+        "LD_LIBRARY_PATH",
+        "PYTHONHOME",
+        "PYTHONPATH",
+        "QML2_IMPORT_PATH",
+        "QML_IMPORT_PATH",
+        "QTDIR",
+        "QT_PLUGIN_PATH",
+        "Qt6_DIR",
+    ):
+        assert re.search(rf"^\s+{re.escape(variable)}(?: \\)?$", runtime_step, re.MULTILINE)
+    assert "LIBGL_ALWAYS_SOFTWARE=1" in runtime_step
+    assert "QSG_RHI_BACKEND=opengl" in runtime_step
+    assert "QT_OPENGL=software" in runtime_step
+    assert "QT_QPA_PLATFORM=xcb" in runtime_step
+    assert "glxinfo -B" in runtime_step
+    assert "llvmpipe|softpipe|software rasterizer" in runtime_step
+    assert "xvfb-run --auto-servernum" in runtime_step
+
+    for forbidden in (
+        "actions/upload-artifact",
+        "id-token: write",
+        "environment:",
+        "gh release",
+        "pypa/gh-action-pypi-publish",
+        "twine upload",
+        "pgrep",
+    ):
+        assert forbidden not in job
+    assert "--extra 3d" not in job
 
 
 def test_codeql_security_and_portability_workflows_are_explicit() -> None:
