@@ -66,6 +66,7 @@ def build_manifest(
     excluded_row_count: int,
     artifact_hashes: dict[str, str],
     data_artifacts: dict[str, str | None],
+    quality_artifacts: dict[str, str],
     table_columns: list[str],
     array_exports: dict[str, Any],
     reference_state: dict[str, Any],
@@ -119,6 +120,7 @@ def build_manifest(
         "eligible_row_count": eligible_row_count,
         "excluded_row_count": excluded_row_count,
         "data_artifacts": data_artifacts,
+        "quality_artifacts": quality_artifacts,
         "array_exports": array_exports,
         "column_roles": {
             "table": table_columns,
@@ -198,6 +200,10 @@ def build_dataset_card(manifest: dict[str, Any], diagnostics: dict[str, Any]) ->
         lines.append(f"Provenance: `{artifacts.get('provenance')}`")
         lines.append(f"Source diagnostics: `{artifacts.get('diagnostics')}`")
         lines.append(f"Exclusions: `{artifacts.get('exclusions')}`")
+    quality_artifacts = manifest.get("quality_artifacts")
+    if isinstance(quality_artifacts, dict):
+        lines.append(f"Quality report: `{quality_artifacts.get('report')}`")
+        lines.append(f"Quality flags: `{quality_artifacts.get('flags')}`")
     arrays = manifest.get("array_exports")
     if isinstance(arrays, dict) and arrays.get("enabled"):
         lines.append("Array exports: enabled")

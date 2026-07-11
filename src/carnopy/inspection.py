@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 import pandas as pd
+import pyarrow.parquet as pq
 
 from carnopy.provenance import sha256_file
 from carnopy.visualization.inspect import PlotInspection, inspect_plot_source
@@ -35,6 +36,9 @@ class PreparationInspection:
     diagnostics_columns: tuple[str, ...]
     exclusions_columns: tuple[str, ...]
     scenario_summary: dict[str, Any] | None
+    quality_artifacts: dict[str, str | None]
+    quality_summary: dict[str, Any]
+    quality_errors: tuple[str, ...]
     reference_state: dict[str, Any] | None
 
     def to_dict(self) -> dict[str, Any]:
@@ -53,6 +57,11 @@ class PreparationInspection:
                 "provenance": str(self.provenance_path),
                 "diagnostics": str(self.diagnostics_table_path),
                 "exclusions": str(self.exclusions_path),
+            },
+            "quality": {
+                "artifacts": self.quality_artifacts,
+                "summary": self.quality_summary,
+                "errors": list(self.quality_errors),
             },
             "columns": {
                 "table": list(self.table_columns),
@@ -99,7 +108,13 @@ class PreparationInspection:
             "Targets: " + (", ".join(self._string_list(self.manifest.get("targets"))) or "none"),
             "Auxiliary: "
             + (", ".join(self._string_list(self.manifest.get("auxiliary"))) or "none"),
+            "Preparation quality:",
+            f"  status: {self.quality_summary.get('status', 'unreported')}",
+            "  report: " + str(self.quality_artifacts.get("report") or "absent"),
+            "  flags: " + str(self.quality_artifacts.get("flags") or "absent"),
         ]
+        if self.quality_errors:
+            lines.append("  errors: " + "; ".join(self.quality_errors))
         if isinstance(self.reference_state, dict):
             selected = self.reference_state.get("selected_reference_dependent_fields")
             if isinstance(selected, list) and selected:
@@ -286,6 +301,11 @@ def _inspect_preparation_bundle(path: Path) -> PreparationInspection:
         "exclusions",
         artifact_hashes=artifact_hashes,
     )
+    quality_artifacts, quality_summary, quality_errors = _inspect_preparation_quality(
+        path,
+        manifest,
+        artifact_hashes=artifact_hashes,
+    )
     return PreparationInspection(
         source=path,
         manifest=manifest,
@@ -301,11 +321,73 @@ def _inspect_preparation_bundle(path: Path) -> PreparationInspection:
         scenario_summary=(
             manifest.get("scenarios") if isinstance(manifest.get("scenarios"), dict) else None
         ),
+        quality_artifacts=quality_artifacts,
+        quality_summary=quality_summary,
+        quality_errors=tuple(quality_errors),
         reference_state=(
             manifest.get("reference_state")
             if isinstance(manifest.get("reference_state"), dict)
             else None
         ),
+    )
+
+
+def _inspect_preparation_quality(
+    root: Path,
+    manifest: dict[str, Any],
+    *,
+    artifact_hashes: dict[str, Any],
+) -> tuple[dict[str, str | None], dict[str, Any], list[str]]:
+    artifacts = manifest.get("quality_artifacts")
+    if not isinstance(artifacts, dict):
+        return {"report": None, "flags": None}, {"status": "absent"}, []
+    errors: list[str] = []
+    report_path: Path | None = None
+    flags_path: Path | None = None
+    try:
+        report_path = _optional_artifact_path(
+            root,
+            artifacts.get("report"),
+            artifact_hashes=artifact_hashes,
+        )
+    except VisualizationError as exc:
+        errors.append(str(exc))
+    try:
+        flags_path = _optional_artifact_path(
+            root,
+            artifacts.get("flags"),
+            artifact_hashes=artifact_hashes,
+        )
+    except VisualizationError as exc:
+        errors.append(str(exc))
+    summary: dict[str, Any] = {"status": "unavailable"}
+    if report_path is not None:
+        try:
+            report = _read_json(report_path, "preparation quality report")
+            summary = {
+                "status": report.get("status"),
+                "row_counts": report.get("row_counts"),
+                "quality_flags": report.get("quality_flags"),
+                "duplicate_state_candidates": report.get("duplicate_state_candidates"),
+                "structured_grid": report.get("structured_grid"),
+            }
+        except VisualizationError as exc:
+            errors.append(str(exc))
+    if flags_path is not None:
+        try:
+            metadata = _parquet_metadata(flags_path)
+            summary["flags_row_count"] = metadata["row_count"]
+        except VisualizationError as exc:
+            errors.append(str(exc))
+    if errors:
+        summary["status"] = "corrupt_or_missing"
+    return (
+        {
+            "report": None if report_path is None else str(report_path),
+            "flags": None if flags_path is None else str(flags_path),
+        },
+        summary,
+        errors,
     )
 
 
@@ -399,11 +481,18 @@ def _required_artifact_path(
 
 
 def _parquet_columns(path: Path) -> tuple[str, ...]:
+    return tuple(_parquet_metadata(path)["columns"])
+
+
+def _parquet_metadata(path: Path) -> dict[str, Any]:
     try:
-        frame = pd.read_parquet(path)
+        parquet = pq.ParquetFile(path)  # type: ignore[no-untyped-call]
     except Exception as exc:
         raise VisualizationError(f"could not inspect Parquet artifact {path}: {exc}") from exc
-    return tuple(str(column) for column in frame.columns)
+    return {
+        "columns": [str(column) for column in parquet.schema.names],
+        "row_count": int(parquet.metadata.num_rows),
+    }
 
 
 def _optional_parquet(path: Path) -> pd.DataFrame | None:

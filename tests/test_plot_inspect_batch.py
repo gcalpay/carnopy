@@ -10,6 +10,7 @@ import CoolProp.CoolProp as CP
 import pytest
 from typer.testing import CliRunner
 
+import carnopy.inspection as inspection_module
 from carnopy.api import generate_dataset, generate_model_sweep, prepare_dataset
 from carnopy.cli import app
 from carnopy.inspection import inspect_source
@@ -118,7 +119,10 @@ def test_inspect_json_reports_identity_ranges_failures_and_display_units(
     assert property_curves["series_fields"] == ["pressure", "temperature"]
 
 
-def test_inspect_reports_preparation_bundles(tmp_path: Path) -> None:
+def test_inspect_reports_preparation_bundles(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     run = generate_dataset(
         _write_property_config(tmp_path / "config.yaml"),
         output_root=tmp_path / "runs",
@@ -142,6 +146,11 @@ outputs:
         encoding="utf-8",
     )
     prepared = prepare_dataset(run.output_directory, config=prep_config, output_root=tmp_path)
+    monkeypatch.setattr(
+        inspection_module.pd,
+        "read_parquet",
+        lambda *_args, **_kwargs: pytest.fail("preparation inspect should use Parquet metadata"),
+    )
 
     inspection = inspect_source(prepared.output_directory)
     text = inspection.format_text()
@@ -149,16 +158,49 @@ outputs:
 
     assert "Source kind: preparation bundle" in text
     assert "table.parquet" in text
+    assert "Preparation quality:" in text
+    assert "quality_report.json" in text
     assert payload["source_kind"] == "preparation_bundle"
     assert payload["artifacts"]["table"].endswith("data/table.parquet")
     assert "mass_density" in payload["columns"]["table"]
     assert "source_row_hash" in payload["columns"]["provenance"]
     assert "source_failure_code" in payload["columns"]["diagnostics"]
+    assert payload["quality"]["artifacts"]["report"].endswith("quality_report.json")
+    assert payload["quality"]["summary"]["status"] == "completed"
     assert payload["reference_state"]["selected_reference_dependent_fields"] == ["specific_entropy"]
 
     result = runner.invoke(app, ["inspect", str(prepared.output_directory), "--format", "json"])
     assert result.exit_code == 0, result.output
     assert json.loads(result.stdout)["source_kind"] == "preparation_bundle"
+
+
+def test_inspect_reports_missing_preparation_quality_artifacts(tmp_path: Path) -> None:
+    run = generate_dataset(
+        _write_property_config(tmp_path / "config.yaml"),
+        output_root=tmp_path / "runs",
+    )
+    prep_config = tmp_path / "preparation.yaml"
+    prep_config.write_text(
+        """schema_version: 1
+document_type: preparation
+features:
+  numeric: [temperature, pressure, mass_density]
+  derived: []
+categorical_features: []
+targets: [specific_entropy]
+auxiliary: []
+outputs:
+  formats: [parquet]
+""",
+        encoding="utf-8",
+    )
+    prepared = prepare_dataset(run.output_directory, config=prep_config, output_root=tmp_path)
+    prepared.output_directory.joinpath("quality_report.json").unlink()
+
+    payload = json.loads(inspect_source(prepared.output_directory).format_json())
+
+    assert payload["quality"]["summary"]["status"] == "corrupt_or_missing"
+    assert payload["quality"]["errors"]
 
 
 def test_inspect_reports_model_sweep_delta_summaries(tmp_path: Path) -> None:

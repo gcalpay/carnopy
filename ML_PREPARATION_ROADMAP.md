@@ -60,29 +60,41 @@ name.
   expressions. Any categorical integer coding must be explicitly requested and
   recorded in the manifest.
 
+## Implemented in `0.1.0a3` — Advisory quality reports
+
+Preparation bundles now include advisory quality diagnostics without training a
+model:
+
+- `quality_report.json`;
+- `data/quality_flags.parquet`;
+- manifest `quality_artifacts` entries and artifact hashes;
+- eligible/excluded row counts;
+- scenario and partition counts;
+- distributions by fluid, phase, and backend model when those columns exist;
+- finite and missing summaries for selected features, targets, and numeric
+  auxiliary fields;
+- per-partition target summaries;
+- duplicate thermodynamic-state candidates grouped from state columns, not
+  target values; and
+- conservative structured-grid diagnostics that explicitly skip unsupported
+  shapes.
+
+Quality flags are advisory by default. A statistical or structural warning is a
+candidate for review, not proof of thermodynamic invalidity. Automatic exclusion
+requires an explicit policy and stable reason codes. Flags remain in a separate
+long-form table joined through `prepared_row_id`, leaving `table.parquet`
+unchanged.
+
 ## Priority 1 — Quality and evaluation
-
-The first post-GUI preparation milestone should improve the ability to audit a
-prepared dataset without training a model.
-
-Planned design topics:
 
 - deterministic stratified hash scenarios using user-declared categorical
   strata and explicit numeric bin boundaries;
-- partition counts and distributions by fluid, phase, backend model, and
-  declared strata;
-- duplicate thermodynamic-state detection and conflicting-value diagnostics;
-- structured-grid coverage, missing-cell, and spacing reports where the source
-  mode makes those concepts valid;
-- target ranges and finite-value summaries per partition;
+- declared-strata distributions and balance reports;
+- missing-cell and spacing reports where the source mode makes those concepts
+  valid;
 - near-critical or near-saturation advisories only when the required reference
   values already exist in source columns or metadata; and
-- row-level quality flags in a separate table joined through
-  `prepared_row_id`, leaving the main prepared table clean.
-
-Quality flags are advisory by default. A statistical outlier is a candidate for
-review, not proof of thermodynamic invalidity. Automatic exclusion requires an
-explicit policy and stable reason codes.
+- stronger discontinuity and outlier candidate reports.
 
 Carnopy must not invent scientific holdout domains or numeric strata. Small or
 empty declared strata must produce a clear diagnostic rather than silent
@@ -128,9 +140,10 @@ Fitted diagnostics use training rows only. An unsplit diagnostic may use all
 eligible rows but must say so explicitly. PCA or SVD output does not silently
 replace configured features.
 
-Simple baseline regressors may eventually assess dataset learnability, but only
-as an optional diagnostic workflow. Carnopy will not add model registries,
-training loops, checkpoints, or deployment behavior to preparation.
+Simple scikit-learn baseline regressors may eventually assess dataset
+learnability, but only as an optional diagnostic workflow. Carnopy will not add
+model registries, training loops, checkpoints, or deployment behavior to
+preparation.
 
 ## Later research directions
 

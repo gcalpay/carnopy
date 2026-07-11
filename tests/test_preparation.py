@@ -12,7 +12,10 @@ import pytest
 
 from carnopy.api import generate_dataset, generate_model_sweep, prepare_dataset
 from carnopy.domain.failures import ConfigError, OutputError
+from carnopy.preparation.fields import ResolvedField, ResolvedPreparation
 from carnopy.preparation.models import load_preparation_config
+from carnopy.preparation.quality import build_quality_artifacts
+from carnopy.preparation.rows import PreparedRows
 
 
 def _write(path: Path, text: str) -> Path:
@@ -169,6 +172,10 @@ def test_prepare_dataset_run_writes_manifest_and_preserves_order(
     source_diagnostics = pd.read_parquet(result.source_diagnostics_path)
     source = pd.read_parquet(run.output_directory / "dataset.parquet")
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    quality_report = json.loads(
+        result.output_directory.joinpath("quality_report.json").read_text(encoding="utf-8")
+    )
+    quality_flags = pd.read_parquet(result.output_directory / "data/quality_flags.parquet")
     assert prepared["prepared_row_id"].tolist() == list(range(len(source)))
     assert provenance["prepared_row_id"].tolist() == prepared["prepared_row_id"].tolist()
     assert provenance["source_row_index"].tolist() == list(range(len(source)))
@@ -185,6 +192,33 @@ def test_prepare_dataset_run_writes_manifest_and_preserves_order(
     assert manifest["semantic_field_mapping"]["temperature"]["unit"] == "K"
     assert manifest["eligible_row_count"] == len(source)
     assert pd.read_parquet(result.exclusions_path).empty
+    assert manifest["quality_artifacts"] == {
+        "report": "quality_report.json",
+        "flags": "data/quality_flags.parquet",
+    }
+    assert "quality_report.json" in manifest["artifact_hashes"]
+    assert "data/quality_flags.parquet" in manifest["artifact_hashes"]
+    assert quality_report["row_counts"] == {"eligible": len(source), "excluded": 0}
+    assert quality_report["quality_flags"]["artifact"] == "data/quality_flags.parquet"
+    assert set(quality_flags.columns) == {
+        "prepared_row_id",
+        "flag_code",
+        "severity",
+        "scope",
+        "scenario",
+        "partition",
+        "field",
+        "metric",
+        "value",
+        "message",
+    }
+    joined = quality_flags.dropna(subset=["prepared_row_id"]).merge(
+        prepared[["prepared_row_id"]],
+        on="prepared_row_id",
+        how="left",
+        indicator=True,
+    )
+    assert joined["_merge"].eq("both").all()
     assert result.scenario_report_path is None
     assert result.scenario_count == 0
     assert result.partition_count == 0
@@ -192,12 +226,14 @@ def test_prepare_dataset_run_writes_manifest_and_preserves_order(
         "data/diagnostics.parquet",
         "data/exclusions.parquet",
         "data/provenance.parquet",
+        "data/quality_flags.parquet",
         "data/table.parquet",
         "dataset_card.md",
         "diagnostics.json",
         "manifest.json",
         "preparation.normalized.json",
         "preparation.original.yaml",
+        "quality_report.json",
     }
     assert {
         "preparation_schema_version",
@@ -214,6 +250,7 @@ def test_prepare_dataset_run_writes_manifest_and_preserves_order(
         "eligible_row_count",
         "excluded_row_count",
         "data_artifacts",
+        "quality_artifacts",
         "column_roles",
         "artifact_hashes",
     }.issubset(manifest)
@@ -228,6 +265,72 @@ def test_prepare_dataset_run_writes_manifest_and_preserves_order(
     assert result.dataset_card_path.read_text(encoding="utf-8").startswith(
         "# Carnopy prepared dataset\n"
     )
+
+
+def test_preparation_quality_duplicate_detection_is_advisory() -> None:
+    frame = pd.DataFrame(
+        [
+            {
+                "prepared_row_id": 0,
+                "fluid": "Propane",
+                "backend_model": "heos",
+                "phase": "gas",
+                "temperature": 300.0,
+                "pressure": 100000.0,
+                "mass_density": 1.0,
+            },
+            {
+                "prepared_row_id": 1,
+                "fluid": "Propane",
+                "backend_model": "heos",
+                "phase": "gas",
+                "temperature": 300.0,
+                "pressure": 100000.0,
+                "mass_density": 2.0,
+            },
+        ]
+    )
+    resolved = ResolvedPreparation(
+        numeric_features=(
+            ResolvedField("temperature", "temperature_K", "K", "numeric", "coordinate"),
+            ResolvedField("pressure", "pressure_Pa", "Pa", "numeric", "coordinate"),
+        ),
+        targets=(
+            ResolvedField("mass_density", "mass_density_kg_m3", "kg/m^3", "numeric", "property"),
+        ),
+        auxiliary=(),
+        categorical_feature_fields=(),
+        derived_features=(),
+        semantic_mapping={},
+    )
+    rows = PreparedRows(
+        prepared_rows=frame.to_dict("records"),
+        exclusion_rows=[],
+        categories={},
+        status="completed",
+    )
+
+    report, flags = build_quality_artifacts(
+        frame=frame,
+        rows=rows,
+        resolved=resolved,
+        scenario_summary=None,
+        partition_target_summaries=[],
+    )
+
+    assert report["duplicate_state_candidates"] == {
+        "status": "completed",
+        "group_columns": ["fluid", "backend_model", "phase", "temperature", "pressure"],
+        "duplicate_group_count": 1,
+        "duplicate_row_count": 2,
+        "conflicting_target_group_count": 1,
+    }
+    assert report["structured_grid"]["status"] == "completed"
+    assert flags["prepared_row_id"].tolist() == [0, 1]
+    assert flags["flag_code"].tolist() == [
+        "duplicate_state_conflicting_targets",
+        "duplicate_state_conflicting_targets",
+    ]
 
 
 def test_prepare_writes_numpy_and_safetensors_exports(
@@ -433,6 +536,13 @@ def test_prepare_no_eligible_rows_is_explicit(tmp_path: Path) -> None:
     assert not (result.output_directory / "data" / "table.parquet").exists()
     assert result.provenance_path.is_file()
     assert result.source_diagnostics_path.is_file()
+    assert (result.output_directory / "quality_report.json").is_file()
+    assert (result.output_directory / "data" / "quality_flags.parquet").is_file()
+    report = json.loads(
+        result.output_directory.joinpath("quality_report.json").read_text(encoding="utf-8")
+    )
+    assert report["status"] == "no_eligible_rows"
+    assert report["structured_grid"]["status"] == "skipped_unsupported_shape"
     exclusions = pd.read_parquet(result.exclusions_path)
     assert len(exclusions) == 2
     assert set(exclusions["primary_reason"]) == {"missing_required_field"}
