@@ -60,6 +60,29 @@ grants narrower authority.
 Do not publish packages, create credentials, configure repository security, or
 change dependency declarations without explicit maintainer authorization.
 
+## Codex model and delegation policy
+
+Select every Codex parent, subagent, and reviewer explicitly. Never use
+GPT-5.4, GPT-5.4 mini, Terra, or an automatically selected review model. Do not
+use an automatic review mode. If an allowed model or requested reasoning level
+is unavailable, quota-limited, or fails to start, preserve the failure and ask
+the maintainer instead of silently falling back.
+
+Use the following models according to task complexity:
+
+- GPT-5.6 Luna with xhigh reasoning or GPT-5.6 Sol with medium reasoning for
+  routine, bounded work;
+- GPT-5.6 Sol with high or xhigh reasoning for substantial implementation,
+  migration, testing, and review;
+- GPT-5.6 Sol with max reasoning only for the most difficult architectural,
+  native-integration, scientific, numerical, release-critical, or debugging
+  work, or after a lower allowed tier is genuinely stuck.
+
+Delegation depth is one. Parent agents may create explicitly configured
+subagents, but those subagents must not create descendants. Reviewers must be
+explicitly configured from the allowed models rather than selected by an
+automatic review facility.
+
 ## Purpose and scope
 
 Carnopy generates reproducible, backend-derived synthetic thermophysical
