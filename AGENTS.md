@@ -335,12 +335,17 @@ source metadata/schema, preserve source row order, retain row-level source
 identity, and never import or call thermodynamic backends. Preparation
 separates user-facing `data/table.parquet` from `data/provenance.parquet` and
 `data/diagnostics.parquet`, joined by `prepared_row_id`. Preparation may create
-explicit leakage-aware scenarios and deterministic numeric transformations
-(`log10`, `standard`, `minmax`). Parquet remains canonical. Optional NumPy and
+explicit leakage-aware scenarios, including user-binned `stratified_hash`, and
+deterministic numeric transformations (`log10`, `standard`, `minmax`,
+`robust`). Exact thermodynamic-state hashes must not cross automatic
+partitions. Parquet remains canonical. Optional NumPy and
 SafeTensors exports are derived ML-consumption files and must record feature
 and target order, units, shapes, dtype, hashes, and conversion-error summaries.
-Carnopy does not train, optimize, use scikit-learn, depend on PyTorch, or
-export `.pt`/`.pth` files in this release line.
+Carnopy is not a training framework and does not optimize, depend on PyTorch,
+or export `.pt`/`.pth` files. The optional `analysis` extra may fit disposable
+scikit-learn baseline estimators for train/evaluation diagnostics only. It must
+not persist models or predictions, tune hyperparameters, alter prepared rows,
+or leak validation/test statistics into fitting.
 
 If preparation selects reference-dependent properties (`specific_enthalpy`,
 `specific_entropy`, or `specific_internal_energy`) as features, targets, or
@@ -607,7 +612,8 @@ build-backend = "hatchling.build"
 ```
 
 Matplotlib remains optional through `viz`; SafeTensors remains optional through
-`ml`; PySide6 Essentials and Matplotlib remain optional through `app`; `all`
+`ml`; scikit-learn remains optional through `analysis`; PySide6 Essentials and
+Matplotlib remain optional through `app`; `all`
 must remain synchronized with all user-facing extras. PyArrow remains core.
 Qt/PySide6 remains an externally licensed optional dependency. Carnopy does not
 vendor Qt or ship standalone desktop installers; downstream redistribution

@@ -73,6 +73,7 @@ def test_core_and_desktop_dependencies_are_isolated() -> None:
         assert "scripts/preflight.py" not in quality_job
         assert "mypy src/carnopy --exclude '^src/carnopy/app/'" in quality_job
         assert "--extra viz --extra ml" in tests_job
+        assert "--extra analysis" in tests_job
         assert "--no-default-groups --group test pytest" in tests_job
         assert "--ignore-glob=tests/test_app_*.py" in tests_job
         assert "libegl1" not in tests_job
@@ -97,7 +98,10 @@ def test_distribution_checks_install_qt_only_after_core_smokes() -> None:
         assert "--extra all --group dev" not in job
         assert job.count("sudo apt-get install --yes --no-install-recommends libegl1") == 1
         assert job.index("Smoke-test wheel with ML extra") < job.index("Smoke-test sdist")
-        assert job.index("Smoke-test sdist") < job.index("Install Qt runtime dependency")
+        assert job.index("Smoke-test sdist") < job.index("Smoke-test wheel with analysis extra")
+        assert job.index("Smoke-test wheel with analysis extra") < job.index(
+            "Install Qt runtime dependency"
+        )
         assert job.index("Install Qt runtime dependency") < job.index(
             "Smoke-test wheel with app extra"
         )
@@ -121,7 +125,7 @@ def test_codeql_security_and_portability_workflows_are_explicit() -> None:
     assert codeql.count("github/codeql-action/analyze@") == 1
 
     security = workflow_text("security.yml")
-    for profile in ("base", "viz", "ml", "app", "all"):
+    for profile in ("base", "viz", "ml", "analysis", "app", "all"):
         assert f"          - {profile}" in security
     assert "pypa/gh-action-pip-audit@" in security
     assert "--no-emit-project" in security
@@ -132,4 +136,5 @@ def test_codeql_security_and_portability_workflows_are_explicit() -> None:
         assert f"          - {runner}" in portability
     assert "--ignore-glob=tests/test_app_*.py" in portability
     assert "--extra app" not in portability
+    assert "--extra analysis" in portability
     assert "libegl1" not in portability

@@ -145,15 +145,19 @@ def test_distribution_checker_requires_model_sweep_artifacts() -> None:
         "carnopy/config/sweep.py",
         "carnopy/inspection.py",
         "carnopy/preparation/arrays.py",
+        "carnopy/preparation/baselines.py",
         "carnopy/preparation/derived.py",
+        "carnopy/preparation/grid_diagnostics.py",
         "carnopy/preparation/layout.py",
         "carnopy/preparation/pipeline.py",
         "carnopy/preparation/models.py",
         "carnopy/preparation/quality.py",
+        "carnopy/preparation/matrix_diagnostics.py",
         "carnopy/preparation/reporting.py",
         "carnopy/preparation/reference.py",
         "carnopy/preparation/rows.py",
         "carnopy/preparation/scenarios.py",
+        "carnopy/preparation/stratification.py",
         "carnopy/sweeps/pipeline.py",
         "carnopy/sweeps/comparison.py",
         "carnopy/templates/model_sweep.yaml",
@@ -194,8 +198,11 @@ def test_distribution_checker_requires_model_sweep_artifacts() -> None:
         "src/carnopy/config/sweep.py",
         "src/carnopy/inspection.py",
         "src/carnopy/preparation/arrays.py",
+        "src/carnopy/preparation/baselines.py",
         "src/carnopy/preparation/derived.py",
+        "src/carnopy/preparation/grid_diagnostics.py",
         "src/carnopy/preparation/layout.py",
+        "src/carnopy/preparation/matrix_diagnostics.py",
         "src/carnopy/preparation/pipeline.py",
         "src/carnopy/preparation/models.py",
         "src/carnopy/preparation/quality.py",
@@ -203,6 +210,7 @@ def test_distribution_checker_requires_model_sweep_artifacts() -> None:
         "src/carnopy/preparation/reference.py",
         "src/carnopy/preparation/rows.py",
         "src/carnopy/preparation/scenarios.py",
+        "src/carnopy/preparation/stratification.py",
         "src/carnopy/sweeps/pipeline.py",
         "src/carnopy/templates/model_sweep.yaml",
         "src/carnopy/templates/preparation.yaml",
@@ -320,3 +328,16 @@ def test_installed_smoke_enables_preparation_array_exports(tmp_path: Path) -> No
     include_auxiliary: false
 """
     )
+
+
+def test_installed_smoke_enables_baseline_diagnostics(tmp_path: Path) -> None:
+    config = tmp_path / "preparation.yaml"
+    config.write_text("outputs:\n  formats: [parquet]\n", encoding="utf-8")
+
+    smoke_installed.enable_preparation_baseline_diagnostics(config)
+
+    text = config.read_text(encoding="utf-8")
+    assert "kind: shuffle" in text
+    assert "baseline_diagnostics:" in text
+    assert "models: [dummy_mean, ridge]" in text
+    assert text.endswith("outputs:\n  formats: [parquet]\n")

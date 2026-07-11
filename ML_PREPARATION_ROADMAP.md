@@ -3,8 +3,10 @@
 ## Purpose
 
 Carnopy prepares reproducible, backend-derived thermophysical datasets for
-external machine-learning and surrogate-model workflows. It does not train,
-select, optimize, or deploy models.
+external machine-learning and surrogate-model workflows. It is not a training
+or deployment framework. An optional diagnostic layer may fit disposable
+baseline estimators to measure prepared-dataset learnability, but it never
+persists, tunes, registers, or deploys them.
 
 This document separates implemented preparation behavior from possible future
 work. Future entries are design directions, not public API commitments. Each
@@ -23,9 +25,11 @@ requires its own reviewed plan before implementation.
   features;
 - `specific_volume`, `reduced_temperature`, `reduced_pressure`, and
   `compressibility_factor` through a curated derived-feature registry;
-- `unsplit`, deterministic `shuffle`, `coordinate_block`, `range_holdout`,
+- `unsplit`, deterministic `shuffle`, user-binned `stratified_hash`,
+  `coordinate_block`, `range_holdout`,
   `leave_fluid_out`, `phase_holdout`, and `model_holdout` scenarios;
-- ordered `log10`, `standard`, and `minmax` transformations, with fitted
+- ordered `log10`, `standard`, `minmax`, and median/IQR `robust`
+  transformations, with fitted
   parameters learned from the training partition only;
 - explicit reference-state compatibility checks for absolute specific
   enthalpy, entropy, and internal energy;
@@ -37,7 +41,8 @@ requires its own reviewed plan before implementation.
 
 Parquet remains canonical. Array and tensor files are derived consumption
 formats. Carnopy does not export pickled arrays, `.pt`, or `.pth` files and does
-not require scikit-learn or PyTorch.
+not require PyTorch. Scikit-learn is isolated in the optional `analysis` extra;
+the base and `ml` installations remain independent of it.
 
 Categorical auxiliary arrays may use deterministic integer codes only when
 auxiliary export is explicitly enabled. The manifest records the original
@@ -71,13 +76,22 @@ model:
 - eligible/excluded row counts;
 - scenario and partition counts;
 - distributions by fluid, phase, and backend model when those columns exist;
-- finite and missing summaries for selected features, targets, and numeric
-  auxiliary fields;
+- finite, missing, range, quantile, median, IQR, raw MAD, skewness, and excess
+  kurtosis summaries for selected features, targets, and numeric auxiliary
+  fields, with estimator definitions recorded in the report;
 - per-partition target summaries;
 - duplicate thermodynamic-state candidates grouped from state columns, not
   target values; and
-- conservative structured-grid diagnostics that explicitly skip unsupported
-  shapes.
+- provenance-backed exact eligible property-table grid diagnostics covering
+  missing and repeated cells within observed coordinate levels, coordinate
+  spacing, and adjacent phase-transition edges;
+- exact-state split leakage prevention and audit summaries;
+- user-declared categorical/numeric-bin stratified hash scenarios;
+- opt-in feature-matrix singular values, numerical/effective rank,
+  conditioning, constants, near-constants, feature correlations, and separate
+  feature-target correlations; and
+- optional train-fitted scikit-learn dummy, ridge, and histogram-gradient
+  boosting baseline metrics on validation/test partitions.
 
 Quality flags are advisory by default. A statistical or structural warning is a
 candidate for review, not proof of thermodynamic invalidity. Automatic exclusion
@@ -85,16 +99,14 @@ requires an explicit policy and stable reason codes. Flags remain in a separate
 long-form table joined through `prepared_row_id`, leaving `table.parquet`
 unchanged.
 
-## Priority 1 — Quality and evaluation
+## Priority 1 — Physical and local-structure advisories
 
-- deterministic stratified hash scenarios using user-declared categorical
-  strata and explicit numeric bin boundaries;
-- declared-strata distributions and balance reports;
-- missing-cell and spacing reports where the source mode makes those concepts
-  valid;
 - near-critical or near-saturation advisories only when the required reference
   values already exist in source columns or metadata; and
-- stronger discontinuity and outlier candidate reports.
+- stronger phase-safe discontinuity, derivative, and outlier candidate reports;
+- metadata-backed grid contracts for saturation and vapor-fraction modes; and
+- partition-specific fluid/phase/model coverage comparisons beyond the current
+  one-dimensional group summaries.
 
 Carnopy must not invent scientific holdout domains or numeric strata. Small or
 empty declared strata must produce a clear diagnostic rather than silent
@@ -104,8 +116,6 @@ rebalancing.
 
 Candidates for later reviewed stages include:
 
-- robust scaling fitted from training-partition medians and interquartile
-  ranges;
 - inverse temperature, with a positive-temperature contract and explicit unit;
 - source-backed fluid descriptors such as molar mass or critical properties;
   and
@@ -123,16 +133,15 @@ through a separately reviewed join contract; it must not query CoolProp.
 
 Power and quantile transformations remain research candidates. They can distort
 physical distances and are not committed until their semantics, provenance,
-inverse transformation, and dependency boundary are reviewed. No dependency on
-scikit-learn is planned merely to reserve these possibilities.
+inverse transformation, and dependency boundary are reviewed. No additional
+scikit-learn functionality is added merely to reserve these possibilities.
 
-## Priority 3 — Interpretable diagnostics
+## Priority 3 — Further interpretable diagnostics
 
-Possible prepared-data inspection could report:
+Possible prepared-data inspection could additionally report:
 
-- feature and target correlations;
-- numerical rank and singular-value spectra;
-- PCA explained variance as a diagnostic;
+- explicitly labelled PCA component loadings and explained variance as a
+  diagnostic, without replacing configured features;
 - phase-, fluid-, and partition-specific range coverage; and
 - candidate discontinuities or extreme local changes on compatible grids.
 
@@ -140,10 +149,9 @@ Fitted diagnostics use training rows only. An unsplit diagnostic may use all
 eligible rows but must say so explicitly. PCA or SVD output does not silently
 replace configured features.
 
-Simple scikit-learn baseline regressors may eventually assess dataset
-learnability, but only as an optional diagnostic workflow. Carnopy will not add
-model registries, training loops, checkpoints, or deployment behavior to
-preparation.
+Current optional baseline regressors assess dataset learnability only. Carnopy
+will not add model registries, training loops, checkpoints, hyperparameter
+search, or deployment behavior to preparation.
 
 ## Later research directions
 

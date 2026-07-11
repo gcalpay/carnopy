@@ -60,6 +60,9 @@ viz = [
 ml = [
   "safetensors>=0.4.5",
 ]
+analysis = [
+  "scikit-learn>=1.7.2,<2",
+]
 app = [
   "PySide6-Essentials>=6.8.3,<7",
   "matplotlib>=3.8",
@@ -68,6 +71,7 @@ all = [
   "matplotlib>=3.8",
   "PySide6-Essentials>=6.8.3,<7",
   "safetensors>=0.4.5",
+  "scikit-learn>=1.7.2,<2",
 ]
 
 [dependency-groups]
@@ -148,6 +152,7 @@ module = [
   "pyarrow.*",
   "matplotlib",
   "matplotlib.*",
+  "sklearn.*",
 ]
 ignore_missing_imports = true
 

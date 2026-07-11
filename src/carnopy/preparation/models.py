@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
+from itertools import pairwise
 from pathlib import Path
 from typing import Any, Literal
 
@@ -29,13 +31,15 @@ PartitionName = Literal["train", "validation", "test", "all"]
 ScenarioKind = Literal[
     "unsplit",
     "shuffle",
+    "stratified_hash",
     "coordinate_block",
     "range_holdout",
     "leave_fluid_out",
     "phase_holdout",
     "model_holdout",
 ]
-TransformMethod = Literal["log10", "standard", "minmax"]
+TransformMethod = Literal["log10", "standard", "minmax", "robust"]
+BaselineModel = Literal["dummy_mean", "ridge", "hist_gradient_boosting"]
 
 IDENTITY_FIELDS = {
     "source_kind",
@@ -43,6 +47,14 @@ IDENTITY_FIELDS = {
     "source_artifact",
     "source_row_index",
     "source_row_hash",
+    "source_state_hash",
+    "source_mode",
+    "source_fluid",
+    "source_phase",
+    "source_temperature_K",
+    "source_pressure_Pa",
+    "source_vapor_mass_fraction",
+    "source_saturation_endpoint",
     "backend_model",
     "state_key",
     "state_key_version",
@@ -179,6 +191,93 @@ class PreparationOutputsConfig(BaseModel):
         return ("parquet", *self.arrays.formats)
 
 
+class MatrixDiagnosticsConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    correlation_threshold: float = Field(default=0.995, gt=0.0, le=1.0)
+    near_constant_relative_spread: float = Field(default=1e-12, gt=0.0)
+
+
+class BaselineDiagnosticsConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    models: tuple[BaselineModel, ...] = ("dummy_mean", "ridge")
+    random_seed: int = 42
+    ridge_alpha: float = Field(default=1.0, gt=0.0)
+    histogram_max_iterations: int = Field(default=100, ge=1)
+
+    @field_validator("models")
+    @classmethod
+    def validate_models(cls, models: tuple[BaselineModel, ...]) -> tuple[BaselineModel, ...]:
+        if not models:
+            raise ValueError("baseline diagnostics require at least one model")
+        if len(set(models)) != len(models):
+            raise ValueError("duplicate baseline diagnostic models are not allowed")
+        canonical: tuple[BaselineModel, ...] = (
+            "dummy_mean",
+            "ridge",
+            "hist_gradient_boosting",
+        )
+        selected = set(models)
+        return tuple(model for model in canonical if model in selected)
+
+
+class PreparationQualityConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    matrix_diagnostics: MatrixDiagnosticsConfig | None = None
+    baseline_diagnostics: BaselineDiagnosticsConfig | None = None
+
+
+class StratificationConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    categorical: tuple[str, ...] = ()
+    numeric_bins: dict[str, tuple[float, ...]] = Field(default_factory=dict)
+
+    @field_validator("categorical")
+    @classmethod
+    def unique_categorical(cls, fields: tuple[str, ...]) -> tuple[str, ...]:
+        return _clean_unique(fields, "stratification field")
+
+    @field_validator("numeric_bins")
+    @classmethod
+    def validate_numeric_bins(
+        cls,
+        bins: dict[str, tuple[float, ...]],
+    ) -> dict[str, tuple[float, ...]]:
+        result: dict[str, tuple[float, ...]] = {}
+        for raw_field, boundaries in bins.items():
+            field = str(raw_field).strip()
+            if not field:
+                raise ValueError("numeric stratification fields must not be blank")
+            if not boundaries:
+                raise ValueError(f"numeric stratification field {field!r} requires boundaries")
+            values = tuple(float(value) for value in boundaries)
+            if any(not math.isfinite(value) for value in values):
+                raise ValueError(
+                    f"numeric stratification field {field!r} has non-finite boundaries"
+                )
+            if any(right <= left for left, right in pairwise(values)):
+                raise ValueError(
+                    f"numeric stratification field {field!r} boundaries must be strictly increasing"
+                )
+            result[field] = values
+        return {field: result[field] for field in sorted(result)}
+
+    @model_validator(mode="after")
+    def require_strata(self) -> StratificationConfig:
+        if not self.categorical and not self.numeric_bins:
+            raise ValueError("stratification requires categorical fields or numeric bins")
+        overlap = set(self.categorical) & set(self.numeric_bins)
+        if overlap:
+            raise ValueError(
+                "stratification fields cannot be both categorical and numeric: "
+                + ", ".join(sorted(overlap))
+            )
+        return self
+
+
 class TransformationConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -211,6 +310,7 @@ class ScenarioConfig(BaseModel):
     field: str | None = None
     holdouts: dict[PartitionName, Any] = Field(default_factory=dict)
     remainder: PartitionName | None = None
+    strata: StratificationConfig | None = None
     transformations: tuple[TransformationConfig, ...] = ()
 
     @field_validator("name")
@@ -266,6 +366,8 @@ class ScenarioConfig(BaseModel):
                 raise ValueError("unsplit scenarios must not declare holdouts")
             if self.remainder is not None:
                 raise ValueError("unsplit scenarios must not declare a remainder")
+            if self.strata is not None:
+                raise ValueError("unsplit scenarios must not declare strata")
             return self
         if self.kind == "shuffle":
             if not self.partitions:
@@ -276,7 +378,23 @@ class ScenarioConfig(BaseModel):
                 raise ValueError("shuffle scenarios must not declare holdouts")
             if self.remainder is not None:
                 raise ValueError("shuffle scenarios must not declare a remainder")
+            if self.strata is not None:
+                raise ValueError("shuffle scenarios must not declare strata")
             return self
+        if self.kind == "stratified_hash":
+            if not self.partitions:
+                raise ValueError("stratified_hash scenarios require partitions")
+            if "all" in self.partitions:
+                raise ValueError("stratified_hash scenarios must not use the all partition")
+            if self.holdouts:
+                raise ValueError("stratified_hash scenarios must not declare holdouts")
+            if self.remainder is not None:
+                raise ValueError("stratified_hash scenarios must not declare a remainder")
+            if self.strata is None:
+                raise ValueError("stratified_hash scenarios require strata")
+            return self
+        if self.strata is not None:
+            raise ValueError(f"{self.kind} scenarios must not declare strata")
         if self.kind in {"range_holdout", "coordinate_block"}:
             if not self.holdouts:
                 raise ValueError(f"{self.kind} scenarios require holdouts")
@@ -317,6 +435,7 @@ class PreparationConfig(BaseModel):
     targets: tuple[str, ...] = Field(min_length=1)
     auxiliary: tuple[str, ...] = ()
     scenarios: tuple[ScenarioConfig, ...] = ()
+    quality: PreparationQualityConfig = Field(default_factory=PreparationQualityConfig)
     outputs: PreparationOutputsConfig = Field(default_factory=PreparationOutputsConfig)
 
     @field_validator("targets")

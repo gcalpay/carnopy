@@ -86,10 +86,10 @@ jobs:
       - name: Synchronize test dependencies
         run: >-
           uv sync --locked --python "${{ matrix.python-version }}"
-          --extra viz --extra ml --no-default-groups --group test
+          --extra viz --extra ml --extra analysis --no-default-groups --group test
       - name: Run tests
         run: >-
-          uv run --locked --extra viz --extra ml
+          uv run --locked --extra viz --extra ml --extra analysis
           --no-default-groups --group test pytest
           --ignore-glob=tests/test_app_*.py
       - name: Check environment dependencies
@@ -207,6 +207,21 @@ jobs:
             --no-deps \
             --wheel-dir "$RUNNER_TEMP/rebuilt-wheel" \
             "$SDIST"
+      - name: Smoke-test wheel with analysis extra outside checkout
+        shell: bash
+        run: |
+          WHEEL="$(find "$PWD/dist" -maxdepth 1 -name '*.whl' -print -quit)"
+          python -m venv "$RUNNER_TEMP/carnopy-analysis"
+          WHEEL_URI="$("$RUNNER_TEMP/carnopy-analysis/bin/python" -c \
+            'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve().as_uri())' \
+            "$WHEEL")"
+          "$RUNNER_TEMP/carnopy-analysis/bin/python" -m pip install \
+            --index-url https://pypi.org/simple/ \
+            "carnopy[analysis] @ ${WHEEL_URI}"
+          "$RUNNER_TEMP/carnopy-analysis/bin/python" -m pip check
+          "$RUNNER_TEMP/carnopy-analysis/bin/python" scripts/smoke_installed.py \
+            --work-directory "$RUNNER_TEMP/analysis-smoke" \
+            --with-analysis
       - name: Install Qt runtime dependency
         run: |
           sudo apt-get update
@@ -244,4 +259,5 @@ jobs:
             --work-directory "$RUNNER_TEMP/all-smoke" \
             --with-visualization \
             --with-ml-exports \
+            --with-analysis \
             --with-app

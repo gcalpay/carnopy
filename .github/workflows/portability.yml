@@ -38,10 +38,10 @@ jobs:
       - name: Synchronize core test dependencies
         run: >-
           uv sync --locked --python 3.12
-          --extra viz --extra ml --no-default-groups --group test
+          --extra viz --extra ml --extra analysis --no-default-groups --group test
       - name: Run core tests
         run: >-
-          uv run --locked --extra viz --extra ml
+          uv run --locked --extra viz --extra ml --extra analysis
           --no-default-groups --group test pytest
           --ignore-glob=tests/test_app_*.py
       - name: Smoke-test lightweight help

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import math
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -14,6 +13,11 @@ from carnopy.preparation.models import (
     ScenarioConfig,
     TransformationConfig,
     TransformMethod,
+)
+from carnopy.preparation.rows import SOURCE_STATE_HASH_COLUMN
+from carnopy.preparation.stratification import (
+    shuffle_hash_partitions,
+    stratified_hash_partitions,
 )
 
 
@@ -33,7 +37,12 @@ def build_scenario_outputs(
 ) -> list[ScenarioOutput]:
     outputs: list[ScenarioOutput] = []
     for scenario in scenarios:
-        partitions = _partition_frame(scenario, frame, source_kind=source_kind)
+        partitions, partition_metadata = _partition_frame(
+            scenario,
+            frame,
+            source_kind=source_kind,
+        )
+        leakage = _state_leakage_summary(scenario.name, partitions)
         transformed, transformations = _apply_transformations(scenario, partitions)
         outputs.append(
             ScenarioOutput(
@@ -49,6 +58,8 @@ def build_scenario_outputs(
                         for partition, partition_frame in transformed.items()
                     },
                     "transformations": transformations,
+                    "state_leakage": leakage,
+                    **partition_metadata,
                 },
             )
         )
@@ -60,39 +71,72 @@ def _partition_frame(
     frame: pd.DataFrame,
     *,
     source_kind: str,
-) -> dict[str, pd.DataFrame]:
+) -> tuple[dict[str, pd.DataFrame], dict[str, Any]]:
     if scenario.kind == "unsplit":
-        return {"all": frame.copy()}
+        return {"all": frame.copy()}, {}
     if scenario.kind == "shuffle":
-        return _shuffle_partitions(scenario, frame)
+        return shuffle_hash_partitions(scenario, frame), {}
+    if scenario.kind == "stratified_hash":
+        result = stratified_hash_partitions(scenario, frame)
+        return result.partitions, {"stratification": result.summary}
     if scenario.kind == "range_holdout":
-        return _range_holdout_partitions(scenario, frame)
+        return _range_holdout_partitions(scenario, frame), {}
     if scenario.kind == "coordinate_block":
-        return _coordinate_block_partitions(scenario, frame)
-    return _categorical_holdout_partitions(scenario, frame, source_kind=source_kind)
+        return _coordinate_block_partitions(scenario, frame), {}
+    return _categorical_holdout_partitions(scenario, frame, source_kind=source_kind), {}
 
 
-def _shuffle_partitions(scenario: ScenarioConfig, frame: pd.DataFrame) -> dict[str, pd.DataFrame]:
-    if not math.isclose(sum(scenario.partitions.values()), 1.0, rel_tol=1e-9, abs_tol=1e-12):
-        raise ConfigError(f"shuffle scenario {scenario.name!r} partition ratios must sum to 1")
-    if "source_row_hash" not in frame.columns:
-        raise ConfigError(f"shuffle scenario {scenario.name!r} requires source_row_hash")
-    counts = _allocated_counts(len(frame), scenario.partitions)
-    scored = sorted(
-        (
-            _hash_score(f"{scenario.name}|{scenario.seed}|{row['source_row_hash']}"),
-            index,
+def _state_leakage_summary(
+    scenario_name: str,
+    partitions: dict[str, pd.DataFrame],
+) -> dict[str, Any]:
+    if len(partitions) <= 1:
+        frame = next(iter(partitions.values()))
+        duplicate_count = (
+            0
+            if SOURCE_STATE_HASH_COLUMN not in frame
+            else int((frame[SOURCE_STATE_HASH_COLUMN].value_counts(dropna=False) > 1).sum())
         )
-        for index, row in frame.iterrows()
-    )
-    partitions: dict[str, pd.DataFrame] = {}
-    offset = 0
-    for partition, count in counts.items():
-        selected = [index for _, index in scored[offset : offset + count]]
-        partitions[partition] = frame.loc[selected].copy()
-        offset += count
-    _require_non_empty_partitions(scenario.name, partitions)
-    return partitions
+        return {
+            "identity_column": SOURCE_STATE_HASH_COLUMN,
+            "duplicate_state_group_count": duplicate_count,
+            "cross_partition_group_count": 0,
+        }
+    records: list[pd.DataFrame] = []
+    for partition, frame in partitions.items():
+        if SOURCE_STATE_HASH_COLUMN not in frame:
+            raise ConfigError(
+                f"scenario {scenario_name!r} requires {SOURCE_STATE_HASH_COLUMN} "
+                "for leakage validation"
+            )
+        if frame[SOURCE_STATE_HASH_COLUMN].isna().any():
+            raise ConfigError(
+                f"scenario {scenario_name!r} contains missing {SOURCE_STATE_HASH_COLUMN} values"
+            )
+        records.append(
+            pd.DataFrame(
+                {
+                    SOURCE_STATE_HASH_COLUMN: frame[SOURCE_STATE_HASH_COLUMN].astype(str),
+                    "partition": partition,
+                }
+            )
+        )
+    assignments = pd.concat(records, ignore_index=True)
+    grouped = assignments.groupby(SOURCE_STATE_HASH_COLUMN, sort=True)["partition"]
+    partition_counts = grouped.nunique()
+    leaked = partition_counts[partition_counts > 1]
+    if not leaked.empty:
+        examples = ", ".join(value[:12] for value in leaked.index[:3])
+        raise ConfigError(
+            f"scenario {scenario_name!r} assigns {len(leaked)} duplicate thermodynamic-state "
+            f"groups across partitions (examples: {examples})"
+        )
+    row_counts = assignments[SOURCE_STATE_HASH_COLUMN].value_counts()
+    return {
+        "identity_column": SOURCE_STATE_HASH_COLUMN,
+        "duplicate_state_group_count": int((row_counts > 1).sum()),
+        "cross_partition_group_count": 0,
+    }
 
 
 def _range_holdout_partitions(
@@ -328,6 +372,30 @@ def _apply_transform_step(
             {partition: (series - mean) / std for partition, series in values.items()},
             {"method": "standard", "mean": mean, "std": std, "std_ddof": 0},
         )
+    if method == "robust":
+        median = float(fit.median())
+        first_quartile = float(fit.quantile(0.25, interpolation="linear"))
+        third_quartile = float(fit.quantile(0.75, interpolation="linear"))
+        interquartile_range = third_quartile - first_quartile
+        if not math.isfinite(interquartile_range) or interquartile_range <= 0.0:
+            raise ConfigError(
+                f"scenario {scenario.name!r} robust transformation has zero train IQR"
+            )
+        return (
+            {
+                partition: (series - median) / interquartile_range
+                for partition, series in values.items()
+            },
+            {
+                "method": "robust",
+                "median": median,
+                "first_quartile": first_quartile,
+                "third_quartile": third_quartile,
+                "interquartile_range": interquartile_range,
+                "quantile_method": "linear_hyndman_fan_type_7",
+                "inverse": "value = transformed * interquartile_range + median",
+            },
+        )
     minimum = float(fit.min())
     maximum = float(fit.max())
     value_range = maximum - minimum
@@ -337,25 +405,6 @@ def _apply_transform_step(
         {partition: (series - minimum) / value_range for partition, series in values.items()},
         {"method": "minmax", "min": minimum, "max": maximum},
     )
-
-
-def _allocated_counts(
-    row_count: int,
-    partitions: dict[PartitionName, float],
-) -> dict[str, int]:
-    ideals = {partition: row_count * ratio for partition, ratio in partitions.items()}
-    counts = {partition: math.floor(value) for partition, value in ideals.items()}
-    remaining = row_count - sum(counts.values())
-    ranked = sorted(
-        partitions,
-        key=lambda partition: (ideals[partition] - counts[partition], partition),
-        reverse=True,
-    )
-    for partition in ranked[:remaining]:
-        counts[partition] += 1
-    if any(count <= 0 for count in counts.values()):
-        raise ConfigError("shuffle scenario produced an empty positive partition")
-    return {str(partition): count for partition, count in counts.items()}
 
 
 def _range_bounds(
@@ -423,8 +472,3 @@ def _require_non_empty_partitions(name: str, partitions: dict[str, pd.DataFrame]
         raise ConfigError(
             f"scenario {name!r} produced empty partitions: " + ", ".join(sorted(empty))
         )
-
-
-def _hash_score(value: str) -> float:
-    digest = hashlib.sha256(value.encode("utf-8")).hexdigest()
-    return int(digest, 16) / float(16**64)

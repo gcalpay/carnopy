@@ -11,6 +11,7 @@ import pandas as pd
 from carnopy.domain.failures import OutputError
 from carnopy.outputs.writers import hash_artifacts, write_bytes, write_json
 from carnopy.preparation.arrays import ArrayExportResult, write_array_exports
+from carnopy.preparation.baselines import build_baseline_diagnostics
 from carnopy.preparation.fields import (
     ResolvedPreparation,
     resolve_preparation_fields,
@@ -22,6 +23,7 @@ from carnopy.preparation.layout import (
     create_preparation_layout,
     finalize_preparation_layout,
 )
+from carnopy.preparation.matrix_diagnostics import build_matrix_diagnostics
 from carnopy.preparation.models import (
     LoadedPreparationConfig,
     PreparationArrayOutputsConfig,
@@ -87,6 +89,8 @@ class ScenarioWriteResult:
     scenario_count: int
     partition_count: int
     partition_target_summaries: list[dict[str, Any]]
+    matrix_diagnostics: list[dict[str, Any]]
+    baseline_diagnostics: list[dict[str, Any]]
 
 
 @dataclass(frozen=True)
@@ -205,6 +209,17 @@ def _write_preparation_bundle(
         scenario_summary=None if scenario_result is None else scenario_result.summary,
         partition_target_summaries=(
             [] if scenario_result is None else scenario_result.partition_target_summaries
+        ),
+        matrix_diagnostics=_matrix_diagnostics(
+            loaded=loaded,
+            frame=prepared_frame,
+            rows=rows,
+            resolved=resolved,
+            scenario_result=scenario_result,
+        ),
+        baseline_diagnostics=_baseline_diagnostics(
+            loaded=loaded,
+            scenario_result=scenario_result,
         ),
     )
     write_json(layout.staging_directory / "quality_report.json", quality_report)
@@ -390,6 +405,7 @@ def _write_scenario_artifacts(
     if not loaded.model.scenarios:
         return None
     if not rows.prepared_rows:
+        diagnostics_config = loaded.model.quality.matrix_diagnostics
         return ScenarioWriteResult(
             report_path=None,
             artifact_names=[],
@@ -403,6 +419,29 @@ def _write_scenario_artifacts(
             scenario_count=0,
             partition_count=0,
             partition_target_summaries=[],
+            matrix_diagnostics=(
+                []
+                if diagnostics_config is None
+                else [
+                    {
+                        "scenario": scenario.name,
+                        "fit_partition": "all" if scenario.kind == "unsplit" else "train",
+                        "status": "skipped_no_eligible_rows",
+                    }
+                    for scenario in loaded.model.scenarios
+                ]
+            ),
+            baseline_diagnostics=(
+                []
+                if loaded.model.quality.baseline_diagnostics is None
+                else [
+                    {
+                        "scenario": scenario.name,
+                        "status": "skipped_no_eligible_rows",
+                    }
+                    for scenario in loaded.model.scenarios
+                ]
+            ),
         )
     scenario_root = data_directory / "scenarios"
     scenario_root.mkdir()
@@ -414,6 +453,8 @@ def _write_scenario_artifacts(
     artifact_names: list[str] = []
     report_scenarios: list[dict[str, Any]] = []
     target_summaries: list[dict[str, Any]] = []
+    matrix_diagnostics: list[dict[str, Any]] = []
+    baseline_diagnostics: list[dict[str, Any]] = []
     for output in outputs:
         scenario_directory = scenario_root / output.name
         scenario_directory.mkdir()
@@ -433,6 +474,47 @@ def _write_scenario_artifacts(
                 resolved=resolved,
             )
         )
+        diagnostics_config = loaded.model.quality.matrix_diagnostics
+        if diagnostics_config is not None:
+            fit_partition = "all" if output.kind == "unsplit" else "train"
+            if fit_partition not in output.partitions:
+                matrix_diagnostics.append(
+                    {
+                        "scenario": output.name,
+                        "fit_partition": fit_partition,
+                        "status": "skipped_missing_train_partition",
+                    }
+                )
+            else:
+                matrix_diagnostics.append(
+                    build_matrix_diagnostics(
+                        output.partitions[fit_partition],
+                        feature_columns=_scenario_feature_columns(
+                            rows,
+                            resolved,
+                            output.metadata.get("transformations", []),
+                        ),
+                        target_columns=[field.semantic_name for field in resolved.targets],
+                        config=diagnostics_config,
+                        scenario=output.name,
+                        fit_partition=fit_partition,
+                    )
+                )
+        baseline_config = loaded.model.quality.baseline_diagnostics
+        if baseline_config is not None:
+            baseline_diagnostics.append(
+                build_baseline_diagnostics(
+                    output.partitions,
+                    feature_columns=_scenario_feature_columns(
+                        rows,
+                        resolved,
+                        output.metadata.get("transformations", []),
+                    ),
+                    target_columns=[field.semantic_name for field in resolved.targets],
+                    config=baseline_config,
+                    scenario=output.name,
+                )
+            )
         partition_hashes = hash_artifacts(layout.staging_directory, partition_result.artifact_names)
         scenario_metadata = {
             **output.metadata,
@@ -452,6 +534,11 @@ def _write_scenario_artifacts(
                 "partition_artifact_hashes": partition_hashes,
                 "array_exports": partition_result.array_manifests,
                 "scenario_artifact": scenario_json,
+                **(
+                    {"stratification": output.metadata["stratification"]}
+                    if "stratification" in output.metadata
+                    else {}
+                ),
             }
         )
     scenario_artifact_hashes = hash_artifacts(layout.staging_directory, artifact_names)
@@ -485,7 +572,51 @@ def _write_scenario_artifacts(
         scenario_count=len(outputs),
         partition_count=sum(len(output.partitions) for output in outputs),
         partition_target_summaries=target_summaries,
+        matrix_diagnostics=matrix_diagnostics,
+        baseline_diagnostics=baseline_diagnostics,
     )
+
+
+def _matrix_diagnostics(
+    *,
+    loaded: LoadedPreparationConfig,
+    frame: pd.DataFrame,
+    rows: PreparedRows,
+    resolved: ResolvedPreparation,
+    scenario_result: ScenarioWriteResult | None,
+) -> list[dict[str, Any]] | None:
+    config = loaded.model.quality.matrix_diagnostics
+    if config is None:
+        return None
+    if scenario_result is not None:
+        return scenario_result.matrix_diagnostics
+    return [
+        build_matrix_diagnostics(
+            frame,
+            feature_columns=_feature_columns(rows, resolved),
+            target_columns=[field.semantic_name for field in resolved.targets],
+            config=config,
+            scenario=None,
+            fit_partition="all",
+        )
+    ]
+
+
+def _baseline_diagnostics(
+    *,
+    loaded: LoadedPreparationConfig,
+    scenario_result: ScenarioWriteResult | None,
+) -> list[dict[str, Any]] | None:
+    if loaded.model.quality.baseline_diagnostics is None:
+        return None
+    if scenario_result is None:
+        return [
+            {
+                "scenario": None,
+                "status": "skipped_requires_evaluation_scenario",
+            }
+        ]
+    return scenario_result.baseline_diagnostics
 
 
 def _write_scenario_partitions(

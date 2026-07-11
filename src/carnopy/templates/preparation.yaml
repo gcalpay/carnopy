@@ -52,13 +52,39 @@ auxiliary:
 #       test: 0.1
 #     transformations:
 #       - field: pressure
-#         methods: [log10, standard]
+#         methods: [log10, standard]  # also: minmax, robust
 #
 #   - name: leave_fluid_out
 #     kind: leave_fluid_out
 #     holdouts:
 #       test: [Isopentane]
 #     remainder: train
+#
+#   - name: phase_temperature_strata
+#     kind: stratified_hash
+#     seed: 42
+#     partitions:
+#       train: 0.8
+#       validation: 0.1
+#       test: 0.1
+#     strata:
+#       categorical: [phase]
+#       numeric_bins:
+#         reduced_temperature: [0.8, 0.95, 1.05]
+
+# Optional matrix diagnostics use configured features only. Scenario diagnostics
+# fit on train; an unsplit preparation states explicitly that it uses all rows.
+# quality:
+#   matrix_diagnostics:
+#     correlation_threshold: 0.995
+#     near_constant_relative_spread: 1.0e-12
+#   # Requires carnopy[analysis]. Fits on train and evaluates validation/test;
+#   # estimators and predictions are not persisted.
+#   baseline_diagnostics:
+#     models: [dummy_mean, ridge, hist_gradient_boosting]
+#     random_seed: 42
+#     ridge_alpha: 1.0
+#     histogram_max_iterations: 100
 
 outputs:
   formats: [parquet]

@@ -160,6 +160,8 @@ outputs:
     assert "table.parquet" in text
     assert "Preparation quality:" in text
     assert "quality_report.json" in text
+    assert "matrix diagnostics: not_requested" in text
+    assert "baseline diagnostics: not_requested" in text
     assert payload["source_kind"] == "preparation_bundle"
     assert payload["artifacts"]["table"].endswith("data/table.parquet")
     assert "mass_density" in payload["columns"]["table"]
@@ -167,6 +169,8 @@ outputs:
     assert "source_failure_code" in payload["columns"]["diagnostics"]
     assert payload["quality"]["artifacts"]["report"].endswith("quality_report.json")
     assert payload["quality"]["summary"]["status"] == "completed"
+    assert payload["quality"]["summary"]["matrix_diagnostics"]["status"] == "not_requested"
+    assert payload["quality"]["summary"]["baseline_diagnostics"]["status"] == "not_requested"
     assert payload["reference_state"]["selected_reference_dependent_fields"] == ["specific_entropy"]
 
     result = runner.invoke(app, ["inspect", str(prepared.output_directory), "--format", "json"])
