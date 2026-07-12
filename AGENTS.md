@@ -149,6 +149,11 @@ guarded no-overwrite image/sidecar promotion, desktop Render controls,
 immediate confirmed force-stop, Qt-only PNG/SVG previews, and explicit PDF
 opening.
 
+[GUI2_PLAN.md](GUI2_PLAN.md) is the temporary source of truth for the active
+GUI-2 migration. Read it before changing desktop controllers, QML, native 3D,
+desktop packaging, or Widgets retirement. Delete it only after GUI-2 is complete
+and permanent documentation and Graphify outputs describe the final design.
+
 Out of scope for now:
 
 - mixtures;
