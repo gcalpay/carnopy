@@ -147,7 +147,8 @@ def test_readme_documents_the_0_1_0a3_release_boundary() -> None:
     assert "The `all` extra is the dependency union of `viz`,\n" in text
     assert "`ml`, `analysis`, and `app`" in text
     assert "Version `0.1.0a3` includes GUI-1" in text
-    assert "planned `0.1.0a4` application milestone" in text
+    assert "active GUI-2 source line reports `0.1.0a4.dev0`" in text
+    assert "active `0.1.0a4.dev0` application development line" in text
     assert "0.1.0a2" not in text
     assert "After `0.1.0a3` is published" not in text
     assert "not yet published" not in text

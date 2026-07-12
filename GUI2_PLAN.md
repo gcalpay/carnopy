@@ -19,16 +19,16 @@ maintainer has accepted the completed implementation.
   extra adds native VTK rendering to that same application. It is not a second
   GUI.
 
-Before Stage 1, prepare the development line with:
+The release transition into GUI-2 development is complete through:
 
 ```text
 docs(app): track GUI-2 implementation stages
 chore(release): start 0.1.0a4 development
 ```
 
-Update Carnopy and companion bridge PEP 440 metadata to `0.1.0a4.dev0`, update
-the corresponding regression tests and README status, and leave the numeric
-CMake declaration at `0.1.0`.
+Carnopy and companion bridge PEP 440 metadata now report `0.1.0a4.dev0`; the
+numeric CMake declaration remains `0.1.0`. This metadata-only transition does
+not require another native VTK qualification run. Stage 1 is active.
 
 ## Authority and permanent boundaries
 
@@ -71,7 +71,7 @@ promises require maintainer approval.
 | Stage | Status | Purpose |
 | --- | --- | --- |
 | 0 | Complete | Qualify the native Qt Quick and VTK bridge |
-| 1 | Next | Establish request ownership and dataset desktop controllers |
+| 1 | Active | Establish request ownership and dataset desktop controllers |
 | 2 | Pending | Add the modern QML workspace and dataset workflow |
 | 3 | Pending | Reach GUI-1 parity and retire Widgets |
 | 4 | Pending | Add controlled sweep and preparation worker operations |

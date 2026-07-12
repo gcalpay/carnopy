@@ -20,7 +20,7 @@ scene_initializations = _native.scene_initializations
 
 del _module, _native, import_module
 
-__version__ = "0.1.0a3"
+__version__ = "0.1.0a4.dev0"
 __all__ = (
     "__version__",
     "live_instances",

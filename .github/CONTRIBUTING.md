@@ -73,9 +73,10 @@ Run the current source-checkout desktop application with:
 uv run --locked carnopy-app
 ```
 
-Version `0.1.0a3` includes the optional Linux-first Widgets GUI. The planned
-`0.1.0a4` development line will replace its presentation layer with QML only
-after equivalent workflow tests pass.
+Version `0.1.0a3` includes the optional Linux-first Widgets GUI. The active
+`0.1.0a4.dev0` source development line will replace its presentation layer with
+QML only after equivalent workflow tests pass. Widgets remain the active parity
+baseline until that migration is verified.
 
 Worker-backed inspection and preview changes must use stable table IDs rather
 than GUI-supplied artifact paths. Cover traversal, symlink, integrity-token,
