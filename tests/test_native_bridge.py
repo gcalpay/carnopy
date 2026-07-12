@@ -29,3 +29,21 @@ def test_qml_registered_bridge_type_remains_subclassable() -> None:
     assert "class QualificationCone : public QQuickVTKItem" in source
     assert "class QualificationCone final" not in source
     assert "qmlRegisterType<QualificationCone>" in source
+
+
+def test_qt_runtime_probe_precedes_bridge_imports() -> None:
+    qualification = (BRIDGE_ROOT / "tests" / "qualification.py").read_text(encoding="utf-8")
+
+    assert 'subparsers.add_parser("smoke-qt-runtime")' in qualification
+    assert "def smoke_qt_runtime()" in qualification
+    assert "_verify_qt_runtime_libraries()" in qualification
+    for library in (
+        "libQt6DBus.so.6",
+        "libQt6Network.so.6",
+        "libQt6Qml.so.6",
+        "libQt6Quick.so.6",
+    ):
+        assert f'"{library}"' in qualification
+    assert qualification.index("def smoke_qt_runtime()") < qualification.index(
+        "def _verify_installed_layout()"
+    )

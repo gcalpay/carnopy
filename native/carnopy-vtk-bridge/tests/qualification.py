@@ -230,6 +230,102 @@ def _verify_installed_elf(native_path: Path, qt_library_root: Path) -> None:
     assert qt_resolutions, linked
 
 
+def _qt_library_root() -> Path:
+    distribution = metadata.distribution("PySide6-Essentials")
+    root = Path(distribution.locate_file("PySide6/Qt/lib")).resolve(strict=True)
+    assert root.is_dir(), root
+    return root
+
+
+def _verify_qt_runtime_libraries() -> None:
+    qt_library_root = _qt_library_root()
+    for library_name in (
+        "libQt6Core.so.6",
+        "libQt6DBus.so.6",
+        "libQt6Gui.so.6",
+        "libQt6Network.so.6",
+        "libQt6OpenGL.so.6",
+        "libQt6OpenGLWidgets.so.6",
+        "libQt6Qml.so.6",
+        "libQt6Quick.so.6",
+        "libQt6Widgets.so.6",
+    ):
+        library_path = (qt_library_root / library_name).resolve(strict=True)
+        linked = _run_tool(["ldd", str(library_path)])
+        assert "not found" not in linked, f"unresolved dependency for {library_name}:\n{linked}"
+
+
+def smoke_qt_runtime() -> None:
+    assert sys.flags.isolated == 1, "Qt runtime probe must run with Python -I"
+    inherited = sorted(name for name in UNSET_ENVIRONMENT_VARIABLES if name in os.environ)
+    assert not inherited, f"Qt runtime probe inherited build/import variables: {inherited}"
+
+    _verify_qt_runtime_libraries()
+    for module_name in (
+        "PySide6.QtCore",
+        "PySide6.QtGui",
+        "PySide6.QtOpenGL",
+        "PySide6.QtOpenGLWidgets",
+        "PySide6.QtQml",
+        "PySide6.QtQuick",
+        "PySide6.QtWidgets",
+    ):
+        import_module(module_name)
+
+    from PySide6.QtCore import QCoreApplication, QEvent, QEventLoop, QUrl
+    from PySide6.QtGui import QGuiApplication
+    from PySide6.QtQml import QQmlComponent, QQmlEngine
+    from PySide6.QtQuick import QQuickWindow, QSGRendererInterface
+
+    QQuickWindow.setGraphicsApi(QSGRendererInterface.GraphicsApi.OpenGL)
+    app = QGuiApplication([sys.argv[0]])
+
+    def process_events() -> None:
+        QCoreApplication.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 25)
+
+    engine = QQmlEngine()
+    component = QQmlComponent(engine)
+    component.setData(
+        b"""
+import QtQuick
+import QtQuick.Window
+
+Window {
+    width: 240
+    height: 160
+    visible: false
+    Rectangle {
+        anchors.fill: parent
+        color: "#101820"
+    }
+}
+""",
+        QUrl("inmemory:/qt-runtime-probe.qml"),
+    )
+    _wait_until(
+        process_events,
+        lambda: component.status() != QQmlComponent.Status.Loading,
+        "the Qt runtime probe component",
+    )
+    assert component.status() == QQmlComponent.Status.Ready, [
+        str(error) for error in component.errors()
+    ]
+    window = component.create()
+    assert isinstance(window, QQuickWindow), type(window)
+
+    window.show()
+    _wait_until(process_events, window.isExposed, "the Qt runtime probe window")
+    window.hide()
+    _wait_until(process_events, lambda: not window.isVisible(), "the hidden probe window")
+    window.deleteLater()
+    component.deleteLater()
+    engine.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    process_events()
+    assert not any(top_level.isVisible() for top_level in app.topLevelWindows())
+    app.quit()
+
+
 def _verify_installed_layout() -> ModuleType:
     assert sys.flags.isolated == 1, "qualification must run with Python -I"
     inherited = sorted(name for name in UNSET_ENVIRONMENT_VARIABLES if name in os.environ)
@@ -493,11 +589,14 @@ def main() -> None:
     subparsers = parser.add_subparsers(dest="command", required=True)
     inspect_parser = subparsers.add_parser("inspect-wheel")
     inspect_parser.add_argument("wheel", type=Path)
+    subparsers.add_parser("smoke-qt-runtime")
     subparsers.add_parser("smoke-installed")
     args = parser.parse_args()
 
     if args.command == "inspect-wheel":
         inspect_wheel(args.wheel)
+    elif args.command == "smoke-qt-runtime":
+        smoke_qt_runtime()
     else:
         smoke_installed()
 

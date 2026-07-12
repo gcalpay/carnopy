@@ -30,6 +30,15 @@ def workflow_step(job: str, name: str) -> str:
     return match.group()
 
 
+def workflow_folded_env_values(job: str, name: str) -> tuple[str, ...]:
+    match = re.search(
+        rf"(?m)^      {re.escape(name)}: >-\n(?P<values>(?:^        [^\n]+\n)+)",
+        job,
+    )
+    assert match is not None
+    return tuple(match.group("values").split())
+
+
 def test_third_party_actions_are_pinned_to_full_commit_shas() -> None:
     for name in WORKFLOW_NAMES:
         text = workflow_text(name)
@@ -124,6 +133,7 @@ def test_dependency_review_is_pull_request_only() -> None:
 def test_qml_native_qualification_is_manual_branch_scoped_and_nonpublishing() -> None:
     text = workflow_text("ci.yml")
     job = workflow_job(text, "qml-native-qualification")
+    probe_step = workflow_step(job, "Probe clean Qt Quick runtime")
     build_step = workflow_step(job, "Build Carnopy and native bridge wheels")
     inspect_step = workflow_step(job, "Check and inspect wheels")
     payload_step = workflow_step(job, "Stage isolated qualification payload")
@@ -142,6 +152,16 @@ def test_qml_native_qualification_is_manual_branch_scoped_and_nonpublishing() ->
     assert 'version: "0.11.23"' in job
     assert "aqtinstall==3.3.0" in job
     assert "linux desktop 6.11.1 linux_gcc_64" in job
+    assert job.index("Probe clean Qt Quick runtime") < job.index(
+        "Build Carnopy and native bridge wheels"
+    )
+    assert "timeout --foreground --signal=TERM --kill-after=15s 600s" in probe_step
+    assert "docker run --rm" in probe_step
+    assert "ubuntu:24.04" in probe_step
+    assert "PySide6-Essentials==6.11.1" in probe_step
+    assert "/qualification/qualification.py smoke-qt-runtime" in probe_step
+    assert '--mount "type=bind,src=${PROBE},dst=/qualification,readonly"' in probe_step
+    assert "native/carnopy-vtk-bridge/tests/qualification.py" in probe_step
     assert "uv build --wheel" in build_step
     assert "native/carnopy-vtk-bridge" in build_step
     assert "docker" not in build_step
@@ -166,17 +186,14 @@ def test_qml_native_qualification_is_manual_branch_scoped_and_nonpublishing() ->
     assert "native/carnopy-vtk-bridge" not in runtime_step
     assert "uv build" not in runtime_step
 
-    runtime_packages = [
-        line.strip().removesuffix("\\").strip()
-        for line in runtime_step.splitlines()
-        if re.fullmatch(r"\s+[a-z0-9][a-z0-9.+-]*(?: \\)?", line)
-    ]
+    runtime_packages = workflow_folded_env_values(job, "CARNOPY_QT_RUNTIME_PACKAGES")
     assert len(runtime_packages) == len(set(runtime_packages))
     for package in (
         "binutils",
         "libdbus-1-3",
         "libegl1",
         "libgl1-mesa-dri",
+        "libgssapi-krb5-2",
         "mesa-utils",
         "python3.12",
         "python3.12-venv",
@@ -184,6 +201,10 @@ def test_qml_native_qualification_is_manual_branch_scoped_and_nonpublishing() ->
         "xvfb",
     ):
         assert package in runtime_packages
+    for step in (probe_step, runtime_step):
+        assert "--env CARNOPY_QT_RUNTIME_PACKAGES" in step
+        assert 'read -r -a runtime_packages <<< "$CARNOPY_QT_RUNTIME_PACKAGES"' in step
+        assert '"${runtime_packages[@]}"' in step
 
     assert "python3.12 -m venv /opt/carnopy-runtime" in runtime_step
     assert runtime_step.count('"$VENV/bin/python" -I') == 3
