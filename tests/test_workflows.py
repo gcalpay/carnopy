@@ -174,6 +174,7 @@ def test_qml_native_qualification_is_manual_branch_scoped_and_nonpublishing() ->
     assert len(runtime_packages) == len(set(runtime_packages))
     for package in (
         "binutils",
+        "libdbus-1-3",
         "libegl1",
         "libgl1-mesa-dri",
         "mesa-utils",
