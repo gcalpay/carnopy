@@ -126,6 +126,24 @@ def _wait_until(
     raise AssertionError(f"timed out waiting for {description}")
 
 
+def _wait_for_qml_component(
+    process_events: Callable[[], None],
+    component: object,
+    description: str,
+) -> None:
+    from PySide6.QtQml import QQmlComponent
+
+    assert isinstance(component, QQmlComponent), type(component)
+    _wait_until(
+        process_events,
+        lambda: component.status() != QQmlComponent.Status.Loading,
+        description,
+    )
+    assert component.status() == QQmlComponent.Status.Ready, [
+        str(error) for error in component.errors()
+    ]
+
+
 def _assert_origin(
     origin: Path,
     *,
@@ -302,14 +320,7 @@ Window {
 """,
         QUrl("inmemory:/qt-runtime-probe.qml"),
     )
-    _wait_until(
-        process_events,
-        lambda: component.status() != QQmlComponent.Status.Loading,
-        "the Qt runtime probe component",
-    )
-    assert component.status() == QQmlComponent.Status.Ready, [
-        str(error) for error in component.errors()
-    ]
+    _wait_for_qml_component(process_events, component, "the Qt runtime probe component")
     window = component.create()
     assert isinstance(window, QQuickWindow), type(window)
 
@@ -389,6 +400,10 @@ def smoke_installed() -> None:
     assert scene_destructions() == 0
     prepare_graphics_api()
     app = QGuiApplication([sys.argv[0]])
+
+    def process_events() -> None:
+        QCoreApplication.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 25)
+
     try:
         prepare_graphics_api()
     except RuntimeError:
@@ -420,7 +435,7 @@ Window {
 """,
         QUrl("inmemory:/qualification.qml"),
     )
-    assert not component.isError(), [str(error) for error in component.errors()]
+    _wait_for_qml_component(process_events, component, "the native QML component")
     window = component.create()
     assert isinstance(window, QQuickWindow), type(window)
     window.setPersistentSceneGraph(False)
@@ -430,9 +445,6 @@ Window {
     assert not window.isVisible()
     assert scene_initializations() == 0
     assert scene_destructions() == 0
-
-    def process_events() -> None:
-        QCoreApplication.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 25)
 
     _wait_until(process_events, lambda: live_instances() == 1, "the native item to become live")
     window.show()

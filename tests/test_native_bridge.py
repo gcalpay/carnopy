@@ -31,12 +31,13 @@ def test_qml_registered_bridge_type_remains_subclassable() -> None:
     assert "qmlRegisterType<QualificationCone>" in source
 
 
-def test_qt_runtime_probe_precedes_bridge_imports() -> None:
+def test_qml_smokes_wait_for_component_readiness() -> None:
     qualification = (BRIDGE_ROOT / "tests" / "qualification.py").read_text(encoding="utf-8")
 
     assert 'subparsers.add_parser("smoke-qt-runtime")' in qualification
     assert "def smoke_qt_runtime()" in qualification
     assert "_verify_qt_runtime_libraries()" in qualification
+    assert "def _wait_for_qml_component(" in qualification
     for library in (
         "libQt6DBus.so.6",
         "libQt6Network.so.6",
@@ -47,3 +48,9 @@ def test_qt_runtime_probe_precedes_bridge_imports() -> None:
     assert qualification.index("def smoke_qt_runtime()") < qualification.index(
         "def _verify_installed_layout()"
     )
+    runtime_smoke = qualification.split("def smoke_qt_runtime()", 1)[1].split(
+        "def _verify_installed_layout()", 1
+    )[0]
+    installed_smoke = qualification.split("def smoke_installed()", 1)[1].split("def main()", 1)[0]
+    for smoke in (runtime_smoke, installed_smoke):
+        assert smoke.index("_wait_for_qml_component(") < smoke.index("component.create()")
