@@ -14,7 +14,7 @@ body:
     attributes:
       label: Carnopy and Python versions
       description: Include `carnopy --version` or `carnopy-app --version`, plus `python --version`.
-      placeholder: "carnopy 0.1.0a2 or carnopy-app 0.1.0a3; Python 3.12.12"
+      placeholder: "carnopy 0.1.0a3 or carnopy-app 0.1.0a3; Python 3.12.12"
     validations:
       required: true
   - type: dropdown
