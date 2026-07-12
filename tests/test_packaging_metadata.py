@@ -130,11 +130,9 @@ def test_public_and_community_markdown_have_intentional_distribution_boundaries(
     assert "/docs" not in sdist_includes
 
 
-def test_readme_distinguishes_published_and_next_alpha_releases() -> None:
+def test_readme_documents_the_0_1_0a3_release_boundary() -> None:
     root = Path(__file__).resolve().parents[1]
     text = (root / "README.md").read_text(encoding="utf-8")
-    assert 'python -m pip install "carnopy==0.1.0a2"' in text
-    assert 'uv tool install "carnopy[all]==0.1.0a2"' in text
     for package in (
         "carnopy",
         "carnopy[viz]",
@@ -144,14 +142,19 @@ def test_readme_distinguishes_published_and_next_alpha_releases() -> None:
         "carnopy[all]",
     ):
         assert f'python -m pip install "{package}==0.1.0a3"' in text
-    assert "After `0.1.0a3` is published" in text
-    assert "will work only after\n`0.1.0a3` is published on PyPI" in text
-    assert "the published `0.1.0a2` package" in text
-    assert "not yet published on\n  PyPI" in text
+    assert 'uv tool install "carnopy==0.1.0a3"' in text
+    assert 'uv tool install "carnopy[all]==0.1.0a3"' in text
+    assert "The `all` extra is the dependency union of `viz`,\n" in text
+    assert "`ml`, `analysis`, and `app`" in text
+    assert "Version `0.1.0a3` includes GUI-1" in text
+    assert "planned `0.1.0a4` application milestone" in text
+    assert "0.1.0a2" not in text
+    assert "After `0.1.0a3` is published" not in text
+    assert "not yet published" not in text
+    assert "next-release" not in text
     assert "uv sync --locked --extra app --group dev" in text
     assert "uv run --locked carnopy-gui" in text
     assert "0.1.0a3.dev0" not in text
-    assert "After `0.1.0a1` is published" not in text
     assert "pending publisher" not in text.casefold()
     assert "Typing: typed" not in text
     assert (
@@ -181,7 +184,8 @@ def test_github_community_files_cover_public_reporting_paths() -> None:
     scientific = (issue_templates / "scientific-discrepancy.yml").read_text(encoding="utf-8")
     bug_report = (issue_templates / "bug-report.yml").read_text(encoding="utf-8")
     assert "0.1.0a3.dev0" not in bug_report
-    assert "Carnopy 0.1.0a2 or 0.1.0a3" in scientific
+    assert 'placeholder: "carnopy 0.1.0a3 or carnopy-app 0.1.0a3' in bug_report
+    assert 'placeholder: "Carnopy 0.1.0a3; CoolProp' in scientific
     assert "private vulnerability" in security.casefold()
     assert "gc@carnopy.org" in security
     assert "Contributor Covenant, version 2.1" in conduct
