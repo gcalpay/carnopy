@@ -62,21 +62,35 @@ change dependency declarations without explicit maintainer authorization.
 
 ## Codex model and delegation policy
 
-Select every Codex parent, subagent, and reviewer explicitly. Never use
-GPT-5.4, GPT-5.4 mini, Terra, or an automatically selected review model. Do not
-use an automatic review mode. If an allowed model or requested reasoning level
-is unavailable, quota-limited, or fails to start, preserve the failure and ask
-the maintainer instead of silently falling back.
+Select every Codex parent, subagent, and reviewer explicitly. GPT-5.4,
+GPT-5.4 mini, Terra, and automatically selected models or reviewers are
+forbidden. The only allowed model and reasoning combinations are GPT-5.6 Luna
+with xhigh or max reasoning and GPT-5.6 Sol with medium, high, xhigh, or max
+reasoning. Do not substitute GPT-5.4 mini for routine, exploratory,
+documentation, summarization, review, or background work.
+
+Before spawning an agent, require an explicitly configured role whose resolved
+model and reasoning effort match that allowlist. Do not spawn automatically
+routed built-in `default`, `explorer`, or `worker` agents unless their role
+configuration explicitly pins an allowed combination. If no pinned allowed
+role is available, continue in the allowed parent session or stop and ask the
+maintainer.
 
 Use the following models according to task complexity:
 
-- GPT-5.6 Luna with xhigh reasoning or GPT-5.6 Sol with medium reasoning for
-  routine, bounded work;
+- GPT-5.6 Luna with xhigh or max reasoning or GPT-5.6 Sol with medium reasoning
+  for routine, bounded work;
 - GPT-5.6 Sol with high or xhigh reasoning for substantial implementation,
   migration, testing, and review;
 - GPT-5.6 Sol with max reasoning only for the most difficult architectural,
   native-integration, scientific, numerical, release-critical, or debugging
   work, or after a lower allowed tier is genuinely stuck.
+
+If the required model or reasoning level cannot be selected exactly, report the
+limitation and wait for maintainer direction. This includes unavailable models,
+unsupported reasoning levels, quota limits, and model startup failures. Never
+silently substitute a different model, a lower reasoning effort, automatic
+model routing, or automatic review.
 
 Delegation depth is one. Parent agents may create explicitly configured
 subagents, but those subagents must not create descendants. Reviewers must be
@@ -135,7 +149,7 @@ guarded no-overwrite image/sidecar promotion, desktop Render controls,
 immediate confirmed force-stop, Qt-only PNG/SVG previews, and explicit PDF
 opening.
 
-Out of scope:
+Out of scope for now:
 
 - mixtures;
 - ORC generation;
