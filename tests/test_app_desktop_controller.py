@@ -1,0 +1,379 @@
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+from typing import cast
+
+import pytest
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+pytest.importorskip("PySide6")
+
+from PySide6.QtCore import (
+    QCoreApplication,
+    QEvent,
+    QModelIndex,
+    QObject,
+    QSettings,
+    Qt,
+    Signal,
+)
+
+from carnopy.app.desktop_controller import DesktopController
+from carnopy.app.request_coordinator import DesktopRequestCoordinator
+from carnopy.app.workspace import initialize_workspace
+from carnopy.app.workspace_controller import (
+    MAX_RECENT_WORKSPACES,
+    PATH_ROLE,
+    RecentWorkspaceModel,
+    WorkspaceController,
+)
+
+
+class StubCoordinator(QObject):
+    busy_changed = Signal(bool)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.is_busy = False
+
+    def set_busy(self, busy: bool) -> None:
+        if busy == self.is_busy:
+            return
+        self.is_busy = busy
+        self.busy_changed.emit(busy)
+
+
+@pytest.fixture(scope="module")
+def application() -> QCoreApplication:
+    existing = QCoreApplication.instance()
+    app = existing if isinstance(existing, QCoreApplication) else QCoreApplication([])
+    yield app
+    if type(app) is QCoreApplication:
+        app.quit()
+        app.deleteLater()
+        QCoreApplication.sendPostedEvents(app, QEvent.Type.DeferredDelete)
+
+
+def settings_for(path: Path) -> QSettings:
+    return QSettings(str(path), QSettings.Format.IniFormat)
+
+
+def controller_for(
+    settings: QSettings,
+) -> tuple[WorkspaceController, StubCoordinator]:
+    coordinator = StubCoordinator()
+    controller = WorkspaceController(
+        cast(DesktopRequestCoordinator, coordinator),
+        settings,
+    )
+    return controller, coordinator
+
+
+def test_desktop_controller_owns_one_composition_and_preserves_settings_identity(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    settings = settings_for(tmp_path / "settings.ini")
+
+    desktop = DesktopController(settings=settings)
+
+    assert desktop.settings is settings
+    assert desktop.request_coordinator.client is desktop.client
+    assert desktop.workspace_controller.coordinator is desktop.request_coordinator
+    assert desktop.client.parent() is desktop
+    assert desktop.request_coordinator.parent() is desktop
+    assert desktop.workspace_controller.parent() is desktop
+    assert desktop.property("workspaceController") is desktop.workspace_controller
+    assert (
+        desktop.workspace_controller.property("recentWorkspaces")
+        is desktop.workspace_controller.recent_model
+    )
+    assert desktop.shutdown()
+
+
+def test_desktop_shutdown_is_idle_only_and_idempotent(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    shutdown_calls: list[str] = []
+    sync_calls: list[str] = []
+    monkeypatch.setattr(
+        desktop.request_coordinator,
+        "shutdown",
+        lambda: shutdown_calls.append("shutdown"),
+    )
+    monkeypatch.setattr(desktop.settings, "sync", lambda: sync_calls.append("sync"))
+    assert desktop.workspace_controller.prepare_create(tmp_path / "pending")
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(
+            type(desktop.request_coordinator),
+            "is_busy",
+            property(lambda _self: True),
+        )
+        assert not desktop.shutdown()
+
+    assert shutdown_calls == []
+    assert sync_calls == []
+    assert desktop.workspace_controller.get_pending_operation() == ""
+    assert desktop.shutdown()
+    assert desktop.shutdown()
+    assert shutdown_calls == ["shutdown"]
+    assert sync_calls == ["sync"]
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(
+            type(desktop.request_coordinator),
+            "is_busy",
+            property(lambda _self: True),
+        )
+        assert not desktop.shutdown()
+    assert shutdown_calls == ["shutdown"]
+    assert sync_calls == ["sync"]
+
+
+def test_prepare_cancel_replace_and_commit_pending_lifecycle(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    controller, _coordinator = controller_for(settings_for(tmp_path / "settings.ini"))
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+
+    assert controller.prepare_create(first)
+    assert controller.get_pending_operation() == "create"
+    assert controller.get_pending_path() == str(first.resolve())
+    assert controller.prepare_create(second)
+    assert controller.get_pending_path() == str(second.resolve())
+    controller.cancel_pending()
+    assert controller.get_pending_operation() == ""
+    assert controller.get_pending_path() == ""
+    assert not first.exists()
+    assert not second.exists()
+
+    assert controller.prepare_create(first)
+    assert controller.commit_pending()
+    assert controller.workspace is not None
+    assert controller.workspace.root == first.resolve()
+    assert controller.get_pending_operation() == ""
+    assert controller.get_available()
+    assert controller.get_root_path() == str(first.resolve())
+
+
+def test_busy_rejection_calls_no_workspace_service(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    controller, coordinator = controller_for(settings_for(tmp_path / "settings.ini"))
+    calls: list[object] = []
+    monkeypatch.setattr(
+        "carnopy.app.workspace_controller.preflight_workspace_operation",
+        lambda *_args: calls.append(object()),
+    )
+    coordinator.set_busy(True)
+
+    assert not controller.prepare_create(tmp_path / "workspace")
+    assert calls == []
+    assert not controller.get_can_change_workspace()
+    assert "worker request is active" in controller.get_error_message()
+
+
+def test_commit_rejects_new_busy_state_and_clears_pending_without_mutation(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    controller, coordinator = controller_for(settings_for(tmp_path / "settings.ini"))
+    target = tmp_path / "workspace"
+    calls: list[object] = []
+    assert controller.prepare_create(target)
+    monkeypatch.setattr(
+        "carnopy.app.workspace_controller.commit_workspace_operation",
+        lambda *_args: calls.append(object()),
+    )
+    coordinator.set_busy(True)
+
+    assert not controller.commit_pending()
+    assert calls == []
+    assert not target.exists()
+    assert controller.get_pending_operation() == ""
+
+
+def test_failed_commit_preserves_active_workspace_recents_and_status_paths(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    settings = settings_for(tmp_path / "settings.ini")
+    controller, _coordinator = controller_for(settings)
+    active = initialize_workspace(tmp_path / "active")
+    assert controller.prepare_open(active.root)
+    assert controller.commit_pending()
+    original_recents = controller.recent_model.paths
+
+    raced = tmp_path / "raced"
+    assert controller.prepare_create(raced)
+    raced.mkdir()
+    assert not controller.commit_pending()
+
+    assert controller.workspace == active
+    assert controller.get_root_path() == str(active.root)
+    assert controller.recent_model.paths == original_recents
+    assert "already exists" in controller.get_error_message()
+    assert controller.get_pending_operation() == ""
+
+
+@pytest.mark.parametrize("operation", ["initialize_existing", "open"])
+def test_controller_rejects_existing_root_replacement_before_activation(
+    tmp_path: Path,
+    application: QCoreApplication,
+    operation: str,
+) -> None:
+    del application
+    controller, _coordinator = controller_for(settings_for(tmp_path / "settings.ini"))
+    active = initialize_workspace(tmp_path / "active")
+    assert controller.prepare_open(active.root)
+    assert controller.commit_pending()
+    target = tmp_path / operation
+    if operation == "open":
+        initialize_workspace(target)
+        assert controller.prepare_open(target)
+    else:
+        target.mkdir()
+        assert controller.prepare_initialize_existing(target)
+    displaced = tmp_path / f"{operation}-displaced"
+    target.rename(displaced)
+    if operation == "open":
+        initialize_workspace(target)
+    else:
+        target.mkdir()
+
+    assert not controller.commit_pending()
+    assert controller.workspace == active
+    assert "changed after confirmation" in controller.get_error_message()
+
+
+def test_recent_paths_restore_normalize_deduplicate_and_cap(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    settings = settings_for(tmp_path / "settings.ini")
+    raw = [
+        str(tmp_path / "first"),
+        str(tmp_path / "first" / ".." / "first"),
+        *(str(tmp_path / f"workspace-{index}") for index in range(15)),
+    ]
+    settings.setValue("recent_workspaces", raw)
+
+    controller, _coordinator = controller_for(settings)
+
+    expected = tuple(dict.fromkeys(str(Path(value).resolve()) for value in raw))[
+        :MAX_RECENT_WORKSPACES
+    ]
+    assert controller.recent_model.paths == expected
+    assert settings.value("recent_workspaces", [], type=list) == list(expected)
+
+
+def test_recent_model_roles_and_change_only_reset(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    path = str((tmp_path / "workspace").resolve())
+    model = RecentWorkspaceModel([path])
+    resets: list[str] = []
+    model.modelReset.connect(lambda: resets.append("reset"))
+    index = model.index(0, 0, QModelIndex())
+
+    assert model.data(index, int(Qt.ItemDataRole.DisplayRole)) == path
+    assert model.data(index, PATH_ROLE) == path
+    assert bytes(model.roleNames()[PATH_ROLE]) == b"path"
+    assert not model.replace([path])
+    assert resets == []
+    assert model.replace([str((tmp_path / "other").resolve())])
+    assert resets == ["reset"]
+
+
+def test_failed_stale_recent_open_preserves_row_order(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    settings = settings_for(tmp_path / "settings.ini")
+    stale = str((tmp_path / "missing").resolve())
+    other = str((tmp_path / "other").resolve())
+    settings.setValue("recent_workspaces", [stale, other])
+    controller, _coordinator = controller_for(settings)
+
+    assert not controller.prepare_open(stale)
+    assert controller.recent_model.paths == (stale, other)
+    assert "does not exist" in controller.get_error_message()
+
+
+def test_workspace_notifications_emit_only_when_values_change(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    controller, coordinator = controller_for(settings_for(tmp_path / "settings.ini"))
+    errors: list[str] = []
+    can_change: list[bool] = []
+    pending: list[str] = []
+    controller.error_message_changed.connect(lambda: errors.append(controller.get_error_message()))
+    controller.can_change_workspace_changed.connect(
+        lambda: can_change.append(controller.get_can_change_workspace())
+    )
+    controller.pending_operation_changed.connect(
+        lambda: pending.append(controller.get_pending_operation())
+    )
+
+    controller.report_error("problem")
+    controller.report_error("problem")
+    coordinator.set_busy(True)
+    coordinator.set_busy(True)
+    coordinator.set_busy(False)
+    assert controller.prepare_create(tmp_path / "workspace")
+    assert controller.prepare_create(tmp_path / "workspace")
+    controller.cancel_pending()
+    controller.cancel_pending()
+
+    assert errors[0] == "problem"
+    assert errors.count("problem") == 1
+    assert can_change == [False, True]
+    assert pending == ["create", "", "create", ""]
+
+
+def test_importing_desktop_controllers_does_not_load_scientific_dependencies() -> None:
+    code = """
+import sys
+import carnopy.app.desktop_controller
+import carnopy.app.workspace_controller
+for name in (
+    "CoolProp", "numpy", "pandas", "pyarrow", "matplotlib",
+    "carnopy.cli", "carnopy.pipeline", "carnopy.app.source_inspection",
+    "carnopy.app.table_preview", "carnopy.app.plot_rendering",
+):
+    if name in sys.modules:
+        raise SystemExit(name)
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", code],
+        check=False,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "QT_QPA_PLATFORM": "offscreen"},
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr

@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 from typing import cast
 
-from PySide6.QtCore import QSettings, Qt, QTimer
+from PySide6.QtCore import QModelIndex, QSettings, Qt, QTimer
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListView,
     QListWidget,
     QMainWindow,
     QMessageBox,
@@ -21,21 +22,16 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from carnopy.app.client import WorkerClient
 from carnopy.app.config_document import ConfigDocumentError
 from carnopy.app.config_editor import DatasetConfigEditor
+from carnopy.app.desktop_controller import DesktopController
 from carnopy.app.execution_page import DatasetExecutionPage
 from carnopy.app.inspection_page import InspectionPage
 from carnopy.app.jobs_page import JobsDiagnosticsPage
 from carnopy.app.plot_page import PlotPage
-from carnopy.app.request_coordinator import DesktopRequestCoordinator
 from carnopy.app.sources_page import WorkspaceSourcesPanel
-from carnopy.app.workspace import (
-    Workspace,
-    WorkspaceError,
-    initialize_workspace,
-    open_workspace,
-)
+from carnopy.app.workspace import Workspace
+from carnopy.app.workspace_controller import PATH_ROLE
 
 PAGE_TITLES = (
     "Workspace and Sources",
@@ -45,21 +41,27 @@ PAGE_TITLES = (
     "Plot",
     "Jobs and Diagnostics",
 )
-RECENT_WORKSPACES_KEY = "recent_workspaces"
 
 
 class MainWindow(QMainWindow):
     def __init__(
         self,
         *,
+        desktop_controller: DesktopController | None = None,
         settings: QSettings | None = None,
         initial_workspace: Path | None = None,
     ) -> None:
+        if desktop_controller is not None and settings is not None:
+            raise ValueError("supply either desktop_controller or settings, not both")
         super().__init__()
-        self.settings = settings or QSettings()
-        self.workspace: Workspace | None = None
-        self.client = WorkerClient(self)
-        self.coordinator = DesktopRequestCoordinator(self.client, self)
+        self.desktop_controller = desktop_controller or DesktopController(
+            settings=settings,
+            parent=self,
+        )
+        self.settings = self.desktop_controller.settings
+        self.client = self.desktop_controller.client
+        self.coordinator = self.desktop_controller.request_coordinator
+        self.workspace_controller = self.desktop_controller.workspace_controller
         self._close_when_idle = False
         self._close_after_plot_stop = False
         self.setWindowTitle("Carnopy")
@@ -98,9 +100,15 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.navigation)
         layout.addWidget(self.pages, 1)
         self.setCentralWidget(central)
-        self._set_workspace_pages_enabled(False)
+        self._set_workspace_pages_enabled(self.workspace_controller.get_available())
         self.configure_page.document_state_changed.connect(self._sync_execution_config)
         self.coordinator.busy_changed.connect(self._worker_busy_changed)
+        self.workspace_controller.workspace_changed.connect(self._workspace_activated)
+        self.workspace_controller.available_changed.connect(
+            lambda: self._set_workspace_pages_enabled(self.workspace_controller.get_available())
+        )
+        self.workspace_controller.status_message_changed.connect(self._update_workspace_status)
+        self.workspace_controller.error_message_changed.connect(self._update_workspace_status)
         self.sources_panel.inspect_requested.connect(self._inspect_source)
         self.inspection_page.inspection_loaded.connect(self.sources_panel.mark_inspectable)
         self.inspection_page.inspection_failed.connect(self.sources_panel.mark_uninspectable)
@@ -108,14 +116,16 @@ class MainWindow(QMainWindow):
         self.plot_page.render_finished.connect(self._plot_render_finished)
         self.execution_page.run_finalized.connect(self._run_finalized)
         self.execution_page.inspect_button.clicked.connect(self._inspect_finalized_run)
-        self._restore_preferences()
+        self._update_workspace_status()
 
         if initial_workspace is not None:
             self.workspace_path.setText(str(initial_workspace.expanduser().resolve()))
-            try:
-                self._activate_workspace(open_workspace(initial_workspace))
-            except WorkspaceError as exc:
-                self.workspace_status.setText(str(exc))
+            if self.workspace_controller.prepare_open(initial_workspace):
+                self.workspace_controller.commit_pending()
+
+    @property
+    def workspace(self) -> Workspace | None:
+        return self.workspace_controller.workspace
 
     def _workspace_page(self) -> QWidget:
         page = QWidget()
@@ -156,10 +166,9 @@ class MainWindow(QMainWindow):
         self.workspace_status.setWordWrap(True)
         layout.addWidget(self.workspace_status)
         layout.addWidget(QLabel("Recent workspaces"))
-        self.recent_workspaces = QListWidget()
-        self.recent_workspaces.itemDoubleClicked.connect(
-            lambda item: self._open_workspace_path(Path(item.text()))
-        )
+        self.recent_workspaces = QListView()
+        self.recent_workspaces.setModel(self.workspace_controller.recent_model)
+        self.recent_workspaces.doubleClicked.connect(self._open_recent_workspace)
         layout.addWidget(self.recent_workspaces, 1)
         self.sources_panel = WorkspaceSourcesPanel()
         layout.addWidget(self.sources_panel, 2)
@@ -176,13 +185,6 @@ class MainWindow(QMainWindow):
         layout.addStretch(1)
         return page
 
-    def _selected_path(self) -> Path | None:
-        value = self.workspace_path.text().strip()
-        if not value:
-            self.workspace_status.setText("Choose a workspace folder first.")
-            return None
-        return Path(value).expanduser().resolve()
-
     def _browse_workspace(self) -> None:
         selected = QFileDialog.getExistingDirectory(
             self,
@@ -193,73 +195,57 @@ class MainWindow(QMainWindow):
             self.workspace_path.setText(selected)
 
     def _create_workspace(self) -> None:
-        if self._workspace_change_blocked():
-            return
-        path = self._selected_path()
-        if path is None:
-            return
-        if path.exists():
-            self.workspace_status.setText(
-                "The selected path already exists. Use Initialize Existing Folder."
-            )
-            return
-        self._initialize_path(path)
+        if self.workspace_controller.prepare_create(self.workspace_path.text()):
+            self._complete_workspace_operation(confirm_initialization=False)
 
     def _initialize_existing_workspace(self) -> None:
-        if self._workspace_change_blocked():
-            return
-        path = self._selected_path()
-        if path is None:
-            return
-        if not path.is_dir():
-            self.workspace_status.setText(f"Existing folder does not exist: {path}")
-            return
-        answer = QMessageBox.question(
-            self,
-            "Initialize Existing Folder",
-            f"Initialize this folder as a Carnopy workspace?\n\n{path}",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if answer == QMessageBox.StandardButton.Yes:
-            self._initialize_path(path)
-
-    def _initialize_path(self, path: Path) -> None:
-        if self._workspace_change_blocked():
-            return
-        try:
-            workspace = initialize_workspace(path)
-        except (OSError, WorkspaceError) as exc:
-            self.workspace_status.setText(str(exc))
-            return
-        self._activate_workspace(workspace)
+        if self.workspace_controller.prepare_initialize_existing(self.workspace_path.text()):
+            self._complete_workspace_operation(confirm_initialization=True)
 
     def _open_selected_workspace(self) -> None:
-        if self._workspace_change_blocked():
-            return
-        path = self._selected_path()
-        if path is not None:
-            self._open_workspace_path(path)
+        self._open_workspace_path(self.workspace_path.text())
 
-    def _open_workspace_path(self, path: Path) -> None:
-        if self._workspace_change_blocked():
-            return
-        try:
-            workspace = open_workspace(path)
-        except WorkspaceError as exc:
-            self.workspace_status.setText(str(exc))
-            return
-        self._activate_workspace(workspace)
+    def _open_workspace_path(self, path: str | Path) -> None:
+        if self.workspace_controller.prepare_open(path):
+            self._complete_workspace_operation(confirm_initialization=False)
 
-    def _activate_workspace(self, workspace: Workspace) -> None:
-        if self._workspace_change_blocked():
+    def _open_recent_workspace(self, index: QModelIndex) -> None:
+        value = index.data(PATH_ROLE)
+        if not isinstance(value, str):
             return
-        if self.workspace != workspace and not self.configure_page.confirm_discard():
+        self.workspace_path.setText(value)
+        self._open_workspace_path(value)
+
+    def _complete_workspace_operation(self, *, confirm_initialization: bool) -> None:
+        pending_path = self.workspace_controller.get_pending_path()
+        pending_operation = self.workspace_controller.get_pending_operation()
+        workspace = self.workspace
+        opening_active = (
+            pending_operation == "open"
+            and workspace is not None
+            and pending_path == str(workspace.root)
+        )
+        if not opening_active and not self.configure_page.confirm_discard():
+            self.workspace_controller.cancel_pending()
             return
-        self.workspace = workspace
+        if confirm_initialization:
+            answer = QMessageBox.question(
+                self,
+                "Initialize Existing Folder",
+                f"Initialize this folder as a Carnopy workspace?\n\n{pending_path}",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                self.workspace_controller.cancel_pending()
+                return
+        self.workspace_controller.commit_pending()
+
+    def _workspace_activated(self, value: object) -> None:
+        if not isinstance(value, Workspace):
+            return
+        workspace = value
         self.workspace_path.setText(str(workspace.root))
-        self.workspace_status.setText(f"Open workspace: {workspace.root}")
-        self._set_workspace_pages_enabled(True)
         self.configure_page.set_workspace(workspace)
         self.execution_page.set_workspace(workspace)
         self.inspection_page.set_workspace(workspace)
@@ -267,7 +253,12 @@ class MainWindow(QMainWindow):
         self.jobs_page.set_workspace(workspace)
         self.sources_panel.set_workspace(workspace)
         self._sync_execution_config()
-        self._remember_workspace(workspace.root)
+
+    def _update_workspace_status(self) -> None:
+        message = self.workspace_controller.get_error_message()
+        if not message:
+            message = self.workspace_controller.get_status_message()
+        self.workspace_status.setText(message)
 
     def _set_workspace_pages_enabled(self, enabled: bool) -> None:
         for index in range(1, self.navigation.count()):
@@ -280,23 +271,6 @@ class MainWindow(QMainWindow):
             page = self.pages.widget(index)
             if page is not None:
                 page.setEnabled(enabled)
-
-    def _remember_workspace(self, path: Path) -> None:
-        stored = cast(list[object], self.settings.value(RECENT_WORKSPACES_KEY, [], type=list))
-        current = [str(value) for value in stored]
-        value = str(path)
-        recent = [value, *(item for item in current if item != value)][:10]
-        self.settings.setValue(RECENT_WORKSPACES_KEY, recent)
-        self._load_recent_workspaces(recent)
-
-    def _load_recent_workspaces(self, values: list[str]) -> None:
-        self.recent_workspaces.clear()
-        self.recent_workspaces.addItems(values)
-
-    def _restore_preferences(self) -> None:
-        stored = cast(list[object], self.settings.value(RECENT_WORKSPACES_KEY, [], type=list))
-        recent = [str(value) for value in stored]
-        self._load_recent_workspaces(recent)
 
     def center_on_primary_screen(self) -> None:
         screen = QApplication.primaryScreen()
@@ -334,8 +308,9 @@ class MainWindow(QMainWindow):
             event.ignore()
             return
         self.configure_page.shutdown()
-        self.coordinator.shutdown()
-        self.settings.sync()
+        if not self.desktop_controller.shutdown():
+            event.ignore()
+            return
         super().closeEvent(event)
 
     def _sync_execution_config(self) -> None:
@@ -359,21 +334,12 @@ class MainWindow(QMainWindow):
         self._close_after_plot_stop = False
         if isinstance(cleanup_error, str):
             self.navigation.setCurrentRow(4)
-            self.workspace_status.setText(
+            self.workspace_controller.report_error(
                 "Plot rendering stopped, but private staging cleanup failed. "
                 "Review the Plot page before closing."
             )
             return
         QTimer.singleShot(0, self.close)
-
-    def _workspace_change_blocked(self) -> bool:
-        if not self.coordinator.is_busy:
-            return False
-        self.workspace_status.setText(
-            "A worker request is active. Wait for it to finish or stop it before "
-            "creating, initializing, or opening another workspace."
-        )
-        return True
 
     def _confirm_force_stop_and_close(self) -> bool:
         message = QMessageBox(self)

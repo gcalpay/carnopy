@@ -5,7 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from carnopy.app.workspace import WorkspaceError, initialize_workspace, open_workspace
+from carnopy.app.workspace import (
+    WorkspaceError,
+    WorkspaceOperation,
+    commit_workspace_operation,
+    initialize_workspace,
+    open_workspace,
+    preflight_workspace_operation,
+)
 
 
 def test_initialize_and_reopen_workspace(tmp_path: Path) -> None:
@@ -25,6 +32,19 @@ def test_initialize_and_reopen_workspace(tmp_path: Path) -> None:
         )
     )
     assert open_workspace(root) == workspace
+
+
+def test_workspace_path_resolution_failure_is_a_workspace_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_resolution(_path: Path) -> Path:
+        raise OSError("simulated resolution failure")
+
+    monkeypatch.setattr(Path, "resolve", fail_resolution)
+
+    with pytest.raises(WorkspaceError, match="cannot be resolved"):
+        open_workspace(tmp_path / "workspace")
 
 
 def test_initialize_allows_nonempty_folder_without_overwriting(tmp_path: Path) -> None:
@@ -83,3 +103,67 @@ def test_open_rejects_missing_required_directory(tmp_path: Path) -> None:
 
     with pytest.raises(WorkspaceError, match="required workspace directory is missing"):
         open_workspace(workspace.root)
+
+
+def test_create_preflight_is_non_writing_and_commit_revalidates_absence(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "workspace"
+
+    plan = preflight_workspace_operation(root, "create")
+
+    assert not root.exists()
+    assert plan.operation == "create"
+    assert not plan.root_must_exist
+
+    root.mkdir()
+    with pytest.raises(WorkspaceError, match="already exists"):
+        commit_workspace_operation(plan)
+    assert not (root / ".carnopy-gui" / "workspace.json").exists()
+
+
+def test_initialize_existing_rejects_root_inode_replacement(tmp_path: Path) -> None:
+    root = tmp_path / "workspace"
+    root.mkdir()
+    plan = preflight_workspace_operation(root, "initialize_existing")
+    displaced = tmp_path / "displaced"
+    root.rename(displaced)
+    root.mkdir()
+
+    with pytest.raises(WorkspaceError, match="changed after confirmation"):
+        commit_workspace_operation(plan)
+
+    assert not (root / ".carnopy-gui" / "workspace.json").exists()
+
+
+def test_open_revalidates_workspace_and_rejects_root_inode_replacement(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "workspace"
+    original = initialize_workspace(root)
+    plan = preflight_workspace_operation(root, "open")
+    displaced = tmp_path / "displaced"
+    original.root.rename(displaced)
+    replacement = initialize_workspace(root)
+
+    with pytest.raises(WorkspaceError, match="changed after confirmation"):
+        commit_workspace_operation(plan)
+
+    assert open_workspace(root) == replacement
+
+
+@pytest.mark.parametrize("operation", ["create", "initialize_existing", "open"])
+def test_workspace_operation_commit_succeeds_after_unchanged_preflight(
+    tmp_path: Path,
+    operation: WorkspaceOperation,
+) -> None:
+    root = tmp_path / operation
+    if operation == "initialize_existing":
+        root.mkdir()
+    elif operation == "open":
+        initialize_workspace(root)
+
+    plan = preflight_workspace_operation(root, operation)
+    workspace = commit_workspace_operation(plan)
+
+    assert open_workspace(root) == workspace

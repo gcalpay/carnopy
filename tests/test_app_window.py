@@ -10,12 +10,16 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QEventLoop, QSettings, Qt, QTimer
+from PySide6.QtCore import QAbstractListModel, QEventLoop, QModelIndex, QSettings, Qt, QTimer
 from PySide6.QtGui import QCloseEvent
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QListView, QMessageBox
 
+from carnopy.app.desktop_controller import DesktopController
 from carnopy.app.window import PAGE_TITLES, MainWindow
 from carnopy.app.workspace import initialize_workspace
+from carnopy.app.workspace_controller import PATH_ROLE
+
+INVALID_MODEL_INDEX = QModelIndex()
 
 
 @pytest.fixture(scope="module")
@@ -139,11 +143,33 @@ def test_window_uses_one_shared_request_coordinator(
     del application
     window = MainWindow(settings=settings_for(tmp_path / "settings.ini"))
 
+    assert window.desktop_controller.client is window.client
+    assert window.desktop_controller.workspace_controller is window.workspace_controller
     assert window.coordinator.client is window.client
     assert window.configure_page.coordinator is window.coordinator
     assert window.execution_page.coordinator is window.coordinator
     assert window.inspection_page.coordinator is window.coordinator
     assert window.plot_page.coordinator is window.coordinator
+    window.close()
+
+
+def test_window_accepts_injected_composition_root_but_not_two_settings_sources(
+    tmp_path: Path,
+    application: QApplication,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    window = MainWindow(desktop_controller=desktop)
+
+    assert window.desktop_controller is desktop
+    assert window.settings is desktop.settings
+    assert window.recent_workspaces.model() is desktop.workspace_controller.recent_model
+
+    with pytest.raises(ValueError, match="either desktop_controller or settings"):
+        MainWindow(
+            desktop_controller=desktop,
+            settings=settings_for(tmp_path / "other.ini"),
+        )
     window.close()
 
 
@@ -163,6 +189,199 @@ def test_workspace_changes_are_blocked_before_side_effects_while_worker_is_busy(
 
     assert not target.exists()
     assert "worker request is active" in window.workspace_status.text()
+    window.close()
+
+
+def test_dirty_draft_cancellation_happens_before_workspace_mutation(
+    tmp_path: Path,
+    application: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    settings = settings_for(tmp_path / "settings.ini")
+    window = MainWindow(settings=settings)
+    target = tmp_path / "must-remain-absent"
+    window.workspace_path.setText(str(target))
+    monkeypatch.setattr(window.configure_page, "confirm_discard", lambda: False)
+
+    window._create_workspace()
+
+    assert not target.exists()
+    assert window.workspace is None
+    assert window.workspace_controller.get_pending_operation() == ""
+    assert window.workspace_controller.recent_model.paths == ()
+    assert settings.value("recent_workspaces", [], type=list) == []
+    window.close()
+
+
+def test_initialization_confirmation_cancellation_is_non_writing(
+    tmp_path: Path,
+    application: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    window = MainWindow(settings=settings_for(tmp_path / "settings.ini"))
+    target = tmp_path / "existing"
+    target.mkdir()
+    note = target / "note.txt"
+    note.write_text("unchanged", encoding="utf-8")
+    window.workspace_path.setText(str(target))
+    monkeypatch.setattr(window.configure_page, "confirm_discard", lambda: True)
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda *_args, **_kwargs: QMessageBox.StandardButton.No,
+    )
+
+    window._initialize_existing_workspace()
+
+    assert note.read_text(encoding="utf-8") == "unchanged"
+    assert not (target / ".carnopy-gui").exists()
+    assert window.workspace is None
+    assert window.workspace_controller.get_pending_operation() == ""
+    window.close()
+
+
+def test_opening_active_workspace_skips_discard_and_page_reset(
+    tmp_path: Path,
+    application: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = initialize_workspace(tmp_path / "workspace")
+    window = MainWindow(
+        settings=settings_for(tmp_path / "settings.ini"),
+        initial_workspace=workspace.root,
+    )
+    wait_for_idle(application, window)
+    propagated: list[str] = []
+    for name, page in (
+        ("configure", window.configure_page),
+        ("execution", window.execution_page),
+        ("inspection", window.inspection_page),
+        ("plot", window.plot_page),
+        ("jobs", window.jobs_page),
+        ("sources", window.sources_panel),
+    ):
+        monkeypatch.setattr(
+            page,
+            "set_workspace",
+            lambda _workspace, name=name: propagated.append(name),
+        )
+    with monkeypatch.context() as scoped:
+        scoped.setattr(
+            window.configure_page,
+            "confirm_discard",
+            lambda: pytest.fail("active workspace must not ask for discard"),
+        )
+        window._open_selected_workspace()
+
+    assert window.workspace == workspace
+    assert propagated == []
+    window.close()
+
+
+class _RoleTrackingModel(QAbstractListModel):
+    def __init__(self, path: str) -> None:
+        super().__init__()
+        self.path = path
+        self.roles: list[int] = []
+
+    def rowCount(self, _parent: QModelIndex = INVALID_MODEL_INDEX) -> int:
+        return 1
+
+    def data(
+        self,
+        index: QModelIndex,
+        role: int = int(Qt.ItemDataRole.DisplayRole),
+    ) -> object:
+        if not index.isValid():
+            return None
+        self.roles.append(role)
+        if role == PATH_ROLE:
+            return self.path
+        if role == int(Qt.ItemDataRole.DisplayRole):
+            return "display-only"
+        return None
+
+
+def test_recent_activation_uses_path_role(
+    tmp_path: Path,
+    application: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    window = MainWindow(settings=settings_for(tmp_path / "settings.ini"))
+    path = str((tmp_path / "canonical-workspace").resolve())
+    model = _RoleTrackingModel(path)
+    window.recent_workspaces.setModel(model)
+    prepared: list[str | Path] = []
+    monkeypatch.setattr(
+        window.workspace_controller,
+        "prepare_open",
+        lambda value: prepared.append(value) or False,
+    )
+
+    window._open_recent_workspace(model.index(0, 0))
+
+    assert isinstance(window.recent_workspaces, QListView)
+    assert prepared == [path]
+    assert PATH_ROLE in model.roles
+    assert window.workspace_path.text() == path
+    window.close()
+
+
+def test_successful_activation_propagates_once_to_every_workspace_page(
+    tmp_path: Path,
+    application: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    window = MainWindow(settings=settings_for(tmp_path / "settings.ini"))
+    propagated: list[str] = []
+    for name, page in (
+        ("configure", window.configure_page),
+        ("execution", window.execution_page),
+        ("inspection", window.inspection_page),
+        ("plot", window.plot_page),
+        ("jobs", window.jobs_page),
+        ("sources", window.sources_panel),
+    ):
+        monkeypatch.setattr(
+            page,
+            "set_workspace",
+            lambda _workspace, name=name: propagated.append(name),
+        )
+    target = tmp_path / "workspace"
+    window.workspace_path.setText(str(target))
+
+    window._create_workspace()
+
+    assert window.workspace is not None
+    assert window.workspace.root == target.resolve()
+    assert propagated == ["configure", "execution", "inspection", "plot", "jobs", "sources"]
+    window.close()
+
+
+def test_failed_open_preserves_active_workspace_and_page_state(
+    tmp_path: Path,
+    application: QApplication,
+) -> None:
+    workspace = initialize_workspace(tmp_path / "workspace")
+    window = MainWindow(
+        settings=settings_for(tmp_path / "settings.ini"),
+        initial_workspace=workspace.root,
+    )
+    wait_for_idle(application, window)
+    prior_config_workspace = window.configure_page.workspace
+    missing = tmp_path / "missing"
+    window.workspace_path.setText(str(missing))
+
+    window._open_selected_workspace()
+
+    assert window.workspace == workspace
+    assert window.configure_page.workspace is prior_config_workspace
+    assert window.workspace_path.text() == str(missing)
+    assert "does not exist" in window.workspace_status.text()
     window.close()
 
 

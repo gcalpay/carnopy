@@ -111,7 +111,7 @@ Stage 1 deliberately avoids extracting every future controller at once.
 Required work:
 
 - Keep `WorkerClient` limited to QProcess transport, JSON Lines parsing, stderr,
-  process state, and terminal-envelope construction.
+  process state, and one transport outcome after process exit.
 - Add one request coordinator that owns the active request UUID, type, owner,
   cancellation policy, terminal envelope, force-stop state, and parent cleanup
   finalizer.
@@ -126,6 +126,16 @@ Required work:
   validation, and reference-state advisories.
 - Adapt the Widgets frontend to these controllers without changing user-visible
   behavior.
+
+Completed Stage 1 slices:
+
+- request ownership, coordinator-owned terminal envelopes, cancellation policy,
+  and export finalization;
+- QML-ready workspace state, trusted two-phase workspace operations, direct
+  recent-workspace model binding, and the desktop composition root.
+
+The next Stage 1 slice extracts dataset draft state while keeping Widgets as the
+active frontend.
 
 Execution, inspection, table, plotting, jobs, and recovery controllers are not
 preemptively extracted in Stage 1. Extract each immediately before its QML
