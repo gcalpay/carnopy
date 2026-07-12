@@ -25,62 +25,14 @@ Milestone 1 supports pure fluids through CoolProp and three modes:
 
 Carnopy has two user interfaces:
 
-- **Command-line interface:** the published `0.1.0a2` package provides the
-  complete dataset, sweep, inspection, plotting, and preparation workflow.
-- **Desktop GUI:** the next `0.1.0a3` release adds a Linux-first PySide6
+- **Command-line interface:** version `0.1.0a3` provides the complete dataset,
+  sweep, inspection, plotting, and preparation workflow.
+- **Desktop GUI:** version `0.1.0a3` provides an optional Linux-first PySide6
   application for dataset configuration, generation, inspection, and plotting.
-  It is available from the current source tree but is not yet published on
-  PyPI.
 
 ## Installation
 
-### Published command-line package
-
-Install the current CLI alpha:
-
-```bash
-python -m pip install "carnopy==0.1.0a2"
-```
-
-Add Matplotlib plotting support:
-
-```bash
-python -m pip install "carnopy[viz]==0.1.0a2"
-```
-
-Add SafeTensors preparation exports:
-
-```bash
-python -m pip install "carnopy[ml]==0.1.0a2"
-```
-
-Install every optional capability published in `0.1.0a2`:
-
-```bash
-python -m pip install "carnopy[all]==0.1.0a2"
-```
-
-For an isolated CLI tool installation:
-
-```bash
-uv tool install "carnopy==0.1.0a2"
-```
-
-To include every optional capability published with that CLI release:
-
-```bash
-uv tool install "carnopy[all]==0.1.0a2"
-```
-
-The published base package supports the full command-line dataset workflow.
-PyArrow remains a core dependency because Parquet is a first-class output
-format. The `viz` extra installs Matplotlib; `ml` installs SafeTensors; and
-`all` combines the optional capabilities available in that release.
-
-### After `0.1.0a3` is published
-
-The following commands describe the next release and will work only after
-`0.1.0a3` is published on PyPI.
+### Version `0.1.0a3`
 
 Install the CLI-first base package:
 
@@ -118,16 +70,30 @@ Install every optional capability:
 python -m pip install "carnopy[all]==0.1.0a3"
 ```
 
+For an isolated CLI installation:
+
+```bash
+uv tool install "carnopy==0.1.0a3"
+```
+
+To include every optional capability:
+
+```bash
+uv tool install "carnopy[all]==0.1.0a3"
+```
+
 The `0.1.0a3` base install remains CLI-first and does not install Matplotlib,
 SafeTensors, scikit-learn, or PySide6. Its lightweight `carnopy-app --help`,
 `carnopy-gui --help`, and version entry points remain available, while opening
 the desktop requires the `app` extra. The `app` extra installs PySide6
-Essentials and Matplotlib; `all` combines `viz`, `ml`, `analysis`, and `app`. The desktop
-launchers remain separate from the CLI as `carnopy-app` and `carnopy-gui`.
+Essentials and Matplotlib. The `all` extra is the dependency union of `viz`,
+`ml`, `analysis`, and `app`. The desktop launchers remain separate from the CLI
+as `carnopy-app` and `carnopy-gui`. PyArrow remains a core dependency because
+Parquet is a first-class output format.
 
-### Try the `0.1.0a3` desktop from source
+### Development checkout
 
-The next-release GUI can be run from a source checkout before publication:
+Run the desktop directly from a source checkout:
 
 ```bash
 git clone https://github.com/gcalpay/carnopy.git
@@ -136,8 +102,7 @@ uv sync --locked --extra app --group dev
 uv run --locked carnopy-gui
 ```
 
-The source-tree `app` extra has the same dependency boundary documented for the
-next release.
+The source-tree `app` extra has the same optional dependency boundary.
 
 ## Quick start
 
@@ -1273,10 +1238,8 @@ Report security vulnerabilities privately according to the
 ## Project status and roadmap
 
 Carnopy remains alpha software while its public schemas and backend boundaries
-are validated through real use. The prepared `0.1.0a3` source tree includes
-GUI-1, a Linux-first desktop frontend for the existing dataset workflow. The
-currently published PyPI release remains `0.1.0a2` until `0.1.0a3` is actually
-published. Do not treat the source-tree version as a published artifact.
+are validated through real use. Version `0.1.0a3` includes GUI-1, a Linux-first
+desktop frontend for the existing dataset workflow.
 
 GUI-1 includes the worker protocol, workspace shell, dataset configuration
 editor, dataset execution, read-only bundle inspection, bounded table previews,
@@ -1304,11 +1267,11 @@ efficiencies, critical-point and operating limits, and minimum turbine-exhaust
 quality. Saturated liquid alone is not a pump cavitation margin; NPSH may be
 reported only when sufficient hydraulic-system and pump data are supplied.
 
-The next application milestone is a cross-platform modern QML presentation
-layer with an optional PyVista/VTK exact-grid 3D property surface. GUI-2
-sweep/preparation creation, TFC screening, mixtures, additional backends, and
-standalone desktop installers remain deferred. These capabilities will use the
-same worker and core Python boundaries rather than duplicate scientific logic.
+The planned `0.1.0a4` application milestone is a cross-platform modern QML
+presentation layer with optional native VTK exact-grid 3D visualization. GUI-2
+will use the same worker and core Python boundaries rather than duplicate
+scientific logic. TFC screening, mixtures, additional backends, and standalone
+desktop installers remain deferred.
 
 Use [GitHub issues](https://github.com/gcalpay/carnopy/issues) for bug reports,
 scientific discrepancies, and focused feature requests. See
