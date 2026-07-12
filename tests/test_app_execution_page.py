@@ -4,7 +4,7 @@ import hashlib
 import os
 from pathlib import Path
 from typing import cast
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 
@@ -14,42 +14,114 @@ pytest.importorskip("PySide6")
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QApplication
 
-from carnopy.app.client import WorkerClient
 from carnopy.app.config_document import SavedConfigSnapshot
 from carnopy.app.execution_page import DatasetExecutionPage
-from carnopy.app.protocol import WorkerEvent
+from carnopy.app.protocol import EventType, RequestType, WorkerEvent
+from carnopy.app.request_coordinator import (
+    DesktopRequestCoordinator,
+    RequestOutcome,
+)
 from carnopy.app.workspace import initialize_workspace
 
 
-class StubClient(QObject):
+class StubSession(QObject):
     event_received = Signal(object)
-    request_succeeded = Signal(object)
-    request_failed = Signal(object)
-    request_finished = Signal(object)
+    completed = Signal(object)
+    policy_changed = Signal()
+
+    def __init__(self, request_type: RequestType) -> None:
+        super().__init__()
+        self.request_id = uuid4()
+        self.request_type = request_type
+        self.cooperative_cancel_available = False
+        self.force_stop_available = False
+        self.cancelled = False
+        self.stopped = False
+
+    def cancel(self) -> bool:
+        if not self.cooperative_cancel_available:
+            return False
+        self.cancelled = True
+        self.cooperative_cancel_available = False
+        self.policy_changed.emit()
+        return True
+
+    def force_stop(self) -> bool:
+        if not self.force_stop_available:
+            return False
+        self.stopped = True
+        self.force_stop_available = False
+        self.policy_changed.emit()
+        return True
+
+
+class StubCoordinator(QObject):
     busy_changed = Signal(bool)
 
     def __init__(self) -> None:
         super().__init__()
         self.is_busy = False
-        self.started: list[tuple[str, dict[str, object]]] = []
-        self.active_id: UUID | None = None
-        self.cancelled = False
-        self.stopped = False
+        self.started: list[tuple[str, RequestType, dict[str, object]]] = []
+        self.session: StubSession | None = None
 
-    def start_request(self, kind: str, payload: dict[str, object]) -> UUID:
-        self.started.append((kind, payload))
-        self.active_id = uuid4()
+    def start_request(
+        self,
+        owner: str,
+        request_type: RequestType,
+        payload: dict[str, object],
+    ) -> StubSession:
+        self.started.append((owner, request_type, payload))
+        self.session = StubSession(request_type)
         self.is_busy = True
         self.busy_changed.emit(True)
-        return self.active_id
+        return self.session
 
-    def request_cancel(self) -> bool:
-        self.cancelled = True
-        return True
+    def emit_event(self, event_type: str, payload: dict[str, object]) -> None:
+        assert self.session is not None
+        if event_type == "phase":
+            self.session.cooperative_cancel_available = bool(payload.get("cancellable", False))
+            self.session.policy_changed.emit()
+        self.session.event_received.emit(
+            WorkerEvent(
+                request_id=self.session.request_id,
+                type=cast(EventType, event_type),
+                payload=payload,
+            )
+        )
 
-    def force_stop(self) -> bool:
-        self.stopped = True
-        return True
+    def finish(self, payload: dict[str, object]) -> None:
+        assert self.session is not None
+        terminal = WorkerEvent(
+            request_id=self.session.request_id,
+            type="result",
+            payload=payload,
+        )
+        envelope: dict[str, object] = {
+            "request_id": str(self.session.request_id),
+            "request_type": self.session.request_type,
+            "terminal_event": terminal.model_dump(mode="json"),
+            "stderr": "",
+            "exit_code": 0,
+            "exit_status": "normal",
+            "force_stopped": False,
+            "cleanup_error": None,
+        }
+        outcome = RequestOutcome(
+            request_id=self.session.request_id,
+            request_type=self.session.request_type,
+            owner="execution",
+            terminal_event=terminal,
+            client_failure=None,
+            stderr="",
+            exit_code=0,
+            exit_status="normal",
+            force_stopped=False,
+            cleanup_error=None,
+            terminal_envelope=envelope,
+        )
+        self.session.completed.emit(outcome)
+        self.is_busy = False
+        self.busy_changed.emit(False)
 
 
 @pytest.fixture(scope="module")
@@ -73,8 +145,8 @@ def test_execution_page_uses_saved_digest_and_fixed_workspace_destinations(
         yaml_bytes=content,
         sha256=hashlib.sha256(content).hexdigest(),
     )
-    stub = StubClient()
-    page = DatasetExecutionPage(cast(WorkerClient, stub))
+    stub = StubCoordinator()
+    page = DatasetExecutionPage(cast(DesktopRequestCoordinator, stub))
     page.set_workspace(workspace)
     page.set_snapshot(snapshot)
 
@@ -82,6 +154,7 @@ def test_execution_page_uses_saved_digest_and_fixed_workspace_destinations(
 
     assert stub.started == [
         (
+            "execution",
             "generate_dataset",
             {
                 "config_path": str(config),
@@ -104,32 +177,17 @@ def test_execution_page_tracks_owned_progress_and_finalized_result(
     config = workspace.configs / "dataset.yaml"
     config.write_bytes(b"value\n")
     snapshot = SavedConfigSnapshot(config, b"value\n", hashlib.sha256(b"value\n").hexdigest())
-    stub = StubClient()
-    page = DatasetExecutionPage(cast(WorkerClient, stub))
+    stub = StubCoordinator()
+    page = DatasetExecutionPage(cast(DesktopRequestCoordinator, stub))
     page.set_workspace(workspace)
     page.set_snapshot(snapshot)
     finalized: list[Path] = []
     page.run_finalized.connect(finalized.append)
     page.generate()
-    request_id = stub.active_id
-    assert request_id is not None
-
-    stub.event_received.emit(
-        WorkerEvent(
-            request_id=request_id,
-            type="phase",
-            payload={"name": "generation", "cancellable": True},
-        )
-    )
-    stub.event_received.emit(
-        WorkerEvent(
-            request_id=request_id,
-            type="progress",
-            payload={"completed": 7, "total": 10},
-        )
-    )
+    stub.emit_event("phase", {"name": "generation", "cancellable": True})
+    stub.emit_event("progress", {"completed": 7, "total": 10})
     run = workspace.outputs / "run"
-    stub.request_succeeded.emit(
+    stub.finish(
         {
             "run_status": "completed_with_invalid_rows",
             "row_count": 10,
@@ -147,27 +205,6 @@ def test_execution_page_tracks_owned_progress_and_finalized_result(
     assert page.inspect_button.isEnabled()
 
 
-def test_execution_page_ignores_events_for_other_requests(
-    tmp_path: Path,
-    application: QApplication,
-) -> None:
-    del application
-    workspace = initialize_workspace(tmp_path / "workspace")
-    stub = StubClient()
-    page = DatasetExecutionPage(cast(WorkerClient, stub))
-    page.set_workspace(workspace)
-
-    stub.event_received.emit(
-        WorkerEvent(
-            request_id=uuid4(),
-            type="progress",
-            payload={"completed": 99, "total": 100},
-        )
-    )
-
-    assert page.progress.value() == 0
-
-
 def test_execution_page_requests_cooperative_cancel_before_force_stop(
     tmp_path: Path,
     application: QApplication,
@@ -177,16 +214,19 @@ def test_execution_page_requests_cooperative_cancel_before_force_stop(
     config = workspace.configs / "dataset.yaml"
     config.write_bytes(b"value\n")
     snapshot = SavedConfigSnapshot(config, b"value\n", hashlib.sha256(b"value\n").hexdigest())
-    stub = StubClient()
-    page = DatasetExecutionPage(cast(WorkerClient, stub))
+    stub = StubCoordinator()
+    page = DatasetExecutionPage(cast(DesktopRequestCoordinator, stub))
     page.set_workspace(workspace)
     page.set_snapshot(snapshot)
     page.generate()
 
+    stub.emit_event("phase", {"name": "generation", "cancellable": True})
     assert page.cancel()
-    assert stub.cancelled
-    assert not stub.stopped
-    page._show_force_stop()
+    assert stub.session is not None
+    assert stub.session.cancelled
+    assert not stub.session.stopped
+    stub.session.force_stop_available = True
+    stub.session.policy_changed.emit()
     assert not page.force_stop_button.isHidden()
     assert page.force_stop()
-    assert stub.stopped
+    assert stub.session.stopped

@@ -4,14 +4,13 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from uuid import uuid4
 
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QSettings, Qt
+from PySide6.QtCore import QEventLoop, QSettings, Qt, QTimer
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import QApplication
 
@@ -30,11 +29,21 @@ def settings_for(path: Path) -> QSettings:
     return QSettings(str(path), QSettings.Format.IniFormat)
 
 
+def wait_for_idle(application: QApplication, window: MainWindow) -> None:
+    if not window.coordinator.is_busy:
+        return
+    loop = QEventLoop()
+    window.coordinator.busy_changed.connect(lambda busy: None if busy else loop.quit())
+    QTimer.singleShot(15_000, loop.quit)
+    loop.exec()
+    application.processEvents()
+    assert not window.coordinator.is_busy
+
+
 def test_shell_has_six_workspace_gated_pages(
     tmp_path: Path,
     application: QApplication,
 ) -> None:
-    del application
     window = MainWindow(settings=settings_for(tmp_path / "settings.ini"))
 
     assert window.navigation.count() == 6
@@ -51,7 +60,7 @@ def test_shell_has_six_workspace_gated_pages(
     for index in range(1, 6):
         assert window.navigation.item(index).flags() & Qt.ItemFlag.ItemIsEnabled
         assert window.pages.widget(index).isEnabled()
-    window.client.shutdown()
+    wait_for_idle(application, window)
     window.close()
 
 
@@ -78,12 +87,11 @@ def test_recents_are_isolated_in_supplied_settings(
     tmp_path: Path,
     application: QApplication,
 ) -> None:
-    del application
     settings_path = tmp_path / "settings.ini"
     workspace = initialize_workspace(tmp_path / "workspace")
     window = MainWindow(settings=settings_for(settings_path), initial_workspace=workspace.root)
     window.resize(900, 600)
-    window.client.shutdown()
+    wait_for_idle(application, window)
     window.close()
 
     settings = settings_for(settings_path)
@@ -99,7 +107,7 @@ def test_stale_window_geometry_is_ignored(
     stale = MainWindow(settings=settings)
     stale.move(-100_000, -100_000)
     settings.setValue("window_geometry", stale.saveGeometry())
-    stale.client.shutdown()
+    stale.coordinator.shutdown()
     stale.close()
 
     window = MainWindow(settings=settings)
@@ -107,7 +115,7 @@ def test_stale_window_geometry_is_ignored(
     primary = application.primaryScreen()
     assert primary is not None
     assert primary.availableGeometry().intersects(window.frameGeometry())
-    window.client.shutdown()
+    window.coordinator.shutdown()
     window.close()
 
 
@@ -124,15 +132,18 @@ def test_window_can_show_and_close_offscreen(
     assert not window.isVisible()
 
 
-def test_window_uses_one_shared_worker_client(tmp_path: Path, application: QApplication) -> None:
+def test_window_uses_one_shared_request_coordinator(
+    tmp_path: Path,
+    application: QApplication,
+) -> None:
     del application
     window = MainWindow(settings=settings_for(tmp_path / "settings.ini"))
 
-    assert window.configure_page.client is window.client
-    assert window.execution_page.client is window.client
-    assert window.inspection_page.client is window.client
-    assert window.plot_page.client is window.client
-    assert window.jobs_page.client is window.client
+    assert window.coordinator.client is window.client
+    assert window.configure_page.coordinator is window.coordinator
+    assert window.execution_page.coordinator is window.coordinator
+    assert window.inspection_page.coordinator is window.coordinator
+    assert window.plot_page.coordinator is window.coordinator
     window.close()
 
 
@@ -147,7 +158,7 @@ def test_workspace_changes_are_blocked_before_side_effects_while_worker_is_busy(
     window.workspace_path.setText(str(target))
 
     with monkeypatch.context() as scoped:
-        scoped.setattr(type(window.client), "is_busy", property(lambda _self: True))
+        scoped.setattr(type(window.coordinator), "is_busy", property(lambda _self: True))
         window._create_workspace()
 
     assert not target.exists()
@@ -162,11 +173,11 @@ def test_close_during_plot_render_requires_force_stop_and_keeps_open_on_cleanup_
 ) -> None:
     del application
     window = MainWindow(settings=settings_for(tmp_path / "settings.ini"))
-    window.plot_page._request_id = uuid4()
     stopped: list[bool] = []
 
     with monkeypatch.context() as scoped:
-        scoped.setattr(type(window.client), "is_busy", property(lambda _self: True))
+        scoped.setattr(type(window.coordinator), "is_busy", property(lambda _self: True))
+        scoped.setattr(type(window.coordinator), "active_owner", property(lambda _self: "plot"))
         scoped.setattr(window, "_confirm_force_stop_and_close", lambda: True)
         scoped.setattr(
             window.plot_page,
@@ -185,7 +196,6 @@ def test_close_during_plot_render_requires_force_stop_and_keeps_open_on_cleanup_
     assert not window._close_after_plot_stop
     assert window.navigation.currentRow() == 4
     assert "cleanup failed" in window.workspace_status.text()
-    window.plot_page._request_id = None
     window.close()
 
 

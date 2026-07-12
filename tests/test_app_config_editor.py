@@ -591,7 +591,7 @@ def test_changing_workspace_clears_the_previous_workspace_draft(
     del application
     editor = configured_editor(tmp_path)
     editor._open_document(new_document(yaml.safe_load(template_text("property_table"))))
-    editor.client._capabilities["heos"] = capabilities()
+    editor._capability_cache["heos"] = capabilities()
     replacement = initialize_workspace(tmp_path / "replacement")
 
     editor.set_workspace(replacement)
@@ -738,10 +738,10 @@ def _wait_for_worker(application: QApplication, editor: DatasetConfigEditor) -> 
         timed_out = True
         loop.quit()
 
-    editor.client.busy_changed.connect(lambda busy: None if busy else loop.quit())
+    editor.coordinator.busy_changed.connect(lambda busy: None if busy else loop.quit())
     QTimer.singleShot(15_000, timeout)
-    if editor.client.is_busy:
+    if editor.coordinator.is_busy:
         loop.exec()
     application.processEvents()
     assert not timed_out
-    assert not editor.client.is_busy
+    assert not editor.coordinator.is_busy

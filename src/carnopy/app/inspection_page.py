@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any, cast
-from uuid import UUID
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -21,7 +20,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from carnopy.app.client import WorkerClient
+from carnopy.app.protocol import RequestType
+from carnopy.app.request_coordinator import (
+    DesktopRequestCoordinator,
+    RequestOutcome,
+    RequestSession,
+)
 from carnopy.app.table_model import LOCAL_PAGE_SIZE, PreviewTableModel
 from carnopy.app.workspace import Workspace
 
@@ -33,13 +37,17 @@ class InspectionPage(QWidget):
     inspection_failed = Signal(object, str)
     inspection_changed = Signal(object)
 
-    def __init__(self, client: WorkerClient, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        coordinator: DesktopRequestCoordinator,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
-        self.client = client
+        self.coordinator = coordinator
         self.workspace: Workspace | None = None
         self.source: Path | None = None
         self.payload: dict[str, Any] | None = None
-        self._request_id: UUID | None = None
+        self._session: RequestSession | None = None
         self._request_kind: str | None = None
         self._requested_page_offset = 0
 
@@ -124,15 +132,13 @@ class InspectionPage(QWidget):
         root.addWidget(self.splitter, 1)
         self._update_preview_actions()
 
-        client.request_succeeded.connect(self._request_succeeded)
-        client.request_failed.connect(self._request_failed)
-        client.busy_changed.connect(self._busy_changed)
+        coordinator.busy_changed.connect(self._busy_changed)
 
     def set_workspace(self, workspace: Workspace | None) -> None:
         self.workspace = workspace
 
     def inspect(self, source: Path) -> None:
-        if self.client.is_busy:
+        if self.coordinator.is_busy:
             self.status.setText("Another Carnopy worker request is active.")
             return
         self.source = source.expanduser().absolute()
@@ -147,8 +153,9 @@ class InspectionPage(QWidget):
             page_offset=0,
         )
         self.arrays_label.setText("Array/tensor artifacts: inspection pending")
-        self._request_id = self.client.start_request(
-            "inspect_source", {"source_path": str(self.source)}
+        self._start_request(
+            "inspect_source",
+            {"source_path": str(self.source)},
         )
         self._request_kind = "inspection"
 
@@ -183,11 +190,11 @@ class InspectionPage(QWidget):
         payload = self.payload
         source = self.source
         table_id = self.selected_table_id()
-        if payload is None or source is None or table_id is None or self.client.is_busy:
+        if payload is None or source is None or table_id is None or self.coordinator.is_busy:
             return
         self._requested_page_offset = offset if page_offset is None else page_offset
         self.status.setText(f"Loading rows {offset}-{offset + 499}…")
-        self._request_id = self.client.start_request(
+        self._start_request(
             "preview_table",
             {
                 "source_path": str(source),
@@ -198,6 +205,26 @@ class InspectionPage(QWidget):
             },
         )
         self._request_kind = "preview"
+
+    def _start_request(self, request_type: RequestType, payload: dict[str, object]) -> None:
+        session = self.coordinator.start_request(
+            "inspection",
+            request_type,
+            payload,
+        )
+        self._session = session
+        session.completed.connect(self._request_completed)
+
+    def _request_completed(self, value: object) -> None:
+        outcome = cast(RequestOutcome, value)
+        session = self._session
+        if session is None or outcome.request_id != session.request_id:
+            return
+        result = outcome.result_payload
+        if result is not None:
+            self._request_succeeded(result)
+            return
+        self._request_failed(outcome.failure_payload or {})
 
     def _browse_file(self) -> None:
         selected, _filter = QFileDialog.getOpenFileName(
@@ -219,7 +246,7 @@ class InspectionPage(QWidget):
             self.inspect(Path(selected))
 
     def _request_succeeded(self, value: object) -> None:
-        if self._request_id is None:
+        if self._session is None:
             return
         payload = cast(dict[str, Any], value)
         if self._request_kind == "preview":
@@ -227,7 +254,7 @@ class InspectionPage(QWidget):
                 return
             self.table_model.set_block(payload, page_offset=self._requested_page_offset)
             self.status.setText("Table preview loaded without changing source row order.")
-            self._request_id = None
+            self._session = None
             self._request_kind = None
             self._update_preview_range()
             return
@@ -235,7 +262,7 @@ class InspectionPage(QWidget):
             return
         self.payload = payload
         self.inspection_changed.emit(payload)
-        self._request_id = None
+        self._session = None
         self._request_kind = None
         self.status.setText(
             f"Inspection complete: {payload.get('source_kind')} — "
@@ -262,12 +289,12 @@ class InspectionPage(QWidget):
         self._update_preview_actions()
 
     def _request_failed(self, value: object) -> None:
-        if self._request_id is None:
+        if self._session is None:
             return
         payload = cast(dict[str, Any], value)
         message = str(payload.get("message", "inspection failed"))
         request_kind = self._request_kind
-        self._request_id = None
+        self._session = None
         self._request_kind = None
         self.status.setText(f"Uninspectable: {message}")
         if request_kind == "inspection":
@@ -298,7 +325,7 @@ class InspectionPage(QWidget):
         self._update_preview_actions()
 
     def _update_preview_actions(self) -> None:
-        available = not self.client.is_busy
+        available = not self.coordinator.is_busy
         self.preview_button.setEnabled(available and self.selected_table_id() is not None)
         self.previous_button.setEnabled(available and self.table_model.page_offset > 0)
         self.next_button.setEnabled(

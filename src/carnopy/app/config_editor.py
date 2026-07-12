@@ -32,6 +32,12 @@ from carnopy.app.config_document import (
     write_new_config,
 )
 from carnopy.app.config_form import DatasetConfigForm
+from carnopy.app.protocol import RequestType
+from carnopy.app.request_coordinator import (
+    DesktopRequestCoordinator,
+    RequestOutcome,
+    RequestSession,
+)
 from carnopy.app.visualization_editor import VisualizationEditor
 from carnopy.app.workspace import Workspace
 from carnopy.templates import template_text
@@ -53,14 +59,19 @@ class DatasetConfigEditor(QWidget):
         self,
         parent: QWidget | None = None,
         *,
-        client: WorkerClient | None = None,
+        coordinator: DesktopRequestCoordinator | None = None,
     ) -> None:
         super().__init__(parent)
         self.workspace: Workspace | None = None
         self.document: DatasetConfigDocument | None = None
-        self._owns_client = client is None
-        self.client = client or WorkerClient(self)
+        self._owns_coordinator = coordinator is None
+        if coordinator is None:
+            client = WorkerClient(self)
+            coordinator = DesktopRequestCoordinator(client, self)
+        self.coordinator = coordinator
         self.capabilities: dict[str, Any] | None = None
+        self._capability_cache: dict[str, dict[str, Any]] = {}
+        self._session: RequestSession | None = None
         self._pending_action: str | None = None
         self._pending_path: Path | None = None
         self._pending_content: bytes | None = None
@@ -90,9 +101,7 @@ class DatasetConfigEditor(QWidget):
         self.form.coordinate_change_requested.connect(self._coordinate_changed)
         self.form.message.connect(self.status.setText)
         self.visualization.changed.connect(self._refresh_form_state)
-        self.client.request_succeeded.connect(self._worker_succeeded)
-        self.client.request_failed.connect(self._worker_failed)
-        self.client.busy_changed.connect(self._worker_busy_changed)
+        self.coordinator.busy_changed.connect(self._worker_busy_changed)
         self._set_editor_enabled(False)
 
     def _build_actions(self) -> QHBoxLayout:
@@ -138,13 +147,13 @@ class DatasetConfigEditor(QWidget):
             self.status.setText("Open a workspace to create or import a configuration.")
             return
         self._set_editor_enabled(False)
-        cached = self.client.cached_capabilities("heos")
+        cached = self._capability_cache.get("heos")
         if cached is not None:
             self._apply_capabilities(cached)
             return
         self.status.setText("Loading current Carnopy capabilities…")
         self._pending_action = "capabilities"
-        self.client.start_request("describe_capabilities", {"model": "heos"})
+        self._start_worker("describe_capabilities", {"model": "heos"})
 
     def confirm_discard(self) -> bool:
         if self.document is None or not self.document.needs_save:
@@ -159,8 +168,8 @@ class DatasetConfigEditor(QWidget):
         return answer == QMessageBox.StandardButton.Discard
 
     def shutdown(self) -> None:
-        if self._owns_client:
-            self.client.shutdown()
+        if self._owns_coordinator:
+            self.coordinator.shutdown()
 
     def execution_snapshot(self) -> SavedConfigSnapshot:
         if self.workspace is None or self.document is None:
@@ -200,7 +209,7 @@ class DatasetConfigEditor(QWidget):
         self._pending_action = "import"
         self._pending_path = Path(selected).resolve()
         self.status.setText("Validating imported configuration…")
-        self.client.start_request(
+        self._start_worker(
             "load_dataset_config",
             {"config_path": str(self._pending_path)},
         )
@@ -246,10 +255,41 @@ class DatasetConfigEditor(QWidget):
         self._pending_path = path
         self._pending_content = content
         self.status.setText("Validating exact YAML before Save…")
-        self.client.start_request(
+        self._start_worker(
             "validate_dataset_config",
             {"yaml_text": content.decode("utf-8"), "source_name": str(path)},
         )
+
+    def _start_worker(
+        self,
+        request_type: RequestType,
+        payload: dict[str, object],
+    ) -> None:
+        try:
+            session = self.coordinator.start_request(
+                "configuration",
+                request_type,
+                payload,
+            )
+        except (RuntimeError, ValueError) as exc:
+            self._clear_pending()
+            self.status.setText(str(exc))
+            self._update_actions()
+            return
+        self._session = session
+        session.completed.connect(self._worker_completed)
+
+    def _worker_completed(self, value: object) -> None:
+        outcome = cast(RequestOutcome, value)
+        session = self._session
+        if session is None or outcome.request_id != session.request_id:
+            return
+        self._session = None
+        result = outcome.result_payload
+        if result is not None:
+            self._worker_succeeded(result)
+            return
+        self._worker_failed(outcome.failure_payload or {})
 
     def _worker_succeeded(self, payload: object) -> None:
         result = cast(dict[str, Any], payload)
@@ -258,6 +298,9 @@ class DatasetConfigEditor(QWidget):
             return
         self._clear_pending(keep_paths=action in {"save_new", "save_replace"})
         if action == "capabilities":
+            model = result.get("model")
+            if isinstance(model, str):
+                self._capability_cache[model] = result
             self._apply_capabilities(result)
         elif action in {"import", "reload"}:
             self._finish_import(result)
@@ -466,7 +509,7 @@ class DatasetConfigEditor(QWidget):
         clicked = message.clickedButton()
         if clicked is reload_button:
             self._pending_action = "reload"
-            self.client.start_request(
+            self._start_worker(
                 "load_dataset_config",
                 {"config_path": str(self.document.source_path)},
             )
@@ -499,7 +542,7 @@ class DatasetConfigEditor(QWidget):
         self._update_actions()
 
     def _update_actions(self) -> None:
-        busy = self.client.is_busy
+        busy = self.coordinator.is_busy
         self.save_button.setEnabled(not busy and self.document is not None and self._form_valid)
         self.save_as_button.setEnabled(not busy and self.document is not None and self._form_valid)
 

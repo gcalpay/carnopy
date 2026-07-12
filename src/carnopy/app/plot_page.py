@@ -5,7 +5,6 @@ import json
 import shlex
 from pathlib import Path
 from typing import Any, cast
-from uuid import UUID
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -21,10 +20,16 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from carnopy.app.client import WorkerClient
+from carnopy.app.export_cleanup import ImageExportFinalizer
 from carnopy.app.plot_preview import PlotPreview, PlotPreviewError
 from carnopy.app.plot_request_dialog import PlotRequestDialog
+from carnopy.app.plot_staging import create_plot_staging
 from carnopy.app.protocol import WorkerEvent
+from carnopy.app.request_coordinator import (
+    DesktopRequestCoordinator,
+    RequestOutcome,
+    RequestSession,
+)
 from carnopy.app.workspace import Workspace
 
 
@@ -32,15 +37,19 @@ class PlotPage(QWidget):
     request_changed = Signal(object)
     render_finished = Signal(object)
 
-    def __init__(self, client: WorkerClient, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        coordinator: DesktopRequestCoordinator,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
-        self.client = client
+        self.coordinator = coordinator
         self.workspace: Workspace | None = None
         self.inspection: dict[str, Any] | None = None
         self.context: dict[str, Any] | None = None
         self.request: dict[str, Any] | None = None
         self._source_identity: tuple[str, str] | None = None
-        self._request_id: UUID | None = None
+        self._session: RequestSession | None = None
         self._cleanup_error: str | None = None
 
         layout = QVBoxLayout(self)
@@ -113,15 +122,11 @@ class PlotPage(QWidget):
         self.splitter.setStretchFactor(0, 1)
         self.splitter.setStretchFactor(1, 2)
 
-        self.client.event_received.connect(self._event_received)
-        self.client.request_succeeded.connect(self._request_succeeded)
-        self.client.request_failed.connect(self._request_failed)
-        self.client.request_finished.connect(self._request_finished)
-        self.client.busy_changed.connect(self._busy_changed)
+        self.coordinator.busy_changed.connect(self._busy_changed)
 
     @property
     def owns_active_request(self) -> bool:
-        return self._request_id is not None
+        return self._session is not None
 
     @property
     def source_path(self) -> Path | None:
@@ -192,7 +197,7 @@ class PlotPage(QWidget):
 
     def edit_request(self) -> None:
         context = self.context
-        if context is None or self.client.is_busy:
+        if context is None or self.coordinator.is_busy:
             return
         dialog = PlotRequestDialog(
             context,
@@ -221,7 +226,7 @@ class PlotPage(QWidget):
             or source is None
             or inspection is None
             or request is None
-            or self.client.is_busy
+            or self.coordinator.is_busy
         ):
             return
         revision = inspection.get("revision")
@@ -240,23 +245,37 @@ class PlotPage(QWidget):
             "format": self.format_selector.currentText(),
             "plot": copy.deepcopy(request),
         }
+        finalizer: ImageExportFinalizer | None = None
         try:
-            self._request_id = self.client.start_request("render_plot", payload)
+            lease = create_plot_staging(workspace.root)
+            payload["staging"] = lease.worker_payload()
+            finalizer = ImageExportFinalizer(lease)
+            session = self.coordinator.start_request(
+                "plot",
+                "render_plot",
+                payload,
+                finalizer=finalizer,
+            )
         except Exception as exc:  # pragma: no cover - defensive Qt process boundary
+            if finalizer is not None:
+                finalizer.finish(False)
             self.phase_label.setText("Failed to start plot render")
             self.result_summary.setPlainText(str(exc))
             self._update_actions()
             return
-        self.force_stop_button.setVisible(True)
-        self.force_stop_button.setEnabled(True)
+        self._session = session
+        session.event_received.connect(self._event_received)
+        session.completed.connect(self._request_completed)
+        session.policy_changed.connect(self._session_policy_changed)
         self._update_actions()
 
     def force_stop(self, *, confirm: bool = True) -> bool:
-        if not self.owns_active_request or not self.client.is_busy:
+        session = self._session
+        if session is None:
             return False
         if confirm and not self._confirm_force_stop():
             return False
-        stopped = self.client.force_stop()
+        stopped = session.force_stop()
         if stopped:
             self.force_stop_button.setEnabled(False)
             self.phase_label.setText("Force-stopping plot worker…")
@@ -274,23 +293,26 @@ class PlotPage(QWidget):
 
     def _event_received(self, value: object) -> None:
         event = cast(WorkerEvent, value)
-        if event.request_id != self._request_id:
-            return
         if event.type == "phase":
             self.phase_label.setText(f"Phase: {event.payload.get('name', 'unknown')}")
         elif event.type in {"result", "error", "cancelled"}:
             self.force_stop_button.setEnabled(False)
 
-    def _request_finished(self, value: object) -> None:
-        envelope = cast(dict[str, object], value)
-        if str(envelope.get("request_id")) != str(self._request_id):
+    def _request_completed(self, value: object) -> None:
+        outcome = cast(RequestOutcome, value)
+        session = self._session
+        if session is None or outcome.request_id != session.request_id:
             return
-        cleanup_error = envelope.get("cleanup_error")
-        self._cleanup_error = cleanup_error if isinstance(cleanup_error, str) else None
-        self.render_finished.emit(envelope)
+        self._cleanup_error = outcome.cleanup_error
+        self.render_finished.emit(outcome.terminal_envelope)
+        result = outcome.result_payload
+        if result is not None:
+            self._request_succeeded(result)
+            return
+        self._request_failed(outcome.failure_payload or {})
 
     def _request_succeeded(self, value: object) -> None:
-        if self._request_id is None:
+        if self._session is None:
             return
         payload = cast(dict[str, Any], value)
         advisories = payload.get("advisories")
@@ -323,7 +345,7 @@ class PlotPage(QWidget):
         self._finish_request()
 
     def _request_failed(self, value: object) -> None:
-        if self._request_id is None:
+        if self._session is None:
             return
         payload = cast(dict[str, Any], value)
         code = str(payload.get("code", "execution_failed"))
@@ -342,12 +364,15 @@ class PlotPage(QWidget):
         self._finish_request()
 
     def _finish_request(self) -> None:
-        self._request_id = None
+        self._session = None
         self.force_stop_button.setVisible(False)
         self.force_stop_button.setEnabled(False)
         self._update_actions()
 
     def _busy_changed(self, _busy: bool) -> None:
+        self._update_actions()
+
+    def _session_policy_changed(self) -> None:
         self._update_actions()
 
     def _render_inputs_changed(self, _value: str) -> None:
@@ -390,10 +415,14 @@ class PlotPage(QWidget):
     def _update_actions(self) -> None:
         editable = self.context is not None
         renderable = self.workspace is not None and editable
-        idle = not self.client.is_busy
+        idle = not self.coordinator.is_busy
         self.edit_button.setEnabled(editable and idle)
         self.format_selector.setEnabled(idle)
         self.render_button.setEnabled(renderable and self.request is not None and idle)
+        session = self._session
+        force_available = session is not None and session.force_stop_available
+        self.force_stop_button.setVisible(force_available)
+        self.force_stop_button.setEnabled(force_available)
 
     def _set_reference_advisory(self, context: dict[str, Any]) -> None:
         reference = context.get("reference_state")

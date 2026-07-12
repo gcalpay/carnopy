@@ -3,9 +3,8 @@ from __future__ import annotations
 import shlex
 from pathlib import Path
 from typing import Any, cast
-from uuid import UUID
 
-from PySide6.QtCore import QTimer, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -16,9 +15,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from carnopy.app.client import WorkerClient
 from carnopy.app.config_document import SavedConfigSnapshot
 from carnopy.app.protocol import RequestType, WorkerEvent
+from carnopy.app.request_coordinator import (
+    DesktopRequestCoordinator,
+    RequestOutcome,
+    RequestSession,
+)
 from carnopy.app.workspace import Workspace
 
 
@@ -27,16 +30,20 @@ class DatasetExecutionPage(QWidget):
 
     run_finalized = Signal(object)
     request_started = Signal(object)
+    request_event = Signal(object)
     request_terminal = Signal(object)
 
-    def __init__(self, client: WorkerClient, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        coordinator: DesktopRequestCoordinator,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
-        self.client = client
+        self.coordinator = coordinator
         self.workspace: Workspace | None = None
         self.snapshot: SavedConfigSnapshot | None = None
-        self._request_id: UUID | None = None
+        self._session: RequestSession | None = None
         self._operation: str | None = None
-        self._cancellable = False
 
         root = QVBoxLayout(self)
         heading = QLabel("Validate and Generate")
@@ -90,20 +97,12 @@ class DatasetExecutionPage(QWidget):
         root.addWidget(self.inspect_button)
         root.addStretch(1)
 
-        self.force_timer = QTimer(self)
-        self.force_timer.setSingleShot(True)
-        self.force_timer.setInterval(5_000)
-        self.force_timer.timeout.connect(self._show_force_stop)
-        self.client.event_received.connect(self._event_received)
-        self.client.request_succeeded.connect(self._request_succeeded)
-        self.client.request_failed.connect(self._request_failed)
-        self.client.request_finished.connect(self._request_finished)
-        self.client.busy_changed.connect(self._busy_changed)
+        self.coordinator.busy_changed.connect(self._busy_changed)
         self._update_actions()
 
     @property
     def owns_active_request(self) -> bool:
-        return self._request_id is not None
+        return self._session is not None
 
     def set_workspace(self, workspace: Workspace | None) -> None:
         self.workspace = workspace
@@ -133,10 +132,9 @@ class DatasetExecutionPage(QWidget):
     def _start(self, operation: str) -> None:
         snapshot = self.snapshot
         workspace = self.workspace
-        if snapshot is None or workspace is None or self.client.is_busy:
+        if snapshot is None or workspace is None or self.coordinator.is_busy:
             return
         self._operation = operation
-        self._cancellable = True
         self.result.setText("Request accepted; waiting for worker progress.")
         self.phase_label.setText("Starting worker…")
         self.progress.setRange(0, 0)
@@ -157,10 +155,14 @@ class DatasetExecutionPage(QWidget):
                 "output_root": str(workspace.outputs),
                 "figures_root": str(workspace.figures),
             }
-        self._request_id = self.client.start_request(request_type, payload)
+        session = self.coordinator.start_request("execution", request_type, payload)
+        self._session = session
+        session.event_received.connect(self._event_received)
+        session.completed.connect(self._request_completed)
+        session.policy_changed.connect(self._session_policy_changed)
         self.request_started.emit(
             {
-                "request_id": str(self._request_id),
+                "request_id": str(session.request_id),
                 "operation": operation,
                 "snapshot": snapshot,
             }
@@ -168,36 +170,29 @@ class DatasetExecutionPage(QWidget):
         self._update_actions()
 
     def cancel(self) -> bool:
-        if not self._cancellable or not self.owns_active_request:
+        session = self._session
+        if session is None:
             return False
-        if not self.client.request_cancel():
+        if not session.cancel():
             return False
-        self.cancel_button.setEnabled(False)
         self.phase_label.setText("Cancellation requested; waiting for a safe checkpoint…")
-        self.force_timer.start()
+        self._update_actions()
         return True
 
     def force_stop(self) -> bool:
-        stopped = self.client.force_stop()
+        session = self._session
+        stopped = session is not None and session.force_stop()
         if stopped:
             self.force_stop_button.setEnabled(False)
             self.phase_label.setText("Force-stopping worker…")
         return stopped
 
-    def _show_force_stop(self) -> None:
-        if self.owns_active_request and self.client.is_busy:
-            self.force_stop_button.setVisible(True)
-            self.force_stop_button.setEnabled(True)
-
     def _event_received(self, value: object) -> None:
         event = cast(WorkerEvent, value)
-        if event.request_id != self._request_id:
-            return
+        self.request_event.emit(event)
         if event.type == "phase":
             phase = str(event.payload.get("name", "unknown"))
-            self._cancellable = bool(event.payload.get("cancellable", True))
             self.phase_label.setText(f"Phase: {phase}")
-            self.cancel_button.setEnabled(self._cancellable)
         elif event.type == "progress":
             completed = int(event.payload.get("completed", 0))
             total = int(event.payload.get("total", 0))
@@ -205,19 +200,23 @@ class DatasetExecutionPage(QWidget):
             self.progress.setValue(min(completed, max(total, 1)))
             self.progress.setFormat(f"{completed} / {total} rows")
         elif event.type in {"result", "error", "cancelled"}:
-            self._cancellable = False
             self.cancel_button.setEnabled(False)
-            self.force_timer.stop()
             self.force_stop_button.setVisible(False)
 
-    def _request_finished(self, value: object) -> None:
-        envelope = cast(dict[str, object], value)
-        if str(envelope.get("request_id")) != str(self._request_id):
+    def _request_completed(self, value: object) -> None:
+        outcome = cast(RequestOutcome, value)
+        session = self._session
+        if session is None or outcome.request_id != session.request_id:
             return
-        self.request_terminal.emit(envelope)
+        self.request_terminal.emit(outcome.terminal_envelope)
+        result = outcome.result_payload
+        if result is not None:
+            self._request_succeeded(result)
+            return
+        self._request_failed(outcome.failure_payload or {})
 
     def _request_succeeded(self, value: object) -> None:
-        if self._request_id is None:
+        if self._session is None:
             return
         payload = cast(dict[str, Any], value)
         operation = self._operation
@@ -248,7 +247,7 @@ class DatasetExecutionPage(QWidget):
         self._finish_local_request()
 
     def _request_failed(self, value: object) -> None:
-        if self._request_id is None:
+        if self._session is None:
             return
         payload = cast(dict[str, Any], value)
         code = str(payload.get("code", "execution_failed"))
@@ -263,11 +262,12 @@ class DatasetExecutionPage(QWidget):
         self._finish_local_request()
 
     def _finish_local_request(self) -> None:
-        self.force_timer.stop()
         self.force_stop_button.setVisible(False)
-        self._cancellable = False
-        self._request_id = None
+        self._session = None
         self._operation = None
+        self._update_actions()
+
+    def _session_policy_changed(self) -> None:
         self._update_actions()
 
     def _busy_changed(self, _busy: bool) -> None:
@@ -297,9 +297,11 @@ class DatasetExecutionPage(QWidget):
 
     def _update_actions(self) -> None:
         ready = self.snapshot is not None and self.workspace is not None
-        available = ready and not self.client.is_busy
+        available = ready and not self.coordinator.is_busy
         self.validate_button.setEnabled(available)
         self.generate_button.setEnabled(available)
-        self.cancel_button.setEnabled(
-            self.owns_active_request and self.client.is_busy and self._cancellable
-        )
+        session = self._session
+        self.cancel_button.setEnabled(session is not None and session.cooperative_cancel_available)
+        force_available = session is not None and session.force_stop_available
+        self.force_stop_button.setVisible(force_available)
+        self.force_stop_button.setEnabled(force_available)

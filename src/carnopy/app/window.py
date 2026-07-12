@@ -28,6 +28,7 @@ from carnopy.app.execution_page import DatasetExecutionPage
 from carnopy.app.inspection_page import InspectionPage
 from carnopy.app.jobs_page import JobsDiagnosticsPage
 from carnopy.app.plot_page import PlotPage
+from carnopy.app.request_coordinator import DesktopRequestCoordinator
 from carnopy.app.sources_page import WorkspaceSourcesPanel
 from carnopy.app.workspace import (
     Workspace,
@@ -58,6 +59,7 @@ class MainWindow(QMainWindow):
         self.settings = settings or QSettings()
         self.workspace: Workspace | None = None
         self.client = WorkerClient(self)
+        self.coordinator = DesktopRequestCoordinator(self.client, self)
         self._close_when_idle = False
         self._close_after_plot_stop = False
         self.setWindowTitle("Carnopy")
@@ -66,11 +68,11 @@ class MainWindow(QMainWindow):
         self.navigation = QListWidget()
         self.navigation.setFixedWidth(220)
         self.pages = QStackedWidget()
-        self.configure_page = DatasetConfigEditor(client=self.client)
-        self.execution_page = DatasetExecutionPage(self.client)
-        self.inspection_page = InspectionPage(self.client)
-        self.plot_page = PlotPage(self.client)
-        self.jobs_page = JobsDiagnosticsPage(self.client, self.execution_page)
+        self.configure_page = DatasetConfigEditor(coordinator=self.coordinator)
+        self.execution_page = DatasetExecutionPage(self.coordinator)
+        self.inspection_page = InspectionPage(self.coordinator)
+        self.plot_page = PlotPage(self.coordinator)
+        self.jobs_page = JobsDiagnosticsPage(self.execution_page)
         for index, title in enumerate(PAGE_TITLES):
             self.navigation.addItem(title)
             if index == 0:
@@ -98,7 +100,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
         self._set_workspace_pages_enabled(False)
         self.configure_page.document_state_changed.connect(self._sync_execution_config)
-        self.client.busy_changed.connect(self._worker_busy_changed)
+        self.coordinator.busy_changed.connect(self._worker_busy_changed)
         self.sources_panel.inspect_requested.connect(self._inspect_source)
         self.inspection_page.inspection_loaded.connect(self.sources_panel.mark_inspectable)
         self.inspection_page.inspection_failed.connect(self.sources_panel.mark_uninspectable)
@@ -305,13 +307,13 @@ class MainWindow(QMainWindow):
         self.move(frame.topLeft())
 
     def closeEvent(self, event: QCloseEvent) -> None:
-        if self.client.is_busy:
-            if self.execution_page.owns_active_request:
+        if self.coordinator.is_busy:
+            if self.coordinator.active_owner == "execution":
                 self._close_when_idle = True
                 self.execution_page.cancel()
                 event.ignore()
                 return
-            if self.plot_page.owns_active_request:
+            if self.coordinator.active_owner == "plot":
                 if self._close_after_plot_stop:
                     event.ignore()
                     return
@@ -332,7 +334,7 @@ class MainWindow(QMainWindow):
             event.ignore()
             return
         self.configure_page.shutdown()
-        self.client.shutdown()
+        self.coordinator.shutdown()
         self.settings.sync()
         super().closeEvent(event)
 
@@ -365,7 +367,7 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(0, self.close)
 
     def _workspace_change_blocked(self) -> bool:
-        if not self.client.is_busy:
+        if not self.coordinator.is_busy:
             return False
         self.workspace_status.setText(
             "A worker request is active. Wait for it to finish or stop it before "

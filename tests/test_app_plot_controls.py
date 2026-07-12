@@ -4,7 +4,7 @@ import json
 import os
 from pathlib import Path
 from typing import cast
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pandas as pd
 import pytest
@@ -19,35 +19,61 @@ from PySide6.QtWidgets import QApplication, QComboBox, QLineEdit
 from carnopy.app.client import WorkerClient
 from carnopy.app.plot_page import PlotPage, _equivalent_plot_command
 from carnopy.app.plot_request_dialog import PlotRequestDialog
-from carnopy.app.protocol import WorkerEvent
+from carnopy.app.protocol import RequestType, WorkerEvent
+from carnopy.app.request_coordinator import (
+    DesktopRequestCoordinator,
+    RequestFinalizer,
+    RequestOutcome,
+)
 from carnopy.app.source_inspection import inspect_for_app
 from carnopy.provenance import sha256_file
 
 
-class StubClient(QObject):
+class StubSession(QObject):
     event_received = Signal(object)
-    request_succeeded = Signal(object)
-    request_failed = Signal(object)
-    request_finished = Signal(object)
+    completed = Signal(object)
+    policy_changed = Signal()
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.request_id = uuid4()
+        self.force_stop_available = True
+        self.cooperative_cancel_available = False
+        self.stopped = False
+
+    def force_stop(self) -> bool:
+        if not self.force_stop_available:
+            return False
+        self.stopped = True
+        self.force_stop_available = False
+        self.policy_changed.emit()
+        return True
+
+
+class StubCoordinator(QObject):
     busy_changed = Signal(bool)
 
     def __init__(self) -> None:
         super().__init__()
         self.is_busy = False
-        self.started: list[tuple[str, dict[str, object]]] = []
-        self.active_id: UUID | None = None
-        self.stopped = False
+        self.started: list[tuple[str, RequestType, dict[str, object]]] = []
+        self.session: StubSession | None = None
+        self.finalizer: RequestFinalizer | None = None
 
-    def start_request(self, kind: str, payload: dict[str, object]) -> UUID:
-        self.started.append((kind, payload))
-        self.active_id = uuid4()
+    def start_request(
+        self,
+        owner: str,
+        request_type: RequestType,
+        payload: dict[str, object],
+        *,
+        finalizer: RequestFinalizer | None = None,
+    ) -> StubSession:
+        self.started.append((owner, request_type, payload))
+        self.session = StubSession()
+        self.finalizer = finalizer
         self.is_busy = True
         self.busy_changed.emit(True)
-        return self.active_id
-
-    def force_stop(self) -> bool:
-        self.stopped = True
-        return True
+        return self.session
 
     def finish(
         self,
@@ -55,18 +81,15 @@ class StubClient(QObject):
         *,
         cleanup_error: str | None = None,
     ) -> None:
-        assert self.active_id is not None
-        request_id = self.active_id
-        self.is_busy = False
-        self.busy_changed.emit(False)
-        self.request_finished.emit(
-            {
-                "request_id": str(request_id),
-                "request_type": "render_plot",
-                "cleanup_error": cleanup_error,
-            }
+        assert self.session is not None
+        if self.finalizer is not None:
+            cleanup_error = self.finalizer.finish(True) or cleanup_error
+        terminal = WorkerEvent(
+            request_id=self.session.request_id,
+            type="result",
+            payload=payload,
         )
-        self.request_succeeded.emit(payload)
+        self._complete(terminal, None, cleanup_error, force_stopped=False)
 
     def fail(
         self,
@@ -74,18 +97,51 @@ class StubClient(QObject):
         *,
         cleanup_error: str | None = None,
     ) -> None:
-        assert self.active_id is not None
-        request_id = self.active_id
+        assert self.session is not None
+        if self.finalizer is not None:
+            cleanup_error = self.finalizer.finish(False) or cleanup_error
+        self._complete(
+            None,
+            payload,
+            cleanup_error,
+            force_stopped=payload.get("code") == "force_stopped",
+        )
+
+    def _complete(
+        self,
+        terminal: WorkerEvent | None,
+        failure: dict[str, object] | None,
+        cleanup_error: str | None,
+        *,
+        force_stopped: bool,
+    ) -> None:
+        assert self.session is not None
+        envelope: dict[str, object] = {
+            "request_id": str(self.session.request_id),
+            "request_type": "render_plot",
+            "terminal_event": None if terminal is None else terminal.model_dump(mode="json"),
+            "stderr": "",
+            "exit_code": 9 if force_stopped else 0,
+            "exit_status": "crash" if force_stopped else "normal",
+            "force_stopped": force_stopped,
+            "cleanup_error": cleanup_error,
+        }
+        outcome = RequestOutcome(
+            request_id=self.session.request_id,
+            request_type="render_plot",
+            owner="plot",
+            terminal_event=terminal,
+            client_failure=failure,
+            stderr="",
+            exit_code=9 if force_stopped else 0,
+            exit_status="crash" if force_stopped else "normal",
+            force_stopped=force_stopped,
+            cleanup_error=cleanup_error,
+            terminal_envelope=envelope,
+        )
+        self.session.completed.emit(outcome)
         self.is_busy = False
         self.busy_changed.emit(False)
-        self.request_finished.emit(
-            {
-                "request_id": str(request_id),
-                "request_type": "render_plot",
-                "cleanup_error": cleanup_error,
-            }
-        )
-        self.request_failed.emit(payload)
 
 
 @pytest.fixture(scope="module")
@@ -231,7 +287,8 @@ def test_plot_page_clears_session_request_when_source_changes(
 ) -> None:
     del application
     client = WorkerClient()
-    page = PlotPage(client)
+    coordinator = DesktopRequestCoordinator(client)
+    page = PlotPage(coordinator)
     first = inspect_for_app(_dataset(tmp_path / "first.parquet")).public_payload()
     second = inspect_for_app(_dataset(tmp_path / "second.parquet")).public_payload()
 
@@ -257,7 +314,7 @@ def test_plot_page_clears_session_request_when_source_changes(
     assert not page.edit_button.isEnabled()
     assert "unavailable" in page.status.text()
     page.close()
-    client.shutdown()
+    coordinator.shutdown()
 
 
 def test_plot_page_renders_owned_request_and_reports_result(
@@ -269,8 +326,8 @@ def test_plot_page_renders_owned_request_and_reports_result(
     workspace = initialize_workspace(tmp_path / "workspace")
     dataset = _dataset(tmp_path / "My Dataset.parquet")
     inspection = inspect_for_app(dataset).public_payload()
-    stub = StubClient()
-    page = PlotPage(cast(WorkerClient, stub))
+    stub = StubCoordinator()
+    page = PlotPage(cast(DesktopRequestCoordinator, stub))
     page.set_workspace(workspace)
     page.set_inspection(inspection)
     page.request = {
@@ -286,27 +343,19 @@ def test_plot_page_renders_owned_request_and_reports_result(
 
     assert page.owns_active_request
     assert not page.force_stop_button.isHidden()
-    assert stub.started == [
-        (
-            "render_plot",
-            {
-                "workspace_path": str(workspace.root),
-                "source_path": str(dataset),
-                "inspection_revision": inspection["revision"],
-                "plot_name": "density-curves",
-                "format": "png",
-                "plot": page.request,
-            },
-        )
-    ]
-    page._event_received(
-        WorkerEvent(
-            request_id=uuid4(),
-            type="phase",
-            payload={"name": "foreign-request"},
-        )
-    )
-    assert page.phase_label.text() == "Starting plot worker…"
+    assert len(stub.started) == 1
+    owner, request_type, started_payload = stub.started[0]
+    assert owner == "plot"
+    assert request_type == "render_plot"
+    assert {key: value for key, value in started_payload.items() if key != "staging"} == {
+        "workspace_path": str(workspace.root),
+        "source_path": str(dataset),
+        "inspection_revision": inspection["revision"],
+        "plot_name": "density-curves",
+        "format": "png",
+        "plot": page.request,
+    }
+    assert isinstance(started_payload["staging"], dict)
     image = workspace.figures / "my-dataset" / "density-curves.png"
     image.parent.mkdir()
     rendered = QImage(40, 20, QImage.Format.Format_RGB32)
@@ -360,8 +409,8 @@ def test_plot_page_force_stop_is_immediate_confirmed_and_reports_cleanup_failure
 
     workspace = initialize_workspace(tmp_path / "workspace")
     dataset = _dataset(tmp_path / "dataset.parquet")
-    stub = StubClient()
-    page = PlotPage(cast(WorkerClient, stub))
+    stub = StubCoordinator()
+    page = PlotPage(cast(DesktopRequestCoordinator, stub))
     page.set_workspace(workspace)
     page.set_inspection(inspect_for_app(dataset).public_payload())
     page.request = {"name": "density", "kind": "pv"}
@@ -370,7 +419,8 @@ def test_plot_page_force_stop_is_immediate_confirmed_and_reports_cleanup_failure
     monkeypatch.setattr(page, "_confirm_force_stop", lambda: True)
 
     assert page.force_stop()
-    assert stub.stopped
+    assert stub.session is not None
+    assert stub.session.stopped
 
     stub.fail(
         {
