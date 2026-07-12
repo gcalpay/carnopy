@@ -14,6 +14,7 @@ find_package(
 )
 
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(VTK_BUILD_ALL_MODULES OFF CACHE BOOL "" FORCE)
 set(VTK_BUILD_DOCUMENTATION OFF CACHE BOOL "" FORCE)
 set(VTK_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(VTK_BUILD_SPHINX_DOCUMENTATION OFF CACHE BOOL "" FORCE)
@@ -28,7 +29,12 @@ set(VTK_WRAP_JAVA OFF CACHE BOOL "" FORCE)
 set(VTK_WRAP_JAVASCRIPT OFF CACHE BOOL "" FORCE)
 set(VTK_WRAP_PYTHON OFF CACHE BOOL "" FORCE)
 set(VTK_WRAP_SERIALIZATION OFF CACHE BOOL "" FORCE)
+# VTK enables broad StandAlone and Rendering module groups by default. Keep
+# those groups disabled and request only the bridge's direct modules below;
+# VTK still enables their required transitive dependencies.
 set(VTK_GROUP_ENABLE_Qt DONT_WANT CACHE STRING "" FORCE)
+set(VTK_GROUP_ENABLE_Rendering DONT_WANT CACHE STRING "" FORCE)
+set(VTK_GROUP_ENABLE_StandAlone DONT_WANT CACHE STRING "" FORCE)
 set(VTK_MODULE_ENABLE_VTK_FiltersSources YES CACHE STRING "" FORCE)
 set(VTK_MODULE_ENABLE_VTK_GUISupportQtQuick YES CACHE STRING "" FORCE)
 
@@ -60,4 +66,3 @@ vtk_module_autoinit(
 set_target_properties(_native PROPERTIES INSTALL_RPATH "$ORIGIN")
 
 install(TARGETS _native LIBRARY DESTINATION carnopy_vtk_bridge)
-

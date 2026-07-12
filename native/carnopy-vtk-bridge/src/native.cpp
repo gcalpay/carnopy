@@ -40,7 +40,9 @@ public:
 
 vtkStandardNewMacro(QualificationSceneData);
 
-class QualificationCone final : public QQuickVTKItem
+// qmlRegisterType creates a QQmlElement wrapper derived from the registered
+// type, so this class must remain subclassable.
+class QualificationCone : public QQuickVTKItem
 {
   Q_OBJECT
   Q_PROPERTY(int interactionCount READ interactionCount NOTIFY interactionCountChanged)
