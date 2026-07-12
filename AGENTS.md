@@ -64,27 +64,38 @@ change dependency declarations without explicit maintainer authorization.
 
 Select every Codex parent, subagent, and reviewer explicitly. GPT-5.4,
 GPT-5.4 mini, Terra, and automatically selected models or reviewers are
-forbidden. The only allowed model and reasoning combinations are GPT-5.6 Luna
-with xhigh or max reasoning and GPT-5.6 Sol with medium, high, xhigh, or max
-reasoning. Do not substitute GPT-5.4 mini for routine, exploratory,
+forbidden. The normal allowed combinations are GPT-5.6 Luna with max reasoning
+and GPT-5.6 Sol with medium, high, xhigh, or max reasoning. Reasoning effort
+ends at max. Ultra is a separate Codex orchestration mode, not another
+reasoning effort. Do not substitute GPT-5.4 mini for routine, exploratory,
 documentation, summarization, review, or background work.
 
-Before spawning an agent, require an explicitly configured role whose resolved
-model and reasoning effort match that allowlist. Do not spawn automatically
-routed built-in `default`, `explorer`, or `worker` agents unless their role
-configuration explicitly pins an allowed combination. If no pinned allowed
-role is available, continue in the allowed parent session or stop and ask the
-maintainer.
+Before spawning an agent, explicitly pin its model and reasoning effort to an
+allowed combination. Built-in `default`, `explorer`, and `worker` roles may be
+used when the spawn request pins both values. Never omit those values or accept
+automatic routing. If an allowed combination cannot be selected, continue in
+the allowed parent session or stop and ask the maintainer.
 
-Use the following models according to task complexity:
+Use this escalation ladder according to task complexity:
 
-- GPT-5.6 Luna with xhigh or max reasoning or GPT-5.6 Sol with medium reasoning
-  for routine, bounded work;
-- GPT-5.6 Sol with high or xhigh reasoning for substantial implementation,
-  migration, testing, and review;
-- GPT-5.6 Sol with max reasoning only for the most difficult architectural,
-  native-integration, scientific, numerical, release-critical, or debugging
-  work, or after a lower allowed tier is genuinely stuck.
+- GPT-5.6 Luna with max reasoning for easy, routine, and bounded work;
+- GPT-5.6 Sol with medium reasoning for ordinary implementation,
+  documentation, testing, and analysis;
+- GPT-5.6 Sol with high reasoning for more difficult implementation, migration,
+  debugging, and review;
+- GPT-5.6 Sol with xhigh reasoning for complex multi-module, architectural,
+  native-integration, scientific, numerical, or release-critical work;
+- GPT-5.6 Sol with max reasoning for the most difficult work or when xhigh is
+  genuinely stuck.
+
+Use Ultra orchestration only when the maintainer explicitly selects it for a
+task that benefits from parallel agents. Ultra does not replace the reasoning
+ladder above. Every delegated agent must still resolve to an allowed model and
+reasoning effort. If Ultra or another orchestration facility cannot guarantee
+that constraint, do not use it.
+
+Escalate to the next tier when concrete difficulty, uncertainty, or repeated
+failure justifies it. Do not begin every task at the highest tier.
 
 If the required model or reasoning level cannot be selected exactly, report the
 limitation and wait for maintainer direction. This includes unavailable models,
@@ -92,10 +103,19 @@ unsupported reasoning levels, quota limits, and model startup failures. Never
 silently substitute a different model, a lower reasoning effort, automatic
 model routing, or automatic review.
 
+If the client, platform, session metadata, or usage telemetry reports a fallback
+to GPT-5.4, GPT-5.4 mini, Terra, or another forbidden model, stop substantive
+work immediately. Preserve the current state, report the detected fallback, and
+ask the maintainer to select an allowed Luna or Sol configuration before
+continuing. Repository instructions may not prevent a fallback performed by the
+hosting platform before an agent receives control, but no agent may knowingly
+continue after such a fallback becomes observable.
+
 Delegation depth is one. Parent agents may create explicitly configured
 subagents, but those subagents must not create descendants. Reviewers must be
 explicitly configured from the allowed models rather than selected by an
-automatic review facility.
+automatic review facility. Close each spawned agent immediately after its
+result has been integrated or discarded. Completed agents must not be left open.
 
 ## Purpose and scope
 
