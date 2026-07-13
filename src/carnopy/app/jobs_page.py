@@ -18,7 +18,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from carnopy.app.client import WorkerClient
 from carnopy.app.config_document import SavedConfigSnapshot
 from carnopy.app.execution_page import DatasetExecutionPage
 from carnopy.app.jobs import JobStore, LoadedJob
@@ -39,12 +38,10 @@ class JobsDiagnosticsPage(QWidget):
 
     def __init__(
         self,
-        client: WorkerClient,
         execution_page: DatasetExecutionPage,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self.client = client
         self.execution_page = execution_page
         self.workspace: Workspace | None = None
         self.store: JobStore | None = None
@@ -60,8 +57,8 @@ class JobsDiagnosticsPage(QWidget):
         root.addWidget(self.tabs, 1)
 
         execution_page.request_started.connect(self._request_started)
+        execution_page.request_event.connect(self._event_received)
         execution_page.request_terminal.connect(self._request_terminal)
-        client.event_received.connect(self._event_received)
 
     def _build_jobs_tab(self) -> QWidget:
         page = QWidget()

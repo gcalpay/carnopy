@@ -92,6 +92,19 @@ def test_launcher_passes_workspace_to_application(
     assert received == [tmp_path]
 
 
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="app extra is not installed"
+)
+def test_installed_app_smoke_waits_for_startup_request(tmp_path: Path) -> None:
+    script = Path(__file__).resolve().parents[1] / "scripts" / "smoke_installed.py"
+    spec = importlib.util.spec_from_file_location("carnopy_test_smoke_installed", script)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    module.smoke_app(tmp_path)
+
+
 @pytest.mark.parametrize(
     ("argument", "initial", "expected"),
     [

@@ -102,7 +102,11 @@ uv sync --locked --extra app --group dev
 uv run --locked carnopy-gui
 ```
 
-The source-tree `app` extra has the same optional dependency boundary.
+The source-tree `app` extra has the same optional dependency boundary. The
+active GUI-2 source line reports `0.1.0a4.dev0`, while the published install
+commands above remain pinned to `0.1.0a3`. Stage 1 controller extraction is
+complete; during Stage 2 QML workflow development, both desktop launchers
+continue to use the released Widgets frontend as the parity baseline.
 
 ## Quick start
 
@@ -1267,11 +1271,11 @@ efficiencies, critical-point and operating limits, and minimum turbine-exhaust
 quality. Saturated liquid alone is not a pump cavitation margin; NPSH may be
 reported only when sufficient hydraulic-system and pump data are supplied.
 
-The planned `0.1.0a4` application milestone is a cross-platform modern QML
-presentation layer with optional native VTK exact-grid 3D visualization. GUI-2
-will use the same worker and core Python boundaries rather than duplicate
-scientific logic. TFC screening, mixtures, additional backends, and standalone
-desktop installers remain deferred.
+The active `0.1.0a4.dev0` application development line targets a cross-platform
+modern QML presentation layer with optional native VTK exact-grid 3D
+visualization. GUI-2 will use the same worker and core Python boundaries rather
+than duplicate scientific logic. TFC screening, mixtures, additional backends,
+and standalone desktop installers remain deferred.
 
 Use [GitHub issues](https://github.com/gcalpay/carnopy/issues) for bug reports,
 scientific discrepancies, and focused feature requests. See

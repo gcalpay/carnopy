@@ -1,37 +1,52 @@
 from __future__ import annotations
 
-import copy
-from collections.abc import Mapping
-from typing import Any
+from typing import cast
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QModelIndex, QSignalBlocker, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QFormLayout,
     QHBoxLayout,
     QLabel,
-    QListWidget,
-    QListWidgetItem,
+    QListView,
+    QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
+from .draft_models import VALUE_ROLE
+from .plot_draft import PlotDraft
 from .plot_request_dialog import PlotRequestDialog
+from .visualization_draft import VisualizationDraft
 from .visualization_widgets import ChoiceMappingTable, FluidChoiceList
 
-PLOT_ROLE = Qt.ItemDataRole.UserRole
+
+class _PlotListView(QListView):
+    def currentRow(self) -> int:
+        return self.currentIndex().row()
+
+    def setCurrentRow(self, row: int) -> None:
+        model = self.model()
+        index = model.index(row, 0) if model is not None else QModelIndex()
+        self.setCurrentIndex(index)
 
 
 class VisualizationEditor(QWidget):
+    """Present the authoritative configured-visualization draft."""
+
     changed = Signal()
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        draft: VisualizationDraft | None = None,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
-        self.capabilities: dict[str, Any] | None = None
-        self.dataset_payload: dict[str, Any] = {}
-        self._loading = False
+        self.draft = draft or VisualizationDraft(self)
+        self._syncing = False
+        self._last_message = ""
 
         layout = QVBoxLayout(self)
         self.enabled = QPushButton("Enable Configured Visualization")
@@ -39,6 +54,7 @@ class VisualizationEditor(QWidget):
         layout.addWidget(self.enabled)
         shared = QFormLayout()
         self.format = QComboBox()
+        self.format.setModel(self.draft.format_choices)
         self.fluids = FluidChoiceList()
         self.filters = ChoiceMappingTable("Shared filter field", "Exact SI value")
         self.display_units = ChoiceMappingTable(
@@ -57,7 +73,8 @@ class VisualizationEditor(QWidget):
         plot_name_help.setWordWrap(True)
         plot_name_help.setAccessibleName("Plot name guidance")
         layout.addWidget(plot_name_help)
-        self.plots = QListWidget()
+        self.plots = _PlotListView()
+        self.plots.setModel(self.draft.plot_model)
         layout.addWidget(self.plots, 1)
         actions = QHBoxLayout()
         self.action_buttons: list[QPushButton] = []
@@ -75,204 +92,123 @@ class VisualizationEditor(QWidget):
         actions.addStretch(1)
         layout.addLayout(actions)
 
-        self.enabled.toggled.connect(self._enabled_changed)
-        self.format.currentTextChanged.connect(self._emit_changed)
-        self.fluids.changed.connect(self._emit_changed)
-        self.filters.changed.connect(self._emit_changed)
-        self.display_units.changed.connect(self._emit_changed)
-        self._set_controls_enabled(False)
+        self.enabled.toggled.connect(self.draft.set_enabled)
+        self.format.currentTextChanged.connect(self.draft.set_format)
+        self.fluids.changed.connect(self._fluids_changed)
+        self.draft.changed.connect(self._draft_changed)
+        self.draft.enabled_changed.connect(self._sync_from_draft)
+        self.draft.format_changed.connect(self._sync_from_draft)
+        self.draft.message.connect(self._draft_message)
+        for model in (
+            self.draft.format_choices,
+            self.draft.fluid_choices,
+            self.draft.selected_fluids,
+            self.draft.filters,
+            self.draft.display_units,
+        ):
+            model.modelReset.connect(self._sync_from_draft)
+        self._sync_from_draft()
 
-    def apply_capabilities(self, capabilities: dict[str, Any]) -> None:
-        self.capabilities = capabilities
-        formats = capabilities.get("visualization", {}).get("formats", [])
-        self.format.clear()
-        self.format.addItems([str(value) for value in formats])
-        self._configure_shared_mappings()
+    def apply_capabilities(self, capabilities: dict[str, object]) -> None:
+        self.draft.apply_capabilities(capabilities)
+        self._sync_from_draft()
 
-    def set_dataset_context(self, payload: dict[str, Any]) -> None:
-        selected_fluids = self.fluids.selected_values()
-        self.dataset_payload = copy.deepcopy(payload)
-        dataset_fluids = payload.get("fluids", [])
-        choices = (
-            [str(value) for value in dataset_fluids] if isinstance(dataset_fluids, list) else []
-        )
-        self.fluids.set_choices(choices, selected_fluids)
-        self._configure_shared_mappings()
+    def set_dataset_context(self, payload: dict[str, object]) -> None:
+        self.draft.set_dataset_context(payload)
+        self._sync_from_draft()
 
     def load_visualization(self, value: object) -> None:
-        self._loading = True
-        visualization = value if isinstance(value, dict) else None
-        self.enabled.setChecked(visualization is not None)
-        self.format.setCurrentText(
-            str(visualization.get("format", "png")) if visualization else "png"
-        )
-        fluids = visualization.get("fluids", []) if visualization else []
-        dataset_fluids = self.dataset_payload.get("fluids", [])
-        self.fluids.set_choices(
-            [str(value) for value in dataset_fluids] if isinstance(dataset_fluids, list) else [],
-            [str(item) for item in fluids],
-        )
-        self.filters.load_mapping(visualization.get("filters", {}) if visualization else {})
-        self.display_units.load_mapping(
-            visualization.get("display_units", {}) if visualization else {}
-        )
-        self.plots.clear()
-        for plot in visualization.get("plots", []) if visualization else []:
-            if isinstance(plot, dict):
-                self._append_plot(plot)
-        self._set_controls_enabled(visualization is not None)
-        self._loading = False
+        self.draft.load_visualization(value)
+        self._sync_from_draft()
 
-    def visualization_payload(self) -> dict[str, Any] | None:
-        if not self.enabled.isChecked():
-            return None
-        plots = self.plot_payloads()
-        if not plots:
-            raise ValueError("configured visualization requires at least one plot")
-        names = [str(plot.get("name", "")) for plot in plots]
-        if len(set(names)) != len(names):
-            raise ValueError("configured visualization plot names must be unique")
-        payload: dict[str, Any] = {
-            "format": self.format.currentText(),
-            "plots": plots,
-        }
-        fluids = self.fluids.selected_values()
-        if fluids:
-            payload["fluids"] = fluids
-        filters = self.filters.mapping()
-        if filters:
-            payload["filters"] = filters
-        display_units = self.display_units.mapping()
-        if display_units:
-            payload["display_units"] = display_units
-        return payload
+    def visualization_payload(self) -> dict[str, object] | None:
+        return self.draft.visualization_payload()
 
-    def plot_payloads(self) -> list[dict[str, Any]]:
-        return [
-            copy.deepcopy(item.data(PLOT_ROLE))
-            for index in range(self.plots.count())
-            if (item := self.plots.item(index)) is not None
-        ]
+    def plot_payloads(self) -> list[dict[str, object]]:
+        return cast(list[dict[str, object]], self.draft.plot_payloads())
 
     def add_plot(self) -> None:
-        dialog = self._dialog()
-        if dialog is not None and dialog.exec() == QDialog.DialogCode.Accepted:
-            self._append_plot(dialog.plot_payload())
-            self._emit_changed()
+        active = self.draft.begin_add_plot()
+        if isinstance(active, PlotDraft):
+            self._run_plot_dialog(active)
 
     def edit_plot(self) -> None:
-        item = self.plots.currentItem()
-        if item is None:
-            return
-        dialog = self._dialog(copy.deepcopy(item.data(PLOT_ROLE)))
-        if dialog is not None and dialog.exec() == QDialog.DialogCode.Accepted:
-            payload = dialog.plot_payload()
-            item.setData(PLOT_ROLE, payload)
-            item.setText(_plot_label(payload))
-            self._emit_changed()
+        active = self.draft.begin_edit_plot(self.plots.currentRow())
+        if isinstance(active, PlotDraft):
+            self._run_plot_dialog(active)
 
     def remove_plot(self) -> None:
         row = self.plots.currentRow()
-        if row >= 0:
-            self.plots.takeItem(row)
-            self._emit_changed()
+        if self.draft.remove_plot(row):
+            self.plots.setCurrentRow(min(row, self.draft.plot_model.rowCount() - 1))
 
     def move_plot(self, offset: int) -> None:
         row = self.plots.currentRow()
-        target = row + offset
-        if row < 0 or target < 0 or target >= self.plots.count():
+        if self.draft.move_plot(row, offset):
+            self.plots.setCurrentRow(row + offset)
+
+    def _run_plot_dialog(self, active: PlotDraft) -> None:
+        while True:
+            dialog = PlotRequestDialog(active, self)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                self.draft.cancel_plot()
+                return
+            self._last_message = ""
+            if self.draft.commit_plot():
+                return
+            QMessageBox.warning(
+                self,
+                "Invalid Plot Request",
+                self._last_message or active.get_issue() or "The plot request is invalid.",
+            )
+
+    def _fluids_changed(self) -> None:
+        if self._syncing:
             return
-        item = self.plots.takeItem(row)
-        if item is not None:
-            self.plots.insertItem(target, item)
-            self.plots.setCurrentRow(target)
-            self._emit_changed()
+        current = list(self.draft.selected_fluid_values())
+        selected = self.fluids.selected_values()
+        self._syncing = True
+        try:
+            for value in current:
+                if value not in selected:
+                    self.draft.set_fluid_selected(value, False)
+            for value in selected:
+                if value not in current:
+                    self.draft.set_fluid_selected(value, True)
+        finally:
+            self._syncing = False
+        self._sync_from_draft()
 
-    def _dialog(self, plot: dict[str, Any] | None = None) -> PlotRequestDialog | None:
-        if self.capabilities is None or not self.dataset_payload:
-            return None
-        return PlotRequestDialog(
-            self.capabilities,
-            self.dataset_payload,
-            plot,
-            self,
-        )
+    def _draft_changed(self) -> None:
+        if not self._syncing:
+            self._sync_from_draft()
+        self.changed.emit()
 
-    def _append_plot(self, plot: dict[str, Any]) -> None:
-        payload = copy.deepcopy(plot)
-        item = QListWidgetItem(_plot_label(payload))
-        item.setData(PLOT_ROLE, payload)
-        self.plots.addItem(item)
+    def _draft_message(self, message: str) -> None:
+        self._last_message = message
 
-    def _field_kinds(self) -> dict[str, str]:
-        if self.capabilities is None:
-            return {}
-        return {
-            str(item["name"]): str(item["kind"])
-            for item in self.capabilities.get("visualization", {}).get("fields", [])
-            if isinstance(item, dict) and "name" in item and "kind" in item
-        }
-
-    def _configure_shared_mappings(self) -> None:
-        if self.capabilities is None:
+    def _sync_from_draft(self) -> None:
+        if self._syncing:
             return
-        visualization = self.capabilities.get("visualization", {})
-        definitions = visualization.get("fields", [])
-        available = self._available_fields()
-        filter_fields = sorted(
-            str(item["name"])
-            for item in definitions
-            if isinstance(item, dict)
-            and item.get("filter_allowed")
-            and str(item.get("name")) in available
-        )
-        categorical = visualization.get("categorical_values", {})
-        self.filters.configure(
-            filter_fields,
-            field_kinds=self._field_kinds(),
-            value_choices={
-                str(field): [str(value) for value in values]
-                for field, values in categorical.items()
-                if isinstance(values, list)
-            }
-            if isinstance(categorical, dict)
-            else {},
-        )
-        units = visualization.get("display_units", {})
-        display_fields = sorted(
-            field for field in available if isinstance(units, dict) and field in units
-        )
-        self.display_units.configure(
-            display_fields,
-            field_kinds=self._field_kinds(),
-            value_choices={
-                field: [str(value) for value in units.get(field, [])]
-                for field in display_fields
-                if isinstance(units, dict)
-            },
-        )
-
-    def _available_fields(self) -> set[str]:
-        properties = self.dataset_payload.get("properties", [])
-        fields = {
-            "temperature",
-            "pressure",
-            "phase",
-            "fluid",
-            *([str(value) for value in properties] if isinstance(properties, list) else []),
-        }
-        mode = self.dataset_payload.get("mode")
-        if mode in {"saturation_table", "vapor_mass_fraction_table"}:
-            fields.add("vapor_mass_fraction")
-        if mode == "saturation_table":
-            fields.add("saturation_endpoint")
-        if "mass_density" in fields:
-            fields.add("specific_volume")
-        return fields
-
-    def _enabled_changed(self, enabled: bool) -> None:
-        self._set_controls_enabled(enabled)
-        self._emit_changed()
+        self._syncing = True
+        try:
+            enabled_blocker = QSignalBlocker(self.enabled)
+            format_blocker = QSignalBlocker(self.format)
+            fluids_blocker = QSignalBlocker(self.fluids)
+            self.enabled.setChecked(self.draft.get_enabled())
+            selected_format = self.draft.get_format()
+            self.format.setCurrentIndex(self.format.findData(selected_format, role=VALUE_ROLE))
+            dataset_fluids = [item.value for item in self.draft.fluid_choices.items]
+            selected_fluids = list(self.draft.selected_fluid_values())
+            choices = [*dataset_fluids]
+            choices.extend(value for value in selected_fluids if value not in choices)
+            self.fluids.set_choices(choices, selected_fluids)
+            self.filters.bind_draft(self.draft.filters)
+            self.display_units.bind_draft(self.draft.display_units)
+            self._set_controls_enabled(self.draft.get_enabled())
+            del enabled_blocker, format_blocker, fluids_blocker
+        finally:
+            self._syncing = False
 
     def _set_controls_enabled(self, enabled: bool) -> None:
         for widget in (
@@ -284,11 +220,3 @@ class VisualizationEditor(QWidget):
             *self.action_buttons,
         ):
             widget.setEnabled(enabled)
-
-    def _emit_changed(self, *_args: object) -> None:
-        if not self._loading:
-            self.changed.emit()
-
-
-def _plot_label(plot: Mapping[str, object]) -> str:
-    return f"{plot.get('name', '<unnamed>')} — {plot.get('kind', '<unknown>')}"

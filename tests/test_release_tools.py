@@ -11,8 +11,15 @@ import pytest
 
 from carnopy._version import __version__
 
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - exercised on Python 3.10
+    import tomli as tomllib
+
 ROOT = Path(__file__).resolve().parents[1]
+BRIDGE_ROOT = ROOT / "native" / "carnopy-vtk-bridge"
 FIXTURE_VERSION = "1.2.3"
+GUI2_DEVELOPMENT_VERSION = "0.1.0a4.dev0"
 
 
 def load_script(name: str) -> ModuleType:
@@ -31,8 +38,21 @@ smoke_installed = load_script("smoke_installed")
 verify_index_release = load_script("verify_index_release")
 
 
-def test_source_version_is_prepared_release() -> None:
-    assert __version__ == "0.1.0a3"
+def test_gui2_development_version_surfaces_are_aligned() -> None:
+    root_metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    bridge_metadata = tomllib.loads((BRIDGE_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    bridge_init = (BRIDGE_ROOT / "src/carnopy_vtk_bridge/__init__.py").read_text(encoding="utf-8")
+    qualification = (BRIDGE_ROOT / "tests/qualification.py").read_text(encoding="utf-8")
+    cmake = (BRIDGE_ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
+
+    assert __version__ == GUI2_DEVELOPMENT_VERSION
+    assert root_metadata["project"]["dynamic"] == ["version"]
+    assert root_metadata["tool"]["hatch"]["version"]["path"] == "src/carnopy/_version.py"
+    assert bridge_metadata["project"]["version"] == GUI2_DEVELOPMENT_VERSION
+    assert f'__version__ = "{GUI2_DEVELOPMENT_VERSION}"' in bridge_init
+    assert f'VERSION = "{GUI2_DEVELOPMENT_VERSION}"' in qualification
+    assert "project(carnopy_vtk_bridge VERSION 0.1.0 LANGUAGES CXX)" in cmake
+    assert GUI2_DEVELOPMENT_VERSION not in cmake
 
 
 def test_distribution_checksums_are_deterministic_and_non_overwriting(tmp_path: Path) -> None:
@@ -117,24 +137,34 @@ def test_distribution_checker_requires_model_sweep_artifacts() -> None:
         "carnopy/app/capabilities.py",
         "carnopy/app/launcher.py",
         "carnopy/app/client.py",
+        "carnopy/app/config_controller.py",
         "carnopy/app/config_document.py",
         "carnopy/app/config_editor.py",
         "carnopy/app/config_form.py",
         "carnopy/app/config_widgets.py",
+        "carnopy/app/dataset_draft.py",
+        "carnopy/app/desktop_controller.py",
+        "carnopy/app/draft_models.py",
         "carnopy/app/execution_page.py",
+        "carnopy/app/export_cleanup.py",
         "carnopy/app/inspection_page.py",
         "carnopy/app/jobs.py",
         "carnopy/app/jobs_page.py",
+        "carnopy/app/mapping_draft.py",
         "carnopy/app/plot_context.py",
+        "carnopy/app/plot_draft.py",
         "carnopy/app/plot_page.py",
         "carnopy/app/plot_preview.py",
         "carnopy/app/plot_rendering.py",
         "carnopy/app/plot_request_dialog.py",
         "carnopy/app/plot_staging.py",
         "carnopy/app/visualization_editor.py",
+        "carnopy/app/visualization_draft.py",
         "carnopy/app/visualization_widgets.py",
         "carnopy/app/protocol.py",
         "carnopy/app/recovery.py",
+        "carnopy/app/request_coordinator.py",
+        "carnopy/app/sampler_draft.py",
         "carnopy/app/source_inspection.py",
         "carnopy/app/sources_page.py",
         "carnopy/app/table_model.py",
@@ -142,6 +172,7 @@ def test_distribution_checker_requires_model_sweep_artifacts() -> None:
         "carnopy/app/window.py",
         "carnopy/app/worker.py",
         "carnopy/app/workspace.py",
+        "carnopy/app/workspace_controller.py",
         "carnopy/config/sweep.py",
         "carnopy/inspection.py",
         "carnopy/preparation/arrays.py",
@@ -170,24 +201,34 @@ def test_distribution_checker_requires_model_sweep_artifacts() -> None:
         "src/carnopy/app/capabilities.py",
         "src/carnopy/app/launcher.py",
         "src/carnopy/app/client.py",
+        "src/carnopy/app/config_controller.py",
         "src/carnopy/app/config_document.py",
         "src/carnopy/app/config_editor.py",
         "src/carnopy/app/config_form.py",
         "src/carnopy/app/config_widgets.py",
+        "src/carnopy/app/dataset_draft.py",
+        "src/carnopy/app/desktop_controller.py",
+        "src/carnopy/app/draft_models.py",
         "src/carnopy/app/execution_page.py",
+        "src/carnopy/app/export_cleanup.py",
         "src/carnopy/app/inspection_page.py",
         "src/carnopy/app/jobs.py",
         "src/carnopy/app/jobs_page.py",
+        "src/carnopy/app/mapping_draft.py",
         "src/carnopy/app/plot_context.py",
+        "src/carnopy/app/plot_draft.py",
         "src/carnopy/app/plot_page.py",
         "src/carnopy/app/plot_preview.py",
         "src/carnopy/app/plot_rendering.py",
         "src/carnopy/app/plot_request_dialog.py",
         "src/carnopy/app/plot_staging.py",
         "src/carnopy/app/visualization_editor.py",
+        "src/carnopy/app/visualization_draft.py",
         "src/carnopy/app/visualization_widgets.py",
         "src/carnopy/app/protocol.py",
         "src/carnopy/app/recovery.py",
+        "src/carnopy/app/request_coordinator.py",
+        "src/carnopy/app/sampler_draft.py",
         "src/carnopy/app/source_inspection.py",
         "src/carnopy/app/sources_page.py",
         "src/carnopy/app/table_model.py",
@@ -195,6 +236,7 @@ def test_distribution_checker_requires_model_sweep_artifacts() -> None:
         "src/carnopy/app/window.py",
         "src/carnopy/app/worker.py",
         "src/carnopy/app/workspace.py",
+        "src/carnopy/app/workspace_controller.py",
         "src/carnopy/config/sweep.py",
         "src/carnopy/inspection.py",
         "src/carnopy/preparation/arrays.py",

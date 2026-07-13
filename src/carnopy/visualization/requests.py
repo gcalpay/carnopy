@@ -16,6 +16,8 @@ from carnopy.visualization.units import (
     validate_display_unit,
 )
 
+PLOT_NAME_PATTERN = r"^[a-z0-9]+(?:[-_][a-z0-9]+)*$"
+
 PlotKindV2 = Literal[
     "property_curves",
     "property_heatmap",

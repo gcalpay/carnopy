@@ -1,0 +1,18 @@
+[build-system]
+requires = ["scikit-build-core==0.11.6"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "carnopy-vtk-bridge"
+version = "0.1.0a4.dev0"
+description = "Private native QML and VTK qualification bridge for Carnopy"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Göran Cem Alpay" }]
+dependencies = ["PySide6-Essentials==6.11.1"]
+
+[tool.scikit-build]
+cmake.version = ">=3.28"
+wheel.packages = ["src/carnopy_vtk_bridge"]

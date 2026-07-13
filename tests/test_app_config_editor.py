@@ -13,12 +13,22 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QEventLoop, QTimer
-from PySide6.QtWidgets import QApplication, QComboBox, QFileDialog, QLineEdit, QMessageBox
+from PySide6.QtWidgets import (
+    QApplication,
+    QComboBox,
+    QFileDialog,
+    QLineEdit,
+    QListView,
+    QMessageBox,
+)
 
-from carnopy.app.config_document import new_document
+from carnopy.app.config_document import ConfigDocumentError, new_document
 from carnopy.app.config_editor import DatasetConfigEditor
 from carnopy.app.config_widgets import SamplerEditor
-from carnopy.app.visualization_editor import PLOT_ROLE, PlotRequestDialog, VisualizationEditor
+from carnopy.app.draft_models import DISPLAY_ROLE
+from carnopy.app.plot_draft import PlotDraft
+from carnopy.app.sampler_draft import SamplerDraft
+from carnopy.app.visualization_editor import PlotRequestDialog, VisualizationEditor
 from carnopy.app.workspace import initialize_workspace
 from carnopy.domain.properties import PROPERTY_REGISTRY
 from carnopy.templates import template_text
@@ -128,6 +138,11 @@ def capabilities() -> dict[str, Any]:
             {"name": "Isopentane", "aliases": ["IsoPentane"]},
         ],
         "property_catalog": properties,
+        "reference_dependent_fields": [
+            "specific_enthalpy",
+            "specific_entropy",
+            "specific_internal_energy",
+        ],
         "visualization": {
             "plot_kinds": ["property_curves", "property_heatmap", "xy", "pv", "ts"],
             "formats": ["png", "pdf", "svg"],
@@ -214,7 +229,7 @@ def capabilities() -> dict[str, Any]:
 
 def configured_editor(tmp_path: Path) -> DatasetConfigEditor:
     editor = DatasetConfigEditor()
-    editor.workspace = initialize_workspace(tmp_path / "workspace")
+    editor.controller.workspace = initialize_workspace(tmp_path / "workspace")
     editor._apply_capabilities(capabilities())
     return editor
 
@@ -241,9 +256,9 @@ def test_sampler_editor_round_trips_every_public_sampler(
     application: QApplication,
 ) -> None:
     del application
-    editor = SamplerEditor("pressure")
-    editor.configure_units(["Pa", "bar"])
-    editor.load_sampler(sampler)
+    draft = SamplerDraft("pressure")
+    draft.load_payload(sampler, available_units=["Pa", "bar"])
+    editor = SamplerEditor(draft)
 
     assert editor.sampler_payload() == sampler
 
@@ -267,6 +282,111 @@ def test_all_dataset_templates_populate_deterministic_valid_previews(
     assert yaml.safe_load(editor.preview.toPlainText())["mode"] == mode
     assert yaml.safe_load(editor.preview.toPlainText())["fluids"] == payload["fluids"]
     assert editor.save_button.isEnabled()
+    editor.shutdown()
+
+
+def test_dataset_form_binds_directly_to_controller_models(
+    tmp_path: Path,
+    application: QApplication,
+) -> None:
+    del application
+    editor = configured_editor(tmp_path)
+    editor._open_document(new_document(yaml.safe_load(template_text("property_table"))))
+
+    assert isinstance(editor.form.fluids, QListView)
+    assert editor.form.fluids.model() is editor.dataset_draft.selected_fluids
+    assert editor.form.properties.model() is editor.dataset_draft.selected_properties
+    assert editor.form.property_input.model() is editor.dataset_draft.property_choices
+    assert editor.form.model.model() is editor.dataset_draft.model_choices
+    assert editor.visualization.draft is editor.visualization_draft
+    assert editor.visualization.format.model() is editor.visualization_draft.format_choices
+    assert editor.visualization.plots.model() is editor.visualization_draft.plot_model
+    assert editor.visualization.filters._draft is editor.visualization_draft.filters
+    assert editor.visualization.display_units._draft is editor.visualization_draft.display_units
+    editor.shutdown()
+
+
+def test_invalid_visualization_blocks_save_and_requires_discard(
+    tmp_path: Path,
+    application: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    editor = configured_editor(tmp_path)
+    editor._open_document(new_document(yaml.safe_load(template_text("property_table"))))
+    questions: list[str] = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda *_args, **_kwargs: questions.append("asked") or QMessageBox.StandardButton.Cancel,
+    )
+
+    editor.visualization_draft.set_enabled(True)
+
+    assert editor.visualization_draft.get_dirty()
+    assert not editor.visualization_draft.get_locally_valid()
+    assert not editor._form_valid
+    assert not editor.save_button.isEnabled()
+    with pytest.raises(ConfigDocumentError, match="complete the configuration form"):
+        editor.execution_snapshot()
+    assert not editor.confirm_discard()
+    assert questions == ["asked"]
+    editor.shutdown()
+
+
+def test_incomplete_saved_dataset_draft_is_dirty_and_requires_discard(
+    tmp_path: Path,
+    application: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    editor = configured_editor(tmp_path)
+    editor._open_document(new_document(yaml.safe_load(template_text("property_table"))))
+    assert editor.document is not None
+    saved = editor.workspace.configs / "saved.yaml"
+    editor.document.mark_saved(saved, editor.document.yaml_bytes)
+    editor.dataset_draft.mark_baseline()
+    temperature = editor.dataset_draft.sampler("temperature")
+    assert temperature is not None
+    questions: list[str] = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda *_args, **_kwargs: questions.append("asked") or QMessageBox.StandardButton.Cancel,
+    )
+
+    temperature.set_text("start", "")
+
+    assert editor.dataset_draft.get_dirty()
+    assert not editor._form_valid
+    assert not editor.save_button.isEnabled()
+    assert "unavailable" in editor.preview.toPlainText()
+    assert not editor.confirm_discard()
+    assert questions == ["asked"]
+    editor.shutdown()
+
+
+def test_cancelled_mode_change_restores_display_without_mutating_draft(
+    tmp_path: Path,
+    application: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    editor = configured_editor(tmp_path)
+    editor._open_document(new_document(yaml.safe_load(template_text("property_table"))))
+    original = editor.document.payload if editor.document is not None else {}
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda *_args, **_kwargs: QMessageBox.StandardButton.No,
+    )
+
+    editor.form.mode.setCurrentText("saturation_table")
+
+    assert editor.dataset_draft.get_mode_name() == "property_table"
+    assert editor.form.mode.currentText() == "property_table"
+    assert editor.document is not None
+    assert editor.document.payload == original
     editor.shutdown()
 
 
@@ -348,6 +468,27 @@ def test_visualization_editor_round_trips_all_plot_kinds_and_fields(
     editor.shutdown()
 
 
+def test_dataset_edit_preserves_complete_visualization_payload(
+    tmp_path: Path,
+    application: QApplication,
+) -> None:
+    del application
+    editor = configured_editor(tmp_path)
+    payload = yaml.safe_load(template_text("property_table"))
+    payload["visualization"] = {
+        "format": "svg",
+        "plots": [{"name": "density", "kind": "pv"}],
+    }
+    editor._open_document(new_document(payload))
+
+    assert editor.dataset_draft.add_fluid("Cyclopentane")
+
+    rendered = yaml.safe_load(editor.preview.toPlainText())
+    assert rendered["visualization"] == payload["visualization"]
+    assert rendered["fluids"][-1] == "Cyclopentane"
+    editor.shutdown()
+
+
 @pytest.mark.parametrize(
     ("kind", "plot", "expected_keys"),
     [
@@ -403,7 +544,7 @@ def test_plot_dialog_applies_kind_specific_fields(
 ) -> None:
     del application, kind
     dataset = yaml.safe_load(template_text("property_table"))
-    dialog = PlotRequestDialog(capabilities(), dataset, plot)
+    dialog = PlotRequestDialog(PlotDraft(capabilities(), dataset, plot))
 
     result = dialog.plot_payload()
 
@@ -441,6 +582,8 @@ def test_visualization_editor_offers_guided_shared_choices(
     ]
     filter_field.setCurrentText("pressure")
     assert isinstance(editor.filters.table.cellWidget(0, 1), QLineEdit)
+    filter_field = editor.filters.table.cellWidget(0, 0)
+    assert isinstance(filter_field, QComboBox)
     filter_field.setCurrentText("phase")
     reset_filter_value = editor.filters.table.cellWidget(0, 1)
     assert isinstance(reset_filter_value, QComboBox)
@@ -465,14 +608,16 @@ def test_plot_dialog_guides_series_fields_and_validates_numeric_filters(
     del application
     dataset = yaml.safe_load(template_text("property_table"))
     dialog = PlotRequestDialog(
-        capabilities(),
-        dataset,
-        {
-            "name": "density-curves",
-            "kind": "property_curves",
-            "property": "mass_density",
-            "x": "temperature",
-        },
+        PlotDraft(
+            capabilities(),
+            dataset,
+            {
+                "name": "density-curves",
+                "kind": "property_curves",
+                "property": "mass_density",
+                "x": "temperature",
+            },
+        )
     )
 
     dialog.series.add_row("pressure", "100000, 300000")
@@ -509,9 +654,14 @@ def test_visualization_requires_unique_names_and_preserves_plot_order(
     editor.move_plot(-1)
 
     assert [plot["name"] for plot in editor.plot_payloads()] == ["second", "first"]
-    duplicate = editor.plots.item(1)
-    assert duplicate is not None
-    duplicate.setData(PLOT_ROLE, {"name": "second", "kind": "pv"})
+    editor.load_visualization(
+        {
+            "plots": [
+                {"name": "second", "kind": "ts"},
+                {"name": "second", "kind": "pv"},
+            ]
+        }
+    )
     with pytest.raises(ValueError, match="unique"):
         editor.visualization_payload()
     editor.close()
@@ -531,8 +681,10 @@ def test_opening_document_replaces_previous_visualization_state(
 
     editor._open_document(new_document(first))
     assert [plot["name"] for plot in editor.visualization.plot_payloads()] == ["old-plot"]
+    assert editor.visualization_draft.begin_edit_plot(0) is not None
 
     editor._open_document(new_document(second))
+    assert editor.visualization_draft.get_active_plot_draft() is None
     assert editor.visualization.plot_payloads() == []
     assert "visualization" not in yaml.safe_load(editor.preview.toPlainText())
     editor.shutdown()
@@ -551,9 +703,8 @@ def test_model_change_keeps_incompatible_property_visible_and_blocks_save(
 
     values = editor.form.list_values(editor.form.properties)
     surface_row = values.index("surface_tension")
-    item = editor.form.properties.item(surface_row)
-    assert item is not None
-    assert item.text() == "Unsupported by pr: surface_tension"
+    item = editor.form.properties.model().index(surface_row, 0)
+    assert item.data(DISPLAY_ROLE) == "Unsupported by pr: surface_tension"
     assert not editor._form_valid
     assert not editor.save_button.isEnabled()
     assert "surface_tension" in editor.status.text()
@@ -584,6 +735,24 @@ def test_alias_spelling_and_order_are_preserved_without_canonical_duplicates(
     editor.shutdown()
 
 
+def test_selecting_fluid_choice_preserves_edit_text_and_adds_value(
+    tmp_path: Path,
+    application: QApplication,
+) -> None:
+    del application
+    editor = configured_editor(tmp_path)
+    editor._open_document(new_document(yaml.safe_load(template_text("property_table"))))
+    row = editor.dataset_draft.fluid_choices.values.index("Cyclopentane")
+
+    editor.form.fluid_input.setCurrentIndex(row)
+
+    assert editor.form.fluid_input.currentText() == "Cyclopentane"
+    assert editor.form.fluid_feedback.text() == "Canonical fluid: Cyclopentane"
+    editor.form._add_fluid()
+    assert editor.dataset_draft.selected_fluid_values()[-1] == "Cyclopentane"
+    editor.shutdown()
+
+
 def test_changing_workspace_clears_the_previous_workspace_draft(
     tmp_path: Path,
     application: QApplication,
@@ -591,13 +760,16 @@ def test_changing_workspace_clears_the_previous_workspace_draft(
     del application
     editor = configured_editor(tmp_path)
     editor._open_document(new_document(yaml.safe_load(template_text("property_table"))))
-    editor.client._capabilities["heos"] = capabilities()
+    editor.visualization_draft.set_enabled(True)
+    assert editor.visualization_draft.begin_add_plot() is not None
+    editor._capability_cache["heos"] = capabilities()
     replacement = initialize_workspace(tmp_path / "replacement")
 
     editor.set_workspace(replacement)
 
     assert editor.workspace == replacement
     assert editor.document is None
+    assert editor.visualization_draft.get_active_plot_draft() is None
     assert editor.file_label.text() == "No dataset configuration is open."
     assert editor.preview.toPlainText() == ""
     editor.shutdown()
@@ -622,6 +794,7 @@ def test_confirmed_mode_change_preserves_shared_fields_and_resets_mode_state(
         ]
     }
     editor._open_document(new_document(payload))
+    assert editor.visualization_draft.begin_edit_plot(0) is not None
     original_fluids = editor.form.list_values(editor.form.fluids)
     original_properties = editor.form.list_values(editor.form.properties)
     monkeypatch.setattr(
@@ -639,6 +812,8 @@ def test_confirmed_mode_change_preserves_shared_fields_and_resets_mode_state(
     assert changed["fluids"] == original_fluids
     assert changed["properties"] == original_properties
     assert "visualization" not in changed
+    assert editor.visualization_draft.get_active_plot_draft() is None
+    assert editor.visualization_draft.get_dirty()
     editor.shutdown()
 
 
@@ -700,6 +875,8 @@ def test_save_as_validates_exact_preview_and_refuses_overwrite(
     assert destination.read_text(encoding="utf-8") == editor.preview.toPlainText()
     assert editor.document is not None
     assert editor.document.source_path == destination
+    assert not editor.dataset_draft.get_dirty()
+    assert not editor.visualization_draft.get_dirty()
     original = destination.read_bytes()
     editor.save_as()
     _wait_for_worker(application, editor)
@@ -738,10 +915,10 @@ def _wait_for_worker(application: QApplication, editor: DatasetConfigEditor) -> 
         timed_out = True
         loop.quit()
 
-    editor.client.busy_changed.connect(lambda busy: None if busy else loop.quit())
+    editor.coordinator.busy_changed.connect(lambda busy: None if busy else loop.quit())
     QTimer.singleShot(15_000, timeout)
-    if editor.client.is_busy:
+    if editor.coordinator.is_busy:
         loop.exec()
     application.processEvents()
     assert not timed_out
-    assert not editor.client.is_busy
+    assert not editor.coordinator.is_busy

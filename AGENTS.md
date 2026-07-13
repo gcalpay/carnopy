@@ -35,30 +35,30 @@ CLI: carnopy
 
 CoolProp is the first backend dependency, not the project identity.
 
-Before starting an implementation stage, establish whether unrelated or
-uncommitted work is present. If the tree is dirty, pause before editing,
-describe the intended stage boundary, and suggest a Conventional Commit message
-so separate stages are not mixed accidentally. Preserve unrelated changes.
+Before starting an implementation stage, inspect the worktree and follow the
+stage-boundary rules in `.agents/local.md` when unrelated or uncommitted work is
+present. Preserve unrelated changes. Git mutation remains human-owned unless a
+local instruction explicitly grants narrower authority. Follow the local file
+for dependency, credential, external-configuration, and publication authority.
 
-Read-only Git commands are allowed when needed to inspect repository state or
-review changes. Examples include:
+## Codex delegation policy
 
-```text
-git status --short
-git diff
-git diff --check
-git log
-git show
-git ls-files
-```
+Delegate only bounded, independent work where parallelism materially improves
+quality or speed. The only project agents that may be delegated to are the
+explicit definitions under `.codex/agents/`: `explorer`, `worker`, `reviewer`,
+and `architect`. The project `explorer` and `worker` intentionally override the
+built-in roles with the same names.
 
-Do not run Git commands that change repository state. Staging, committing,
-amending, branching, tagging, rebasing, resetting, restoring, merging, pushing,
-and changing remotes remain human-owned unless a local instruction explicitly
-grants narrower authority.
+Every active project agent must pin its model, reasoning effort, and sandbox.
+GPT-5.4, GPT-5.4-mini, Terra, automatic model selection, and automatic review
+are forbidden. Do not add or use another project role without maintainer
+review. Parent-model preferences, exact-selection failures, and observable
+fallback handling belong in `.agents/local.md`.
 
-Do not publish packages, create credentials, configure repository security, or
-change dependency declarations without explicit maintainer authorization.
+Subagent use does not require Ultra; Ultra may delegate proactively when
+parallel work is useful. Delegation depth is one, so delegated agents must not
+spawn descendants. Close every spawned agent immediately after its result is
+integrated or discarded, including agents already marked completed.
 
 ## Purpose and scope
 
@@ -112,7 +112,12 @@ guarded no-overwrite image/sidecar promotion, desktop Render controls,
 immediate confirmed force-stop, Qt-only PNG/SVG previews, and explicit PDF
 opening.
 
-Out of scope:
+[GUI2_PLAN.md](GUI2_PLAN.md) is the temporary source of truth for the active
+GUI-2 migration. Read it before changing desktop controllers, QML, native 3D,
+desktop packaging, or Widgets retirement. Delete it only after GUI-2 is complete
+and permanent documentation and Graphify outputs describe the final design.
+
+Out of scope for now:
 
 - mixtures;
 - ORC generation;
@@ -679,6 +684,14 @@ Rules:
 - concise summary, ideally no more than 72 characters;
 - no trailing period;
 - body only when the reason or tradeoff matters.
+
+After completing and verifying an implementation, include a recommended commit
+message in the final handoff. Also list the exact repository-relative files to
+stage. If more than one commit is recommended, give the file group for each
+commit and state whether hunk-level staging is required. Prefer one coherent
+commit unless the proposed intermediate commits are independently reviewable
+and verifiable. This is guidance for the human operator and does not grant Git
+mutation authority.
 
 Common types:
 

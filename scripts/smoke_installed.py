@@ -93,7 +93,7 @@ def smoke_app(work_directory: Path) -> None:
     code = """
 import sys
 from pathlib import Path
-from PySide6.QtCore import QSettings
+from PySide6.QtCore import QEventLoop, QSettings, QTimer
 from PySide6.QtSvgWidgets import QGraphicsSvgItem
 from PySide6.QtWidgets import QApplication
 from carnopy.app.plot_preview import PlotPreview
@@ -111,14 +111,26 @@ window.show()
 app.processEvents()
 if window.workspace != workspace or not window.isVisible():
     raise SystemExit("desktop shell did not open its workspace")
+if window.coordinator.is_busy:
+    loop = QEventLoop()
+    window.coordinator.busy_changed.connect(lambda busy: None if busy else loop.quit())
+    QTimer.singleShot(15_000, loop.quit)
+    loop.exec()
+    app.processEvents()
+if window.coordinator.is_busy:
+    raise SystemExit("desktop startup worker did not become idle")
+if window.dataset_config_controller.capabilities is None:
+    raise SystemExit("desktop capabilities did not load")
 preview = PlotPreview()
 svg_item = QGraphicsSvgItem()
 if preview.has_graphic or svg_item.renderer() is None:
     raise SystemExit("desktop plot preview did not initialize")
 preview.close()
-window.client.shutdown()
-window.close()
+if not window.close():
+    raise SystemExit("desktop shell refused an idle close")
 app.processEvents()
+if window.isVisible():
+    raise SystemExit("desktop shell remained visible after close")
 """
     completed = subprocess.run(
         [sys.executable, "-c", code, str(work_directory / "app-smoke")],
@@ -147,7 +159,10 @@ from pathlib import Path
 from PySide6.QtCore import QEventLoop, QTimer
 from PySide6.QtWidgets import QApplication
 from carnopy.app.client import WorkerClient
+from carnopy.app.export_cleanup import ImageExportFinalizer
 from carnopy.app.plot_preview import PlotPreview
+from carnopy.app.plot_staging import create_plot_staging
+from carnopy.app.request_coordinator import DesktopRequestCoordinator
 from carnopy.app.workspace import initialize_workspace
 
 root = Path(sys.argv[1])
@@ -155,46 +170,65 @@ source = Path(sys.argv[2])
 workspace = initialize_workspace(root / "workspace")
 app = QApplication([])
 
-def request(kind, payload):
+def request(owner, kind, payload, *, finalizer=None):
     client = WorkerClient()
-    results = []
-    failures = []
+    coordinator = DesktopRequestCoordinator(client)
+    outcomes = []
     loop = QEventLoop()
     timer = QTimer()
     timer.setSingleShot(True)
     timer.setInterval(30_000)
     timer.timeout.connect(loop.quit)
-    client.request_succeeded.connect(results.append)
-    client.request_failed.connect(failures.append)
-    client.busy_changed.connect(lambda busy: None if busy else loop.quit())
-    client.start_request(kind, payload)
+    coordinator.busy_changed.connect(lambda busy: None if busy else loop.quit())
+    session = coordinator.start_request(owner, kind, payload, finalizer=finalizer)
+    session.completed.connect(outcomes.append)
     timer.start()
     loop.exec()
     timer.stop()
-    if client.is_busy:
-        client.shutdown()
+    if coordinator.is_busy:
+        cleanup_loop = QEventLoop()
+        coordinator.busy_changed.connect(
+            lambda busy: None if busy else cleanup_loop.quit()
+        )
+        client.force_stop(session.request_id)
+        QTimer.singleShot(5_000, cleanup_loop.quit)
+        cleanup_loop.exec()
         raise SystemExit(f"desktop worker timed out: {kind}")
+    coordinator.shutdown()
+    coordinator.deleteLater()
     client.deleteLater()
     app.processEvents()
-    if failures or len(results) != 1:
-        raise SystemExit(f"desktop worker failed: {kind}: {failures!r}, {results!r}")
-    return results[0]
+    if len(outcomes) != 1:
+        raise SystemExit(f"desktop worker returned no outcome: {kind}: {outcomes!r}")
+    outcome = outcomes[0]
+    result = outcome.result_payload
+    if result is None:
+        raise SystemExit(f"desktop worker failed: {kind}: {outcome.failure_payload!r}")
+    return result
 
-inspection = request("inspect_source", {"source_path": str(source)})
+inspection = request("inspection", "inspect_source", {"source_path": str(source)})
+lease = create_plot_staging(workspace.root)
+plot = {
+    "name": "installed-smoke-density",
+    "kind": "property_curves",
+    "property": "mass_density",
+}
+if inspection["summary"]["identity"]["mode"] == "property_table":
+    plot["x"] = "temperature"
+render_payload = {
+    "workspace_path": str(workspace.root),
+    "source_path": str(source),
+    "inspection_revision": inspection["revision"],
+    "plot_name": "installed-smoke-density",
+    "format": "png",
+    "plot": plot,
+    "staging": lease.worker_payload(),
+}
 rendered = request(
+    "plot",
     "render_plot",
-    {
-        "workspace_path": str(workspace.root),
-        "source_path": str(source),
-        "inspection_revision": inspection["revision"],
-        "plot_name": "installed-smoke-density",
-        "format": "png",
-        "plot": {
-            "name": "installed-smoke-density",
-            "kind": "property_curves",
-            "property": "mass_density",
-        },
-    },
+    render_payload,
+    finalizer=ImageExportFinalizer(lease),
 )
 image = Path(rendered["image_path"])
 sidecar = Path(rendered["sidecar_path"])
