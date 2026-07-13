@@ -135,10 +135,16 @@ Completed Stage 1 slices:
   recent-workspace model binding, and the desktop composition root;
 - QML-ready dataset draft and sampler state, dataset-only baselines, ordered
   selection models, local compatibility issues, and incomplete-draft discard
-  protection.
+  protection;
+- QML-ready configured-visualization draft state, canonical and raw dirty
+  baselines, retained latent and incompatible selections, ordered plot
+  snapshots, one workflow-local Add/Edit plot draft, and Widgets bindings over
+  the authoritative draft.
 
-The next Stage 1 slice extracts configured-visualization draft state while
-keeping Widgets as the active frontend.
+Widgets remains the active frontend. The next Stage 1 extraction must be
+planned from the remaining workflow that is immediately ready for QML
+migration; this completed slice does not start QML or centralize the complete
+configuration workflow.
 
 Execution, inspection, table, plotting, jobs, and recovery controllers are not
 preemptively extracted in Stage 1. Extract each immediately before its QML

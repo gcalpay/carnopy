@@ -73,6 +73,7 @@ class MainWindow(QMainWindow):
         self.configure_page = DatasetConfigEditor(
             coordinator=self.coordinator,
             dataset_draft=self.desktop_controller.dataset_draft,
+            visualization_draft=self.desktop_controller.visualization_draft,
         )
         self.execution_page = DatasetExecutionPage(self.coordinator)
         self.inspection_page = InspectionPage(self.coordinator)

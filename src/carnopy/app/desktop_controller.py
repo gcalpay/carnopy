@@ -5,6 +5,7 @@ from PySide6.QtCore import Property, QObject, QSettings
 from carnopy.app.client import WorkerClient
 from carnopy.app.dataset_draft import DatasetDraft
 from carnopy.app.request_coordinator import DesktopRequestCoordinator
+from carnopy.app.visualization_draft import VisualizationDraft
 from carnopy.app.workspace_controller import WorkspaceController
 
 
@@ -22,6 +23,7 @@ class DesktopController(QObject):
         self.client = WorkerClient(self)
         self.request_coordinator = DesktopRequestCoordinator(self.client, self)
         self.dataset_draft = DatasetDraft(self)
+        self.visualization_draft = VisualizationDraft(self)
         self.workspace_controller = WorkspaceController(
             self.request_coordinator,
             self.settings,
@@ -38,6 +40,11 @@ class DesktopController(QObject):
         return self.dataset_draft
 
     datasetDraft = Property(QObject, get_dataset_draft, constant=True)
+
+    def get_visualization_draft(self) -> QObject:
+        return self.visualization_draft
+
+    visualizationDraft = Property(QObject, get_visualization_draft, constant=True)
 
     def shutdown(self) -> bool:
         self.workspace_controller.cancel_pending()

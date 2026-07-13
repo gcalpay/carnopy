@@ -22,13 +22,13 @@ from PySide6.QtWidgets import (
     QMessageBox,
 )
 
-from carnopy.app.config_document import new_document
+from carnopy.app.config_document import ConfigDocumentError, new_document
 from carnopy.app.config_editor import DatasetConfigEditor
 from carnopy.app.config_widgets import SamplerEditor
 from carnopy.app.draft_models import DISPLAY_ROLE
 from carnopy.app.plot_draft import PlotDraft
 from carnopy.app.sampler_draft import SamplerDraft
-from carnopy.app.visualization_editor import PLOT_ROLE, PlotRequestDialog, VisualizationEditor
+from carnopy.app.visualization_editor import PlotRequestDialog, VisualizationEditor
 from carnopy.app.workspace import initialize_workspace
 from carnopy.domain.properties import PROPERTY_REGISTRY
 from carnopy.templates import template_text
@@ -298,6 +298,39 @@ def test_dataset_form_binds_directly_to_controller_models(
     assert editor.form.properties.model() is editor.dataset_draft.selected_properties
     assert editor.form.property_input.model() is editor.dataset_draft.property_choices
     assert editor.form.model.model() is editor.dataset_draft.model_choices
+    assert editor.visualization.draft is editor.visualization_draft
+    assert editor.visualization.format.model() is editor.visualization_draft.format_choices
+    assert editor.visualization.plots.model() is editor.visualization_draft.plot_model
+    assert editor.visualization.filters._draft is editor.visualization_draft.filters
+    assert editor.visualization.display_units._draft is editor.visualization_draft.display_units
+    editor.shutdown()
+
+
+def test_invalid_visualization_blocks_save_and_requires_discard(
+    tmp_path: Path,
+    application: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    editor = configured_editor(tmp_path)
+    editor._open_document(new_document(yaml.safe_load(template_text("property_table"))))
+    questions: list[str] = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda *_args, **_kwargs: questions.append("asked") or QMessageBox.StandardButton.Cancel,
+    )
+
+    editor.visualization_draft.set_enabled(True)
+
+    assert editor.visualization_draft.get_dirty()
+    assert not editor.visualization_draft.get_locally_valid()
+    assert not editor._form_valid
+    assert not editor.save_button.isEnabled()
+    with pytest.raises(ConfigDocumentError, match="complete the configuration form"):
+        editor.execution_snapshot()
+    assert not editor.confirm_discard()
+    assert questions == ["asked"]
     editor.shutdown()
 
 
@@ -549,6 +582,8 @@ def test_visualization_editor_offers_guided_shared_choices(
     ]
     filter_field.setCurrentText("pressure")
     assert isinstance(editor.filters.table.cellWidget(0, 1), QLineEdit)
+    filter_field = editor.filters.table.cellWidget(0, 0)
+    assert isinstance(filter_field, QComboBox)
     filter_field.setCurrentText("phase")
     reset_filter_value = editor.filters.table.cellWidget(0, 1)
     assert isinstance(reset_filter_value, QComboBox)
@@ -619,9 +654,14 @@ def test_visualization_requires_unique_names_and_preserves_plot_order(
     editor.move_plot(-1)
 
     assert [plot["name"] for plot in editor.plot_payloads()] == ["second", "first"]
-    duplicate = editor.plots.item(1)
-    assert duplicate is not None
-    duplicate.setData(PLOT_ROLE, {"name": "second", "kind": "pv"})
+    editor.load_visualization(
+        {
+            "plots": [
+                {"name": "second", "kind": "ts"},
+                {"name": "second", "kind": "pv"},
+            ]
+        }
+    )
     with pytest.raises(ValueError, match="unique"):
         editor.visualization_payload()
     editor.close()
@@ -641,8 +681,10 @@ def test_opening_document_replaces_previous_visualization_state(
 
     editor._open_document(new_document(first))
     assert [plot["name"] for plot in editor.visualization.plot_payloads()] == ["old-plot"]
+    assert editor.visualization_draft.begin_edit_plot(0) is not None
 
     editor._open_document(new_document(second))
+    assert editor.visualization_draft.get_active_plot_draft() is None
     assert editor.visualization.plot_payloads() == []
     assert "visualization" not in yaml.safe_load(editor.preview.toPlainText())
     editor.shutdown()
@@ -700,6 +742,8 @@ def test_changing_workspace_clears_the_previous_workspace_draft(
     del application
     editor = configured_editor(tmp_path)
     editor._open_document(new_document(yaml.safe_load(template_text("property_table"))))
+    editor.visualization_draft.set_enabled(True)
+    assert editor.visualization_draft.begin_add_plot() is not None
     editor._capability_cache["heos"] = capabilities()
     replacement = initialize_workspace(tmp_path / "replacement")
 
@@ -707,6 +751,7 @@ def test_changing_workspace_clears_the_previous_workspace_draft(
 
     assert editor.workspace == replacement
     assert editor.document is None
+    assert editor.visualization_draft.get_active_plot_draft() is None
     assert editor.file_label.text() == "No dataset configuration is open."
     assert editor.preview.toPlainText() == ""
     editor.shutdown()
@@ -731,6 +776,7 @@ def test_confirmed_mode_change_preserves_shared_fields_and_resets_mode_state(
         ]
     }
     editor._open_document(new_document(payload))
+    assert editor.visualization_draft.begin_edit_plot(0) is not None
     original_fluids = editor.form.list_values(editor.form.fluids)
     original_properties = editor.form.list_values(editor.form.properties)
     monkeypatch.setattr(
@@ -748,6 +794,8 @@ def test_confirmed_mode_change_preserves_shared_fields_and_resets_mode_state(
     assert changed["fluids"] == original_fluids
     assert changed["properties"] == original_properties
     assert "visualization" not in changed
+    assert editor.visualization_draft.get_active_plot_draft() is None
+    assert editor.visualization_draft.get_dirty()
     editor.shutdown()
 
 
@@ -809,6 +857,8 @@ def test_save_as_validates_exact_preview_and_refuses_overwrite(
     assert destination.read_text(encoding="utf-8") == editor.preview.toPlainText()
     assert editor.document is not None
     assert editor.document.source_path == destination
+    assert not editor.dataset_draft.get_dirty()
+    assert not editor.visualization_draft.get_dirty()
     original = destination.read_bytes()
     editor.save_as()
     _wait_for_worker(application, editor)

@@ -147,6 +147,13 @@ def test_window_uses_one_shared_request_coordinator(
     assert window.desktop_controller.workspace_controller is window.workspace_controller
     assert window.coordinator.client is window.client
     assert window.configure_page.coordinator is window.coordinator
+    assert window.configure_page.dataset_draft is window.desktop_controller.dataset_draft
+    assert (
+        window.configure_page.visualization_draft is window.desktop_controller.visualization_draft
+    )
+    assert (
+        window.configure_page.visualization.draft is window.desktop_controller.visualization_draft
+    )
     assert window.execution_page.coordinator is window.coordinator
     assert window.inspection_page.coordinator is window.coordinator
     assert window.plot_page.coordinator is window.coordinator

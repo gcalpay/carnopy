@@ -84,12 +84,14 @@ def test_desktop_controller_owns_one_composition_and_preserves_settings_identity
     assert desktop.settings is settings
     assert desktop.request_coordinator.client is desktop.client
     assert desktop.dataset_draft.parent() is desktop
+    assert desktop.visualization_draft.parent() is desktop
     assert desktop.workspace_controller.coordinator is desktop.request_coordinator
     assert desktop.client.parent() is desktop
     assert desktop.request_coordinator.parent() is desktop
     assert desktop.workspace_controller.parent() is desktop
     assert desktop.property("workspaceController") is desktop.workspace_controller
     assert desktop.property("datasetDraft") is desktop.dataset_draft
+    assert desktop.property("visualizationDraft") is desktop.visualization_draft
     assert (
         desktop.workspace_controller.property("recentWorkspaces")
         is desktop.workspace_controller.recent_model
