@@ -229,7 +229,7 @@ def capabilities() -> dict[str, Any]:
 
 def configured_editor(tmp_path: Path) -> DatasetConfigEditor:
     editor = DatasetConfigEditor()
-    editor.workspace = initialize_workspace(tmp_path / "workspace")
+    editor.controller.workspace = initialize_workspace(tmp_path / "workspace")
     editor._apply_capabilities(capabilities())
     return editor
 
@@ -732,6 +732,24 @@ def test_alias_spelling_and_order_are_preserved_without_canonical_duplicates(
         "Cyclopentane",
         "R290",
     ]
+    editor.shutdown()
+
+
+def test_selecting_fluid_choice_preserves_edit_text_and_adds_value(
+    tmp_path: Path,
+    application: QApplication,
+) -> None:
+    del application
+    editor = configured_editor(tmp_path)
+    editor._open_document(new_document(yaml.safe_load(template_text("property_table"))))
+    row = editor.dataset_draft.fluid_choices.values.index("Cyclopentane")
+
+    editor.form.fluid_input.setCurrentIndex(row)
+
+    assert editor.form.fluid_input.currentText() == "Cyclopentane"
+    assert editor.form.fluid_feedback.text() == "Canonical fluid: Cyclopentane"
+    editor.form._add_fluid()
+    assert editor.dataset_draft.selected_fluid_values()[-1] == "Cyclopentane"
     editor.shutdown()
 
 

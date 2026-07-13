@@ -28,7 +28,8 @@ chore(release): start 0.1.0a4 development
 
 Carnopy and companion bridge PEP 440 metadata now report `0.1.0a4.dev0`; the
 numeric CMake declaration remains `0.1.0`. This metadata-only transition does
-not require another native VTK qualification run. Stage 1 is active.
+not require another native VTK qualification run. Stage 1 is complete and
+Stage 2 is active.
 
 ## Authority and permanent boundaries
 
@@ -71,8 +72,8 @@ promises require maintainer approval.
 | Stage | Status | Purpose |
 | --- | --- | --- |
 | 0 | Complete | Qualify the native Qt Quick and VTK bridge |
-| 1 | Active | Establish request ownership and dataset desktop controllers |
-| 2 | Pending | Add the modern QML workspace and dataset workflow |
+| 1 | Complete | Establish request ownership and dataset desktop controllers |
+| 2 | Active | Add the modern QML workspace and dataset workflow |
 | 3 | Pending | Reach GUI-1 parity and retire Widgets |
 | 4 | Pending | Add controlled sweep and preparation worker operations |
 | 5 | Pending | Add structured sweep and preparation QML workflows |
@@ -139,17 +140,17 @@ Completed Stage 1 slices:
 - QML-ready configured-visualization draft state, canonical and raw dirty
   baselines, retained latent and incompatible selections, ordered plot
   snapshots, one workflow-local Add/Edit plot draft, and Widgets bindings over
-  the authoritative draft.
+  the authoritative draft;
+- QML-ready complete dataset-configuration workflow ownership in
+  `DatasetConfigController`, including document replacement, deterministic
+  complete-YAML merging, worker validation before writes, Save and Save As,
+  external-change and imported-reformat decisions, discard protection, and
+  execution gating. `DesktopController` owns the operative instance and
+  `DatasetConfigEditor` is now only the Widgets view and dialog adapter.
 
-Widgets remains the active frontend, and Stage 1 remains active. Its remaining
-boundary is to extract the complete dataset-configuration workflow from
-`DatasetConfigEditor` into a QML-ready QtCore controller without starting QML.
-That controller must own document import, opening, clearing, exact complete-YAML
-coordination, worker validation before writes, Save and Save As orchestration,
-external-change handling, discard protection, and execution gating while using
-the existing dataset and visualization drafts. Adapt Widgets to that controller
-and preserve the current worker and file-safety boundaries. After this
-workflow-controller slice is verified, Stage 1 is complete and Stage 2 begins.
+Stage 1 is complete. Widgets remains the unchanged active frontend and no QML
+was added during the extraction. Stage 2 now owns the first packaged QML
+workspace and dataset workflow over these controller and draft interfaces.
 
 Execution, inspection, table, plotting, jobs, and recovery controllers are not
 preemptively extracted in Stage 1. Extract each immediately before its QML

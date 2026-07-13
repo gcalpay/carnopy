@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import io
 import json
 import os
@@ -182,6 +183,16 @@ def test_worker_renders_nested_plot_and_closes_figure(tmp_path: Path) -> None:
     import matplotlib.pyplot as plt
 
     assert plt.get_fignums() == []
+
+
+def test_installed_app_plot_smoke_uses_request_coordinator(tmp_path: Path) -> None:
+    script = Path(__file__).resolve().parents[1] / "scripts" / "smoke_installed.py"
+    spec = importlib.util.spec_from_file_location("carnopy_test_smoke_installed_plot", script)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    module.smoke_app_plot(tmp_path, _dataset(tmp_path / "installed-smoke.parquet"))
 
 
 def test_render_plot_rejects_changed_inspection_revision(tmp_path: Path) -> None:

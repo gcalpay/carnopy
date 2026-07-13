@@ -145,7 +145,9 @@ def test_window_uses_one_shared_request_coordinator(
 
     assert window.desktop_controller.client is window.client
     assert window.desktop_controller.workspace_controller is window.workspace_controller
+    assert window.dataset_config_controller is window.desktop_controller.dataset_config_controller
     assert window.coordinator.client is window.client
+    assert window.configure_page.controller is window.dataset_config_controller
     assert window.configure_page.coordinator is window.coordinator
     assert window.configure_page.dataset_draft is window.desktop_controller.dataset_draft
     assert (
@@ -261,8 +263,12 @@ def test_opening_active_workspace_skips_discard_and_page_reset(
     )
     wait_for_idle(application, window)
     propagated: list[str] = []
+    monkeypatch.setattr(
+        window.dataset_config_controller,
+        "set_workspace",
+        lambda _workspace: propagated.append("configuration"),
+    )
     for name, page in (
-        ("configure", window.configure_page),
         ("execution", window.execution_page),
         ("inspection", window.inspection_page),
         ("plot", window.plot_page),
@@ -345,8 +351,12 @@ def test_successful_activation_propagates_once_to_every_workspace_page(
     del application
     window = MainWindow(settings=settings_for(tmp_path / "settings.ini"))
     propagated: list[str] = []
+    monkeypatch.setattr(
+        window.dataset_config_controller,
+        "set_workspace",
+        lambda _workspace: propagated.append("configuration"),
+    )
     for name, page in (
-        ("configure", window.configure_page),
         ("execution", window.execution_page),
         ("inspection", window.inspection_page),
         ("plot", window.plot_page),
@@ -365,7 +375,14 @@ def test_successful_activation_propagates_once_to_every_workspace_page(
 
     assert window.workspace is not None
     assert window.workspace.root == target.resolve()
-    assert propagated == ["configure", "execution", "inspection", "plot", "jobs", "sources"]
+    assert propagated == [
+        "configuration",
+        "execution",
+        "inspection",
+        "plot",
+        "jobs",
+        "sources",
+    ]
     window.close()
 
 

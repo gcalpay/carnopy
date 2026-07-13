@@ -15,6 +15,7 @@ from PySide6.QtCore import (
 from carnopy.app.sampler_draft import SamplerDraft
 
 DISPLAY_ROLE = int(Qt.ItemDataRole.DisplayRole)
+EDIT_ROLE = int(Qt.ItemDataRole.EditRole)
 VALUE_ROLE = int(Qt.ItemDataRole.UserRole) + 1
 CANONICAL_ROLE = VALUE_ROLE + 1
 COMPATIBLE_ROLE = VALUE_ROLE + 2
@@ -95,6 +96,7 @@ class DraftListModel(QAbstractListModel):
         item = self._items[index.row()]
         values: dict[int, object] = {
             DISPLAY_ROLE: item.display,
+            EDIT_ROLE: item.value,
             int(Qt.ItemDataRole.ToolTipRole): item.issue,
             VALUE_ROLE: item.value,
             CANONICAL_ROLE: item.canonical,

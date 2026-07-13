@@ -62,6 +62,7 @@ class MainWindow(QMainWindow):
         self.client = self.desktop_controller.client
         self.coordinator = self.desktop_controller.request_coordinator
         self.workspace_controller = self.desktop_controller.workspace_controller
+        self.dataset_config_controller = self.desktop_controller.dataset_config_controller
         self._close_when_idle = False
         self._close_after_plot_stop = False
         self.setWindowTitle("Carnopy")
@@ -71,9 +72,7 @@ class MainWindow(QMainWindow):
         self.navigation.setFixedWidth(220)
         self.pages = QStackedWidget()
         self.configure_page = DatasetConfigEditor(
-            coordinator=self.coordinator,
-            dataset_draft=self.desktop_controller.dataset_draft,
-            visualization_draft=self.desktop_controller.visualization_draft,
+            controller=self.dataset_config_controller,
         )
         self.execution_page = DatasetExecutionPage(self.coordinator)
         self.inspection_page = InspectionPage(self.coordinator)
@@ -105,7 +104,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.pages, 1)
         self.setCentralWidget(central)
         self._set_workspace_pages_enabled(self.workspace_controller.get_available())
-        self.configure_page.document_state_changed.connect(self._sync_execution_config)
+        self.dataset_config_controller.document_state_changed.connect(self._sync_execution_config)
         self.coordinator.busy_changed.connect(self._worker_busy_changed)
         self.workspace_controller.workspace_changed.connect(self._workspace_activated)
         self.workspace_controller.available_changed.connect(
@@ -250,7 +249,7 @@ class MainWindow(QMainWindow):
             return
         workspace = value
         self.workspace_path.setText(str(workspace.root))
-        self.configure_page.set_workspace(workspace)
+        self.dataset_config_controller.set_workspace(workspace)
         self.execution_page.set_workspace(workspace)
         self.inspection_page.set_workspace(workspace)
         self.plot_page.set_workspace(workspace)
@@ -319,7 +318,7 @@ class MainWindow(QMainWindow):
 
     def _sync_execution_config(self) -> None:
         try:
-            snapshot = self.configure_page.execution_snapshot()
+            snapshot = self.dataset_config_controller.execution_snapshot()
         except ConfigDocumentError as exc:
             self.execution_page.set_snapshot(None, str(exc))
         else:

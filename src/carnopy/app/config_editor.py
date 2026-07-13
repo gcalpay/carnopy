@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
-import yaml
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -18,30 +16,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from carnopy.app.client import WorkerClient
-from carnopy.app.config_document import (
-    ConfigDocumentError,
-    DatasetConfigDocument,
-    ExternalModificationError,
-    SavedConfigSnapshot,
-    document_from_worker_payload,
-    new_document,
-    replace_config_atomic,
-    source_matches,
-    write_new_config,
-)
+from carnopy.app.config_controller import DatasetConfigController
+from carnopy.app.config_document import DatasetConfigDocument, SavedConfigSnapshot
 from carnopy.app.config_form import DatasetConfigForm
 from carnopy.app.dataset_draft import DatasetDraft
-from carnopy.app.protocol import RequestType
-from carnopy.app.request_coordinator import (
-    DesktopRequestCoordinator,
-    RequestOutcome,
-    RequestSession,
-)
+from carnopy.app.request_coordinator import DesktopRequestCoordinator
 from carnopy.app.visualization_draft import VisualizationDraft
 from carnopy.app.visualization_editor import VisualizationEditor
 from carnopy.app.workspace import Workspace
-from carnopy.templates import template_text
 
 MODE_LABELS = {
     "property_table": "Property table",
@@ -51,7 +33,7 @@ MODE_LABELS = {
 
 
 class DatasetConfigEditor(QWidget):
-    """Coordinate worker-backed validation and safe dataset-config file handling."""
+    """Present the configured-dataset controller through Qt Widgets."""
 
     draft_changed = Signal(bool)
     document_state_changed = Signal()
@@ -60,28 +42,27 @@ class DatasetConfigEditor(QWidget):
         self,
         parent: QWidget | None = None,
         *,
+        controller: DatasetConfigController | None = None,
         coordinator: DesktopRequestCoordinator | None = None,
         dataset_draft: DatasetDraft | None = None,
         visualization_draft: VisualizationDraft | None = None,
     ) -> None:
         super().__init__(parent)
-        self.workspace: Workspace | None = None
-        self.document: DatasetConfigDocument | None = None
-        self._owns_coordinator = coordinator is None
-        if coordinator is None:
-            client = WorkerClient(self)
-            coordinator = DesktopRequestCoordinator(client, self)
-        self.coordinator = coordinator
-        self.dataset_draft = dataset_draft or DatasetDraft(self)
-        self.visualization_draft = visualization_draft or VisualizationDraft(self)
-        self.capabilities: dict[str, Any] | None = None
-        self._capability_cache: dict[str, dict[str, Any]] = {}
-        self._session: RequestSession | None = None
-        self._pending_action: str | None = None
-        self._pending_path: Path | None = None
-        self._pending_content: bytes | None = None
-        self._form_valid = False
-        self._syncing_document = False
+        if controller is not None and any(
+            value is not None for value in (coordinator, dataset_draft, visualization_draft)
+        ):
+            raise ValueError("supply either controller or its component objects, not both")
+        if controller is None:
+            controller = DatasetConfigController(
+                coordinator,
+                dataset_draft,
+                visualization_draft,
+                self,
+            )
+        self.controller = controller
+        self.coordinator = controller.coordinator
+        self.dataset_draft = controller.dataset_draft
+        self.visualization_draft = controller.visualization_draft
 
         root = QVBoxLayout(self)
         root.addLayout(self._build_actions())
@@ -102,13 +83,37 @@ class DatasetConfigEditor(QWidget):
         self.status.setAccessibleName("Configuration status")
         root.addWidget(self.status)
 
-        self.form.changed.connect(self._refresh_form_state)
-        self.form.mode_change_requested.connect(self._mode_changed)
-        self.form.message.connect(self.status.setText)
-        self.visualization.changed.connect(self._refresh_form_state)
-        self.visualization_draft.message.connect(self.status.setText)
-        self.coordinator.busy_changed.connect(self._worker_busy_changed)
-        self._set_editor_enabled(False)
+        self.controller.state_changed.connect(self._sync_view)
+        self.controller.status_message_changed.connect(self._sync_status)
+        self.controller.draft_changed.connect(self.draft_changed.emit)
+        self.controller.document_state_changed.connect(self.document_state_changed.emit)
+        self.controller.document_opened.connect(lambda: self.tabs.setCurrentIndex(0))
+        self.controller.warning_requested.connect(self._show_warning)
+        self.controller.mode_change_requested.connect(self._mode_changed)
+        self.controller.save_path_requested.connect(self._choose_save_path)
+        self.controller.reformat_confirmation_requested.connect(self._confirm_import_reformat)
+        self.controller.external_change_requested.connect(self._handle_external_change)
+        self._sync_view()
+
+    @property
+    def workspace(self) -> Workspace | None:
+        return self.controller.workspace
+
+    @property
+    def document(self) -> DatasetConfigDocument | None:
+        return self.controller.document
+
+    @property
+    def capabilities(self) -> dict[str, Any] | None:
+        return self.controller.capabilities
+
+    @property
+    def _form_valid(self) -> bool:
+        return self.controller.get_locally_valid()
+
+    @property
+    def _capability_cache(self) -> dict[str, dict[str, Any]]:
+        return self.controller._capability_cache
 
     def _build_actions(self) -> QHBoxLayout:
         layout = QHBoxLayout()
@@ -143,30 +148,10 @@ class DatasetConfigEditor(QWidget):
         return page
 
     def set_workspace(self, workspace: Workspace | None) -> None:
-        changed = self.workspace != workspace
-        self.workspace = workspace
-        if changed:
-            self._clear_document()
-        if workspace is None:
-            self.capabilities = None
-            self._set_editor_enabled(False)
-            self.status.setText("Open a workspace to create or import a configuration.")
-            return
-        self._set_editor_enabled(False)
-        cached = self._capability_cache.get("heos")
-        if cached is not None:
-            self._apply_capabilities(cached)
-            return
-        self.status.setText("Loading current Carnopy capabilities…")
-        self._pending_action = "capabilities"
-        self._start_worker("describe_capabilities", {"model": "heos"})
+        self.controller.set_workspace(workspace)
 
     def confirm_discard(self) -> bool:
-        if self.document is None or not (
-            self.document.needs_save
-            or self.dataset_draft.get_dirty()
-            or self.visualization_draft.get_dirty()
-        ):
+        if not self.controller.needs_discard_confirmation():
             return True
         answer = QMessageBox.question(
             self,
@@ -178,22 +163,19 @@ class DatasetConfigEditor(QWidget):
         return answer == QMessageBox.StandardButton.Discard
 
     def shutdown(self) -> None:
-        if self._owns_coordinator:
-            self.coordinator.shutdown()
+        self.controller.shutdown()
 
     def execution_snapshot(self) -> SavedConfigSnapshot:
-        if self.workspace is None or self.document is None:
-            raise ConfigDocumentError("open and save a dataset configuration before execution")
-        if not (
-            self.dataset_draft.get_locally_valid() and self.visualization_draft.get_locally_valid()
-        ):
-            raise ConfigDocumentError("complete the configuration form before execution")
-        return self.document.execution_snapshot(configs_root=self.workspace.configs)
+        return self.controller.execution_snapshot()
 
     def new_dataset(self) -> None:
-        if self.workspace is None or self.capabilities is None or not self.confirm_discard():
+        capabilities = self.capabilities
+        if self.workspace is None or capabilities is None or not self.confirm_discard():
             return
-        labels = [MODE_LABELS[name] for name in self.capabilities["modes"]]
+        modes = capabilities.get("modes")
+        if not isinstance(modes, list):
+            return
+        labels = [MODE_LABELS[name] for name in modes if name in MODE_LABELS]
         selected, accepted = QInputDialog.getItem(
             self,
             "New Dataset Configuration",
@@ -204,237 +186,38 @@ class DatasetConfigEditor(QWidget):
         if not accepted:
             return
         mode = next(name for name, label in MODE_LABELS.items() if label == selected)
-        self._open_document(new_document(_template_payload(mode)))
-        self.status.setText("New configuration. Save it under the workspace configs folder.")
+        self.controller.new_dataset(mode, discard_confirmed=True)
 
     def import_dataset(self) -> None:
-        if self.workspace is None or not self.confirm_discard():
+        workspace = self.workspace
+        if workspace is None or not self.confirm_discard():
             return
         selected, _filter = QFileDialog.getOpenFileName(
             self,
             "Import Valid Dataset Configuration",
-            str(self.workspace.configs),
+            str(workspace.configs),
             "YAML configurations (*.yaml *.yml)",
         )
-        if not selected:
-            return
-        self._pending_action = "import"
-        self._pending_path = Path(selected).resolve()
-        self.status.setText("Validating imported configuration…")
-        self._start_worker(
-            "load_dataset_config",
-            {"config_path": str(self._pending_path)},
-        )
+        if selected:
+            self.controller.import_dataset(selected, discard_confirmed=True)
 
     def save(self) -> None:
-        document = self.document
-        if document is None or not self._form_valid:
-            return
-        if document.source_path is None or not document.workspace_owned:
-            self.save_as()
-            return
-        expected = document.source_sha256
-        if expected is None or not source_matches(document.source_path, expected):
-            self._handle_external_change()
-            return
-        if document.imported and not self._confirm_import_reformat():
-            return
-        self._validate_before_save(document.source_path, replace=True)
+        self.controller.request_save()
 
     def save_as(self) -> None:
-        if self.workspace is None or self.document is None or not self._form_valid:
-            return
-        if self.document.imported and not self._confirm_import_reformat():
-            return
-        selected, _filter = QFileDialog.getSaveFileName(
-            self,
-            "Save Dataset Configuration As",
-            str(self.workspace.configs / "dataset.yaml"),
-            "YAML configurations (*.yaml *.yml)",
-        )
-        if not selected:
-            return
-        path = Path(selected)
-        if not path.suffix:
-            path = path.with_suffix(".yaml")
-        self._validate_before_save(path.resolve(), replace=False)
-
-    def _validate_before_save(self, path: Path, *, replace: bool) -> None:
-        if self.document is None:
-            return
-        content = self.document.yaml_bytes
-        self._pending_action = "save_replace" if replace else "save_new"
-        self._pending_path = path
-        self._pending_content = content
-        self.status.setText("Validating exact YAML before Save…")
-        self._start_worker(
-            "validate_dataset_config",
-            {"yaml_text": content.decode("utf-8"), "source_name": str(path)},
-        )
-
-    def _start_worker(
-        self,
-        request_type: RequestType,
-        payload: dict[str, object],
-    ) -> None:
-        try:
-            session = self.coordinator.start_request(
-                "configuration",
-                request_type,
-                payload,
-            )
-        except (RuntimeError, ValueError) as exc:
-            self._clear_pending()
-            self.status.setText(str(exc))
-            self._update_actions()
-            return
-        self._session = session
-        session.completed.connect(self._worker_completed)
-
-    def _worker_completed(self, value: object) -> None:
-        outcome = cast(RequestOutcome, value)
-        session = self._session
-        if session is None or outcome.request_id != session.request_id:
-            return
-        self._session = None
-        result = outcome.result_payload
-        if result is not None:
-            self._worker_succeeded(result)
-            return
-        self._worker_failed(outcome.failure_payload or {})
-
-    def _worker_succeeded(self, payload: object) -> None:
-        result = cast(dict[str, Any], payload)
-        action = self._pending_action
-        if action is None:
-            return
-        self._clear_pending(keep_paths=action in {"save_new", "save_replace"})
-        if action == "capabilities":
-            model = result.get("model")
-            if isinstance(model, str):
-                self._capability_cache[model] = result
-            self._apply_capabilities(result)
-        elif action in {"import", "reload"}:
-            self._finish_import(result)
-        elif action in {"save_new", "save_replace"}:
-            self._finish_save(replace=action == "save_replace")
-
-    def _worker_failed(self, payload: object) -> None:
-        failure = cast(dict[str, Any], payload)
-        action = self._pending_action
-        if action is None:
-            return
-        self._clear_pending()
-        message = str(failure.get("message", "worker request failed"))
-        details = failure.get("details")
-        issues = details.get("issues") if isinstance(details, dict) else None
-        if isinstance(issues, list):
-            details = [
-                f"{item.get('path', '$')}: {item.get('message', 'invalid value')}"
-                for item in issues
-                if isinstance(item, dict)
-            ]
-            if details:
-                message += "\n" + "\n".join(details)
-        self.status.setText(message)
-        title = "Import Failed" if action in {"import", "reload"} else "Validation Failed"
-        QMessageBox.warning(self, title, message)
-        self._update_actions()
-
-    def _worker_busy_changed(self, busy: bool) -> None:
-        self.new_button.setEnabled(
-            not busy and self.workspace is not None and self.capabilities is not None
-        )
-        self.import_button.setEnabled(not busy and self.workspace is not None)
-        self._update_actions()
+        self.controller.request_save_as()
 
     def _apply_capabilities(self, payload: dict[str, Any]) -> None:
-        self.capabilities = payload
-        self.form.apply_capabilities(payload)
-        self.visualization_draft.apply_capabilities(payload)
-        self._set_editor_enabled(True)
-        self.status.setText("Create a new dataset configuration or import a valid YAML file.")
-
-    def _clear_document(self) -> None:
-        self.document = None
-        self.file_label.setText("No dataset configuration is open.")
-        self.preview.clear()
-        self.form.clear()
-        self.visualization_draft.clear()
-        self._form_valid = False
-        self._update_actions()
-        self.document_state_changed.emit()
-
-    def _finish_import(self, payload: dict[str, Any]) -> None:
-        if self.workspace is None:
-            return
-        try:
-            document = document_from_worker_payload(payload, configs_root=self.workspace.configs)
-        except ConfigDocumentError as exc:
-            self.status.setText(str(exc))
-            return
-        self._open_document(document)
-        location = "workspace configuration" if document.workspace_owned else "external import"
-        self.status.setText(f"Loaded valid {location}: {document.source_path}")
-
-    def _finish_save(self, *, replace: bool) -> None:
-        document = self.document
-        workspace = self.workspace
-        path = self._pending_path
-        content = self._pending_content
-        self._pending_path = None
-        self._pending_content = None
-        if document is None or workspace is None or path is None or content is None:
-            self.status.setText("Save state was lost before the validated YAML could be written.")
-            return
-        try:
-            if replace:
-                expected = document.source_sha256
-                if expected is None:
-                    raise ConfigDocumentError("saved configuration has no source hash")
-                destination = replace_config_atomic(
-                    path,
-                    content,
-                    expected_sha256=expected,
-                    configs_root=workspace.configs,
-                )
-            else:
-                destination = write_new_config(path, content, configs_root=workspace.configs)
-        except ExternalModificationError:
-            self._handle_external_change()
-            return
-        except ConfigDocumentError as exc:
-            self.status.setText(str(exc))
-            QMessageBox.warning(self, "Save Failed", str(exc))
-            return
-        document.mark_saved(destination, content)
-        self.dataset_draft.mark_baseline()
-        self.visualization_draft.mark_baseline()
-        self.file_label.setText(str(destination))
-        self.status.setText(f"Saved valid configuration: {destination}")
-        self._refresh_form_state()
-        self.document_state_changed.emit()
+        self.controller._apply_capabilities(payload)
 
     def _open_document(self, document: DatasetConfigDocument) -> None:
-        self.document = document
-        self._syncing_document = True
-        try:
-            self.form.load_payload(document.payload)
-            self.visualization_draft.set_dataset_context(document.payload)
-            self.visualization_draft.load_visualization(document.payload.get("visualization"))
-        finally:
-            self._syncing_document = False
-        self.file_label.setText(
-            str(document.source_path) if document.source_path else "Unsaved dataset configuration"
-        )
-        self.tabs.setCurrentIndex(0)
-        self._refresh_form_state()
+        self.controller.open_document(document)
+
+    def _refresh_form_state(self) -> None:
+        self.controller._refresh_document()
 
     def _mode_changed(self, selected: str) -> None:
         if self.document is None:
-            return
-        previous = self.dataset_draft.get_mode_name()
-        if selected == previous:
             return
         answer = QMessageBox.question(
             self,
@@ -444,65 +227,36 @@ class DatasetConfigEditor(QWidget):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
-        if answer != QMessageBox.StandardButton.Yes:
-            self.form.sync_from_draft()
-            return
-        self._syncing_document = True
-        try:
-            if not self.dataset_draft.apply_mode_change(selected):
-                self.form.sync_from_draft()
-                return
-            payload = self.dataset_draft.merge_into(self.document.payload)
-            payload.pop("visualization", None)
-            self.document.set_payload(payload)
-            self.visualization_draft.set_dataset_context(payload)
-            self.visualization_draft.reset_for_mode_change()
-        finally:
-            self._syncing_document = False
-        self._refresh_form_state()
-
-    def _refresh_form_state(self) -> None:
-        if self._syncing_document:
-            return
-        document = self.document
-        if document is None:
-            self.preview.clear()
-            self._form_valid = False
-            self._update_actions()
-            return
-        try:
-            payload = self.dataset_draft.merge_into(document.payload)
-            dataset_context = self.dataset_draft.dataset_payload()
-            self.visualization_draft.set_dataset_context(dataset_context)
-            if not self.visualization_draft.get_locally_valid():
-                raise ValueError(self.visualization_draft.get_issue())
-            visualization = self.visualization_draft.visualization_payload()
-            if visualization is None:
-                payload.pop("visualization", None)
-            else:
-                payload["visualization"] = visualization
-        except ValueError as exc:
-            self._form_valid = False
-            self.preview.setPlainText(
-                f"# YAML preview is unavailable until the form is complete.\n# {exc}\n"
-            )
-            self.status.setText(str(exc))
+        if answer == QMessageBox.StandardButton.Yes:
+            self.controller.apply_mode_change(selected)
         else:
-            document.set_payload(payload)
-            self._form_valid = True
-            self.preview.setPlainText(document.yaml_text)
-            self.status.setText("Ready to save. Full validation runs before writing.")
-        self._update_actions()
-        self.draft_changed.emit(
-            document.needs_save
-            or self.dataset_draft.get_dirty()
-            or self.visualization_draft.get_dirty()
+            self.form.sync_from_draft()
+
+    def _choose_save_path(self, suggested: str) -> None:
+        selected, _filter = QFileDialog.getSaveFileName(
+            self,
+            "Save Dataset Configuration As",
+            suggested,
+            "YAML configurations (*.yaml *.yml)",
         )
-        self.document_state_changed.emit()
+        if selected:
+            self.controller.save_path_selected(selected)
+        else:
+            self.controller.cancel_save_path()
+
+    def _confirm_import_reformat(self, action: str) -> None:
+        answer = QMessageBox.question(
+            self,
+            "Save Imported Configuration?",
+            "Carnopy writes deterministic YAML. Comments and original formatting from the "
+            "imported file are not preserved. Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self.controller.confirm_reformat(action)
 
     def _handle_external_change(self) -> None:
-        if self.document is None or self.document.source_path is None:
-            return
         message = QMessageBox(self)
         message.setWindowTitle("Configuration Changed Externally")
         message.setText(
@@ -515,47 +269,22 @@ class DatasetConfigEditor(QWidget):
         message.exec()
         clicked = message.clickedButton()
         if clicked is reload_button:
-            self._pending_action = "reload"
-            self._start_worker(
-                "load_dataset_config",
-                {"config_path": str(self.document.source_path)},
-            )
+            self.controller.reload_source(discard_confirmed=True)
         elif clicked is save_as_button:
-            self.save_as()
+            self.controller.request_save_as()
 
-    def _confirm_import_reformat(self) -> bool:
-        if self.document is None or not self.document.imported:
-            return True
-        answer = QMessageBox.question(
-            self,
-            "Save Imported Configuration?",
-            "Carnopy writes deterministic YAML. Comments and original formatting from the "
-            "imported file are not preserved. Continue?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        return answer == QMessageBox.StandardButton.Yes
+    def _show_warning(self, title: str, message: str) -> None:
+        QMessageBox.warning(self, title, message)
 
-    def _clear_pending(self, *, keep_paths: bool = False) -> None:
-        self._pending_action = None
-        if not keep_paths:
-            self._pending_path = None
-            self._pending_content = None
+    def _sync_status(self) -> None:
+        self.status.setText(self.controller.get_status_message())
 
-    def _set_editor_enabled(self, enabled: bool) -> None:
-        self.tabs.setEnabled(enabled)
-        self.new_button.setEnabled(enabled and self.workspace is not None)
-        self.import_button.setEnabled(enabled and self.workspace is not None)
-        self._update_actions()
-
-    def _update_actions(self) -> None:
-        busy = self.coordinator.is_busy
-        self.save_button.setEnabled(not busy and self.document is not None and self._form_valid)
-        self.save_as_button.setEnabled(not busy and self.document is not None and self._form_valid)
-
-
-def _template_payload(mode: str) -> dict[str, Any]:
-    value = yaml.safe_load(template_text(cast(Any, mode)))
-    if not isinstance(value, dict):
-        raise ConfigDocumentError(f"packaged {mode} template is not a mapping")
-    return cast(dict[str, Any], value)
+    def _sync_view(self) -> None:
+        self.file_label.setText(self.controller.get_file_display())
+        self.preview.setPlainText(self.controller.get_yaml_preview())
+        self.tabs.setEnabled(self.controller.get_can_edit())
+        self.new_button.setEnabled(self.controller.get_can_create())
+        self.import_button.setEnabled(self.controller.get_can_import())
+        self.save_button.setEnabled(self.controller.get_can_save())
+        self.save_as_button.setEnabled(self.controller.get_can_save())
+        self._sync_status()
