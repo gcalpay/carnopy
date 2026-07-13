@@ -5,13 +5,12 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from carnopy.visualization.requests import (
+    PLOT_NAME_PATTERN,
     PlotFormat,
     PlotKindV2,
     PlotScale,
     normalize_public_plot_kind,
 )
-
-PLOT_NAME_PATTERN = r"^[a-z0-9]+(?:[-_][a-z0-9]+)*$"
 
 
 class VisualizationPlotConfig(BaseModel):

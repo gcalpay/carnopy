@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from carnopy.app.export_cleanup import ImageExportFinalizer
+from carnopy.app.plot_draft import PlotDraft
 from carnopy.app.plot_preview import PlotPreview, PlotPreviewError
 from carnopy.app.plot_request_dialog import PlotRequestDialog
 from carnopy.app.plot_staging import create_plot_staging
@@ -199,16 +200,16 @@ class PlotPage(QWidget):
         context = self.context
         if context is None or self.coordinator.is_busy:
             return
-        dialog = PlotRequestDialog(
+        draft = PlotDraft(
             context,
             context,
             copy.deepcopy(self.request),
-            self,
             allow_format=False,
         )
+        dialog = PlotRequestDialog(draft, self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
-        self.request = dialog.plot_payload()
+        self.request = draft.payload()
         self.request_summary.setPlainText(
             json.dumps(self.request, indent=2, sort_keys=True, ensure_ascii=False)
         )

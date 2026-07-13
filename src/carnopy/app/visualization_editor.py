@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .plot_draft import PlotDraft
 from .plot_request_dialog import PlotRequestDialog
 from .visualization_widgets import ChoiceMappingTable, FluidChoiceList
 
@@ -191,12 +192,12 @@ class VisualizationEditor(QWidget):
     def _dialog(self, plot: dict[str, Any] | None = None) -> PlotRequestDialog | None:
         if self.capabilities is None or not self.dataset_payload:
             return None
-        return PlotRequestDialog(
+        draft = PlotDraft(
             self.capabilities,
             self.dataset_payload,
             plot,
-            self,
         )
+        return PlotRequestDialog(draft, self)
 
     def _append_plot(self, plot: dict[str, Any]) -> None:
         payload = copy.deepcopy(plot)

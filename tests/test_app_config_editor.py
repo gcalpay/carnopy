@@ -26,6 +26,7 @@ from carnopy.app.config_document import new_document
 from carnopy.app.config_editor import DatasetConfigEditor
 from carnopy.app.config_widgets import SamplerEditor
 from carnopy.app.draft_models import DISPLAY_ROLE
+from carnopy.app.plot_draft import PlotDraft
 from carnopy.app.sampler_draft import SamplerDraft
 from carnopy.app.visualization_editor import PLOT_ROLE, PlotRequestDialog, VisualizationEditor
 from carnopy.app.workspace import initialize_workspace
@@ -510,7 +511,7 @@ def test_plot_dialog_applies_kind_specific_fields(
 ) -> None:
     del application, kind
     dataset = yaml.safe_load(template_text("property_table"))
-    dialog = PlotRequestDialog(capabilities(), dataset, plot)
+    dialog = PlotRequestDialog(PlotDraft(capabilities(), dataset, plot))
 
     result = dialog.plot_payload()
 
@@ -572,14 +573,16 @@ def test_plot_dialog_guides_series_fields_and_validates_numeric_filters(
     del application
     dataset = yaml.safe_load(template_text("property_table"))
     dialog = PlotRequestDialog(
-        capabilities(),
-        dataset,
-        {
-            "name": "density-curves",
-            "kind": "property_curves",
-            "property": "mass_density",
-            "x": "temperature",
-        },
+        PlotDraft(
+            capabilities(),
+            dataset,
+            {
+                "name": "density-curves",
+                "kind": "property_curves",
+                "property": "mass_density",
+                "x": "temperature",
+            },
+        )
     )
 
     dialog.series.add_row("pressure", "100000, 300000")

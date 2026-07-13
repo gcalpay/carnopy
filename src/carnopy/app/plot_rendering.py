@@ -17,18 +17,14 @@ from carnopy.app.plot_staging import (
 )
 from carnopy.app.source_inspection import inspect_for_app
 from carnopy.app.workspace import open_workspace
-from carnopy.config.visualization import (
-    PLOT_NAME_PATTERN,
-    VisualizationConfig,
-    VisualizationPlotConfig,
-)
+from carnopy.config.visualization import VisualizationConfig, VisualizationPlotConfig
 from carnopy.provenance import sha256_file
 from carnopy.visualization.configuration import normalize_visualization_for_source
 from carnopy.visualization.io import load_plot_source
 from carnopy.visualization.models import PlotResult, VisualizationError
 from carnopy.visualization.plots import render_plot_request
 from carnopy.visualization.render import import_matplotlib
-from carnopy.visualization.requests import PlotFormat
+from carnopy.visualization.requests import PLOT_NAME_PATTERN, PlotFormat
 
 
 class RenderPlotPayload(BaseModel):

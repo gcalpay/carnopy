@@ -19,6 +19,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from carnopy.app.mapping_draft import MappingDraftModel
+
 
 class ChoiceMappingTable(QWidget):
     changed = Signal()
@@ -42,6 +44,7 @@ class ChoiceMappingTable(QWidget):
         self.value_choices: dict[str, list[tuple[str, str]]] = {}
         self.value_hints: dict[str, str] = {}
         self._loading = False
+        self._draft: MappingDraftModel | None = None
         self.table = QTableWidget(0, 2)
         self.table.setHorizontalHeaderLabels([key_label, value_label])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -60,6 +63,18 @@ class ChoiceMappingTable(QWidget):
         layout.addWidget(self.table)
         layout.addLayout(buttons)
         self.add_button.setEnabled(False)
+
+    def bind_draft(self, draft: MappingDraftModel) -> None:
+        self._draft = draft
+        self.multiple = draft.multiple
+        self.numeric_values = draft.numeric_values
+        self.allow_text_numeric = draft.allow_text_numeric
+        self.field_choices = list(draft.field_choices)
+        self.field_kinds = draft.field_kinds
+        self.value_choices = draft.value_choices
+        self.value_hints = draft.value_hints
+        self.add_button.setEnabled(bool(self.field_choices))
+        self._load_rows(list(draft.raw_rows()))
 
     def configure(
         self,
@@ -102,7 +117,7 @@ class ChoiceMappingTable(QWidget):
         for row in rows:
             self.table.removeRow(row)
         if rows:
-            self.changed.emit()
+            self._emit_changed()
 
     def load_mapping(self, value: Mapping[str, object], *, multiple: bool | None = None) -> None:
         use_multiple = self.multiple if multiple is None else multiple
@@ -113,9 +128,14 @@ class ChoiceMappingTable(QWidget):
             else:
                 rendered = _scalar_text(item)
             rows.append((str(key), rendered))
+        if self._draft is not None:
+            self._draft.replace_raw_rows(rows)
         self._load_rows(rows)
 
     def mapping(self) -> dict[str, object]:
+        if self._draft is not None:
+            self._draft.replace_raw_rows(self._raw_rows())
+            return self._draft.mapping()
         result: dict[str, object] = {}
         for key, raw in self._raw_rows():
             if not key and not raw:
@@ -222,6 +242,8 @@ class ChoiceMappingTable(QWidget):
 
     def _emit_changed(self) -> None:
         if not self._loading:
+            if self._draft is not None:
+                self._draft.replace_raw_rows(self._raw_rows())
             self.changed.emit()
 
     @staticmethod

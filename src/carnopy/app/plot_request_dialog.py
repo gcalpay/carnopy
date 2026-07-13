@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
-
+from PySide6.QtCore import QSignalBlocker
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -14,53 +13,40 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .visualization_widgets import ChoiceMappingTable, FluidChoiceList
+from carnopy.app.plot_draft import PlotDraft
+from carnopy.app.visualization_widgets import ChoiceMappingTable, FluidChoiceList
 
 
 class PlotRequestDialog(QDialog):
+    """Present one workflow-local plot draft without owning durable state."""
+
     def __init__(
         self,
-        capabilities: dict[str, Any],
-        dataset_payload: dict[str, Any],
-        plot: dict[str, Any] | None = None,
+        draft: PlotDraft,
         parent: QWidget | None = None,
-        *,
-        allow_format: bool = True,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Plot Request")
         self.resize(720, 760)
-        self.capabilities = capabilities
-        self.dataset_payload = dataset_payload
-        self.allow_format = allow_format
-        visualization = capabilities.get("visualization", {})
-        self.contracts = visualization.get("kind_contracts", {})
-        self.field_kinds = {
-            str(item["name"]): str(item["kind"])
-            for item in visualization.get("fields", [])
-            if isinstance(item, dict) and "name" in item and "kind" in item
-        }
+        self.draft = draft
+        if draft.parent() is None:
+            draft.setParent(self)
 
         content = QWidget()
         self.form = QFormLayout(content)
         self.name = QLineEdit()
         self.kind = QComboBox()
-        kinds = [str(value) for value in visualization.get("plot_kinds", [])]
-        if dataset_payload.get("mode") == "saturation_table":
-            kinds = [value for value in kinds if value != "property_heatmap"]
-        self.kind.addItems(kinds)
-        self.property_name = _optional_combo(self._properties())
-        self.x_field = _optional_combo(self._axis_fields())
-        self.y_field = _optional_combo(self._axis_fields())
-        self.group_by = _optional_combo(self._group_fields())
+        self.property_name = _optional_combo(draft.property_values())
+        self.x_field = _optional_combo(draft.axis_values())
+        self.y_field = _optional_combo(draft.axis_values())
+        self.group_by = _optional_combo(draft.group_values())
         self.fluids = FluidChoiceList()
-        self.fluids.set_choices(self._dataset_fluids())
-        self.value_scale = _combo(visualization.get("scales", ["linear", "log"]))
-        self.color_scale = _combo(visualization.get("scales", ["linear", "log"]))
-        self.x_scale = _combo(visualization.get("scales", ["linear", "log"]))
-        self.y_scale = _combo(visualization.get("scales", ["linear", "log"]))
+        self.value_scale = _combo(draft.scale_values())
+        self.color_scale = _combo(draft.scale_values())
+        self.x_scale = _combo(draft.scale_values())
+        self.y_scale = _combo(draft.scale_values())
         self.output_format = _optional_combo(
-            [str(value) for value in visualization.get("formats", [])],
+            draft.format_values(),
             empty_label="Use shared format",
         )
         self.filters = ChoiceMappingTable("Filter field", "Exact SI value")
@@ -68,10 +54,13 @@ class PlotRequestDialog(QDialog):
             "Series field",
             "Exact values (comma-separated)",
             multiple=True,
-            allow_text_numeric=not bool(visualization.get("numeric_levels")),
+            allow_text_numeric=draft.series.allow_text_numeric,
         )
-        self.display_units = ChoiceMappingTable("Field", "Display unit", numeric_values=False)
-        self._configure_filter_controls()
+        self.display_units = ChoiceMappingTable(
+            "Field",
+            "Display unit",
+            numeric_values=False,
+        )
 
         self._rows: dict[str, QWidget] = {
             "property": self.property_name,
@@ -116,79 +105,27 @@ class PlotRequestDialog(QDialog):
         layout.addWidget(scroll, 1)
         layout.addWidget(buttons)
 
-        self.kind.currentTextChanged.connect(self._update_visibility)
-        self.kind.currentTextChanged.connect(self._configure_plot_mappings)
-        self.property_name.currentTextChanged.connect(self._configure_plot_mappings)
-        self.x_field.currentTextChanged.connect(self._configure_plot_mappings)
-        self.y_field.currentTextChanged.connect(self._configure_plot_mappings)
-        self.group_by.currentTextChanged.connect(self._configure_plot_mappings)
-        self.load_plot(plot or self._default_plot())
+        self.name.textChanged.connect(draft.set_name)
+        self.kind.currentTextChanged.connect(self._kind_changed)
+        self.property_name.currentTextChanged.connect(self._property_changed)
+        self.x_field.currentTextChanged.connect(self._x_changed)
+        self.y_field.currentTextChanged.connect(self._y_changed)
+        self.group_by.currentTextChanged.connect(self._group_changed)
+        self.fluids.changed.connect(self._fluids_changed)
+        self.value_scale.currentTextChanged.connect(draft.set_value_scale)
+        self.color_scale.currentTextChanged.connect(draft.set_color_scale)
+        self.x_scale.currentTextChanged.connect(draft.set_x_scale)
+        self.y_scale.currentTextChanged.connect(draft.set_y_scale)
+        self.output_format.currentTextChanged.connect(self._format_changed)
+        self._load_from_draft()
 
-    def load_plot(self, plot: dict[str, Any]) -> None:
-        self.name.setText(str(plot.get("name", "")))
-        self.kind.setCurrentText(str(plot.get("kind", self.kind.currentText())))
-        self.property_name.setCurrentText(str(plot.get("property", "")))
-        self.x_field.setCurrentText(str(plot.get("x", "")))
-        self.y_field.setCurrentText(str(plot.get("y", "")))
-        self.group_by.setCurrentText(str(plot.get("group_by", "")))
-        self.fluids.set_choices(
-            self._dataset_fluids(),
-            [str(value) for value in plot.get("fluids", [])],
-        )
-        self.value_scale.setCurrentText(str(plot.get("value_scale", "linear")))
-        self.color_scale.setCurrentText(str(plot.get("color_scale", "linear")))
-        self.x_scale.setCurrentText(str(plot.get("x_scale", "linear")))
-        self.y_scale.setCurrentText(str(plot.get("y_scale", "linear")))
-        format_index = self.output_format.findData(str(plot.get("format", "")))
-        self.output_format.setCurrentIndex(max(0, format_index))
-        self.filters.load_mapping(plot.get("filters", {}))
-        self.series.load_mapping(plot.get("series", {}))
-        self.display_units.load_mapping(plot.get("display_units", {}))
-        self._configure_plot_mappings()
-        self._update_visibility(self.kind.currentText())
+    def load_plot(self, plot: dict[str, object]) -> None:
+        self.draft.load_payload(plot)
+        self._load_from_draft()
 
-    def plot_payload(self) -> dict[str, Any]:
-        name = self.name.text().strip()
-        kind = self.kind.currentText()
-        if not name:
-            raise ValueError("plot name is required")
-        if not kind:
-            raise ValueError("plot kind is required")
-        applicable = set(self.contracts.get(kind, {}).get("applicable", []))
-        if not self.allow_format:
-            applicable.discard("format")
-        payload: dict[str, Any] = {"name": name, "kind": kind}
-        scalar_fields = {
-            "property": _combo_value(self.property_name),
-            "x": _combo_value(self.x_field),
-            "y": _combo_value(self.y_field),
-            "group_by": _combo_value(self.group_by),
-            "value_scale": self.value_scale.currentText(),
-            "color_scale": self.color_scale.currentText(),
-            "x_scale": self.x_scale.currentText(),
-            "y_scale": self.y_scale.currentText(),
-            "format": _combo_value(self.output_format),
-        }
-        for field, value in scalar_fields.items():
-            if field in applicable and value:
-                payload[field] = value
-        fluids = self.fluids.selected_values()
-        if "fluids" in applicable and fluids:
-            payload["fluids"] = fluids
-        if "filters" in applicable:
-            filters = self.filters.mapping()
-            if filters:
-                payload["filters"] = filters
-        if "series" in applicable:
-            series = self.series.mapping()
-            if series:
-                payload["series"] = series
-        if "display_units" in applicable:
-            display_units = self.display_units.mapping()
-            if display_units:
-                payload["display_units"] = display_units
-        self._validate_required(payload)
-        return payload
+    def plot_payload(self) -> dict[str, object]:
+        self._sync_draft()
+        return self.draft.payload()
 
     def accept(self) -> None:
         try:
@@ -198,23 +135,122 @@ class PlotRequestDialog(QDialog):
             return
         super().accept()
 
-    def _validate_required(self, payload: dict[str, Any]) -> None:
-        kind = str(payload["kind"])
-        required = set(self.contracts.get(kind, {}).get("required", []))
-        if kind == "property_curves" and self.dataset_payload.get("mode") == "property_table":
-            required.add("x")
-        missing = sorted(field for field in required if not payload.get(field))
-        if missing:
-            raise ValueError(f"{kind} requires: {', '.join(missing)}")
-        if kind == "xy" and (not payload.get("x") or not payload.get("y")):
-            raise ValueError("xy requires x and y fields")
+    def _load_from_draft(self) -> None:
+        blockers = [
+            QSignalBlocker(widget)
+            for widget in (
+                self.name,
+                self.kind,
+                self.property_name,
+                self.x_field,
+                self.y_field,
+                self.group_by,
+                self.fluids,
+                self.value_scale,
+                self.color_scale,
+                self.x_scale,
+                self.y_scale,
+                self.output_format,
+            )
+        ]
+        self.name.setText(self.draft.get_name())
+        _replace_combo(self.kind, self.draft.plot_kind_values(), self.draft.get_kind())
+        _replace_optional_combo(
+            self.property_name,
+            self.draft.property_values(),
+            self.draft.get_property_name(),
+        )
+        _replace_optional_combo(
+            self.x_field,
+            self.draft.axis_values(),
+            self.draft.get_x_field(),
+        )
+        _replace_optional_combo(
+            self.y_field,
+            self.draft.axis_values(),
+            self.draft.get_y_field(),
+        )
+        _replace_optional_combo(
+            self.group_by,
+            self.draft.group_values(),
+            self.draft.get_group_by(),
+        )
+        self.fluids.set_choices(
+            list(self.draft.dataset_fluid_values()),
+            list(self.draft.selected_fluid_values()),
+        )
+        _replace_combo(self.value_scale, self.draft.scale_values(), self.draft.get_value_scale())
+        _replace_combo(self.color_scale, self.draft.scale_values(), self.draft.get_color_scale())
+        _replace_combo(self.x_scale, self.draft.scale_values(), self.draft.get_x_scale())
+        _replace_combo(self.y_scale, self.draft.scale_values(), self.draft.get_y_scale())
+        _replace_optional_combo(
+            self.output_format,
+            self.draft.format_values(),
+            self.draft.get_output_format(),
+            empty_label="Use shared format",
+        )
+        self._bind_mapping_views()
+        self._update_visibility()
+        del blockers
 
-    def _update_visibility(self, kind: str) -> None:
-        applicable = set(self.contracts.get(kind, {}).get("applicable", []))
-        if not self.allow_format:
-            applicable.discard("format")
-        if kind == "property_curves" and self.dataset_payload.get("mode") != "property_table":
-            applicable.discard("x")
+    def _bind_mapping_views(self) -> None:
+        self.filters.bind_draft(self.draft.filters)
+        self.series.bind_draft(self.draft.series)
+        self.display_units.bind_draft(self.draft.display_units)
+
+    def _sync_draft(self) -> None:
+        self.draft.set_name(self.name.text())
+        self.draft.set_kind(_combo_value(self.kind))
+        self.draft.set_property_name(_combo_value(self.property_name))
+        self.draft.set_x_field(_combo_value(self.x_field))
+        self.draft.set_y_field(_combo_value(self.y_field))
+        self.draft.set_group_by(_combo_value(self.group_by))
+        self.draft.set_fluids(self.fluids.selected_values())
+        self.draft.set_value_scale(_combo_value(self.value_scale))
+        self.draft.set_color_scale(_combo_value(self.color_scale))
+        self.draft.set_x_scale(_combo_value(self.x_scale))
+        self.draft.set_y_scale(_combo_value(self.y_scale))
+        self.draft.set_output_format(_combo_value(self.output_format))
+        self.filters.mapping()
+        self.series.mapping()
+        self.display_units.mapping()
+
+    def _kind_changed(self, value: str) -> None:
+        self.draft.set_kind(value)
+        self._refresh_dynamic_controls()
+
+    def _property_changed(self, value: str) -> None:
+        self.draft.set_property_name(_combo_value(self.property_name))
+        self._refresh_dynamic_controls()
+
+    def _x_changed(self, value: str) -> None:
+        del value
+        self.draft.set_x_field(_combo_value(self.x_field))
+        self._refresh_dynamic_controls()
+
+    def _y_changed(self, value: str) -> None:
+        del value
+        self.draft.set_y_field(_combo_value(self.y_field))
+        self._refresh_dynamic_controls()
+
+    def _group_changed(self, value: str) -> None:
+        del value
+        self.draft.set_group_by(_combo_value(self.group_by))
+        self._refresh_dynamic_controls()
+
+    def _fluids_changed(self) -> None:
+        self.draft.set_fluids(self.fluids.selected_values())
+
+    def _format_changed(self, value: str) -> None:
+        del value
+        self.draft.set_output_format(_combo_value(self.output_format))
+
+    def _refresh_dynamic_controls(self) -> None:
+        self._bind_mapping_views()
+        self._update_visibility()
+
+    def _update_visibility(self) -> None:
+        applicable = self.draft.applicable_fields()
         for field, widget in self._rows.items():
             visible = field in applicable
             widget.setVisible(visible)
@@ -222,219 +258,49 @@ class PlotRequestDialog(QDialog):
             if label is not None:
                 label.setVisible(visible)
 
-    def _properties(self) -> list[str]:
-        return [str(value) for value in self.dataset_payload.get("properties", [])]
 
-    def _available_fields(self) -> set[str]:
-        fields = {"temperature", "pressure", "phase", "fluid", *self._properties()}
-        mode = self.dataset_payload.get("mode")
-        if mode in {"saturation_table", "vapor_mass_fraction_table"}:
-            fields.add("vapor_mass_fraction")
-        if mode == "saturation_table":
-            fields.add("saturation_endpoint")
-        if "mass_density" in self._properties():
-            fields.add("specific_volume")
-        return fields
-
-    def _axis_fields(self) -> list[str]:
-        return self._fields_with("axis_allowed")
-
-    def _group_fields(self) -> list[str]:
-        return self._fields_with("group_allowed")
-
-    def _fields_with(self, flag: str) -> list[str]:
-        available = self._available_fields()
-        definitions = self.capabilities.get("visualization", {}).get("fields", [])
-        return sorted(
-            str(item["name"])
-            for item in definitions
-            if isinstance(item, dict) and item.get(flag) and str(item.get("name")) in available
-        )
-
-    def _dataset_fluids(self) -> list[str]:
-        values = self.dataset_payload.get("fluids", [])
-        return [str(value) for value in values] if isinstance(values, list) else []
-
-    def _configure_filter_controls(self) -> None:
-        self.filters.configure(
-            self._fields_with("filter_allowed"),
-            field_kinds=self.field_kinds,
-            value_choices=self._level_choices(),
-            value_hints=self._level_hints(),
-        )
-
-    def _configure_plot_mappings(self, *_args: object) -> None:
-        visualization = self.capabilities.get("visualization", {})
-        display_units = visualization.get("display_units", {})
-        self.series.configure(
-            self._series_fields(),
-            field_kinds=self.field_kinds,
-            value_choices=self._level_choices(),
-            value_hints=self._level_hints(),
-        )
-        display_fields = self._display_fields()
-        self.display_units.configure(
-            display_fields,
-            field_kinds=self.field_kinds,
-            value_choices={
-                field: [str(value) for value in display_units.get(field, [])]
-                for field in display_fields
-                if isinstance(display_units, dict)
-            },
-        )
-
-    def _level_choices(self) -> dict[str, list[str | tuple[str, str]]]:
-        value = self.capabilities.get("visualization", {}).get("categorical_values", {})
-        choices: dict[str, list[str | tuple[str, str]]] = {
-            str(field): [str(item) for item in items]
-            for field, items in (value.items() if isinstance(value, dict) else ())
-            if isinstance(items, list)
-        }
-        levels = self.capabilities.get("visualization", {}).get("numeric_levels", {})
-        if not isinstance(levels, dict):
-            return choices
-        for field, details in levels.items():
-            if not isinstance(details, dict) or not isinstance(details.get("choices"), list):
-                continue
-            choices[str(field)] = [
-                (str(item["label"]), _scalar_value(item["value"]))
-                for item in details["choices"]
-                if isinstance(item, dict) and "label" in item and "value" in item
-            ]
-        return choices
-
-    def _level_hints(self) -> dict[str, str]:
-        levels = self.capabilities.get("visualization", {}).get("numeric_levels", {})
-        if not isinstance(levels, dict):
-            return {}
-        hints: dict[str, str] = {}
-        for field, details in levels.items():
-            if not isinstance(details, dict):
-                continue
-            count = details.get("count")
-            minimum = details.get("minimum_display")
-            maximum = details.get("maximum_display")
-            unit = str(details.get("display_unit") or "")
-            if not isinstance(count, int):
-                continue
-            rendered_range = ""
-            if isinstance(minimum, (int, float)) and isinstance(maximum, (int, float)):
-                suffix = f" {unit}" if unit and unit != "1" else ""
-                rendered_range = (
-                    f"; display range {format(float(minimum), '.6g')}-"
-                    f"{format(float(maximum), '.6g')}{suffix}"
-                )
-            hints[str(field)] = (
-                f"{count} emitted level(s){rendered_range}; enter exact canonical SI values"
-            )
-        return hints
-
-    def _series_fields(self) -> list[str]:
-        kind = self.kind.currentText()
-        mode = str(self.dataset_payload.get("mode", ""))
-        expected: str | None = None
-        if kind == "property_curves":
-            if mode == "property_table":
-                expected = {
-                    "temperature": "pressure",
-                    "pressure": "temperature",
-                }.get(_combo_value(self.x_field))
-            elif mode == "saturation_table":
-                expected = "saturation_endpoint"
-            else:
-                expected = self._saturation_coordinate()
-        elif kind == "xy":
-            expected = _combo_value(self.group_by) or None
-        elif kind in {"pv", "ts"}:
-            if mode == "property_table":
-                expected = "temperature" if kind == "pv" else "pressure"
-            elif mode == "saturation_table":
-                expected = "saturation_endpoint"
-            else:
-                expected = self._saturation_coordinate()
-        configured = self.capabilities.get("visualization", {}).get("series_fields")
-        if isinstance(configured, dict):
-            allowed = configured.get(kind)
-            if isinstance(allowed, list) and expected not in allowed:
-                expected = None
-        return [expected] if expected is not None else []
-
-    def _display_fields(self) -> list[str]:
-        kind = self.kind.currentText()
-        mode = str(self.dataset_payload.get("mode", ""))
-        fields: set[str] = set()
-        if kind == "property_curves":
-            fields.add(_combo_value(self.property_name))
-            if mode == "property_table":
-                x_field = _combo_value(self.x_field)
-                fields.add(x_field)
-                fields.add("pressure" if x_field == "temperature" else "temperature")
-            elif mode == "saturation_table":
-                fields.add(self._saturation_coordinate() or "")
-            else:
-                fields.update({"vapor_mass_fraction", self._saturation_coordinate() or ""})
-        elif kind == "property_heatmap":
-            fields.add(_combo_value(self.property_name))
-            if mode == "property_table":
-                fields.update({"temperature", "pressure"})
-            else:
-                fields.update({"vapor_mass_fraction", self._saturation_coordinate() or ""})
-        elif kind == "xy":
-            fields.update(
-                {
-                    _combo_value(self.x_field),
-                    _combo_value(self.y_field),
-                    _combo_value(self.group_by),
-                }
-            )
-        elif kind == "pv":
-            fields.update({"specific_volume", "pressure", *self._series_fields()})
-        elif kind == "ts":
-            fields.update({"specific_entropy", "temperature", *self._series_fields()})
-        supported = self.capabilities.get("visualization", {}).get("display_units", {})
-        return sorted(field for field in fields if field and field in supported)
-
-    def _saturation_coordinate(self) -> str | None:
-        grid = self.dataset_payload.get("grid", {})
-        if not isinstance(grid, dict):
-            return None
-        coordinates = [field for field in ("temperature", "pressure") if field in grid]
-        return coordinates[0] if len(coordinates) == 1 else None
-
-    def _default_plot(self) -> dict[str, Any]:
-        kind = self.kind.currentText()
-        plot: dict[str, Any] = {"name": "plot", "kind": kind}
-        if kind in {"property_curves", "property_heatmap"} and self._properties():
-            plot["property"] = self._properties()[0]
-        if kind == "property_curves" and self.dataset_payload.get("mode") == "property_table":
-            plot["x"] = "temperature"
-        if kind == "xy":
-            axes = self._axis_fields()
-            if axes:
-                plot["x"] = axes[0]
-                plot["y"] = axes[min(1, len(axes) - 1)]
-        return plot
-
-
-def _optional_combo(values: list[str], *, empty_label: str = "") -> QComboBox:
+def _optional_combo(values: tuple[str, ...], *, empty_label: str = "") -> QComboBox:
     combo = QComboBox()
+    _replace_optional_combo(combo, values, "", empty_label=empty_label)
+    return combo
+
+
+def _combo(values: tuple[str, ...]) -> QComboBox:
+    combo = QComboBox()
+    _replace_combo(combo, values, values[0] if values else "")
+    return combo
+
+
+def _replace_optional_combo(
+    combo: QComboBox,
+    values: tuple[str, ...],
+    selected: str,
+    *,
+    empty_label: str = "",
+) -> None:
+    blocker = QSignalBlocker(combo)
+    combo.clear()
     combo.addItem(empty_label, "")
     for value in values:
         combo.addItem(value, value)
-    return combo
+    if selected and combo.findData(selected) < 0:
+        combo.addItem(f"Unavailable: {selected}", selected)
+    combo.setCurrentIndex(max(0, combo.findData(selected)))
+    del blocker
 
 
-def _combo(values: object) -> QComboBox:
-    combo = QComboBox()
-    if isinstance(values, (list, tuple)):
-        combo.addItems([str(value) for value in values])
-    return combo
+def _replace_combo(combo: QComboBox, values: tuple[str, ...], selected: str) -> None:
+    blocker = QSignalBlocker(combo)
+    combo.clear()
+    for value in values:
+        combo.addItem(value, value)
+    if selected and combo.findData(selected) < 0:
+        combo.addItem(f"Unavailable: {selected}", selected)
+    index = combo.findData(selected)
+    combo.setCurrentIndex(index if index >= 0 else 0)
+    del blocker
 
 
 def _combo_value(combo: QComboBox) -> str:
     value = combo.currentData()
     return str(value) if isinstance(value, str) else combo.currentText()
-
-
-def _scalar_value(value: object) -> str:
-    return format(value, ".15g") if isinstance(value, float) else str(value)

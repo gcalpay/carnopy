@@ -17,6 +17,7 @@ from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication, QComboBox, QLineEdit
 
 from carnopy.app.client import WorkerClient
+from carnopy.app.plot_draft import PlotDraft
 from carnopy.app.plot_page import PlotPage, _equivalent_plot_command
 from carnopy.app.plot_request_dialog import PlotRequestDialog
 from carnopy.app.protocol import RequestType, WorkerEvent
@@ -216,15 +217,17 @@ def test_manual_plot_dialog_displays_engineering_levels_and_returns_si(
     context = inspect_for_app(_dataset(tmp_path / "dataset.parquet")).plot_context
     assert context is not None
     dialog = PlotRequestDialog(
-        context,
-        context,
-        {
-            "name": "density-curves",
-            "kind": "property_curves",
-            "property": "mass_density",
-            "x": "temperature",
-        },
-        allow_format=False,
+        PlotDraft(
+            context,
+            context,
+            {
+                "name": "density-curves",
+                "kind": "property_curves",
+                "property": "mass_density",
+                "x": "temperature",
+            },
+            allow_format=False,
+        )
     )
     dialog.series.add_row("pressure", "1 bar, 2 bar")
     value_editor = dialog.series.table.cellWidget(0, 1)
@@ -260,15 +263,17 @@ def test_large_numeric_level_sets_use_exact_si_input(
     assert temperature["choices"] == []
 
     dialog = PlotRequestDialog(
-        context,
-        context,
-        {
-            "name": "density-curves",
-            "kind": "property_curves",
-            "property": "mass_density",
-            "x": "pressure",
-        },
-        allow_format=False,
+        PlotDraft(
+            context,
+            context,
+            {
+                "name": "density-curves",
+                "kind": "property_curves",
+                "property": "mass_density",
+                "x": "pressure",
+            },
+            allow_format=False,
+        )
     )
     dialog.series.add_row("temperature", "300")
     editor = dialog.series.table.cellWidget(0, 1)
