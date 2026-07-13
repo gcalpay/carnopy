@@ -35,87 +35,30 @@ CLI: carnopy
 
 CoolProp is the first backend dependency, not the project identity.
 
-Before starting an implementation stage, establish whether unrelated or
-uncommitted work is present. If the tree is dirty, pause before editing,
-describe the intended stage boundary, and suggest a Conventional Commit message
-so separate stages are not mixed accidentally. Preserve unrelated changes.
+Before starting an implementation stage, inspect the worktree and follow the
+stage-boundary rules in `.agents/local.md` when unrelated or uncommitted work is
+present. Preserve unrelated changes. Git mutation remains human-owned unless a
+local instruction explicitly grants narrower authority. Follow the local file
+for dependency, credential, external-configuration, and publication authority.
 
-Read-only Git commands are allowed when needed to inspect repository state or
-review changes. Examples include:
+## Codex delegation policy
 
-```text
-git status --short
-git diff
-git diff --check
-git log
-git show
-git ls-files
-```
+Delegate only bounded, independent work where parallelism materially improves
+quality or speed. The only project agents that may be delegated to are the
+explicit definitions under `.codex/agents/`: `explorer`, `worker`, `reviewer`,
+and `architect`. The project `explorer` and `worker` intentionally override the
+built-in roles with the same names.
 
-Do not run Git commands that change repository state. Staging, committing,
-amending, branching, tagging, rebasing, resetting, restoring, merging, pushing,
-and changing remotes remain human-owned unless a local instruction explicitly
-grants narrower authority.
+Every active project agent must pin its model, reasoning effort, and sandbox.
+GPT-5.4, GPT-5.4-mini, Terra, automatic model selection, and automatic review
+are forbidden. Do not add or use another project role without maintainer
+review. Parent-model preferences, exact-selection failures, and observable
+fallback handling belong in `.agents/local.md`.
 
-Do not publish packages, create credentials, configure repository security, or
-change dependency declarations without explicit maintainer authorization.
-
-## Codex model and delegation policy
-
-Select every Codex parent, subagent, and reviewer explicitly. GPT-5.4,
-GPT-5.4 mini, Terra, and automatically selected models or reviewers are
-forbidden. The normal allowed combinations are GPT-5.6 Luna with max reasoning
-and GPT-5.6 Sol with medium, high, xhigh, or max reasoning. Reasoning effort
-ends at max. Ultra is a separate Codex orchestration mode, not another
-reasoning effort. Do not substitute GPT-5.4 mini for routine, exploratory,
-documentation, summarization, review, or background work.
-
-Before spawning an agent, explicitly pin its model and reasoning effort to an
-allowed combination. Built-in `default`, `explorer`, and `worker` roles may be
-used when the spawn request pins both values. Never omit those values or accept
-automatic routing. If an allowed combination cannot be selected, continue in
-the allowed parent session or stop and ask the maintainer.
-
-Use this escalation ladder according to task complexity:
-
-- GPT-5.6 Luna with max reasoning for easy, routine, and bounded work;
-- GPT-5.6 Sol with medium reasoning for ordinary implementation,
-  documentation, testing, and analysis;
-- GPT-5.6 Sol with high reasoning for more difficult implementation, migration,
-  debugging, and review;
-- GPT-5.6 Sol with xhigh reasoning for complex multi-module, architectural,
-  native-integration, scientific, numerical, or release-critical work;
-- GPT-5.6 Sol with max reasoning for the most difficult work or when xhigh is
-  genuinely stuck.
-
-Use Ultra orchestration only when the maintainer explicitly selects it for a
-task that benefits from parallel agents. Ultra does not replace the reasoning
-ladder above. Every delegated agent must still resolve to an allowed model and
-reasoning effort. If Ultra or another orchestration facility cannot guarantee
-that constraint, do not use it.
-
-Escalate to the next tier when concrete difficulty, uncertainty, or repeated
-failure justifies it. Do not begin every task at the highest tier.
-
-If the required model or reasoning level cannot be selected exactly, report the
-limitation and wait for maintainer direction. This includes unavailable models,
-unsupported reasoning levels, quota limits, and model startup failures. Never
-silently substitute a different model, a lower reasoning effort, automatic
-model routing, or automatic review.
-
-If the client, platform, session metadata, or usage telemetry reports a fallback
-to GPT-5.4, GPT-5.4 mini, Terra, or another forbidden model, stop substantive
-work immediately. Preserve the current state, report the detected fallback, and
-ask the maintainer to select an allowed Luna or Sol configuration before
-continuing. Repository instructions may not prevent a fallback performed by the
-hosting platform before an agent receives control, but no agent may knowingly
-continue after such a fallback becomes observable.
-
-Delegation depth is one. Parent agents may create explicitly configured
-subagents, but those subagents must not create descendants. Reviewers must be
-explicitly configured from the allowed models rather than selected by an
-automatic review facility. Close each spawned agent immediately after its
-result has been integrated or discarded. Completed agents must not be left open.
+Subagent use does not require Ultra; Ultra may delegate proactively when
+parallel work is useful. Delegation depth is one, so delegated agents must not
+spawn descendants. Close every spawned agent immediately after its result is
+integrated or discarded, including agents already marked completed.
 
 ## Purpose and scope
 
