@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import math
-from typing import Any
-
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QSignalBlocker
 from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
@@ -13,22 +10,16 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-SAMPLER_FIELDS: dict[str, tuple[str, ...]] = {
-    "explicit": ("values",),
-    "linspace": ("start", "stop", "num"),
-    "stepspace": ("start", "stop", "step"),
-    "geomspace": ("start", "stop", "num"),
-    "logspace": ("start_exp", "stop_exp", "num", "base"),
-}
+from carnopy.app.sampler_draft import SAMPLER_FIELDS, SamplerDraft
 
 
 class SamplerEditor(QGroupBox):
-    changed = Signal()
+    """Present one controller-owned sampler draft."""
 
-    def __init__(self, axis: str, parent: QWidget | None = None) -> None:
-        super().__init__(axis.replace("_", " ").title(), parent)
-        self.axis = axis
-        self._loading = False
+    def __init__(self, draft: SamplerDraft, parent: QWidget | None = None) -> None:
+        super().__init__(draft.get_axis().replace("_", " ").title(), parent)
+        self.draft = draft
+        axis = draft.get_axis()
         self.form = QFormLayout(self)
         self.kind = QComboBox()
         self.kind.addItems(list(SAMPLER_FIELDS))
@@ -59,70 +50,50 @@ class SamplerEditor(QGroupBox):
         self.form.addRow("Base", self.base)
         self.form.addRow("Unit", self.unit)
 
-        self.kind.currentTextChanged.connect(self._kind_changed)
-        self.unit.currentTextChanged.connect(self._emit_changed)
-        self.values.textChanged.connect(self._emit_changed)
-        for widget in (
-            self.start,
-            self.stop,
-            self.step,
-            self.start_exp,
-            self.stop_exp,
-            self.base,
-        ):
-            widget.textChanged.connect(self._emit_changed)
-        self.num.valueChanged.connect(self._emit_changed)
-        self._kind_changed(self.kind.currentText())
+        self.kind.currentTextChanged.connect(draft.set_kind)
+        self.unit.currentTextChanged.connect(draft.set_unit)
+        self.values.textChanged.connect(lambda value: draft.set_text("values", value))
+        for field in ("start", "stop", "step", "start_exp", "stop_exp", "base"):
+            widget = getattr(self, field)
+            widget.textChanged.connect(lambda value, name=field: draft.set_text(name, value))
+        self.num.valueChanged.connect(lambda value: draft.set_text("num", str(value)))
+        draft.changed.connect(self.sync_from_draft)
+        draft.available_units_changed.connect(self.sync_from_draft)
+        self.sync_from_draft()
 
-    def configure_units(self, units: list[str]) -> None:
-        selected = self.unit.currentText()
-        self.unit.blockSignals(True)
+    def sampler_payload(self) -> dict[str, object]:
+        return self.draft.payload()
+
+    def sync_from_draft(self) -> None:
+        blockers = [
+            QSignalBlocker(widget)
+            for widget in (
+                self.kind,
+                self.unit,
+                self.values,
+                self.start,
+                self.stop,
+                self.step,
+                self.start_exp,
+                self.stop_exp,
+                self.base,
+                self.num,
+            )
+        ]
+        self.kind.setCurrentText(self.draft.get_kind())
+        selected_unit = self.draft.get_unit()
         self.unit.clear()
-        self.unit.addItems(units)
-        if selected in units:
-            self.unit.setCurrentText(selected)
-        self.unit.blockSignals(False)
-
-    def load_sampler(self, sampler: dict[str, Any]) -> None:
-        self._loading = True
-        kind = str(sampler.get("kind", "explicit"))
-        self.kind.setCurrentText(kind)
-        self.unit.setCurrentText(str(sampler.get("unit", "")))
-        values = sampler.get("values", [])
-        self.values.setText(", ".join(_number_text(value) for value in values))
+        self.unit.addItems(self.draft.get_available_units())
+        self.unit.setCurrentText(selected_unit)
+        self.values.setText(self.draft.text("values"))
         for name in ("start", "stop", "step", "start_exp", "stop_exp", "base"):
-            value = sampler.get(name)
-            getattr(self, name).setText("" if value is None else _number_text(value))
-        self.num.setValue(int(sampler.get("num", 2)))
-        self._loading = False
-        self._kind_changed(kind)
-
-    def sampler_payload(self) -> dict[str, Any]:
-        kind = self.kind.currentText()
-        payload: dict[str, Any] = {"kind": kind}
-        if kind == "explicit":
-            parts = [part.strip() for part in self.values.text().split(",")]
-            if not parts or any(not part for part in parts):
-                raise ValueError(f"{self.axis} explicit sampler requires comma-separated values")
-            payload["values"] = [_finite_float(part, self.axis, "value") for part in parts]
-        else:
-            for name in SAMPLER_FIELDS[kind]:
-                if name == "num":
-                    payload[name] = self.num.value()
-                else:
-                    payload[name] = _finite_float(
-                        getattr(self, name).text(),
-                        self.axis,
-                        name.replace("_", " "),
-                    )
-        unit = self.unit.currentText()
-        if not unit:
-            raise ValueError(f"{self.axis} requires a unit")
-        payload["unit"] = unit
-        return payload
-
-    def _kind_changed(self, kind: str) -> None:
-        visible = set(SAMPLER_FIELDS[kind])
+            getattr(self, name).setText(self.draft.text(name))
+        try:
+            count = int(self.draft.text("num"))
+        except ValueError:
+            count = 2
+        self.num.setValue(max(2, min(1_000_000, count)))
+        visible = set(SAMPLER_FIELDS[self.draft.get_kind()])
         for name in (
             "values",
             "start",
@@ -138,28 +109,10 @@ class SamplerEditor(QGroupBox):
             label = self.form.labelForField(widget)
             if label is not None:
                 label.setVisible(name in visible)
-        self._emit_changed()
-
-    def _emit_changed(self, *_args: object) -> None:
-        if not self._loading:
-            self.changed.emit()
+        del blockers
 
 
 def _numeric_line(axis: str, label: str) -> QLineEdit:
     widget = QLineEdit()
     widget.setAccessibleName(f"{axis} {label}")
     return widget
-
-
-def _finite_float(text: str, axis: str, field: str) -> float:
-    try:
-        value = float(text)
-    except ValueError as exc:
-        raise ValueError(f"{axis} {field} requires a number") from exc
-    if not math.isfinite(value):
-        raise ValueError(f"{axis} {field} must be finite")
-    return value
-
-
-def _number_text(value: object) -> str:
-    return format(float(str(value)), ".15g")

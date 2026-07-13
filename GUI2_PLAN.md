@@ -132,10 +132,13 @@ Completed Stage 1 slices:
 - request ownership, coordinator-owned terminal envelopes, cancellation policy,
   and export finalization;
 - QML-ready workspace state, trusted two-phase workspace operations, direct
-  recent-workspace model binding, and the desktop composition root.
+  recent-workspace model binding, and the desktop composition root;
+- QML-ready dataset draft and sampler state, dataset-only baselines, ordered
+  selection models, local compatibility issues, and incomplete-draft discard
+  protection.
 
-The next Stage 1 slice extracts dataset draft state while keeping Widgets as the
-active frontend.
+The next Stage 1 slice extracts configured-visualization draft state while
+keeping Widgets as the active frontend.
 
 Execution, inspection, table, plotting, jobs, and recovery controllers are not
 preemptively extracted in Stage 1. Extract each immediately before its QML

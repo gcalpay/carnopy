@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 from pathlib import Path
 from typing import Any, cast
 
@@ -32,6 +31,7 @@ from carnopy.app.config_document import (
     write_new_config,
 )
 from carnopy.app.config_form import DatasetConfigForm
+from carnopy.app.dataset_draft import DatasetDraft
 from carnopy.app.protocol import RequestType
 from carnopy.app.request_coordinator import (
     DesktopRequestCoordinator,
@@ -60,6 +60,7 @@ class DatasetConfigEditor(QWidget):
         parent: QWidget | None = None,
         *,
         coordinator: DesktopRequestCoordinator | None = None,
+        dataset_draft: DatasetDraft | None = None,
     ) -> None:
         super().__init__(parent)
         self.workspace: Workspace | None = None
@@ -69,6 +70,7 @@ class DatasetConfigEditor(QWidget):
             client = WorkerClient(self)
             coordinator = DesktopRequestCoordinator(client, self)
         self.coordinator = coordinator
+        self.dataset_draft = dataset_draft or DatasetDraft(self)
         self.capabilities: dict[str, Any] | None = None
         self._capability_cache: dict[str, dict[str, Any]] = {}
         self._session: RequestSession | None = None
@@ -76,6 +78,7 @@ class DatasetConfigEditor(QWidget):
         self._pending_path: Path | None = None
         self._pending_content: bytes | None = None
         self._form_valid = False
+        self._syncing_document = False
 
         root = QVBoxLayout(self)
         root.addLayout(self._build_actions())
@@ -84,7 +87,7 @@ class DatasetConfigEditor(QWidget):
         root.addWidget(self.file_label)
 
         self.tabs = QTabWidget()
-        self.form = DatasetConfigForm()
+        self.form = DatasetConfigForm(self.dataset_draft)
         self.visualization = VisualizationEditor()
         self.tabs.addTab(self.form, "Dataset")
         self.tabs.addTab(self.visualization, "Visualization")
@@ -98,7 +101,6 @@ class DatasetConfigEditor(QWidget):
 
         self.form.changed.connect(self._refresh_form_state)
         self.form.mode_change_requested.connect(self._mode_changed)
-        self.form.coordinate_change_requested.connect(self._coordinate_changed)
         self.form.message.connect(self.status.setText)
         self.visualization.changed.connect(self._refresh_form_state)
         self.coordinator.busy_changed.connect(self._worker_busy_changed)
@@ -156,7 +158,9 @@ class DatasetConfigEditor(QWidget):
         self._start_worker("describe_capabilities", {"model": "heos"})
 
     def confirm_discard(self) -> bool:
-        if self.document is None or not self.document.needs_save:
+        if self.document is None or not (
+            self.document.needs_save or self.dataset_draft.get_dirty()
+        ):
             return True
         answer = QMessageBox.question(
             self,
@@ -174,7 +178,7 @@ class DatasetConfigEditor(QWidget):
     def execution_snapshot(self) -> SavedConfigSnapshot:
         if self.workspace is None or self.document is None:
             raise ConfigDocumentError("open and save a dataset configuration before execution")
-        if not self._form_valid:
+        if not self.dataset_draft.get_locally_valid():
             raise ConfigDocumentError("complete the configuration form before execution")
         return self.document.execution_snapshot(configs_root=self.workspace.configs)
 
@@ -396,6 +400,7 @@ class DatasetConfigEditor(QWidget):
             QMessageBox.warning(self, "Save Failed", str(exc))
             return
         document.mark_saved(destination, content)
+        self.dataset_draft.mark_baseline()
         self.file_label.setText(str(destination))
         self.status.setText(f"Saved valid configuration: {destination}")
         self._refresh_form_state()
@@ -403,9 +408,13 @@ class DatasetConfigEditor(QWidget):
 
     def _open_document(self, document: DatasetConfigDocument) -> None:
         self.document = document
-        self.form.load_payload(document.payload)
-        self.visualization.set_dataset_context(document.payload)
-        self.visualization.load_visualization(document.payload.get("visualization"))
+        self._syncing_document = True
+        try:
+            self.form.load_payload(document.payload)
+            self.visualization.set_dataset_context(document.payload)
+            self.visualization.load_visualization(document.payload.get("visualization"))
+        finally:
+            self._syncing_document = False
         self.file_label.setText(
             str(document.source_path) if document.source_path else "Unsaved dataset configuration"
         )
@@ -415,7 +424,7 @@ class DatasetConfigEditor(QWidget):
     def _mode_changed(self, selected: str) -> None:
         if self.document is None:
             return
-        previous = str(self.document.payload.get("mode", ""))
+        previous = self.dataset_draft.get_mode_name()
         if selected == previous:
             return
         answer = QMessageBox.question(
@@ -427,40 +436,25 @@ class DatasetConfigEditor(QWidget):
             QMessageBox.StandardButton.No,
         )
         if answer != QMessageBox.StandardButton.Yes:
-            self.form.load_payload(self.document.payload)
+            self.form.sync_from_draft()
             return
-        payload = self.document.payload
-        payload["mode"] = selected
-        payload["grid"] = _template_payload(selected)["grid"]
-        payload.pop("visualization", None)
-        self.document.set_payload(payload)
-        self.form.load_payload(payload)
-        self.visualization.set_dataset_context(payload)
-        self.visualization.load_visualization(None)
-        self._refresh_form_state()
-
-    def _coordinate_changed(self, axis: str) -> None:
-        if self.document is None or self.form.mode_name == "property_table":
-            return
-        payload = self.document.payload
-        grid = cast(dict[str, dict[str, Any]], copy.deepcopy(payload.get("grid", {})))
-        current = next((name for name in ("temperature", "pressure") if name in grid), None)
-        if current == axis:
-            return
-        if current is not None:
-            grid.pop(current)
-        grid[axis] = self.form.blank_sampler(axis)
-        if self.form.mode_name == "vapor_mass_fraction_table":
-            grid = {
-                axis: grid[axis],
-                "vapor_mass_fraction": grid["vapor_mass_fraction"],
-            }
-        payload["grid"] = grid
-        self.document.set_payload(payload)
-        self.form.set_grid(grid)
+        self._syncing_document = True
+        try:
+            if not self.dataset_draft.apply_mode_change(selected):
+                self.form.sync_from_draft()
+                return
+            payload = self.dataset_draft.merge_into(self.document.payload)
+            payload.pop("visualization", None)
+            self.document.set_payload(payload)
+            self.visualization.set_dataset_context(payload)
+            self.visualization.load_visualization(None)
+        finally:
+            self._syncing_document = False
         self._refresh_form_state()
 
     def _refresh_form_state(self) -> None:
+        if self._syncing_document:
+            return
         document = self.document
         if document is None:
             self.preview.clear()
@@ -468,16 +462,14 @@ class DatasetConfigEditor(QWidget):
             self._update_actions()
             return
         try:
-            payload = self.form.current_payload(document.payload)
-            self.visualization.set_dataset_context(payload)
+            payload = self.dataset_draft.merge_into(document.payload)
+            dataset_context = self.dataset_draft.dataset_payload()
+            self.visualization.set_dataset_context(dataset_context)
             visualization = self.visualization.visualization_payload()
             if visualization is None:
                 payload.pop("visualization", None)
             else:
                 payload["visualization"] = visualization
-            issue = self.form.obvious_issue(payload)
-            if issue is not None:
-                raise ValueError(issue)
         except ValueError as exc:
             self._form_valid = False
             self.preview.setPlainText(
@@ -490,7 +482,7 @@ class DatasetConfigEditor(QWidget):
             self.preview.setPlainText(document.yaml_text)
             self.status.setText("Ready to save. Full validation runs before writing.")
         self._update_actions()
-        self.draft_changed.emit(document.needs_save)
+        self.draft_changed.emit(document.needs_save or self.dataset_draft.get_dirty())
         self.document_state_changed.emit()
 
     def _handle_external_change(self) -> None:
