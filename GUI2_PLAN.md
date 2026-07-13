@@ -141,10 +141,15 @@ Completed Stage 1 slices:
   snapshots, one workflow-local Add/Edit plot draft, and Widgets bindings over
   the authoritative draft.
 
-Widgets remains the active frontend. The next Stage 1 extraction must be
-planned from the remaining workflow that is immediately ready for QML
-migration; this completed slice does not start QML or centralize the complete
-configuration workflow.
+Widgets remains the active frontend, and Stage 1 remains active. Its remaining
+boundary is to extract the complete dataset-configuration workflow from
+`DatasetConfigEditor` into a QML-ready QtCore controller without starting QML.
+That controller must own document import, opening, clearing, exact complete-YAML
+coordination, worker validation before writes, Save and Save As orchestration,
+external-change handling, discard protection, and execution gating while using
+the existing dataset and visualization drafts. Adapt Widgets to that controller
+and preserve the current worker and file-safety boundaries. After this
+workflow-controller slice is verified, Stage 1 is complete and Stage 2 begins.
 
 Execution, inspection, table, plotting, jobs, and recovery controllers are not
 preemptively extracted in Stage 1. Extract each immediately before its QML

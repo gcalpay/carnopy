@@ -685,6 +685,14 @@ Rules:
 - no trailing period;
 - body only when the reason or tradeoff matters.
 
+After completing and verifying an implementation, include a recommended commit
+message in the final handoff. Also list the exact repository-relative files to
+stage. If more than one commit is recommended, give the file group for each
+commit and state whether hunk-level staging is required. Prefer one coherent
+commit unless the proposed intermediate commits are independently reviewable
+and verifiable. This is guidance for the human operator and does not grant Git
+mutation authority.
+
 Common types:
 
 ```text
