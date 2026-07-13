@@ -262,6 +262,43 @@ def test_non_applicable_values_are_retained_but_omitted() -> None:
     assert "value_scale" not in payload
 
 
+@pytest.mark.parametrize(
+    ("kind", "properties", "required"),
+    [
+        ("pv", ["specific_entropy"], "mass_density"),
+        ("ts", ["mass_density"], "specific_entropy"),
+    ],
+)
+def test_fixed_axis_plots_require_their_emitted_properties(
+    kind: str,
+    properties: list[str],
+    required: str,
+) -> None:
+    payload = dataset()
+    payload["properties"] = properties
+    draft = PlotDraft(
+        capabilities(),
+        payload,
+        {"name": "fixed-axes", "kind": kind},
+    )
+
+    assert not draft.get_locally_valid()
+    assert required in draft.get_issue()
+
+
+def test_context_refresh_preserves_raw_plot_state() -> None:
+    draft = PlotDraft(capabilities(), dataset(), curves_plot())
+    draft.filters.add_row("pressure", "not-a-number")
+    replacement = dataset()
+    replacement["properties"] = ["specific_entropy"]
+
+    draft.refresh_context(capabilities(), replacement)
+
+    assert draft.filters.raw_rows() == (("pressure", "not-a-number"),)
+    assert draft.get_property_name() == "mass_density"
+    assert not draft.get_locally_valid()
+
+
 @pytest.mark.parametrize("name", ["Plot", "plot name", "plot--name", "plot-"])
 def test_plot_names_use_the_public_pattern(
     name: str,

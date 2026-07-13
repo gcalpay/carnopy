@@ -57,6 +57,7 @@ class PlotDraft(QObject):
             allow_text_numeric=True,
         )
         self.display_units = MappingDraftModel(self, numeric_values=False)
+        self._refreshing_context = False
         self._name = ""
         self._kind = ""
         self._property_name = ""
@@ -284,6 +285,24 @@ class PlotDraft(QObject):
         self._emit_observable_changes(before)
         self.changed.emit()
 
+    def refresh_context(
+        self,
+        capabilities: Mapping[str, object],
+        dataset_payload: Mapping[str, object],
+    ) -> None:
+        """Refresh choices and compatibility without replacing raw editable state."""
+        before = self._observable_state()
+        self._refreshing_context = True
+        try:
+            self.capabilities = copy.deepcopy(dict(capabilities))
+            self.dataset_payload = copy.deepcopy(dict(dataset_payload))
+            self._configure_mapping_models()
+            self._refresh_models()
+        finally:
+            self._refreshing_context = False
+        self._emit_observable_changes(before)
+        self.changed.emit()
+
     def payload(self) -> dict[str, Any]:
         issue = self._validation_issue()
         if issue:
@@ -397,6 +416,8 @@ class PlotDraft(QObject):
         return True
 
     def _mapping_changed(self) -> None:
+        if self._refreshing_context:
+            return
         self.validity_changed.emit()
         self.changed.emit()
 
@@ -492,6 +513,10 @@ class PlotDraft(QObject):
             )
         if self._kind not in self._plot_kinds():
             return f"plot kind {self._kind!r} is unavailable for this dataset"
+        if self._kind == "pv" and "mass_density" not in self._properties():
+            return "pv requires the dataset property 'mass_density'"
+        if self._kind == "ts" and "specific_entropy" not in self._properties():
+            return "ts requires the dataset property 'specific_entropy'"
         applicable = self._applicable_fields()
         required = set(_string_tuple(self._kind_contract().get("required")))
         if self._kind == "property_curves" and self.dataset_payload.get("mode") == "property_table":
