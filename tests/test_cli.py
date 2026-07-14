@@ -124,7 +124,7 @@ def test_root_help_has_complete_summaries_at_narrow_width() -> None:
     ):
         assert command in result.stdout
         assert summary in result.stdout
-    assert "init → edit → optional validate" in result.stdout
+    assert "init -> edit -> optional validate" in result.stdout
     assert "generate/sweep" in result.stdout
     assert "optional prepare" in result.stdout
 

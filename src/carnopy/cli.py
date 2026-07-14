@@ -52,8 +52,8 @@ app = typer.Typer(
     rich_markup_mode=None,
     help="Generate reproducible thermophysical datasets from configured backends.",
     epilog=(
-        "Workflow: init → edit → optional validate → generate/sweep → inspect "
-        "→ optional plot → optional prepare."
+        "Workflow: init -> edit -> optional validate -> generate/sweep -> inspect "
+        "-> optional plot -> optional prepare."
     ),
 )
 
