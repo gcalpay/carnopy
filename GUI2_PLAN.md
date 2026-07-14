@@ -158,6 +158,19 @@ migration so its interface is grounded in the actual vertical workflow.
 
 ## Stage 2: Modern QML dataset application
 
+- Begin with an explicit visual-direction gate. Agree on a written design brief
+  covering personality, information density, navigation, typography, color,
+  motion, accessibility, and styles to avoid. Generate several original visual
+  concepts for the workspace landing state and dataset editor, then refine one
+  direction with maintainer feedback before treating it as approved.
+- Treat generated concept images as design references, not packaged assets or
+  pixel-perfect implementation authority. Translate the approved direction into
+  reusable QML design tokens and components, and make an early runnable,
+  clickable, responsive QML workspace shell the authoritative design prototype.
+- Include the future 3D page in the navigation and visual composition exercises
+  so its viewport, controls, legends, and inspection area feel integral to the
+  application. Do not add scene preparation, VTK integration, or simulated 3D
+  behavior before Stages 6 and 7.
 - Package QML and design resources through installed-package resources.
 - Build a restrained scientific design system with reliable system, light, and
   dark palettes, responsive navigation, dense layouts, keyboard access, visible
