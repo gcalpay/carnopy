@@ -291,11 +291,17 @@ def validate_metadata(metadata: Message, expected_version: str, *, artifact: str
         raise ValueError(f"{artifact} does not declare License-Expression: MIT")
     if "LICENSE" not in metadata.get_all("License-File", []):
         raise ValueError(f"{artifact} metadata does not record LICENSE")
+    if metadata.get("Requires-Python") != ">=3.11":
+        raise ValueError(f"{artifact} metadata does not declare Requires-Python: >=3.11")
     classifiers = metadata.get_all("Classifier", [])
     if "Typing :: Typed" not in classifiers:
         raise ValueError(f"{artifact} metadata does not declare Typing :: Typed")
-    if "Programming Language :: Python :: 3.13" not in classifiers:
-        raise ValueError(f"{artifact} metadata does not declare Python 3.13 support")
+    for version in ("3.11", "3.12", "3.13", "3.14"):
+        classifier = f"Programming Language :: Python :: {version}"
+        if classifier not in classifiers:
+            raise ValueError(f"{artifact} metadata does not declare Python {version} support")
+    if "Programming Language :: Python :: 3.10" in classifiers:
+        raise ValueError(f"{artifact} metadata still declares Python 3.10 support")
     for classifier in (
         "Environment :: Console",
         "Intended Audience :: Science/Research",

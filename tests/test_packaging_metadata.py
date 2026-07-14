@@ -1,14 +1,10 @@
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 from typing import Any
 
 import yaml
-
-try:
-    import tomllib
-except ModuleNotFoundError:  # pragma: no cover - exercised on Python 3.10
-    import tomli as tomllib
 
 
 def test_all_extra_contains_every_user_facing_optional_dependency() -> None:
@@ -42,8 +38,8 @@ def test_analysis_extra_is_optional_and_scoped() -> None:
     root = Path(__file__).resolve().parents[1]
     pyproject: dict[str, Any] = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
 
-    assert pyproject["project"]["optional-dependencies"]["analysis"] == ["scikit-learn>=1.7.2,<2"]
-    assert "scikit-learn>=1.7.2,<2" in pyproject["project"]["optional-dependencies"]["all"]
+    assert pyproject["project"]["optional-dependencies"]["analysis"] == ["scikit-learn>=1.9,<2"]
+    assert "scikit-learn>=1.9,<2" in pyproject["project"]["optional-dependencies"]["all"]
     assert "scikit-learn" not in " ".join(pyproject["project"]["dependencies"]).casefold()
 
 
@@ -55,6 +51,7 @@ def test_alpha_metadata_uses_modern_license_and_release_urls() -> None:
         "build-backend": "hatchling.build",
     }
     project = pyproject["project"]
+    assert project["requires-python"] == ">=3.11"
     assert project["description"] == (
         "CLI-first thermophysical dataset generation and leakage-aware ML preparation "
         "from thermodynamic backends, with an optional Linux-first desktop GUI."
@@ -87,7 +84,9 @@ def test_alpha_metadata_uses_modern_license_and_release_urls() -> None:
     ):
         assert classifier in project["classifiers"]
     assert "Typing :: Typed" in project["classifiers"]
-    assert "Programming Language :: Python :: 3.13" in project["classifiers"]
+    for version in ("3.11", "3.12", "3.13", "3.14"):
+        assert f"Programming Language :: Python :: {version}" in project["classifiers"]
+    assert "Programming Language :: Python :: 3.10" not in project["classifiers"]
     assert not any(classifier.startswith("Private ::") for classifier in project["classifiers"])
     assert "License :: OSI Approved :: MIT License" not in project["classifiers"]
 

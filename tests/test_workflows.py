@@ -70,10 +70,12 @@ def test_publish_smoke_install_uses_only_production_pypi() -> None:
     assert direct_publish in text
 
 
-def test_ci_matrix_covers_supported_python_versions() -> None:
-    text = workflow_text("ci.yml")
-    for version in ("3.10", "3.11", "3.12", "3.13"):
-        assert f'- "{version}"' in text
+def test_test_matrices_cover_supported_python_versions() -> None:
+    for name in ("ci.yml", "publish.yml"):
+        tests_job = workflow_job(workflow_text(name), "tests")
+        for version in ("3.11", "3.12", "3.13", "3.14"):
+            assert f'- "{version}"' in tests_job
+        assert '- "3.10"' not in tests_job
 
 
 def test_core_and_desktop_dependencies_are_isolated() -> None:

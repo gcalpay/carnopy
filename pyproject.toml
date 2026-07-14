@@ -7,7 +7,7 @@ name = "carnopy"
 dynamic = ["version"]
 description = "CLI-first thermophysical dataset generation and leakage-aware ML preparation from thermodynamic backends, with an optional Linux-first desktop GUI."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Göran Cem Alpay" }]
@@ -36,10 +36,10 @@ classifiers = [
   "Intended Audience :: Science/Research",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Topic :: Scientific/Engineering",
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
   "Topic :: Scientific/Engineering :: Physics",
@@ -61,7 +61,7 @@ ml = [
   "safetensors>=0.4.5",
 ]
 analysis = [
-  "scikit-learn>=1.7.2,<2",
+  "scikit-learn>=1.9,<2",
 ]
 app = [
   "PySide6-Essentials>=6.8.3,<7",
@@ -71,13 +71,12 @@ all = [
   "matplotlib>=3.8",
   "PySide6-Essentials>=6.8.3,<7",
   "safetensors>=0.4.5",
-  "scikit-learn>=1.7.2,<2",
+  "scikit-learn>=1.9,<2",
 ]
 
 [dependency-groups]
 test = [
   "pytest>=8",
-  "tomli>=2; python_version < '3.11'",
 ]
 lint = [
   "ruff>=0.9",
@@ -128,7 +127,7 @@ exclude = [
 ]
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 line-length = 100
 
 [tool.ruff.lint]
@@ -138,7 +137,7 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 quote-style = "double"
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 strict = true
 files = ["src/carnopy"]
 warn_unused_configs = true
