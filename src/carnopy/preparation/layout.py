@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
@@ -24,7 +24,7 @@ def create_preparation_layout(
         output_root.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
         raise OutputError(f"could not create preparation output root {output_root}: {exc}") from exc
-    timestamp = created_at.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    timestamp = created_at.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
     try:
         prefix = UUID(preparation_run_id).hex[:8]
     except ValueError as exc:

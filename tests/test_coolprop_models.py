@@ -3,12 +3,20 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import CoolProp.CoolProp as CP
 import pandas as pd
 import pytest
 
 from carnopy.api import generate_dataset, validate_config
 from carnopy.backends import CoolPropBackend
 from carnopy.domain.failures import ConfigError
+
+DENSITY_REL_TOL = 1e-11
+DENSITY_ABS_TOL = 1e-9
+ENTHALPY_REL_TOL = 1e-11
+ENTHALPY_ABS_TOL = 1e-6
+TEMPERATURE_ABS_TOL = 1e-8
+PRESSURE_ABS_TOL = 1e-3
 
 
 def _write_config(
@@ -37,6 +45,49 @@ outputs:
         encoding="utf-8",
     )
     return path
+
+
+def _assert_direct_coolprop_agreement(
+    frame: pd.DataFrame,
+    *,
+    model: str,
+    mode: str,
+) -> None:
+    qualified_fluid = f"{model.upper()}::n-Propane"
+    CP.set_reference_state(qualified_fluid, "DEF")
+    if mode == "property_table":
+        input_pairs = [("T", 300.0, "P", 100_000.0)]
+    else:
+        fractions = (0.0, 1.0) if mode == "saturation_table" else (0.0, 0.5, 1.0)
+        input_pairs = [("P", 200_000.0, "Q", fraction) for fraction in fractions]
+
+    for inputs, (_, row) in zip(input_pairs, frame.iterrows(), strict=True):
+        input1, value1, input2, value2 = inputs
+        assert row["backend_phase"] == CP.PhaseSI(
+            input1,
+            value1,
+            input2,
+            value2,
+            qualified_fluid,
+        )
+        assert row["temperature_K"] == pytest.approx(
+            CP.PropsSI("T", input1, value1, input2, value2, qualified_fluid),
+            abs=TEMPERATURE_ABS_TOL,
+        )
+        assert row["pressure_Pa"] == pytest.approx(
+            CP.PropsSI("P", input1, value1, input2, value2, qualified_fluid),
+            abs=PRESSURE_ABS_TOL,
+        )
+        assert row["mass_density_kg_m3"] == pytest.approx(
+            CP.PropsSI("DMASS", input1, value1, input2, value2, qualified_fluid),
+            rel=DENSITY_REL_TOL,
+            abs=DENSITY_ABS_TOL,
+        )
+        assert row["specific_enthalpy_J_kg"] == pytest.approx(
+            CP.PropsSI("HMASS", input1, value1, input2, value2, qualified_fluid),
+            rel=ENTHALPY_REL_TOL,
+            abs=ENTHALPY_ABS_TOL,
+        )
 
 
 @pytest.mark.parametrize("model", ["heos", "pr", "srk"])
@@ -88,6 +139,7 @@ def test_all_models_generate_all_dataset_modes(
     assert run.backend_version == metadata["backend_version"] == report["backend_version"]
     assert metadata["reference_state_backend_model"] == model
     assert metadata["reference_state_targets"] == [f"{model.upper()}::n-Propane"]
+    _assert_direct_coolprop_agreement(frame, model=model, mode=mode)
     normalized = json.loads(
         (run.output_directory / "config.normalized.json").read_text(encoding="utf-8")
     )
@@ -139,7 +191,10 @@ def test_cubic_models_reject_globally_unsupported_properties(
 @pytest.mark.parametrize("model", ["heos", "pr", "srk"])
 def test_backend_qualifies_calls_and_reference_targets(model: str) -> None:
     backend = CoolPropBackend(model=model)  # type: ignore[arg-type]
-    assert backend.reference_state_target("n-Propane") == f"{model.upper()}::n-Propane"
+    target = f"{model.upper()}::n-Propane"
+    assert backend.reference_state_target("n-Propane") == target
+    assert CP.AbstractState(model.upper(), "n-Propane").backend_name()
+    CP.set_reference_state(target, "DEF")
     density = backend.property("DMASS", "n-Propane", "T", 300.0, "P", 100_000.0)
     assert density.valid
     assert density.value is not None

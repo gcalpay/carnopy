@@ -3,11 +3,14 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[1]
 ACTION_REFERENCE = re.compile(r"uses:\s+([^@\s]+)@([0-9a-f]{40})")
 WORKFLOW_NAMES = (
     "ci.yml",
     "codeql.yml",
+    "native-qualification.yml",
     "portability.yml",
     "publish.yml",
     "security.yml",
@@ -16,6 +19,12 @@ WORKFLOW_NAMES = (
 
 def workflow_text(name: str) -> str:
     return (ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")
+
+
+def dependabot_config() -> dict[str, object]:
+    document = yaml.safe_load((ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8"))
+    assert isinstance(document, dict)
+    return document
 
 
 def workflow_job(text: str, name: str) -> str:
@@ -69,10 +78,12 @@ def test_publish_smoke_install_uses_only_production_pypi() -> None:
     assert direct_publish in text
 
 
-def test_ci_matrix_covers_supported_python_versions() -> None:
-    text = workflow_text("ci.yml")
-    for version in ("3.10", "3.11", "3.12", "3.13"):
-        assert f'- "{version}"' in text
+def test_test_matrices_cover_supported_python_versions() -> None:
+    for name in ("ci.yml", "publish.yml"):
+        tests_job = workflow_job(workflow_text(name), "tests")
+        for version in ("3.11", "3.12", "3.13", "3.14"):
+            assert f'- "{version}"' in tests_job
+        assert '- "3.10"' not in tests_job
 
 
 def test_core_and_desktop_dependencies_are_isolated() -> None:
@@ -130,8 +141,8 @@ def test_dependency_review_is_pull_request_only() -> None:
     assert "actions/dependency-review-action@" in job
 
 
-def test_qml_native_qualification_is_manual_branch_scoped_and_nonpublishing() -> None:
-    text = workflow_text("ci.yml")
+def test_qml_native_qualification_is_manual_and_nonpublishing() -> None:
+    text = workflow_text("native-qualification.yml")
     job = workflow_job(text, "qml-native-qualification")
     probe_step = workflow_step(job, "Probe clean Qt Quick runtime")
     build_step = workflow_step(job, "Build Carnopy and native bridge wheels")
@@ -139,14 +150,8 @@ def test_qml_native_qualification_is_manual_branch_scoped_and_nonpublishing() ->
     payload_step = workflow_step(job, "Stage isolated qualification payload")
     runtime_step = workflow_step(job, "Run qualification in fresh runtime container")
     assert "workflow_dispatch:" in text
-    assert "if: >-" in job
-    for condition in (
-        "github.event_name == 'workflow_dispatch' &&",
-        "github.ref_type == 'branch' &&",
-        "github.ref == 'refs/heads/feat/gui2-qml-3d'",
-    ):
-        assert condition in job
-    assert "github.ref_name" not in job
+    assert "if:" not in job
+    assert "github.ref" not in job
     assert "runs-on: ubuntu-24.04" in job
     assert 'python-version: "3.12"' in job
     assert 'version: "0.11.23"' in job
@@ -254,8 +259,14 @@ def test_codeql_security_and_portability_workflows_are_explicit() -> None:
     assert codeql.count("github/codeql-action/analyze@") == 1
 
     security = workflow_text("security.yml")
-    for profile in ("base", "viz", "ml", "analysis", "app", "all"):
-        assert f"          - {profile}" in security
+    audit = workflow_job(security, "audit")
+    assert "pull_request:\n    branches:\n      - main" in security
+    assert 'cron: "29 4 * * 1"' in security
+    assert "workflow_dispatch:" in security
+    assert "name: Audit all dependencies" in audit
+    assert "matrix:" not in audit
+    assert "--extra all" in audit
+    assert "PROFILE" not in audit
     assert "pypa/gh-action-pip-audit@" in security
     assert "--no-emit-project" in security
     assert "require-hashes: true" in security
@@ -267,3 +278,46 @@ def test_codeql_security_and_portability_workflows_are_explicit() -> None:
     assert "--extra app" not in portability
     assert "--extra analysis" in portability
     assert "libegl1" not in portability
+
+
+def test_dependabot_uses_safe_weekly_update_groups() -> None:
+    config = dependabot_config()
+    assert config["version"] == 2
+    updates = config["updates"]
+    assert isinstance(updates, list)
+    by_ecosystem = {update["package-ecosystem"]: update for update in updates}
+    assert set(by_ecosystem) == {"uv", "github-actions"}
+
+    for update in by_ecosystem.values():
+        assert update["directory"] == "/"
+        assert update["schedule"] == {
+            "interval": "weekly",
+            "day": "monday",
+            "time": "04:29",
+            "timezone": "Etc/UTC",
+        }
+        assert update["open-pull-requests-limit"] == 5
+
+    uv = by_ecosystem["uv"]
+    assert uv["exclude-paths"] == ["native/carnopy-vtk-bridge/**"]
+    assert uv["groups"] == {
+        "patch-updates": {
+            "applies-to": "version-updates",
+            "patterns": ["*"],
+            "update-types": ["patch"],
+        }
+    }
+
+    actions = by_ecosystem["github-actions"]
+    assert actions["groups"] == {
+        "minor-and-patch-updates": {
+            "applies-to": "version-updates",
+            "patterns": ["*"],
+            "update-types": ["minor", "patch"],
+        }
+    }
+
+    text = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
+    assert "security-updates" not in text
+    assert "auto-merge" not in text
+    assert "auto-approve" not in text

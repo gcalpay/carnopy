@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import io
+import tomllib
 import urllib.request
 from pathlib import Path
 from types import ModuleType
@@ -10,11 +11,6 @@ from types import ModuleType
 import pytest
 
 from carnopy._version import __version__
-
-try:
-    import tomllib
-except ModuleNotFoundError:  # pragma: no cover - exercised on Python 3.10
-    import tomli as tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 BRIDGE_ROOT = ROOT / "native" / "carnopy-vtk-bridge"

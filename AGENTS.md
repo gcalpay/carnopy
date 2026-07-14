@@ -55,10 +55,22 @@ are forbidden. Do not add or use another project role without maintainer
 review. Parent-model preferences, exact-selection failures, and observable
 fallback handling belong in `.agents/local.md`.
 
+Dispatch project agents only through Codex's native custom-agent path when the
+active surface explicitly selects the intended `explorer`, `worker`,
+`reviewer`, or `architect` agent type and creates an inspectable native
+subagent thread. A free-form task name, matching label, or prompt that says to
+act as one of these roles is not evidence that its TOML profile was loaded.
+Do not substitute a generic collaboration wrapper when custom-agent selection
+or the native Subagents/background-agent UI is unavailable; continue in the
+parent thread instead.
+
 Subagent use does not require Ultra; Ultra may delegate proactively when
 parallel work is useful. Delegation depth is one, so delegated agents must not
-spawn descendants. Close every spawned agent immediately after its result is
-integrated or discarded, including agents already marked completed.
+spawn descendants. Close every spawned agent through the native close-agent
+operation immediately after its result is integrated or discarded, including
+agents already marked completed. Never interrupt an already completed agent as
+a substitute for closing it. If the active surface does not provide the
+required lifecycle operation, do not spawn project agents from that surface.
 
 ## Purpose and scope
 

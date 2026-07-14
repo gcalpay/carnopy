@@ -291,11 +291,17 @@ def validate_metadata(metadata: Message, expected_version: str, *, artifact: str
         raise ValueError(f"{artifact} does not declare License-Expression: MIT")
     if "LICENSE" not in metadata.get_all("License-File", []):
         raise ValueError(f"{artifact} metadata does not record LICENSE")
+    if metadata.get("Requires-Python") != ">=3.11":
+        raise ValueError(f"{artifact} metadata does not declare Requires-Python: >=3.11")
     classifiers = metadata.get_all("Classifier", [])
     if "Typing :: Typed" not in classifiers:
         raise ValueError(f"{artifact} metadata does not declare Typing :: Typed")
-    if "Programming Language :: Python :: 3.13" not in classifiers:
-        raise ValueError(f"{artifact} metadata does not declare Python 3.13 support")
+    for version in ("3.11", "3.12", "3.13", "3.14"):
+        classifier = f"Programming Language :: Python :: {version}"
+        if classifier not in classifiers:
+            raise ValueError(f"{artifact} metadata does not declare Python {version} support")
+    if "Programming Language :: Python :: 3.10" in classifiers:
+        raise ValueError(f"{artifact} metadata still declares Python 3.10 support")
     for classifier in (
         "Environment :: Console",
         "Intended Audience :: Science/Research",
@@ -325,6 +331,15 @@ def validate_metadata(metadata: Message, expected_version: str, *, artifact: str
     extras = set(metadata.get_all("Provides-Extra", []))
     if extras != {"all", "analysis", "app", "ml", "viz"}:
         raise ValueError(f"{artifact} metadata declares unexpected optional extras: {extras}")
+    coolprop_requirements = [
+        requirement
+        for requirement in metadata.get_all("Requires-Dist", [])
+        if requirement.casefold().startswith("coolprop")
+    ]
+    if len(coolprop_requirements) != 1 or not all(
+        bound in coolprop_requirements[0] for bound in (">=8", "<9")
+    ):
+        raise ValueError(f"{artifact} must require CoolProp >=8,<9")
     matplotlib_requirements = [
         requirement
         for requirement in metadata.get_all("Requires-Dist", [])
@@ -335,6 +350,18 @@ def validate_metadata(metadata: Message, expected_version: str, *, artifact: str
     ):
         raise ValueError(
             f"{artifact} must declare Matplotlib only through all, app, and viz extras"
+        )
+    pillow_requirements = [
+        requirement
+        for requirement in metadata.get_all("Requires-Dist", [])
+        if requirement.casefold().startswith("pillow")
+    ]
+    if len(pillow_requirements) != 3 or any(
+        ">=12.3.0" not in requirement or "extra ==" not in requirement
+        for requirement in pillow_requirements
+    ):
+        raise ValueError(
+            f"{artifact} must declare Pillow >=12.3.0 only through all, app, and viz extras"
         )
     safetensors_requirements = [
         requirement

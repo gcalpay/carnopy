@@ -163,7 +163,9 @@ outputs:
     assert "matrix diagnostics: not_requested" in text
     assert "baseline diagnostics: not_requested" in text
     assert payload["source_kind"] == "preparation_bundle"
-    assert payload["artifacts"]["table"].endswith("data/table.parquet")
+    assert Path(payload["artifacts"]["table"]) == (
+        prepared.output_directory / "data" / "table.parquet"
+    )
     assert "mass_density" in payload["columns"]["table"]
     assert "source_row_hash" in payload["columns"]["provenance"]
     assert "source_failure_code" in payload["columns"]["diagnostics"]

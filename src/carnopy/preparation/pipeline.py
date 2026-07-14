@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -115,7 +115,7 @@ def prepare_dataset(
     normalized_bytes = normalized_preparation_bytes(loaded.model)
     request_id = f"prep-{sha256_bytes(normalized_bytes)}"
     preparation_run_id = str(uuid4())
-    created_at = datetime.now(timezone.utc)
+    created_at = datetime.now(UTC)
     layout = create_preparation_layout(
         Path(output_root),
         preparation_run_id=preparation_run_id,

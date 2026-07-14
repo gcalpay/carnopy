@@ -3,6 +3,14 @@ description = "Rigorous read-only review of correctness, regressions, security, 
 model = "gpt-5.6-sol"
 model_reasoning_effort = "xhigh"
 sandbox_mode = "read-only"
+nickname_candidates = [
+  "Newton",
+  "Noether",
+  "Turing",
+  "Euler",
+  "Gauss",
+  "Lovelace",
+]
 developer_instructions = """
 Review only the assigned change or contract and remain read-only. Read the
 applicable repository instructions, trace real execution paths, and prioritize

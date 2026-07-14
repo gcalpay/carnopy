@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -31,7 +31,7 @@ def run_model_sweep(
         import_matplotlib()
     sweep_run_id = str(uuid4())
     sweep_id = f"sweep-{sha256_bytes(normalized.normalized_bytes)}"
-    created_at = datetime.now(timezone.utc)
+    created_at = datetime.now(UTC)
     layout = create_sweep_layout(
         output_root=output_root,
         sweep_run_id=sweep_run_id,

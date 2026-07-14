@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from importlib import metadata
 from pathlib import Path
 from typing import Any
@@ -99,7 +99,7 @@ def render_comparison_plots(
     report_path = output_directory / "comparison-report.json"
     report = {
         "comparison_report_schema_version": COMPARISON_REPORT_SCHEMA_VERSION,
-        "created_at_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "created_at_utc": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "source_sweep_identity": sweep_identity,
         "status": "completed" if failed == 0 else "completed_with_failures",
         "requested_plot_count": len(comparison_plots.plots),
@@ -201,7 +201,7 @@ def _render_property_comparison(
     sidecar = {
         "plot_schema_version": 2,
         "plot_kind": plot.kind,
-        "created_at_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "created_at_utc": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "source_sweep_identity": sweep_identity,
         "comparison_artifact_hashes": comparison_hashes,
         "resolved_models": list(models),
@@ -323,7 +323,7 @@ def _render_property_delta(
     sidecar = {
         "plot_schema_version": 2,
         "plot_kind": plot.kind,
-        "created_at_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "created_at_utc": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "source_sweep_identity": sweep_identity,
         "comparison_artifact_hashes": comparison_hashes,
         "resolved_models": list(models),

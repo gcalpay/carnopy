@@ -103,9 +103,11 @@ uv run --locked carnopy-gui
 ```
 
 The source-tree `app` extra has the same optional dependency boundary. The
-active GUI-2 source line reports `0.1.0a4.dev0`, while the published install
-commands above remain pinned to `0.1.0a3`. Stage 1 controller extraction is
-complete; during Stage 2 QML workflow development, both desktop launchers
+development `viz` and `app` extras declare a Pillow security floor for
+Matplotlib's transitive image dependency; Pillow is not a separate Carnopy
+feature. The active GUI-2 source line reports `0.1.0a4.dev0`, while the
+published install commands above remain pinned to `0.1.0a3`. Stage 1
+controller extraction is complete; during Stage 2 QML workflow development, both desktop launchers
 continue to use the released Widgets frontend as the parity baseline.
 
 ## Quick start
@@ -1162,7 +1164,7 @@ changes.
 - Absolute reference-dependent values are not directly comparable across
   different reference conventions or model/reference combinations.
 - PR/SRK transport properties, surface tension, and triple-point temperature
-  are rejected during validation because CoolProp 7.2.0 does not provide the
+  are rejected during validation because the cubic backends do not provide the
   required model capability.
 - Visualization reads emitted columns only and is not a second property
   evaluation layer.

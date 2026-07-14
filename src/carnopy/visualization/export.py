@@ -5,7 +5,7 @@ import json
 import os
 import re
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -192,7 +192,7 @@ def _build_sidecar(
     return {
         "plot_schema_version": PLOT_SCHEMA_VERSION,
         "plot_kind": request.kind,
-        "created_at_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "created_at_utc": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "source_identity": {
             "requested_path": str(plot_source.requested_path),
             "dataset_path": str(plot_source.dataset_path),

@@ -262,15 +262,15 @@ def _ordered_levels(
 ) -> list[float | str]:
     if field == "saturation_endpoint":
         preferred = ["saturated_liquid", "saturated_vapor"]
-        available = frame[get_field(field).column].dropna().astype(str).unique().tolist()
-        return [value for value in preferred if value in available]
+        available_endpoints = frame[get_field(field).column].dropna().astype(str).unique().tolist()
+        return [value for value in preferred if value in available_endpoints]
     metadata = plot_source.metadata
     if metadata is not None:
         sampling = metadata.get("sampling")
         materialized = sampling.get("materialized_si") if isinstance(sampling, dict) else None
         values = materialized.get(field) if isinstance(materialized, dict) else None
         if isinstance(values, list):
-            available = pd.to_numeric(
+            available_numeric = pd.to_numeric(
                 frame[get_field(field).column],
                 errors="coerce",
             ).dropna()
@@ -279,7 +279,7 @@ def _ordered_levels(
                 for value in values
                 if bool(
                     np.isclose(
-                        available.to_numpy(dtype=float),
+                        available_numeric.to_numpy(dtype=float),
                         float(value),
                         rtol=1e-12,
                         atol=1e-12,

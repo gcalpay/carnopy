@@ -3,6 +3,14 @@ description = "Focused read-only codebase exploration and evidence collection fo
 model = "gpt-5.6-sol"
 model_reasoning_effort = "medium"
 sandbox_mode = "read-only"
+nickname_candidates = [
+  "Leibniz",
+  "Curie",
+  "Humboldt",
+  "Kepler",
+  "Faraday",
+  "Darwin",
+]
 developer_instructions = """
 Explore only the bounded question assigned by the parent. Read the applicable
 repository instructions first, use Graphify when they require it, and support
