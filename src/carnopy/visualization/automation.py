@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from importlib import metadata
 from pathlib import Path
 from typing import Any, cast
@@ -206,7 +206,7 @@ def _finalize_report(
     report_path = figure_directory / "visualization-report.json"
     report = {
         "visualization_report_schema_version": VISUALIZATION_REPORT_SCHEMA_VERSION,
-        "created_at_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "created_at_utc": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "visualization_request_id": visualization.visualization_request_id,
         "status": status,
         "source_identity": {

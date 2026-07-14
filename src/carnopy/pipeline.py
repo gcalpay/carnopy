@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 from uuid import uuid4
@@ -124,7 +124,7 @@ def run_generation(
         output_request_id=validated.output_request_id,
     )
     run_id = str(uuid4())
-    created_at = datetime.now(timezone.utc)
+    created_at = datetime.now(UTC)
     layout = create_run_layout(
         output_root=output_root,
         mode=normalized.mode,
@@ -334,7 +334,7 @@ def _with_state_key_columns(
             )
             for _, row in selected.iterrows()
         ]
-    return cast(pd.DataFrame, selected)
+    return selected
 
 
 def _state_key(config: NormalizedConfig, row: pd.Series) -> str:

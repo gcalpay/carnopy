@@ -4,7 +4,7 @@ import re
 import shutil
 import stat
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 STAGING_NAME = re.compile(
@@ -29,7 +29,7 @@ def scan_staging_candidates(output_root: Path) -> list[StagingCandidate]:
     root = output_root.resolve()
     if not root.is_dir():
         return []
-    now = datetime.now(timezone.utc).timestamp()
+    now = datetime.now(UTC).timestamp()
     candidates: list[StagingCandidate] = []
     for path in root.iterdir():
         if STAGING_NAME.fullmatch(path.name) is None:
@@ -39,7 +39,7 @@ def scan_staging_candidates(output_root: Path) -> list[StagingCandidate]:
         except OSError as exc:
             candidates.append(StagingCandidate(path, -1, -1, "unknown", 0.0, False, str(exc)))
             continue
-        modified = datetime.fromtimestamp(info.st_mtime, timezone.utc)
+        modified = datetime.fromtimestamp(info.st_mtime, UTC)
         issue = None
         if stat.S_ISLNK(info.st_mode):
             issue = "candidate is a symbolic link"

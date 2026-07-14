@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -172,17 +172,14 @@ def ordered_frame(
     ordering_field: str | None,
 ) -> pd.DataFrame:
     if ordering_field is None:
-        return cast(pd.DataFrame, frame.sort_values("case_id", kind="stable"))
+        return frame.sort_values("case_id", kind="stable")
     levels = ordered_levels(plot_source, frame, ordering_field)
     rank = {_canonical_level(level): index for index, level in enumerate(levels)}
     ordered = frame.copy()
     ordered["_series_order"] = ordered[get_field(ordering_field).column].map(
         lambda value: rank.get(_canonical_level(value), len(rank))
     )
-    return cast(
-        pd.DataFrame,
-        ordered.sort_values(["_series_order", "case_id"], kind="stable"),
-    )
+    return ordered.sort_values(["_series_order", "case_id"], kind="stable")
 
 
 def ordered_levels(
@@ -191,15 +188,19 @@ def ordered_levels(
     field: str,
 ) -> list[float | str]:
     if field == "saturation_endpoint":
-        available = frame["saturation_endpoint"].dropna().astype(str).unique().tolist()
-        return [value for value in ("saturated_liquid", "saturated_vapor") if value in available]
+        available_endpoints = frame["saturation_endpoint"].dropna().astype(str).unique().tolist()
+        return [
+            value
+            for value in ("saturated_liquid", "saturated_vapor")
+            if value in available_endpoints
+        ]
     metadata = plot_source.metadata
     if metadata is not None:
         sampling = metadata.get("sampling")
         materialized = sampling.get("materialized_si") if isinstance(sampling, dict) else None
         values = materialized.get(field) if isinstance(materialized, dict) else None
         if isinstance(values, list):
-            available = pd.to_numeric(
+            available_numeric = pd.to_numeric(
                 frame[get_field(field).column],
                 errors="coerce",
             ).dropna()
@@ -208,7 +209,7 @@ def ordered_levels(
                 for value in values
                 if bool(
                     np.isclose(
-                        available.to_numpy(dtype=float),
+                        available_numeric.to_numpy(dtype=float),
                         float(value),
                         rtol=1e-12,
                         atol=1e-12,

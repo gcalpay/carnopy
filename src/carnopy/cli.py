@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sys
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
 
@@ -10,17 +10,17 @@ import typer
 from carnopy._version import __version__
 
 
-class PlotScaleCli(str, Enum):
+class PlotScaleCli(StrEnum):
     linear = "linear"
     log = "log"
 
 
-class PlotCoordinateCli(str, Enum):
+class PlotCoordinateCli(StrEnum):
     pressure = "pressure"
     temperature = "temperature"
 
 
-class ConfigModeCli(str, Enum):
+class ConfigModeCli(StrEnum):
     property_table = "property_table"
     saturation_table = "saturation_table"
     vapor_mass_fraction_table = "vapor_mass_fraction_table"
@@ -28,12 +28,12 @@ class ConfigModeCli(str, Enum):
     preparation = "preparation"
 
 
-class InspectFormatCli(str, Enum):
+class InspectFormatCli(StrEnum):
     text = "text"
     json = "json"
 
 
-class CoolPropModelCli(str, Enum):
+class CoolPropModelCli(StrEnum):
     heos = "heos"
     pr = "pr"
     srk = "srk"

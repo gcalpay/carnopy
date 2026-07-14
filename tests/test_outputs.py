@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -33,14 +33,14 @@ def test_run_layout_uses_short_human_facing_name(
         output_root=tmp_path,
         mode=mode,
         run_id="c8e28e9f-26f5-4d31-a8ae-47f8d8232aae",
-        created_at=datetime(2026, 6, 21, 17, 20, 6, 270984, tzinfo=timezone.utc),
+        created_at=datetime(2026, 6, 21, 17, 20, 6, 270984, tzinfo=UTC),
     )
     assert layout.final_directory.name == f"20260621T172006Z_{mode_slug}_c8e28e9f"
     assert layout.staging_directory.name == (f".20260621T172006Z_{mode_slug}_c8e28e9f.staging")
 
 
 def test_run_layout_distinguishes_attempts_with_same_timestamp(tmp_path: Path) -> None:
-    created_at = datetime(2026, 6, 21, 17, 20, 6, tzinfo=timezone.utc)
+    created_at = datetime(2026, 6, 21, 17, 20, 6, tzinfo=UTC)
     first = create_run_layout(
         output_root=tmp_path,
         mode="property_table",
@@ -61,7 +61,7 @@ def test_run_layout_cleanup_preserves_replaced_staging_directory(tmp_path: Path)
         output_root=tmp_path,
         mode="property_table",
         run_id="11111111-1111-4111-8111-111111111111",
-        created_at=datetime(2026, 6, 21, 17, 20, 6, tzinfo=timezone.utc),
+        created_at=datetime(2026, 6, 21, 17, 20, 6, tzinfo=UTC),
     )
     original = tmp_path / "original-staging"
     layout.staging_directory.rename(original)
