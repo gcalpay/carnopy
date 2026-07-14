@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import CoolProp.CoolProp as CP
 import pytest
 
 from carnopy.backends import CoolPropBackend
@@ -50,6 +51,7 @@ properties: [specific_enthalpy]
 @pytest.mark.parametrize("model", ["heos", "pr", "srk"])
 def test_invalid_saturation_state_retains_backend_diagnostics(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
     model: str,
 ) -> None:
     path = tmp_path / f"invalid-pressure-{model}.yaml"
@@ -63,11 +65,26 @@ backend:
 mode: saturation_table
 fluids: [Propane]
 grid:
-  pressure: {{kind: explicit, values: [100], unit: MPa}}
+  pressure: {{kind: explicit, values: [2], unit: bar}}
 properties: [mass_density]
 """,
         encoding="utf-8",
     )
+    original_propssi = CP.PropsSI
+
+    def fail_saturation_coordinate(
+        output: str,
+        input1: str,
+        value1: float,
+        input2: str,
+        value2: float,
+        fluid: str,
+    ) -> float:
+        if output == "T" and input2 == "Q":
+            raise ValueError("portable saturation-coordinate failure")
+        return float(original_propssi(output, input1, value1, input2, value2, fluid))
+
+    monkeypatch.setattr(CP, "PropsSI", fail_saturation_coordinate)
     backend = CoolPropBackend(model=model)  # type: ignore[arg-type]
     config = normalize_config(load_config_file(path).model, backend)
     rows = generate_saturation_table(config, backend, "run")
