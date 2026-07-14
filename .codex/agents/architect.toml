@@ -10,6 +10,8 @@ nickname_candidates = [
   "Gaudi",
   "Fuller",
   "Wright",
+  "Kahn",
+  "Eiffel",
 ]
 developer_instructions = """
 Analyze only the difficult question assigned by the parent and remain read-only.
