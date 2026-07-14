@@ -3,6 +3,14 @@ description = "Read-only analysis for difficult architecture, native integration
 model = "gpt-5.6-sol"
 model_reasoning_effort = "max"
 sandbox_mode = "read-only"
+nickname_candidates = [
+  "Archimedes",
+  "Vitruvius",
+  "Brunelleschi",
+  "Gaudi",
+  "Fuller",
+  "Wright",
+]
 developer_instructions = """
 Analyze only the difficult question assigned by the parent and remain read-only.
 Read the applicable repository instructions and temporary plans, trace public
