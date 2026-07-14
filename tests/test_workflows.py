@@ -8,6 +8,7 @@ ACTION_REFERENCE = re.compile(r"uses:\s+([^@\s]+)@([0-9a-f]{40})")
 WORKFLOW_NAMES = (
     "ci.yml",
     "codeql.yml",
+    "native-qualification.yml",
     "portability.yml",
     "publish.yml",
     "security.yml",
@@ -130,8 +131,8 @@ def test_dependency_review_is_pull_request_only() -> None:
     assert "actions/dependency-review-action@" in job
 
 
-def test_qml_native_qualification_is_manual_branch_scoped_and_nonpublishing() -> None:
-    text = workflow_text("ci.yml")
+def test_qml_native_qualification_is_manual_and_nonpublishing() -> None:
+    text = workflow_text("native-qualification.yml")
     job = workflow_job(text, "qml-native-qualification")
     probe_step = workflow_step(job, "Probe clean Qt Quick runtime")
     build_step = workflow_step(job, "Build Carnopy and native bridge wheels")
@@ -139,14 +140,8 @@ def test_qml_native_qualification_is_manual_branch_scoped_and_nonpublishing() ->
     payload_step = workflow_step(job, "Stage isolated qualification payload")
     runtime_step = workflow_step(job, "Run qualification in fresh runtime container")
     assert "workflow_dispatch:" in text
-    assert "if: >-" in job
-    for condition in (
-        "github.event_name == 'workflow_dispatch' &&",
-        "github.ref_type == 'branch' &&",
-        "github.ref == 'refs/heads/feat/gui2-qml-3d'",
-    ):
-        assert condition in job
-    assert "github.ref_name" not in job
+    assert "if:" not in job
+    assert "github.ref" not in job
     assert "runs-on: ubuntu-24.04" in job
     assert 'python-version: "3.12"' in job
     assert 'version: "0.11.23"' in job
