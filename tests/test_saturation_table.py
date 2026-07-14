@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from carnopy.backends import CoolPropBackend
 from carnopy.config import load_config_file, normalize_config
 from carnopy.generation import generate_saturation_table
@@ -43,3 +45,37 @@ properties: [specific_enthalpy]
     rows = generate_saturation_table(config, backend, "run")
     assert len(rows) == 2
     assert rows[0]["temperature_K"] == rows[1]["temperature_K"]
+
+
+@pytest.mark.parametrize("model", ["heos", "pr", "srk"])
+def test_invalid_saturation_state_retains_backend_diagnostics(
+    tmp_path: Path,
+    model: str,
+) -> None:
+    path = tmp_path / f"invalid-pressure-{model}.yaml"
+    path.write_text(
+        f"""
+schema_version: 2
+document_type: dataset
+backend:
+  name: coolprop
+  model: {model}
+mode: saturation_table
+fluids: [Propane]
+grid:
+  pressure: {{kind: explicit, values: [100], unit: MPa}}
+properties: [mass_density]
+""",
+        encoding="utf-8",
+    )
+    backend = CoolPropBackend(model=model)  # type: ignore[arg-type]
+    config = normalize_config(load_config_file(path).model, backend)
+    rows = generate_saturation_table(config, backend, "run")
+
+    assert len(rows) == 2
+    for row in rows:
+        assert row["valid"] is False
+        assert row["failure_layer"] == "domain"
+        assert row["failure_code"] == "outside_saturation_domain"
+        assert row["backend_error_type"] == "ValueError"
+        assert row["backend_error_message"]

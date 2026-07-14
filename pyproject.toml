@@ -22,7 +22,7 @@ keywords = [
   "CoolProp",
 ]
 dependencies = [
-  "CoolProp>=7.2",
+  "CoolProp>=8,<9",
   "numpy>=2.0",
   "pandas>=2.2",
   "pyarrow>=16",
@@ -56,6 +56,7 @@ Releases = "https://github.com/gcalpay/carnopy/releases"
 [project.optional-dependencies]
 viz = [
   "matplotlib>=3.8",
+  "Pillow>=12.3.0",
 ]
 ml = [
   "safetensors>=0.4.5",
@@ -66,9 +67,11 @@ analysis = [
 app = [
   "PySide6-Essentials>=6.8.3,<7",
   "matplotlib>=3.8",
+  "Pillow>=12.3.0",
 ]
 all = [
   "matplotlib>=3.8",
+  "Pillow>=12.3.0",
   "PySide6-Essentials>=6.8.3,<7",
   "safetensors>=0.4.5",
   "scikit-learn>=1.9,<2",

@@ -331,6 +331,15 @@ def validate_metadata(metadata: Message, expected_version: str, *, artifact: str
     extras = set(metadata.get_all("Provides-Extra", []))
     if extras != {"all", "analysis", "app", "ml", "viz"}:
         raise ValueError(f"{artifact} metadata declares unexpected optional extras: {extras}")
+    coolprop_requirements = [
+        requirement
+        for requirement in metadata.get_all("Requires-Dist", [])
+        if requirement.casefold().startswith("coolprop")
+    ]
+    if len(coolprop_requirements) != 1 or not all(
+        bound in coolprop_requirements[0] for bound in (">=8", "<9")
+    ):
+        raise ValueError(f"{artifact} must require CoolProp >=8,<9")
     matplotlib_requirements = [
         requirement
         for requirement in metadata.get_all("Requires-Dist", [])
@@ -341,6 +350,18 @@ def validate_metadata(metadata: Message, expected_version: str, *, artifact: str
     ):
         raise ValueError(
             f"{artifact} must declare Matplotlib only through all, app, and viz extras"
+        )
+    pillow_requirements = [
+        requirement
+        for requirement in metadata.get_all("Requires-Dist", [])
+        if requirement.casefold().startswith("pillow")
+    ]
+    if len(pillow_requirements) != 3 or any(
+        ">=12.3.0" not in requirement or "extra ==" not in requirement
+        for requirement in pillow_requirements
+    ):
+        raise ValueError(
+            f"{artifact} must declare Pillow >=12.3.0 only through all, app, and viz extras"
         )
     safetensors_requirements = [
         requirement

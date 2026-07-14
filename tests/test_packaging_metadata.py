@@ -22,6 +22,13 @@ def test_all_extra_contains_every_user_facing_optional_dependency() -> None:
     assert set(optional["all"]) == feature_dependencies
 
 
+def test_coolprop_major_version_is_bounded() -> None:
+    root = Path(__file__).resolve().parents[1]
+    pyproject: dict[str, Any] = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+
+    assert "CoolProp>=8,<9" in pyproject["project"]["dependencies"]
+
+
 def test_desktop_extra_and_launcher_are_declared() -> None:
     root = Path(__file__).resolve().parents[1]
     pyproject: dict[str, Any] = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
@@ -29,6 +36,7 @@ def test_desktop_extra_and_launcher_are_declared() -> None:
     assert pyproject["project"]["optional-dependencies"]["app"] == [
         "PySide6-Essentials>=6.8.3,<7",
         "matplotlib>=3.8",
+        "Pillow>=12.3.0",
     ]
     assert pyproject["project"]["scripts"]["carnopy-app"] == "carnopy.app.launcher:main"
     assert pyproject["project"]["scripts"]["carnopy-gui"] == "carnopy.app.launcher:main_gui"
@@ -41,6 +49,16 @@ def test_analysis_extra_is_optional_and_scoped() -> None:
     assert pyproject["project"]["optional-dependencies"]["analysis"] == ["scikit-learn>=1.9,<2"]
     assert "scikit-learn>=1.9,<2" in pyproject["project"]["optional-dependencies"]["all"]
     assert "scikit-learn" not in " ".join(pyproject["project"]["dependencies"]).casefold()
+
+
+def test_visualization_extras_declare_the_pillow_security_floor() -> None:
+    root = Path(__file__).resolve().parents[1]
+    pyproject: dict[str, Any] = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    optional = pyproject["project"]["optional-dependencies"]
+
+    assert "Pillow>=12.3.0" in optional["viz"]
+    assert "Pillow>=12.3.0" in optional["app"]
+    assert "Pillow>=12.3.0" in optional["all"]
 
 
 def test_alpha_metadata_uses_modern_license_and_release_urls() -> None:
@@ -185,7 +203,7 @@ def test_github_community_files_cover_public_reporting_paths() -> None:
     bug_report = (issue_templates / "bug-report.yml").read_text(encoding="utf-8")
     assert "0.1.0a3.dev0" not in bug_report
     assert 'placeholder: "carnopy 0.1.0a3 or carnopy-app 0.1.0a3' in bug_report
-    assert 'placeholder: "Carnopy 0.1.0a3; CoolProp' in scientific
+    assert 'placeholder: "Carnopy 0.1.0a3; CoolProp 8.0.0"' in scientific
     assert "private vulnerability" in security.casefold()
     assert "gc@carnopy.org" in security
     assert "Contributor Covenant, version 2.1" in conduct
