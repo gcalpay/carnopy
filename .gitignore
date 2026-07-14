@@ -44,3 +44,6 @@ graphify-out/*
 
 # Local ML research material
 /mlpdfs/
+
+# Uncommitted GUI branding concepts
+/logo-ideas/

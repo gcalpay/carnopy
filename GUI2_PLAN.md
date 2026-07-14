@@ -56,8 +56,9 @@ Locked GUI-2 requirements:
 - Keep the native VTK bridge as a companion distribution in this repository.
 - Support the QML application on Linux, Windows, and macOS. Native 3D is
   Linux-first until additional platforms pass explicit qualification.
-- Deliver GUI-2 through one final pull request with coherent intermediate
-  commits and stage-specific verification.
+- Deliver GUI-2 through one branch and pull request per stage, with coherent
+  intermediate commits, stage-specific verification, and explicit maintainer
+  acceptance before that stage is marked complete.
 - Git mutation, dependency changes, credentials, external configuration,
   release tags, and publication remain human-controlled.
 
@@ -158,34 +159,410 @@ migration so its interface is grounded in the actual vertical workflow.
 
 ## Stage 2: Modern QML dataset application
 
-- Begin with an explicit visual-direction gate. Agree on a written design brief
-  covering personality, information density, navigation, typography, color,
-  motion, accessibility, and styles to avoid. Generate several original visual
-  concepts for the workspace landing state and dataset editor, then refine one
-  direction with maintainer feedback before treating it as approved.
-- Treat generated concept images as design references, not packaged assets or
-  pixel-perfect implementation authority. Translate the approved direction into
-  reusable QML design tokens and components, and make an early runnable,
-  clickable, responsive QML workspace shell the authoritative design prototype.
-- Include the future 3D page in the navigation and visual composition exercises
-  so its viewport, controls, legends, and inspection area feel integral to the
-  application. Do not add scene preparation, VTK integration, or simulated 3D
-  behavior before Stages 6 and 7.
-- Package QML and design resources through installed-package resources.
-- Build a restrained scientific design system with reliable system, light, and
-  dark palettes, responsive navigation, dense layouts, keyboard access, visible
-  focus, accessibility labels, contextual help, and non-color-only status.
-- Preserve `--qt-platform auto|xcb|wayland`.
-- Implement workspace lifecycle and configuration states: unavailable, loading,
-  landing, and editing.
-- With a workspace but no draft, show only **New Dataset** and **Import Existing
-  Configuration**.
-- Show Dataset, Visualization, YAML Preview, Save, Save As, and Close
-  Configuration only while a real draft exists.
-- Display units beside numeric inputs and convert display values to canonical SI
-  before validation and serialization.
-- Keep public launchers on Widgets during this stage. Exercise QML through an
-  internal or test entrypoint until existing workflow parity is proven.
+Stage 2 delivers the first packaged, clickable QML application over the Stage 1
+controllers. The public `carnopy-app` and `carnopy-gui` launchers remain on
+Widgets until Stage 3 parity. Stage 2 does not add generation, inspection,
+table preview, rendering, native VTK, sweep, preparation, jobs, or recovery
+workflows.
+
+### Approved visual and interaction direction
+
+- Optimize for a dense desktop scientific workbench, with 1440 by 900 logical
+  pixels as the primary design viewport. Keep the window freely resizable and
+  maximizable; 1440 by 900 is not a maximum resolution.
+- Use a persistent collapsible left rail, a slim document command bar, a
+  responsive card grid, and an adaptive right inspector. The inspector shows
+  page-specific issues and help above stable document validity, file state, and
+  next actions.
+- Use a native operating-system title bar. Follow the operating-system theme on
+  first launch and persist explicit System, Light, and Dark choices.
+- Use restrained functional motion with a reduced-motion setting. Prototype
+  restrained and moderately expressive variants, then select the final motion
+  intensity through native review. Motion must be fast, interruptible, and
+  never delay an available control.
+- Use a navy navigation surface, restrained emerald primary actions, and blue
+  informational accents. Status must never rely on color alone.
+- Keep the full navigation structure visible. Unavailable entries are muted,
+  explained, non-interactive, and excluded from keyboard focus. Use this order:
+  Workspace, Dataset, Visualization, YAML Preview, Run, Inspect, Activity and
+  Recovery, Model Sweeps, ML Preparation, and 3D. Anchor Settings and Help at
+  the bottom.
+- Reserve the future 3D workflow in the visual composition and record a future
+  fullscreen/restore control with Escape to exit. Do not show a fake viewport,
+  fake scientific data, smoothing controls, scene preparation, or VTK behavior
+  before Stages 6 and 7.
+- Generate three original wide-desktop Dataset treatments with identical
+  information architecture, content, validation state, viewport, and functional
+  scope. The dense workbench is the locked primary layout, and the numbered
+  next-steps progression is the only pre-approved element borrowed from the
+  spacious-dashboard concept. Select one primary treatment and record any other
+  borrowed elements by name; do not create an undefined blend. Refine that
+  treatment for workspace landing, light and dark themes, 1024 by 768, 1920 by
+  1080, narrow layout, collapsed rail, and inspector drawer states. Store
+  working references only in ignored `prerelease/gui2-stage2-design/`; do not
+  package or commit them. The clickable QML shell becomes authoritative
+  immediately after visual approval.
+- Create and separately approve an original geometric Carnopy mark. Use the
+  untracked `logo-ideas/minimal-green-v1.png` only as the primary refinement
+  direction, treat `minimal-white-v1.png` as an inverse rendering of the same
+  geometry, and retain `full-color-v1.png` only as conceptual inspiration. Do
+  not package or auto-trace those PNGs. Reconstruct one clean canonical vector,
+  correct its intersections and optical weights, and review small-size, light,
+  dark, and monochrome presentations before packaging it. Bundle IBM
+  Plex Sans Regular, Medium, and SemiBold for the interface and IBM Plex Mono
+  Regular and Medium for YAML, paths, hashes, logs, and aligned technical
+  values. Bundle only the audited Lucide SVG subset actually used. Record exact
+  upstream revisions, licenses, packaged paths, filenames, and SHA-256 hashes in
+  a machine-readable third-party resource manifest.
+
+Responsive shell breakpoints use logical pixels: wide at 1280 and above,
+compact from 800 through 1279, and narrow below 800. Actual card columns derive
+from the remaining central-content width after rail and inspector allocation,
+using a 300-logical-pixel minimum card width and at most three columns. Follow
+operating-system DPI scaling, preserve normal geometry and maximized state,
+clamp restored geometry to available screens, and keep wide-layout preferences
+separate from transient responsive overrides. Do not add a resolution selector,
+window-size presets, or application-specific zoom. Verify 1024 by 768, 1440 by
+900, 1920 by 1080, 2560 by 1440, 3840 by 2160, and a 768-logical-pixel narrow
+window at relevant 100, 150, and 200 percent scaling.
+
+### Qt, QML, and packaging baseline
+
+- Raise the application dependency to
+  `PySide6-Essentials>=6.11.1,<6.12` in both `app` and `all`; update the lock,
+  dependency metadata tests, CI, installed-package tests, and documented
+  platform baseline. Keep the companion native bridge on its exact qualified
+  6.11.1 pin.
+- Keep Carnopy's own Basic Controls design system responsible for appearance.
+  Qt 6.11 provides the runtime and tooling but is not itself the visual design.
+- Start the internal QML application in this order: create the Qt GUI
+  application; set organization and application names; select Basic Controls;
+  create settings and controllers; register and verify fonts; configure
+  installed QML import paths; connect engine warning capture; then load the
+  root object.
+- Treat QML load failures, missing mandatory fonts or resources, any QML warning
+  during initial loading, and zero root objects as startup failure. Capture and
+  surface later runtime warnings without unconditionally crashing the
+  application. Carnopy-owned startup warnings fail supported-environment tests,
+  and supported automated interaction tests must remain warning-free.
+- Package QML, fonts, icons, branding, licenses, and provenance through
+  installed-package resources. Tests must compare installed third-party bytes
+  against the resource manifest.
+- Add a non-writing QML formatting and lint gate using the selected PySide6 6.11
+  tools. Extend the dedicated app CI job, add focused Linux, Windows, and macOS
+  QML startup coverage, and extend installed wheel smoke tests without removing
+  the existing Widgets smoke.
+- Preserve `--qt-platform auto|xcb|wayland`. Exercise QML through a private
+  module or test entrypoint; do not add a public frontend selector or switch the
+  public launchers during this stage.
+
+The machine-readable third-party manifest must include a schema version and,
+for each upstream project, its exact tag or commit, source URL, SPDX license
+identifier, packaged license path, every vendored filename, and the SHA-256 of
+every vendored file. Source, wheel, sdist, and installed-runtime tests must
+agree with that manifest.
+
+Update the existing repository surfaces deliberately rather than relying on
+implicit package-data behavior: `.github/workflows/ci.yml`,
+`.github/workflows/publish.yml`, `scripts/check_distribution.py`,
+`scripts/smoke_installed.py`, `tests/test_workflows.py`, the release-tool and
+packaging-metadata tests, and the wheel/sdist inventories. The existing Linux
+app job continues to own strict app typing and all Widgets regressions and also
+runs the QML formatting, lint, engine, interaction, and GUI-process isolation
+checks. Add a focused QML matrix on `ubuntu-latest`, `windows-latest`, and
+`macos-latest` for font/resource loading, warning-free root creation, responsive
+shell state, one controller interaction, and clean teardown under the pinned Qt
+line. Installed app and `all` wheel smokes must exercise both the unchanged
+public Widgets launcher and the private QML entrypoint.
+
+Stage 2 cross-platform coverage is an early source and installed-resource smoke
+gate for this bounded workflow. It does not replace Stage 8's complete release
+qualification across installed distributions, all supported Python and
+operating-system combinations, optional capabilities, native resources,
+security, and publication rehearsal.
+
+### Controller ownership and private interfaces
+
+- Reuse exactly one `DesktopController`, `WorkerClient`,
+  `DesktopRequestCoordinator`, `WorkspaceController`,
+  `DatasetConfigController`, `DatasetDraft`, and `VisualizationDraft`. Connect
+  workspace activation to configuration context once in the composition layer
+  and remove the duplicate Widgets-side connection without changing Widgets
+  behavior.
+- Bind QML delegates directly to the existing Qt model roles and mutation
+  slots. Do not copy authoritative choices, selections, samplers, mappings, or
+  plots into JavaScript arrays and do not create a second configuration store.
+- Add a private settings controller over the same `QSettings` instance for
+  `themeMode`, `effectiveTheme`, `reducedMotion`, `railCollapsed`,
+  `inspectorCollapsed`, window geometry/maximized state, and layout reset.
+  System-theme changes update the running application. Responsive overrides
+  never overwrite stored wide-layout preferences.
+- Expose private QML-readable busy and active-owner state and an invokable,
+  guarded desktop shutdown path. Keep request ownership and one-active-request
+  behavior in the existing coordinator.
+- Extend `SamplerDraft`, `DatasetDraft`, and `PlotDraft` with stable structured
+  first-invalid-field projections. Extend `DatasetConfigController` with typed
+  `yamlAvailable`, `blockingSection`, `blockingField`, `blockingRow`, and
+  `blockingIssue` properties. Rows use `-1` when no row applies. Add narrow typed
+  `operationFailed`, `saveSucceeded`, `importSucceeded`, and
+  `attentionRequested` signals while retaining the current status and warning
+  adapters for Widgets. No controller or QML code may infer a field by parsing
+  English issue text.
+- Keep all additions private to `carnopy.app`. Do not change the public CLI,
+  Python API, YAML schema, normalized-configuration schema, worker protocol, or
+  scientific identity definitions. The definition-first sampler correction
+  below may change normalized bytes for representations that were not previously
+  unit-invariant; it must make equivalent canonical sampler keys identical.
+
+### Workspace and document workflow
+
+- Implement unavailable, loading, workspace landing, and document editing
+  states. Normal startup shows the in-shell landing and recent workspaces; only
+  explicit `--workspace` opens immediately.
+- Create Workspace chooses an existing parent and a new single-component child
+  name, or accepts a complete non-existing expert path. Initialize Existing and
+  Open use existing-directory selection. Do not broaden Create to accept an
+  existing empty directory.
+- Require explicit confirmation for every Initialize Existing operation,
+  including empty directories. Preserve the trusted two-phase preflight and
+  commit, inode identity, marker, same-workspace, busy, dirty, and no-overwrite
+  behavior.
+- With a workspace but no document, show only the three New Dataset mode cards
+  and Import Existing Configuration. With a real document, activate Dataset,
+  Visualization, YAML Preview, Save, Save As, and Close Configuration.
+- Put workspace/configuration breadcrumbs and document actions in the command
+  bar; keep page-specific actions inside their page.
+- Present the Dataset editor as a stable responsive card grid for model, mode
+  and coordinate, fluids, samplers and units, properties, output formats, and
+  reference-state/document summary. Bind directly to the existing model roles;
+  display `display` and pass `value` to mutation slots.
+- Present Visualization as inline master-detail editing over the authoritative
+  shared settings, ordered plot snapshots, and one temporary `PlotDraft`. Do
+  not render a preview in Stage 2.
+- Present YAML as a read-only authoritative projection with line numbers,
+  search, copy, file/dirty state, and typed navigation to a blocking Dataset or
+  Visualization field. When invalid, expose `yamlAvailable=false`, an empty
+  preview, and typed blocking section, field, and issue values. Never show stale
+  or best-effort YAML as current.
+- Keep live local checks visibly distinct from worker authority. Save and Save
+  As perform exact-YAML worker validation before any write. Preserve imported
+  reformat confirmation, external-change detection, atomic verified replacement,
+  Save As no-overwrite, in-flight-change rejection, and baseline refresh only
+  after successful writing. Do not add autosave or a recovery snapshot format.
+
+### Scientific numeric and unit-entry contract
+
+- Production sampling and GUI unit conversion share one lightweight,
+  deterministic binary64 sampler canonicalizer. It supports every valid public
+  sampler, uses the existing `.15g` stabilization and positive-zero
+  normalization, and has no tolerance or configurable precision mode. Do not add
+  float32 sampling.
+- For every finite numeric operand, including unit scales, offsets, and logspace
+  bases, first convert to binary64 and stabilize it through `.15g`. Construct
+  private `Decimal` operands from that stabilized decimal text, never directly
+  from the binary float; calculate with a fixed
+  `Context(prec=50, rounding=ROUND_HALF_EVEN)`; then convert the result back to
+  binary64 through the same `.15g` stabilization. Never serialize or retain
+  Decimal state as a second numeric authority.
+- A canonical sampler key is an immutable exact representation containing the
+  axis, sampler kind, canonical SI definition fields, integer count fields, and
+  stabilized numeric text. Production normalization canonicalizes each sampler
+  definition to SI, materializes that canonical sampler exactly once, and
+  stabilizes the resulting SI grid. It preserves the selected unit and declared
+  sampler values under `original_grid`; YAML and metadata continue to retain the
+  user's declaration.
+- Equal canonical sampler keys must produce exactly identical worker-normalized
+  SI grids, normalized executable bytes, normalized hashes, and `spec_id`.
+  Permanent production tests prove those consequences. The GUI process may use
+  only the lightweight canonicalizer and exact key comparison; it must not import
+  NumPy, materialize grids, calculate normalized bytes or hashes, or calculate
+  `spec_id`.
+- Add one atomic `requestUnitChange(targetUnit)` operation shared by QML and
+  Widgets. Parse and validate every required field and the target unit before
+  mutation, derive a complete candidate from the private anchor, and commit the
+  unit and all converted fields together only when
+  `candidate_key == anchor_key`.
+- Permit compatible conversion as follows: explicit converts every value;
+  linspace converts start and stop; stepspace converts start and stop but scales
+  step without an offset; geomspace permits only scale-only conversions;
+  logspace permits only scale-only conversions representable by an exponent
+  shift. Refuse affine geomspace and logspace conversions. Preserve the public
+  logspace requirement that base is finite and greater than one. Calculate the
+  exponent shift from the old/new scale ratio and base in the fixed Decimal
+  context.
+- If the target unit cannot express an exact `.15g` representation whose
+  canonical key equals the anchor, reject the toggle atomically, preserve the
+  current unit and every raw field, and emit a structured failing field and
+  message. This does not make the original sampler invalid, alter dirty state,
+  or narrow public sampler support; only this unit-only representation change is
+  unavailable.
+- Loading, importing, new-document creation, sampler-kind replacement, and reset
+  establish a private anchor only when the resulting sampler is valid. Invalid
+  or incomplete edits retain the last valid anchor but make a toggle fail
+  without overwriting those edits. A successful toggle derives from but does not
+  replace the anchor. The next complete valid non-unit edit establishes a new
+  anchor in the displayed unit. Removing the sampler or closing the document
+  clears it. The anchor is private, non-serialized, excluded from dirty state,
+  and never configuration authority.
+- Tests cover successful exact toggles and expected exact-representation
+  rejections, repeated changes, `.15g` boundaries, stepspace reachability,
+  negative zero, large and small magnitudes, invalid partial input, affine
+  refusals, and logspace bases greater than one. Existing stepspace reachability
+  tolerances remain public materialization behavior and are not used as a unit
+  equivalence comparator.
+
+Implementation stops only if canonicalization is nondeterministic, equal keys
+produce different production grids/bytes/hashes/`spec_id`, an accepted toggle
+changes canonical identity, or a rejected toggle mutates state. A compatible
+target that cannot exactly represent one sampler is an expected rejection, not
+a stop condition.
+
+### Authoritative active-edit and feedback behavior
+
+- Add an authoritative `hasActivePlotEdit` projection. QML may call child drafts
+  and models directly only for local field editing; workspace, document
+  replacement, Save, mode/coordinate replacement, and shutdown operations must
+  use invokable composition-level facade slots owned by `DesktopController`.
+  Destructive child-controller methods must not remain directly invokable from
+  QML.
+- Run the active-edit guard before workspace preflight and again before workspace
+  commit, and before Save, Save As, New, Import, Close Configuration, mode or
+  coordinate replacement, document or workspace replacement, and shutdown.
+  Block visualization enable/disable, shared format, fluids, filters, display
+  units, plot removal, and plot movement while the temporary editor is active.
+- Keep cross-controller guard ownership in the desktop composition layer rather
+  than making `WorkspaceController` depend on visualization state. Rejected
+  operations make no durable change and emit a typed request to navigate to and
+  focus the active editor. The temporary plot draft is unresolved transient
+  state, not durable configuration dirty state, and requires explicit Commit or
+  Cancel.
+- Use stable field identifiers instead of English issue parsing:
+  `dataset.model`, `dataset.mode`, `dataset.fluids`,
+  `dataset.grid.<axis>.<field>`, `dataset.properties`,
+  `dataset.outputs.dataset_formats`, `visualization.enabled`,
+  `visualization.format`, `visualization.fluids`, `visualization.filters`,
+  `visualization.display_units`, `visualization.plots`, `plot.<field>`,
+  `plot.filters`, and `plot.display_units`. Report an ordered model row
+  separately rather than embedding it in a message or field identifier.
+- Add narrow typed operation signals for failures, successful Save, successful
+  Import, and attention requests while retaining the existing Widgets adapters.
+  Do not add a generic event bus.
+- Use layered feedback: inline issues, inspector aggregation, persistent
+  blocking banners, brief success toasts, and modal dialogs only for
+  consequential decisions. Settings provides theme, reduced motion, and layout
+  reset; Help explains shortcuts, workflow, local versus worker validation,
+  scientific isolation, and verified platform status.
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit sequence. Each implementation commit must be independently
+reviewable and must pass its focused gate before the next begins.
+
+After Commit 3 and before Commit 4, complete the ignored design-reference gate:
+compare the three controlled visual treatments, select one primary treatment,
+record borrowed elements by name, refine the minimal logo direction into a clean
+vector, compare restrained and moderately expressive motion, and obtain explicit
+maintainer approval of the visual treatment, vector mark, and motion intensity.
+This gate does not reopen the settled layout, scope, Qt, packaging, workflow, or
+scientific decisions.
+
+1. `docs(app): lock GUI-2 Stage 2 contracts`
+   - Record the approved design, scientific, lifecycle, Qt, delivery, and
+     acceptance contracts in this plan.
+   - Do not stage generated design references.
+2. `fix(sampler): canonicalize SI definitions before sampling`
+   - Add the lightweight exact sampler canonicalizer and fixed Decimal boundary,
+     make `carnopy.sampling` importable without NumPy, canonicalize sampler
+     definitions before production materialization, retain the declared
+     `original_grid`, and prove exact grid/bytes/hash/`spec_id` consequences.
+   - Do not add GUI unit-toggle behavior in this commit.
+3. `build(app): require Qt 6.11 for QML`
+   - Raise the `app` and `all` dependency bounds, update the lock, dependency
+     metadata assertions, and platform-baseline documentation.
+   - Preserve the native bridge's exact qualified 6.11.1 pin.
+4. `feat(app): add packaged QML runtime resources`
+   - Add the private launcher, application identity and startup ordering,
+     warning capture, minimal installed QML module, approved branding, IBM Plex,
+     the used Lucide subset, licenses, provenance manifest, non-writing QML
+     tooling checks, and resource/package inventories.
+   - Keep both public launchers on Widgets.
+5. `feat(app): add responsive QML workbench shell`
+   - Add the settings controller, design tokens, responsive shell, navigation,
+     inspector, command bar, reusable components, Settings, Help, logical-pixel
+     breakpoints, geometry clamping, and focused shell tests.
+6. `feat(app): bind QML workspace lifecycle`
+   - Add unavailable, loading, landing, and editing states; correct
+     Create/Initialize/Open flows; recents; two-phase confirmation;
+     composition-root workspace binding; the guarded workspace facade; and
+     focused regressions.
+7. `feat(app): add QML dataset workflow and safe unit changes`
+   - Add the Dataset card grid, direct model bindings, local issue projection,
+     guarded mode/coordinate decisions, the anchor-based exact-key unit-change
+     operation, the matching Widgets adaptation, and exact canonical-identity
+     tests.
+8. `feat(app): add guarded QML visualization editing`
+   - Add inline master-detail plot editing, stable invalid-field focus,
+     authoritative model locks, and the composition-owned cross-controller
+     lifecycle guard.
+9. `feat(app): add QML YAML and validated save flows`
+   - Add typed YAML availability, search/copy and blocking-field navigation,
+     typed operation feedback, worker-validated Save and Save As, reformat,
+     external-change, dirty-close, QML integration tests, three-platform smoke,
+     and installed-wheel verification.
+10. `docs(app): complete GUI-2 Stage 2`
+   - Create this documentation-only status commit only after explicit
+     maintainer acceptance of the automated and native results.
+   - Record the exact verified platforms and gates, mark Stage 2 complete, and
+     make Stage 3 active without claiming Stage 3 parity.
+
+Focused automated coverage must include:
+
+- deterministic canonicalization for every valid supported sampler; exact
+  canonical-key equality; identical normalized SI grids, executable bytes,
+  hashes, and `spec_id` for equal keys; every permitted and refused unit
+  transformation; successful exact toggles and exact-representation rejections;
+  repeated toggles, invalid partial text, nonfinite values, negative zero,
+  `.15g` boundaries, very small and large magnitudes, stepspace reachability,
+  and logspace bases greater than one;
+- warning-free QML startup, font and resource registration, heavy/scientific
+  import isolation, direct model-role binding, dropdown identifier correctness,
+  responsive shell modes, DPI and restored-geometry behavior, theme and motion
+  settings, keyboard focus, accessible labels, and non-color-only state;
+- workspace Create/Initialize/Open contracts, confirmation for every
+  initialization, same-workspace and busy behavior, every active-plot-edit
+  lifecycle rejection, stable invalid-field focus, empty invalid YAML, exact
+  worker-validated writes, external-change and reformat decisions, baseline
+  refresh, and unchanged Widgets behavior;
+- exact QML/font/icon/license/provenance inventories and source, wheel, sdist,
+  and installed-byte agreement.
+
+The Stage 2 automated gate is:
+
+```bash
+git diff --check
+uv lock --check
+uv run --locked ruff check .
+uv run --locked ruff format --check .
+uv run --locked mypy src/carnopy
+uv run --locked python scripts/check_qml.py
+uv run --locked pytest
+uv run --locked python scripts/preflight.py
+uv pip check --python .venv/bin/python
+bash scripts/local_gate.sh prerelease/local-gate
+```
+
+Do not mark Stage 2 complete before explicit maintainer acceptance. Before the
+status commit, run the complete repository and distribution gates, pass the
+three-platform QML checks and installed-resource smokes, keep both Widgets
+launchers working, and manually exercise the native application through
+workspace, New/Import, Dataset, safe and refused unit changes, Visualization,
+YAML, validated Save, dirty/external-change decisions, themes, keyboard access,
+and responsive/DPI states. Record exact verified platform behavior only.
+
+Graphify refresh is not a Stage 2 completion requirement. Refresh public graph
+artifacts only through a separately intentional architecture-documentation
+step, and never remove a valid public graph before its replacement is complete
+and verified.
 
 ## Stage 3: GUI-1 parity and Widgets retirement
 
@@ -302,7 +679,14 @@ size, Qt and VTK licensing boundaries, and WSLg guidance.
 
 ## Completion gate
 
-Before the final pull request:
+Before merging each stage pull request:
+
+- run the focused and complete gates relevant to that stage;
+- complete any stage-specific native/manual acceptance recorded above;
+- resolve concrete high- and medium-severity findings;
+- update this plan only after explicit maintainer acceptance.
+
+Before final GUI-2 completion:
 
 - run focused checks after every stage;
 - run the complete repository quality gate;
@@ -313,7 +697,6 @@ Before the final pull request:
 - manually exercise dataset, sweep, preparation, inspection, table, plot, job,
   recovery, and exact 3D workflows;
 - use an explicitly configured allowed reviewer for an independent final audit;
-- resolve all concrete high- and medium-severity findings;
 - update permanent documentation and Graphify from the final architecture;
 - delete this temporary plan only after those steps pass.
 
