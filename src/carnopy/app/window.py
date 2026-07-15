@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from carnopy.app.application_identity import apply_application_identity
 from carnopy.app.config_document import ConfigDocumentError
 from carnopy.app.config_editor import DatasetConfigEditor
 from carnopy.app.desktop_controller import DesktopController
@@ -380,8 +381,7 @@ def run_application(initial_workspace: Path | None = None) -> int:
         application = QApplication(sys.argv)
     if not isinstance(application, QApplication):
         raise RuntimeError("a non-GUI Qt application already exists")
-    application.setOrganizationName("Carnopy")
-    application.setApplicationName("Carnopy Desktop")
+    apply_application_identity(application)
     window = MainWindow(initial_workspace=initial_workspace)
     window.center_on_primary_screen()
     window.show()

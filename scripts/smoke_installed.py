@@ -147,6 +147,25 @@ if window.isVisible():
         )
 
 
+def smoke_qml_app(work_directory: Path) -> None:
+    environment = os.environ.copy()
+    environment["QT_QPA_PLATFORM"] = "offscreen"
+    completed = subprocess.run(
+        [sys.executable, "-m", "carnopy.app.qml_launcher", "--smoke-test"],
+        cwd=work_directory,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            "offscreen private QML smoke test failed\n"
+            f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+        )
+
+
 def smoke_app_plot(work_directory: Path, source: Path) -> None:
     environment = os.environ.copy()
     environment["QT_QPA_PLATFORM"] = "offscreen"
@@ -462,6 +481,7 @@ def main() -> int:
         if not pyside_available:
             raise RuntimeError("desktop application smoke test requires PySide6")
         smoke_app(work_directory)
+        smoke_qml_app(work_directory)
     else:
         if pyside_available:
             raise RuntimeError("distribution unexpectedly includes PySide6")

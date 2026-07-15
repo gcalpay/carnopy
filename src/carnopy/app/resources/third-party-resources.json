@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "branding": {
+    "name": "Carnopy provisional Stage 2 application mark",
+    "source": "maintainer-provided logo-ideas/minimal-green-v1.png",
+    "packaged_path": "branding/carnopy-mark.png",
+    "sha256": "7c01f9c7f8fe12f98acc2063396a9af615a5a6eba30e995e4f86bc4fd8155fcc"
+  },
+  "third_party_projects": [
+    {
+      "name": "IBM Plex",
+      "revision": "2f9ba1b25957d958db71a849e85d72e3ecfb845a",
+      "source_url": "https://github.com/IBM/plex/tree/2f9ba1b25957d958db71a849e85d72e3ecfb845a",
+      "license_expression": "OFL-1.1",
+      "license_path": "licenses/IBM-Plex-OFL-1.1.txt",
+      "files": [
+        {
+          "packaged_path": "fonts/IBMPlexSans-Regular.ttf",
+          "source_path": "packages/plex-sans/fonts/complete/ttf/IBMPlexSans-Regular.ttf",
+          "sha256": "975dcda37d80f038dcd143c22e33ca2d97a0cc5a929aace1c749153b0fe1afa5"
+        },
+        {
+          "packaged_path": "fonts/IBMPlexSans-Medium.ttf",
+          "source_path": "packages/plex-sans/fonts/complete/ttf/IBMPlexSans-Medium.ttf",
+          "sha256": "331c8639d7598b2cde62a911a71db195e30cb655cd6bdf2e324a7e984955f907"
+        },
+        {
+          "packaged_path": "fonts/IBMPlexSans-SemiBold.ttf",
+          "source_path": "packages/plex-sans/fonts/complete/ttf/IBMPlexSans-SemiBold.ttf",
+          "sha256": "a20caf8286023a6a7a85e40b1d2a4ae9fc3e3b1f9eda8f4c542dd4986af67bb1"
+        },
+        {
+          "packaged_path": "fonts/IBMPlexMono-Regular.ttf",
+          "source_path": "packages/plex-mono/fonts/complete/ttf/IBMPlexMono-Regular.ttf",
+          "sha256": "7c6fbddca4b700be918f5f6183d9bd4464fa427fe435f0b480d77fe2bb8c5a43"
+        },
+        {
+          "packaged_path": "fonts/IBMPlexMono-Medium.ttf",
+          "source_path": "packages/plex-mono/fonts/complete/ttf/IBMPlexMono-Medium.ttf",
+          "sha256": "98fbd727aae340b236955879dabed4d991aac9e8e90b3b2a67ce4a59221cc97c"
+        },
+        {
+          "packaged_path": "licenses/IBM-Plex-OFL-1.1.txt",
+          "source_path": "LICENSE.txt",
+          "sha256": "7e6b2818edbd8f6a01ae80641cc8f16a51080d08fb4e532be3a0b6f74adb07da"
+        }
+      ]
+    },
+    {
+      "name": "Lucide",
+      "revision": "1.24.0 (b5b5d95933790a311aa6b7ed232fc8469934acdf)",
+      "source_url": "https://github.com/lucide-icons/lucide/tree/1.24.0",
+      "license_expression": "ISC",
+      "license_path": "licenses/Lucide-LICENSE.txt",
+      "files": [
+        {
+          "packaged_path": "icons/flask-conical.svg",
+          "source_path": "icons/flask-conical.svg",
+          "sha256": "a2ce857c159bef4c128a6d9f0b6dcbd6504ecf1a2a670ee220efd14fd032b561"
+        },
+        {
+          "packaged_path": "licenses/Lucide-LICENSE.txt",
+          "source_path": "LICENSE",
+          "sha256": "b495047bd93a9b06913511076f504daba17d5bbeb3e0650f3bb53a4220329c57"
+        }
+      ]
+    }
+  ]
+}

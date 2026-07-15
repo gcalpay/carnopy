@@ -176,10 +176,8 @@ workflows.
   next actions.
 - Use a native operating-system title bar. Follow the operating-system theme on
   first launch and persist explicit System, Light, and Dark choices.
-- Use restrained functional motion with a reduced-motion setting. Prototype
-  restrained and moderately expressive variants, then select the final motion
-  intensity through native review. Motion must be fast, interruptible, and
-  never delay an available control.
+- Use moderately expressive functional motion with a reduced-motion setting.
+  Motion must remain fast, interruptible, and never delay an available control.
 - Use a navy navigation surface, restrained emerald primary actions, and blue
   informational accents. Status must never rely on color alone.
 - Keep the full navigation structure visible. Unavailable entries are muted,
@@ -191,24 +189,26 @@ workflows.
   fullscreen/restore control with Escape to exit. Do not show a fake viewport,
   fake scientific data, smoothing controls, scene preparation, or VTK behavior
   before Stages 6 and 7.
-- Generate three original wide-desktop Dataset treatments with identical
+- The controlled design gate selected **Precision Grid** as the primary visual
+  treatment from three original wide-desktop Dataset treatments with identical
   information architecture, content, validation state, viewport, and functional
   scope. The dense workbench is the locked primary layout, and the numbered
   next-steps progression is the only pre-approved element borrowed from the
-  spacious-dashboard concept. Select one primary treatment and record any other
-  borrowed elements by name; do not create an undefined blend. Refine that
-  treatment for workspace landing, light and dark themes, 1024 by 768, 1920 by
+  spacious-dashboard concept. No other elements are borrowed and no undefined
+  blend is permitted. Refine Precision Grid for workspace landing, System,
+  Light, and Dark themes, 1024 by 768, 1920 by
   1080, narrow layout, collapsed rail, and inspector drawer states. Store
   working references only in ignored `prerelease/gui2-stage2-design/`; do not
   package or commit them. The clickable QML shell becomes authoritative
   immediately after visual approval.
-- Create and separately approve an original geometric Carnopy mark. Use the
-  untracked `logo-ideas/minimal-green-v1.png` only as the primary refinement
-  direction, treat `minimal-white-v1.png` as an inverse rendering of the same
-  geometry, and retain `full-color-v1.png` only as conceptual inspiration. Do
-  not package or auto-trace those PNGs. Reconstruct one clean canonical vector,
-  correct its intersections and optical weights, and review small-size, light,
-  dark, and monochrome presentations before packaging it. Bundle IBM
+- Use the maintainer-provided untracked
+  `logo-ideas/minimal-green-v1.png` unchanged as the explicitly approved
+  provisional Stage 2 application mark. Copy the exact PNG bytes into the
+  installed branding resources, record their SHA-256, and keep `logo-ideas/`
+  ignored. The generated vector candidates are rejected and must not be
+  packaged or used as a tracing source. Final logo refinement is intentionally
+  deferred and may replace the provisional resource through a separately
+  reviewed change. Bundle IBM
   Plex Sans Regular, Medium, and SemiBold for the interface and IBM Plex Mono
   Regular and Medium for YAML, paths, hashes, logs, and aligned technical
   values. Bundle only the audited Lucide SVG subset actually used. Record exact
@@ -458,13 +458,13 @@ a stop condition.
 Use this exact commit sequence. Each implementation commit must be independently
 reviewable and must pass its focused gate before the next begins.
 
-After Commit 3 and before Commit 4, complete the ignored design-reference gate:
-compare the three controlled visual treatments, select one primary treatment,
-record borrowed elements by name, refine the minimal logo direction into a clean
-vector, compare restrained and moderately expressive motion, and obtain explicit
-maintainer approval of the visual treatment, vector mark, and motion intensity.
-This gate does not reopen the settled layout, scope, Qt, packaging, workflow, or
-scientific decisions.
+After Commit 3 and before Commit 4, complete the ignored design-reference gate.
+That gate selected Precision Grid, retained only the numbered next-steps
+progression as a named borrowed element, selected moderately expressive motion,
+and approved `minimal-green-v1.png` unchanged as a provisional packaged mark.
+The generated vector candidates were rejected and final logo refinement was
+deferred. This completed gate does not reopen the settled layout, scope, Qt,
+packaging, workflow, or scientific decisions.
 
 1. `docs(app): lock GUI-2 Stage 2 contracts`
    - Record the approved design, scientific, lifecycle, Qt, delivery, and

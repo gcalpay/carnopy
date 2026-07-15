@@ -121,6 +121,10 @@ jobs:
           python -c "from PySide6.QtCore import qVersion;
           version = tuple(map(int, qVersion().split('.')));
           assert (6, 11, 1) <= version < (6, 12), qVersion()"
+      - name: Check QML sources
+        run: >-
+          uv run --locked --extra app --no-default-groups
+          python scripts/check_qml.py
       - name: Run strict desktop mypy
         run: >-
           uv run --locked --extra app --no-default-groups --group type

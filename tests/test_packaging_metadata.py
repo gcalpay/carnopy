@@ -48,6 +48,30 @@ def test_desktop_extra_and_launcher_are_declared() -> None:
     assert "native bridge remains qualified against exactly Qt 6.11.1" in readme
 
 
+def test_qml_runtime_is_private_and_resources_live_in_the_app_package() -> None:
+    root = Path(__file__).resolve().parents[1]
+    pyproject: dict[str, Any] = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    scripts = pyproject["project"]["scripts"]
+    assert scripts == {
+        "carnopy": "carnopy.__main__:main",
+        "carnopy-app": "carnopy.app.launcher:main",
+        "carnopy-gui": "carnopy.app.launcher:main_gui",
+    }
+    app_root = root / "src" / "carnopy" / "app"
+    for relative_path in (
+        "qml/Carnopy/Main.qml",
+        "qml/Carnopy/qmldir",
+        "resources/third-party-resources.json",
+        "resources/branding/carnopy-mark.png",
+        "resources/fonts/IBMPlexSans-Regular.ttf",
+        "resources/fonts/IBMPlexMono-Regular.ttf",
+        "resources/icons/flask-conical.svg",
+        "resources/licenses/IBM-Plex-OFL-1.1.txt",
+        "resources/licenses/Lucide-LICENSE.txt",
+    ):
+        assert (app_root / relative_path).is_file()
+
+
 def test_analysis_extra_is_optional_and_scoped() -> None:
     root = Path(__file__).resolve().parents[1]
     pyproject: dict[str, Any] = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))

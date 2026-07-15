@@ -121,6 +121,15 @@ def test_desktop_jobs_verify_the_qt_6_11_runtime_baseline() -> None:
         assert "(6, 11, 1) <= version < (6, 12)" in step
 
 
+def test_desktop_jobs_run_the_non_writing_qml_gate() -> None:
+    for name in ("ci.yml", "publish.yml"):
+        app_job = workflow_job(workflow_text(name), "app")
+        step = workflow_step(app_job, "Check QML sources")
+        assert "python scripts/check_qml.py" in step
+        assert "qmlformat --inplace" not in app_job
+        assert app_job.index("Check QML sources") < app_job.index("Run strict desktop mypy")
+
+
 def test_distribution_checks_install_qt_only_after_core_smokes() -> None:
     jobs = {
         "ci.yml": workflow_job(workflow_text("ci.yml"), "distribution"),

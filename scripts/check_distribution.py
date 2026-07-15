@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import re
 import tarfile
 import zipfile
@@ -30,6 +32,7 @@ WHEEL_REQUIRED = {
     "carnopy/__main__.py",
     "carnopy/_execution.py",
     "carnopy/app/__init__.py",
+    "carnopy/app/application_identity.py",
     "carnopy/app/capabilities.py",
     "carnopy/app/client.py",
     "carnopy/app/config_controller.py",
@@ -53,6 +56,11 @@ WHEEL_REQUIRED = {
     "carnopy/app/plot_rendering.py",
     "carnopy/app/plot_request_dialog.py",
     "carnopy/app/plot_staging.py",
+    "carnopy/app/qml/Carnopy/Main.qml",
+    "carnopy/app/qml/Carnopy/qmldir",
+    "carnopy/app/qml_launcher.py",
+    "carnopy/app/qml_resources.py",
+    "carnopy/app/qml_runtime.py",
     "carnopy/app/visualization_editor.py",
     "carnopy/app/visualization_draft.py",
     "carnopy/app/visualization_widgets.py",
@@ -60,6 +68,16 @@ WHEEL_REQUIRED = {
     "carnopy/app/protocol.py",
     "carnopy/app/recovery.py",
     "carnopy/app/request_coordinator.py",
+    "carnopy/app/resources/branding/carnopy-mark.png",
+    "carnopy/app/resources/fonts/IBMPlexMono-Medium.ttf",
+    "carnopy/app/resources/fonts/IBMPlexMono-Regular.ttf",
+    "carnopy/app/resources/fonts/IBMPlexSans-Medium.ttf",
+    "carnopy/app/resources/fonts/IBMPlexSans-Regular.ttf",
+    "carnopy/app/resources/fonts/IBMPlexSans-SemiBold.ttf",
+    "carnopy/app/resources/icons/flask-conical.svg",
+    "carnopy/app/resources/licenses/IBM-Plex-OFL-1.1.txt",
+    "carnopy/app/resources/licenses/Lucide-LICENSE.txt",
+    "carnopy/app/resources/third-party-resources.json",
     "carnopy/app/sampler_draft.py",
     "carnopy/app/source_inspection.py",
     "carnopy/app/sources_page.py",
@@ -117,12 +135,14 @@ SDIST_REQUIRED = {
     "configs/vapor_mass_fraction_table_example.yaml",
     "pyproject.toml",
     "scripts/check_distribution.py",
+    "scripts/check_qml.py",
     "scripts/hash_distributions.py",
     "scripts/smoke_installed.py",
     "scripts/verify_index_release.py",
     "src/carnopy/__init__.py",
     "src/carnopy/_execution.py",
     "src/carnopy/app/__init__.py",
+    "src/carnopy/app/application_identity.py",
     "src/carnopy/app/capabilities.py",
     "src/carnopy/app/client.py",
     "src/carnopy/app/config_controller.py",
@@ -146,6 +166,11 @@ SDIST_REQUIRED = {
     "src/carnopy/app/plot_rendering.py",
     "src/carnopy/app/plot_request_dialog.py",
     "src/carnopy/app/plot_staging.py",
+    "src/carnopy/app/qml/Carnopy/Main.qml",
+    "src/carnopy/app/qml/Carnopy/qmldir",
+    "src/carnopy/app/qml_launcher.py",
+    "src/carnopy/app/qml_resources.py",
+    "src/carnopy/app/qml_runtime.py",
     "src/carnopy/app/visualization_editor.py",
     "src/carnopy/app/visualization_draft.py",
     "src/carnopy/app/visualization_widgets.py",
@@ -153,6 +178,16 @@ SDIST_REQUIRED = {
     "src/carnopy/app/protocol.py",
     "src/carnopy/app/recovery.py",
     "src/carnopy/app/request_coordinator.py",
+    "src/carnopy/app/resources/branding/carnopy-mark.png",
+    "src/carnopy/app/resources/fonts/IBMPlexMono-Medium.ttf",
+    "src/carnopy/app/resources/fonts/IBMPlexMono-Regular.ttf",
+    "src/carnopy/app/resources/fonts/IBMPlexSans-Medium.ttf",
+    "src/carnopy/app/resources/fonts/IBMPlexSans-Regular.ttf",
+    "src/carnopy/app/resources/fonts/IBMPlexSans-SemiBold.ttf",
+    "src/carnopy/app/resources/icons/flask-conical.svg",
+    "src/carnopy/app/resources/licenses/IBM-Plex-OFL-1.1.txt",
+    "src/carnopy/app/resources/licenses/Lucide-LICENSE.txt",
+    "src/carnopy/app/resources/third-party-resources.json",
     "src/carnopy/app/sampler_draft.py",
     "src/carnopy/app/source_inspection.py",
     "src/carnopy/app/sources_page.py",
@@ -267,6 +302,79 @@ class SdistReader:
             raise ValueError(f"could not read archive member {name}")
         with stream:
             return stream.read()
+
+
+def resource_manifest_entries(content: bytes) -> dict[str, str]:
+    try:
+        manifest = json.loads(content.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"invalid packaged resource manifest: {exc}") from exc
+    if not isinstance(manifest, dict) or manifest.get("schema_version") != 1:
+        raise ValueError("packaged resource manifest must use schema version 1")
+    records: dict[str, str] = {}
+
+    def add_record(entry: object, *, label: str) -> None:
+        if not isinstance(entry, dict):
+            raise ValueError(f"{label} must be an object")
+        path = entry.get("packaged_path")
+        digest = entry.get("sha256")
+        if not isinstance(path, str) or not path or PurePosixPath(path).is_absolute():
+            raise ValueError(f"{label} has an invalid packaged path")
+        if ".." in PurePosixPath(path).parts:
+            raise ValueError(f"{label} packaged path escapes the resource directory")
+        if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+            raise ValueError(f"{label} has an invalid SHA-256")
+        if path in records:
+            raise ValueError(f"duplicate packaged resource manifest path: {path}")
+        records[path] = digest
+
+    branding = manifest.get("branding")
+    if not isinstance(branding, dict):
+        raise ValueError("branding must be an object")
+    for key in ("name", "source"):
+        if not isinstance(branding.get(key), str) or not branding[key]:
+            raise ValueError(f"branding.{key} must be a non-empty string")
+    add_record(branding, label="branding")
+    projects = manifest.get("third_party_projects")
+    if not isinstance(projects, list) or not projects:
+        raise ValueError("packaged resource manifest must list third-party projects")
+    for project_index, project in enumerate(projects):
+        label = f"third_party_projects[{project_index}]"
+        if not isinstance(project, dict):
+            raise ValueError(f"{label} must be an object")
+        for key in ("name", "revision", "source_url", "license_expression", "license_path"):
+            if not isinstance(project.get(key), str) or not project[key]:
+                raise ValueError(f"{label}.{key} must be a non-empty string")
+        files = project.get("files")
+        if not isinstance(files, list) or not files:
+            raise ValueError(f"{label}.files must be a non-empty array")
+        project_paths: set[str] = set()
+        for file_index, entry in enumerate(files):
+            file_label = f"{label}.files[{file_index}]"
+            if not isinstance(entry, dict) or not isinstance(entry.get("source_path"), str):
+                raise ValueError(f"{file_label}.source_path must be a string")
+            add_record(entry, label=file_label)
+            project_paths.add(str(entry["packaged_path"]))
+        if project["license_path"] not in project_paths:
+            raise ValueError(f"{label}.license_path is not listed as a file")
+    return records
+
+
+def validate_packaged_resource_bytes(
+    reader: DistributionReader,
+    *,
+    manifest_name: str,
+    resource_prefix: str,
+) -> None:
+    records = resource_manifest_entries(reader.read(manifest_name))
+    names = reader.names()
+    for relative_path, expected in records.items():
+        archive_name = f"{resource_prefix}{relative_path}"
+        if archive_name not in names:
+            raise ValueError(f"distribution is missing manifested resource: {archive_name}")
+        actual = hashlib.sha256(reader.read(archive_name)).hexdigest()
+        if actual != expected:
+            raise ValueError(f"distribution resource hash mismatch: {archive_name}")
 
 
 def source_version(path: Path) -> str:
@@ -428,6 +536,11 @@ def inspect_wheel(path: Path, expected_version: str) -> None:
             raise ValueError(f"wheel contains forbidden files: {', '.join(invalid)}")
         if any(name.startswith("tests/") for name in names):
             raise ValueError("wheel must not contain tests")
+        validate_packaged_resource_bytes(
+            reader,
+            manifest_name="carnopy/app/resources/third-party-resources.json",
+            resource_prefix="carnopy/app/resources/",
+        )
 
         metadata_names = [name for name in names if name.endswith(".dist-info/METADATA")]
         entry_point_names = [name for name in names if name.endswith(".dist-info/entry_points.txt")]
@@ -472,6 +585,11 @@ def inspect_sdist(path: Path, expected_version: str) -> None:
         invalid = forbidden_paths(names, strip_root=True)
         if invalid:
             raise ValueError(f"sdist contains forbidden files: {', '.join(invalid)}")
+        validate_packaged_resource_bytes(
+            reader,
+            manifest_name=f"{root}/src/carnopy/app/resources/third-party-resources.json",
+            resource_prefix=f"{root}/src/carnopy/app/resources/",
+        )
 
         metadata_name = f"{root}/PKG-INFO"
         if metadata_name not in names:
