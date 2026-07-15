@@ -104,6 +104,11 @@
 #   pressure: Pa, kPa, MPa, bar
 #   vapor_mass_fraction: "1"
 #
+# Carnopy canonicalizes each valid sampler definition to SI before
+# materialization. Declarations with the same exact canonical sampler key
+# produce the same materialized SI grid and spec_id; metadata still records this
+# original sampler.
+#
 # Current semantic properties:
 #   specific_enthalpy
 #   specific_entropy

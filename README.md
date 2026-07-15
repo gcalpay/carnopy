@@ -665,8 +665,11 @@ pressure: Pa, kPa, MPa, bar
 vapor_mass_fraction: "1"
 ```
 
-All backend calls and generated numeric columns use SI. Original units and
-sampler definitions remain recorded in metadata.
+Carnopy deterministically canonicalizes each sampler definition to SI before it
+materializes the grid. Engineering-unit declarations with the same exact
+canonical sampler key therefore produce the same materialized SI grid and
+scientific `spec_id`. All backend calls and generated numeric columns use SI,
+while original units and sampler definitions remain recorded in metadata.
 
 Validation rejects non-finite values, non-positive pressure, temperatures at or
 below absolute zero, vapor mass fractions outside `[0, 1]`, incompatible units,

@@ -430,8 +430,11 @@ pressure: Pa, kPa, MPa, bar
 vapor_mass_fraction: "1"
 ```
 
-All backend calls and generated numeric columns use SI. Preserve original
-units and sampler declarations in metadata.
+Normalization deterministically canonicalizes each valid sampler definition to
+SI before materializing it. Declared-unit definitions with the same exact
+canonical sampler key must produce the same materialized SI grid and `spec_id`.
+All backend calls and generated numeric columns use SI. Preserve original units
+and sampler declarations in metadata.
 
 The row limit is 1,000,000 after sampler materialization, fluid
 canonicalization, Cartesian expansion, and saturation endpoint expansion.

@@ -10,6 +10,7 @@ from carnopy.api import generate_dataset, generate_model_sweep
 from carnopy.config.io import load_sweep_config_file
 from carnopy.domain.failures import ConfigError, OutputError
 from carnopy.provenance import DATASET_SCHEMA_VERSION
+from carnopy.sweeps.normalize import normalize_sweep_config
 from carnopy.templates import template_text
 
 
@@ -22,6 +23,7 @@ def _property_sweep_config(
     *,
     properties: str = "properties: [mass_density]",
     pressure_values: str = "[100000]",
+    pressure_unit: str = "Pa",
     comparison_plots: str = "",
 ) -> str:
     return f"""schema_version: 2
@@ -40,7 +42,7 @@ grid:
   pressure:
     kind: explicit
     values: {pressure_values}
-    unit: Pa
+    unit: {pressure_unit}
 {properties}
 outputs:
   dataset_formats: [parquet]
@@ -81,6 +83,27 @@ properties: [mass_density]
     )
     with pytest.raises(ConfigError, match="duplicate backend models"):
         load_sweep_config_file(config)
+
+
+def test_model_sweep_uses_unit_invariant_canonical_sampler_identity(tmp_path: Path) -> None:
+    pascal_path = _write(
+        tmp_path / "pascal.yaml",
+        _property_sweep_config(pressure_values="[100000, 200000]"),
+    )
+    bar_path = _write(
+        tmp_path / "bar.yaml",
+        _property_sweep_config(pressure_values="[1, 2]", pressure_unit="bar"),
+    )
+
+    pascal = normalize_sweep_config(load_sweep_config_file(pascal_path))
+    bar = normalize_sweep_config(load_sweep_config_file(bar_path))
+
+    assert pascal.normalized_bytes == bar.normalized_bytes
+    assert pascal.child_normalized["heos"].grid == bar.child_normalized["heos"].grid
+    assert (
+        pascal.child_normalized["heos"].original_grid["pressure"]
+        != bar.child_normalized["heos"].original_grid["pressure"]
+    )
 
 
 def test_model_sweep_rejects_known_unsupported_property(tmp_path: Path) -> None:

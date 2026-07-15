@@ -37,3 +37,10 @@ def test_bounded_samplers_support_descending_order() -> None:
 def test_equal_bounds_are_rejected() -> None:
     with pytest.raises(ValidationError, match="distinct"):
         LinspaceSampler(kind="linspace", start=1, stop=1, num=2, unit="Pa")
+
+
+def test_package_materializer_preserves_lazy_compatibility() -> None:
+    from carnopy.sampling import materialize_sampler as package_materialize
+
+    sampler = LinspaceSampler(kind="linspace", start=1, stop=3, num=3, unit="bar")
+    assert package_materialize(sampler) == [1.0, 2.0, 3.0]
