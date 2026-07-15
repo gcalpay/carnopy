@@ -113,6 +113,14 @@ def test_core_and_desktop_dependencies_are_isolated() -> None:
         assert "--with-app" in text
 
 
+def test_desktop_jobs_verify_the_qt_6_11_runtime_baseline() -> None:
+    for name in ("ci.yml", "publish.yml"):
+        app_job = workflow_job(workflow_text(name), "app")
+        step = workflow_step(app_job, "Verify Qt runtime baseline")
+        assert "from PySide6.QtCore import qVersion" in step
+        assert "(6, 11, 1) <= version < (6, 12)" in step
+
+
 def test_distribution_checks_install_qt_only_after_core_smokes() -> None:
     jobs = {
         "ci.yml": workflow_job(workflow_text("ci.yml"), "distribution"),

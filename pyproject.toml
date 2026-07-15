@@ -65,14 +65,14 @@ analysis = [
   "scikit-learn>=1.9,<2",
 ]
 app = [
-  "PySide6-Essentials>=6.8.3,<7",
+  "PySide6-Essentials>=6.11.1,<6.12",
   "matplotlib>=3.8",
   "Pillow>=12.3.0",
 ]
 all = [
   "matplotlib>=3.8",
   "Pillow>=12.3.0",
-  "PySide6-Essentials>=6.8.3,<7",
+  "PySide6-Essentials>=6.11.1,<6.12",
   "safetensors>=0.4.5",
   "scikit-learn>=1.9,<2",
 ]

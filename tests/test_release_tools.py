@@ -44,7 +44,16 @@ def test_gui2_development_version_surfaces_are_aligned() -> None:
     assert __version__ == GUI2_DEVELOPMENT_VERSION
     assert root_metadata["project"]["dynamic"] == ["version"]
     assert root_metadata["tool"]["hatch"]["version"]["path"] == "src/carnopy/_version.py"
+    assert (
+        "PySide6-Essentials>=6.11.1,<6.12"
+        in root_metadata["project"]["optional-dependencies"]["app"]
+    )
+    assert (
+        "PySide6-Essentials>=6.11.1,<6.12"
+        in root_metadata["project"]["optional-dependencies"]["all"]
+    )
     assert bridge_metadata["project"]["version"] == GUI2_DEVELOPMENT_VERSION
+    assert bridge_metadata["project"]["dependencies"] == ["PySide6-Essentials==6.11.1"]
     assert f'__version__ = "{GUI2_DEVELOPMENT_VERSION}"' in bridge_init
     assert f'VERSION = "{GUI2_DEVELOPMENT_VERSION}"' in qualification
     assert "project(carnopy_vtk_bridge VERSION 0.1.0 LANGUAGES CXX)" in cmake

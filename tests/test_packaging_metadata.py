@@ -32,14 +32,20 @@ def test_coolprop_major_version_is_bounded() -> None:
 def test_desktop_extra_and_launcher_are_declared() -> None:
     root = Path(__file__).resolve().parents[1]
     pyproject: dict[str, Any] = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    readme = (root / "README.md").read_text(encoding="utf-8")
 
     assert pyproject["project"]["optional-dependencies"]["app"] == [
-        "PySide6-Essentials>=6.8.3,<7",
+        "PySide6-Essentials>=6.11.1,<6.12",
         "matplotlib>=3.8",
         "Pillow>=12.3.0",
     ]
+    assert (
+        "PySide6-Essentials>=6.11.1,<6.12" in pyproject["project"]["optional-dependencies"]["all"]
+    )
     assert pyproject["project"]["scripts"]["carnopy-app"] == "carnopy.app.launcher:main"
     assert pyproject["project"]["scripts"]["carnopy-gui"] == "carnopy.app.launcher:main_gui"
+    assert "PySide6 Essentials 6.11.1 or later within the 6.11 release line" in readme
+    assert "native bridge remains qualified against exactly Qt 6.11.1" in readme
 
 
 def test_analysis_extra_is_optional_and_scoped() -> None:

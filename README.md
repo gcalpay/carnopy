@@ -107,8 +107,11 @@ development `viz` and `app` extras declare a Pillow security floor for
 Matplotlib's transitive image dependency; Pillow is not a separate Carnopy
 feature. The active GUI-2 source line reports `0.1.0a4.dev0`, while the
 published install commands above remain pinned to `0.1.0a3`. Stage 1
-controller extraction is complete; during Stage 2 QML workflow development, both desktop launchers
-continue to use the released Widgets frontend as the parity baseline.
+controller extraction is complete. The active GUI-2 `app` extra requires
+PySide6 Essentials 6.11.1 or later within the 6.11 release line; the private
+native bridge remains qualified against exactly Qt 6.11.1. During Stage 2 QML
+workflow development, both desktop launchers continue to use the released
+Widgets frontend as the parity baseline.
 
 ## Quick start
 

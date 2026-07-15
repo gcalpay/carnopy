@@ -382,9 +382,12 @@ def validate_metadata(metadata: Message, expected_version: str, *, artifact: str
         if requirement.casefold().startswith("pyside6-essentials")
     ]
     if len(pyside_requirements) != 2 or any(
-        "extra ==" not in requirement for requirement in pyside_requirements
+        ">=6.11.1" not in requirement or "<6.12" not in requirement or "extra ==" not in requirement
+        for requirement in pyside_requirements
     ):
-        raise ValueError(f"{artifact} must declare PySide6 only through all and app extras")
+        raise ValueError(
+            f"{artifact} must declare PySide6 >=6.11.1,<6.12 only through all and app extras"
+        )
     sklearn_requirements = [
         requirement
         for requirement in metadata.get_all("Requires-Dist", [])

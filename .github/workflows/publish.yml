@@ -115,6 +115,12 @@ jobs:
         run: >-
           uv sync --locked --python 3.12
           --extra app --no-default-groups --group test --group type
+      - name: Verify Qt runtime baseline
+        run: >-
+          uv run --locked --extra app --no-default-groups
+          python -c "from PySide6.QtCore import qVersion;
+          version = tuple(map(int, qVersion().split('.')));
+          assert (6, 11, 1) <= version < (6, 12), qVersion()"
       - name: Run strict desktop mypy
         run: >-
           uv run --locked --extra app --no-default-groups --group type
