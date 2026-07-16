@@ -331,6 +331,12 @@ def test_distribution_checker_requires_model_sweep_artifacts() -> None:
         "src/carnopy/templates/model_sweep.yaml",
         "src/carnopy/templates/preparation.yaml",
     }.issubset(check_distribution.SDIST_REQUIRED)
+    assert {f"carnopy/app/{path}" for path in check_distribution.QML_SHELL_APP_FILES}.issubset(
+        check_distribution.WHEEL_REQUIRED
+    )
+    assert {f"src/carnopy/app/{path}" for path in check_distribution.QML_SHELL_APP_FILES}.issubset(
+        check_distribution.SDIST_REQUIRED
+    )
 
 
 def test_installed_smoke_invokes_the_private_qml_entrypoint(

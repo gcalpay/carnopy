@@ -82,6 +82,8 @@ def test_desktop_controller_owns_one_composition_and_preserves_settings_identity
     desktop = DesktopController(settings=settings)
 
     assert desktop.settings is settings
+    assert desktop.qml_settings.settings is settings
+    assert desktop.qml_settings.parent() is desktop
     assert desktop.request_coordinator.client is desktop.client
     assert desktop.dataset_draft.parent() is desktop
     assert desktop.visualization_draft.parent() is desktop
@@ -94,6 +96,7 @@ def test_desktop_controller_owns_one_composition_and_preserves_settings_identity
     assert desktop.request_coordinator.parent() is desktop
     assert desktop.workspace_controller.parent() is desktop
     assert desktop.property("workspaceController") is desktop.workspace_controller
+    assert desktop.property("qmlSettings") is desktop.qml_settings
     assert desktop.property("datasetDraft") is desktop.dataset_draft
     assert desktop.property("visualizationDraft") is desktop.visualization_draft
     assert desktop.property("datasetConfigController") is desktop.dataset_config_controller

@@ -466,6 +466,31 @@ The generated vector candidates were rejected and final logo refinement was
 deferred. This completed gate does not reopen the settled layout, scope, Qt,
 packaging, workflow, or scientific decisions.
 
+Current implementation status as of 2026-07-15:
+
+- Commits 1 through 4 are implemented in the Stage 2 branch history. The design
+  and branding gate required between Commits 3 and 4 is complete under the
+  provisional-logo decision recorded above.
+- The Commit 5 boundary is implemented and its focused verification passes. It
+  provides the shared-QSettings appearance controller, Precision Grid design
+  tokens, the responsive wide/compact/narrow shell, persistent wide-layout rail
+  and inspector preferences, clamped window geometry, moderately expressive
+  reduced-motion-aware transitions, the exact locked navigation names, disabled
+  future-workflow affordances, Settings and Help pages, the used Lucide resource
+  inventory, and focused QML/runtime/distribution regressions.
+- Verification at this boundary includes the 15-file QML tooling check, the full
+  Ruff and mypy gates, 620 passing repository tests, `preflight.py`, environment
+  compatibility checking, and successful wheel/sdist build, Twine, installed
+  resource, and distribution-inventory checks. This does not claim native
+  cross-platform acceptance or complete Stage 2.
+- Commits 6 through 10 have not started. In particular, no QML workspace,
+  Dataset, Visualization, YAML, validated-save, or public-launcher parity is
+  inferred from the shell. Both public launchers remain on Widgets, and Stage 2
+  remains active until the later implementation, automated gates, native manual
+  acceptance, and explicit maintainer approval are complete.
+- Git staging, commits, synchronization with the remote branch, and publication
+  remain human-owned and are not implied by this implementation-status record.
+
 1. `docs(app): lock GUI-2 Stage 2 contracts`
    - Record the approved design, scientific, lifecycle, Qt, delivery, and
      acceptance contracts in this plan.

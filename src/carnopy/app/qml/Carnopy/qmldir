@@ -1,2 +1,16 @@
 module Carnopy
+singleton Theme 1.0 Theme.qml
 Main 1.0 Main.qml
+AppButton 1.0 components/AppButton.qml
+AppIcon 1.0 components/AppIcon.qml
+Card 1.0 components/Card.qml
+CommandBar 1.0 components/CommandBar.qml
+ContextInspector 1.0 components/ContextInspector.qml
+DecisionDialog 1.0 components/DecisionDialog.qml
+NavRail 1.0 components/NavRail.qml
+ResponsiveCardGrid 1.0 components/ResponsiveCardGrid.qml
+StatusBadge 1.0 components/StatusBadge.qml
+ToastHost 1.0 components/ToastHost.qml
+EmptyStatePage 1.0 pages/EmptyStatePage.qml
+HelpPage 1.0 pages/HelpPage.qml
+SettingsPage 1.0 pages/SettingsPage.qml

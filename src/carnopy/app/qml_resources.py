@@ -21,11 +21,50 @@ MANDATORY_FONT_FILES = (
     "resources/fonts/IBMPlexMono-Regular.ttf",
     "resources/fonts/IBMPlexMono-Medium.ttf",
 )
-MANDATORY_RESOURCE_FILES = (
+MANDATORY_QML_FILES = (
     "qml/Carnopy/qmldir",
     "qml/Carnopy/Main.qml",
-    "resources/branding/carnopy-mark.png",
+    "qml/Carnopy/Theme.qml",
+    "qml/Carnopy/components/AppButton.qml",
+    "qml/Carnopy/components/AppIcon.qml",
+    "qml/Carnopy/components/Card.qml",
+    "qml/Carnopy/components/CommandBar.qml",
+    "qml/Carnopy/components/ContextInspector.qml",
+    "qml/Carnopy/components/DecisionDialog.qml",
+    "qml/Carnopy/components/NavRail.qml",
+    "qml/Carnopy/components/ResponsiveCardGrid.qml",
+    "qml/Carnopy/components/StatusBadge.qml",
+    "qml/Carnopy/components/ToastHost.qml",
+    "qml/Carnopy/pages/EmptyStatePage.qml",
+    "qml/Carnopy/pages/HelpPage.qml",
+    "qml/Carnopy/pages/SettingsPage.qml",
+)
+MANDATORY_ICON_FILES = (
+    "resources/icons/activity.svg",
+    "resources/icons/box.svg",
+    "resources/icons/chart-spline.svg",
+    "resources/icons/circle-question-mark.svg",
+    "resources/icons/database.svg",
+    "resources/icons/file-code.svg",
     "resources/icons/flask-conical.svg",
+    "resources/icons/git-compare-arrows.svg",
+    "resources/icons/layout-dashboard.svg",
+    "resources/icons/monitor.svg",
+    "resources/icons/moon.svg",
+    "resources/icons/panel-left-close.svg",
+    "resources/icons/panel-left-open.svg",
+    "resources/icons/panel-right-close.svg",
+    "resources/icons/panel-right-open.svg",
+    "resources/icons/play.svg",
+    "resources/icons/rotate-ccw.svg",
+    "resources/icons/search.svg",
+    "resources/icons/settings.svg",
+    "resources/icons/sun.svg",
+)
+MANDATORY_RESOURCE_FILES = (
+    *MANDATORY_QML_FILES,
+    "resources/branding/carnopy-mark.png",
+    *MANDATORY_ICON_FILES,
     *MANDATORY_FONT_FILES,
 )
 

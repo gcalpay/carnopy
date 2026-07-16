@@ -18,6 +18,8 @@ from PySide6.QtWidgets import QApplication
 
 from carnopy.app.application_identity import APPLICATION_NAME, ORGANIZATION_NAME
 from carnopy.app.qml_resources import (
+    MANDATORY_ICON_FILES,
+    MANDATORY_QML_FILES,
     MANIFEST_PATH,
     manifest_records,
     packaged_path,
@@ -40,6 +42,7 @@ def test_packaged_resource_manifest_matches_every_installed_byte() -> None:
     assert records == manifest_records()
     assert {record.owner for record in records} == {"Carnopy", "IBM Plex", "Lucide"}
     assert len({record.packaged_path for record in records}) == len(records)
+    assert len(records) == 28
 
     manifest = json.loads(packaged_path(MANIFEST_PATH).read_text(encoding="utf-8"))
     assert manifest["schema_version"] == 1
@@ -50,7 +53,13 @@ def test_packaged_resource_manifest_matches_every_installed_byte() -> None:
     assert projects["IBM Plex"]["revision"] == "2f9ba1b25957d958db71a849e85d72e3ecfb845a"
     assert projects["IBM Plex"]["license_expression"] == "OFL-1.1"
     assert projects["Lucide"]["revision"] == ("1.24.0 (b5b5d95933790a311aa6b7ed232fc8469934acdf)")
-    assert projects["Lucide"]["license_expression"] == "ISC"
+    assert projects["Lucide"]["license_expression"] == "ISC AND MIT"
+    assert {
+        f"resources/{record.packaged_path}"
+        for record in records
+        if record.owner == "Lucide" and record.packaged_path.startswith("icons/")
+    } == set(MANDATORY_ICON_FILES)
+    assert all(packaged_path(path).is_file() for path in MANDATORY_QML_FILES)
 
 
 def test_private_qml_runtime_loads_one_warning_free_root(
@@ -70,12 +79,14 @@ def test_private_qml_runtime_loads_one_warning_free_root(
     assert root.objectName() == "carnopyQmlRoot"
     assert root.property("runtimeReady") is True
     assert root.property("desktopController") is runtime.controller
+    assert root.property("qmlSettings") is runtime.controller.qml_settings
     assert root.property("startupWorkspace") == str(workspace)
     assert runtime.warning_capture.startup_warnings == ()
     assert runtime.warning_capture.runtime_warnings == ()
     assert QCoreApplication.organizationName() == ORGANIZATION_NAME
     assert QCoreApplication.applicationName() == APPLICATION_NAME
     assert runtime.close()
+    assert runtime._font_ids == []
     application.processEvents()
 
 
@@ -147,4 +158,4 @@ def test_qml_sources_pass_non_writing_qt_tooling() -> None:
         timeout=30,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
-    assert completed.stdout == "QML checks passed for 1 file(s).\n"
+    assert completed.stdout == "QML checks passed for 15 file(s).\n"

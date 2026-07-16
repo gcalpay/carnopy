@@ -120,6 +120,7 @@ class QmlApplicationRuntime:
         self.engine.setInitialProperties(
             {
                 "desktopController": self.controller,
+                "qmlSettings": self.controller.qml_settings,
                 "startupWorkspace": (
                     "" if self.initial_workspace is None else str(self.initial_workspace)
                 ),
@@ -145,7 +146,11 @@ class QmlApplicationRuntime:
         self.engine.deleteLater()
         closed = self.controller.shutdown()
         self.application.processEvents()
-        return closed
+        removal_results = [
+            QFontDatabase.removeApplicationFont(font_id) for font_id in reversed(self._font_ids)
+        ]
+        self._font_ids.clear()
+        return closed and all(removal_results)
 
 
 def _application(arguments: Sequence[str] | None = None) -> QApplication:

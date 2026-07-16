@@ -5,6 +5,7 @@ from PySide6.QtCore import Property, QObject, QSettings
 from carnopy.app.client import WorkerClient
 from carnopy.app.config_controller import DatasetConfigController
 from carnopy.app.dataset_draft import DatasetDraft
+from carnopy.app.qml_settings import QmlSettingsController
 from carnopy.app.request_coordinator import DesktopRequestCoordinator
 from carnopy.app.visualization_draft import VisualizationDraft
 from carnopy.app.workspace_controller import WorkspaceController
@@ -21,6 +22,7 @@ class DesktopController(QObject):
     ) -> None:
         super().__init__(parent)
         self.settings = settings if settings is not None else QSettings()
+        self.qml_settings = QmlSettingsController(self.settings, self)
         self.client = WorkerClient(self)
         self.request_coordinator = DesktopRequestCoordinator(self.client, self)
         self.dataset_draft = DatasetDraft(self)
@@ -42,6 +44,11 @@ class DesktopController(QObject):
         return self.workspace_controller
 
     workspaceController = Property(QObject, get_workspace_controller, constant=True)
+
+    def get_qml_settings(self) -> QObject:
+        return self.qml_settings
+
+    qmlSettings = Property(QObject, get_qml_settings, constant=True)
 
     def get_dataset_draft(self) -> QObject:
         return self.dataset_draft

@@ -27,6 +27,45 @@ PROJECT_KEYWORDS = {
     "thermophysical properties",
 }
 SOURCE_VERSION_PATTERN = re.compile(r'^__version__\s*=\s*"([^"]+)"\s*$')
+QML_SHELL_APP_FILES = {
+    "qml_settings.py",
+    "qml/Carnopy/Main.qml",
+    "qml/Carnopy/Theme.qml",
+    "qml/Carnopy/qmldir",
+    "qml/Carnopy/components/AppButton.qml",
+    "qml/Carnopy/components/AppIcon.qml",
+    "qml/Carnopy/components/Card.qml",
+    "qml/Carnopy/components/CommandBar.qml",
+    "qml/Carnopy/components/ContextInspector.qml",
+    "qml/Carnopy/components/DecisionDialog.qml",
+    "qml/Carnopy/components/NavRail.qml",
+    "qml/Carnopy/components/ResponsiveCardGrid.qml",
+    "qml/Carnopy/components/StatusBadge.qml",
+    "qml/Carnopy/components/ToastHost.qml",
+    "qml/Carnopy/pages/EmptyStatePage.qml",
+    "qml/Carnopy/pages/HelpPage.qml",
+    "qml/Carnopy/pages/SettingsPage.qml",
+    "resources/icons/activity.svg",
+    "resources/icons/box.svg",
+    "resources/icons/chart-spline.svg",
+    "resources/icons/circle-question-mark.svg",
+    "resources/icons/database.svg",
+    "resources/icons/file-code.svg",
+    "resources/icons/flask-conical.svg",
+    "resources/icons/git-compare-arrows.svg",
+    "resources/icons/layout-dashboard.svg",
+    "resources/icons/monitor.svg",
+    "resources/icons/moon.svg",
+    "resources/icons/panel-left-close.svg",
+    "resources/icons/panel-left-open.svg",
+    "resources/icons/panel-right-close.svg",
+    "resources/icons/panel-right-open.svg",
+    "resources/icons/play.svg",
+    "resources/icons/rotate-ccw.svg",
+    "resources/icons/search.svg",
+    "resources/icons/settings.svg",
+    "resources/icons/sun.svg",
+}
 WHEEL_REQUIRED = {
     "carnopy/__init__.py",
     "carnopy/__main__.py",
@@ -232,6 +271,8 @@ SDIST_REQUIRED = {
     "tests/test_cli.py",
     "uv.lock",
 }
+WHEEL_REQUIRED.update(f"carnopy/app/{path}" for path in QML_SHELL_APP_FILES)
+SDIST_REQUIRED.update(f"src/carnopy/app/{path}" for path in QML_SHELL_APP_FILES)
 SDIST_MARKDOWN = {
     "AGENTS.md",
     "ML_PREPARATION_ROADMAP.md",
