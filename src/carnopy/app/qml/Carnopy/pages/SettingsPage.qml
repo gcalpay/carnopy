@@ -8,6 +8,8 @@ Item {
 
     required property var qmlSettings
 
+    signal layoutResetRequested
+
     Flickable {
         anchors.fill: parent
         boundsBehavior: Flickable.StopAtBounds
@@ -131,7 +133,7 @@ Item {
             Card {
                 Layout.fillWidth: true
                 subtitle: qsTr(
-                              "Compact and narrow responsive overrides never overwrite these wide-layout choices.")
+                              "These preferences apply immediately on wide screens and are restored at the next start. Compact and narrow modes use temporary responsive overrides.")
                 title: qsTr("Wide desktop layout")
 
                 Switch {
@@ -143,7 +145,7 @@ Item {
                         if (root.qmlSettings !== null)
                             root.qmlSettings.railCollapsed = checked;
                     }
-                    text: qsTr("Start with navigation rail collapsed")
+                    text: qsTr("Navigation rail collapsed")
                 }
 
                 Switch {
@@ -155,7 +157,7 @@ Item {
                         if (root.qmlSettings !== null)
                             root.qmlSettings.inspectorCollapsed = checked;
                     }
-                    text: qsTr("Start with context inspector collapsed")
+                    text: qsTr("Context inspector collapsed")
                 }
             }
 
@@ -183,7 +185,7 @@ Item {
                       "Reset the saved QML window geometry, navigation rail, and context inspector layout?")
         onAccepted: {
             if (root.qmlSettings !== null)
-                root.qmlSettings.resetLayout();
+                root.layoutResetRequested();
         }
         title: qsTr("Reset interface layout")
     }

@@ -160,7 +160,6 @@ class DatasetConfigController(QObject):
 
     visualizationDraft = Property(QObject, get_visualization_draft, constant=True)
 
-    @Slot(object)
     def set_workspace(self, value: object) -> None:
         workspace = value if isinstance(value, Workspace) else None
         changed = self.workspace != workspace

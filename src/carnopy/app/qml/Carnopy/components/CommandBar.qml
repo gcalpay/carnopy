@@ -11,6 +11,8 @@ Control {
     property bool showRailMenu: false
     property bool showInspectorButton: false
     property bool inspectorOpen: false
+    property string statusLabel: qsTr("Shell ready")
+    property string statusTone: "success"
 
     signal inspectorToggleRequested
     signal railMenuRequested
@@ -62,13 +64,14 @@ Control {
         }
 
         StatusBadge {
-            label: qsTr("Shell ready")
-            tone: "success"
+            label: root.statusLabel
+            tone: root.statusTone
             visible: root.width >= 560
         }
 
         AppButton {
-            Accessible.description: qsTr("Show or hide the context inspector")
+            Accessible.description: root.inspectorOpen ? qsTr("Collapse context inspector") : qsTr(
+                                                             "Open context inspector")
             compact: true
             iconName: root.inspectorOpen ? "panel-right-close" : "panel-right-open"
             objectName: "inspectorToggleButton"

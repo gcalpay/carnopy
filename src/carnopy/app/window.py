@@ -124,8 +124,8 @@ class MainWindow(QMainWindow):
 
         if initial_workspace is not None:
             self.workspace_path.setText(str(initial_workspace.expanduser().resolve()))
-            if self.workspace_controller.prepare_open(initial_workspace):
-                self.workspace_controller.commit_pending()
+            if self.desktop_controller.prepare_open_workspace(str(initial_workspace)):
+                self.desktop_controller.commit_workspace_operation()
 
     @property
     def workspace(self) -> Workspace | None:
@@ -199,18 +199,18 @@ class MainWindow(QMainWindow):
             self.workspace_path.setText(selected)
 
     def _create_workspace(self) -> None:
-        if self.workspace_controller.prepare_create(self.workspace_path.text()):
+        if self.desktop_controller.prepare_create_workspace_path(self.workspace_path.text()):
             self._complete_workspace_operation(confirm_initialization=False)
 
     def _initialize_existing_workspace(self) -> None:
-        if self.workspace_controller.prepare_initialize_existing(self.workspace_path.text()):
+        if self.desktop_controller.prepare_initialize_workspace(self.workspace_path.text()):
             self._complete_workspace_operation(confirm_initialization=True)
 
     def _open_selected_workspace(self) -> None:
         self._open_workspace_path(self.workspace_path.text())
 
     def _open_workspace_path(self, path: str | Path) -> None:
-        if self.workspace_controller.prepare_open(path):
+        if self.desktop_controller.prepare_open_workspace(str(path)):
             self._complete_workspace_operation(confirm_initialization=False)
 
     def _open_recent_workspace(self, index: QModelIndex) -> None:
@@ -229,9 +229,13 @@ class MainWindow(QMainWindow):
             and workspace is not None
             and pending_path == str(workspace.root)
         )
+        discard_required = (
+            not opening_active and self.dataset_config_controller.needs_discard_confirmation()
+        )
         if not opening_active and not self.configure_page.confirm_discard():
-            self.workspace_controller.cancel_pending()
+            self.desktop_controller.cancel_workspace_operation()
             return
+        confirmed = discard_required
         if confirm_initialization:
             answer = QMessageBox.question(
                 self,
@@ -241,16 +245,16 @@ class MainWindow(QMainWindow):
                 QMessageBox.StandardButton.No,
             )
             if answer != QMessageBox.StandardButton.Yes:
-                self.workspace_controller.cancel_pending()
+                self.desktop_controller.cancel_workspace_operation()
                 return
-        self.workspace_controller.commit_pending()
+            confirmed = True
+        self.desktop_controller.commit_workspace_operation(confirmed)
 
     def _workspace_activated(self, value: object) -> None:
         if not isinstance(value, Workspace):
             return
         workspace = value
         self.workspace_path.setText(str(workspace.root))
-        self.dataset_config_controller.set_workspace(workspace)
         self.execution_page.set_workspace(workspace)
         self.inspection_page.set_workspace(workspace)
         self.plot_page.set_workspace(workspace)

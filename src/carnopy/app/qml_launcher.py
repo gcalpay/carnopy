@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from collections.abc import Sequence
 
-from carnopy.app.launcher import MISSING_APP_EXTRA, build_parser
+from carnopy.app.launcher import MISSING_APP_EXTRA, build_parser, configure_qt_platform
 
 
 def build_private_parser() -> argparse.ArgumentParser:
@@ -16,8 +15,7 @@ def build_private_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = build_private_parser().parse_args(argv)
-    if arguments.qt_platform != "auto":
-        os.environ["QT_QPA_PLATFORM"] = arguments.qt_platform
+    configure_qt_platform(arguments.qt_platform)
     try:
         from carnopy.app.qml_runtime import QmlStartupError, run_qml_application
     except ModuleNotFoundError as exc:

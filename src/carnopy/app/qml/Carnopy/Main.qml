@@ -9,9 +9,18 @@ import Carnopy
 ApplicationWindow {
     id: root
 
-    required property QtObject desktopController
+    required property var desktopController
     required property var qmlSettings
     required property string startupWorkspace
+
+    signal workspaceCancelRequested
+    signal workspaceCommitRequested(bool confirmed)
+    signal workspaceCreatePathRequested(string path)
+    signal workspaceCreateRequested(string parentPath, string childName)
+    signal workspaceInitializeRequested(string path)
+    signal workspaceOpenRequested(string path)
+    signal normalGeometryRememberRequested(int x, int y, int width, int height)
+    signal settingsLayoutResetRequested
 
     readonly property bool runtimeReady: true
     readonly property string shellMode: width >= 1280 ? "wide" : (width >= 800 ? "compact" :
@@ -29,6 +38,7 @@ ApplicationWindow {
                                                                                   availableCentralWidth
                                                                                   - 48 + 12)
                                                                               / 312)))
+    readonly property bool controllerAvailable: desktopController !== null
     readonly property bool hasFake3dViewport: false
     readonly property string effectiveTheme: qmlSettings.effectiveTheme
     readonly property int motionDuration: Theme.durationStandard
@@ -69,16 +79,33 @@ ApplicationWindow {
             geometryTimer.restart();
     }
 
+    function restoreWindowState() {
+        const geometry = qmlSettings.normalGeometry;
+        x = geometry.x;
+        y = geometry.y;
+        width = Math.max(minimumWidth, geometry.width);
+        height = Math.max(minimumHeight, geometry.height);
+        visibility = qmlSettings.maximized ? Window.Maximized : Window.Windowed;
+    }
+
     color: Theme.canvas
-    height: Math.max(600, qmlSettings.normalGeometry.height)
+    height: 900
     minimumHeight: 600
     minimumWidth: 680
     objectName: "carnopyQmlRoot"
+    palette.alternateBase: Theme.surfaceMuted
+    palette.base: Theme.surface
+    palette.button: Theme.surfaceRaised
+    palette.buttonText: Theme.text
+    palette.highlight: Theme.primary
+    palette.highlightedText: "#ffffff"
+    palette.placeholderText: Theme.textSubtle
+    palette.text: Theme.text
+    palette.window: Theme.canvas
+    palette.windowText: Theme.text
     title: qsTr("Carnopy")
-    visibility: qmlSettings.maximized ? Window.Maximized : Window.Windowed
-    width: Math.max(680, qmlSettings.normalGeometry.width)
-    x: qmlSettings.normalGeometry.x
-    y: qmlSettings.normalGeometry.y
+    visibility: Window.Hidden
+    width: 1440
 
     Binding {
         property: "dark"
@@ -96,9 +123,7 @@ ApplicationWindow {
         id: geometryTimer
 
         interval: 240
-        onTriggered: root.qmlSettings.rememberNormalGeometry(root.x, root.y, root.width,
-                                                             root.height)
-
+        onTriggered: root.normalGeometryRememberRequested(root.x, root.y, root.width, root.height)
     }
 
     Connections {
@@ -115,17 +140,12 @@ ApplicationWindow {
         target: root.qmlSettings
     }
 
-    onClosing: function (close) {
-        root.qmlSettings.maximized = root.visibility === Window.Maximized;
-        if (root.visibility === Window.Windowed)
-            root.qmlSettings.rememberNormalGeometry(root.x, root.y, root.width, root.height);
-    }
     onHeightChanged: rememberGeometrySoon()
     onWidthChanged: rememberGeometrySoon()
     onXChanged: rememberGeometrySoon()
     onYChanged: rememberGeometrySoon()
 
-    Component.onCompleted: geometryTrackingReady = true
+    Component.onCompleted: restoreWindowState()
 
     RowLayout {
         anchors.fill: parent
@@ -156,15 +176,26 @@ ApplicationWindow {
 
                 CommandBar {
                     Layout.fillWidth: true
-                    breadcrumb: root.startupWorkspace.length > 0 ? root.startupWorkspace : qsTr(
-                                                                       "Local workbench")
+                    breadcrumb: root.controllerAvailable
+                                && root.desktopController.workspaceAvailable
+                                ? root.desktopController.workspaceRootPath : qsTr("Local workbench")
                     inspectorOpen: root.inspectorWideVisible || inspectorDrawer.opened
                     objectName: "documentCommandBar"
                     onInspectorToggleRequested: root.toggleInspector()
                     onRailMenuRequested: navigationDrawer.open()
                     pageTitle: root.pageTitle(root.currentPage)
-                    showInspectorButton: !root.inspectorWideVisible
+                    showInspectorButton: !(root.inspectorWideVisible || inspectorDrawer.opened)
                     showRailMenu: root.shellMode === "narrow"
+                    statusLabel: {
+                        if (root.controllerAvailable && root.desktopController.workspaceState
+                            === "loading")
+                        return qsTr("Loading");
+                        if (root.controllerAvailable && root.desktopController.workspaceAvailable)
+                        return qsTr("Workspace ready");
+                        return qsTr("No workspace");
+                    }
+                    statusTone: root.controllerAvailable
+                                && root.desktopController.workspaceAvailable ? "success" : "neutral"
                 }
 
                 Loader {
@@ -223,8 +254,12 @@ ApplicationWindow {
         ContextInspector {
             Layout.fillHeight: true
             Layout.preferredWidth: root.inspectorWidth
+            closeButtonVisible: true
             objectName: "persistentContextInspector"
-            pageTitle: root.pageTitle(root.currentPage)
+            onCloseRequested: root.toggleInspector()
+            workspacePath: root.controllerAvailable ? root.desktopController.workspaceRootPath : ""
+            workspaceState: root.controllerAvailable ? root.desktopController.workspaceState :
+                                                       "unavailable"
             visible: root.inspectorWideVisible
         }
     }
@@ -251,20 +286,33 @@ ApplicationWindow {
         edge: Qt.RightEdge
         height: root.height
         modal: root.shellMode === "narrow"
+        objectName: "inspectorDrawer"
         width: Math.min(328, root.width * 0.9)
 
         contentItem: ContextInspector {
             closeButtonVisible: true
-            pageTitle: root.pageTitle(root.currentPage)
+            objectName: "drawerContextInspector"
             onCloseRequested: inspectorDrawer.close()
+            workspacePath: root.controllerAvailable ? root.desktopController.workspaceRootPath : ""
+            workspaceState: root.controllerAvailable ? root.desktopController.workspaceState :
+                                                       "unavailable"
         }
     }
 
     Component {
         id: workspacePage
 
-        EmptyStatePage {
+        WorkspacePage {
+            desktopController: root.desktopController
+            expectedColumns: root.cardColumnCount
             objectName: "workspacePage"
+            onCancelWorkspaceRequested: root.workspaceCancelRequested()
+            onCommitWorkspaceRequested: confirmed => root.workspaceCommitRequested(confirmed)
+            onCreateWorkspacePathRequested: path => root.workspaceCreatePathRequested(path)
+            onCreateWorkspaceRequested: (parentPath, childName) => root.workspaceCreateRequested(
+                                                                       parentPath, childName)
+            onInitializeWorkspaceRequested: path => root.workspaceInitializeRequested(path)
+            onOpenWorkspaceRequested: path => root.workspaceOpenRequested(path)
         }
     }
 
@@ -273,6 +321,7 @@ ApplicationWindow {
 
         SettingsPage {
             objectName: "settingsPage"
+            onLayoutResetRequested: root.settingsLayoutResetRequested()
             qmlSettings: root.qmlSettings
         }
     }

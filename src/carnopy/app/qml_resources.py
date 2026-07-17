@@ -35,9 +35,11 @@ MANDATORY_QML_FILES = (
     "qml/Carnopy/components/ResponsiveCardGrid.qml",
     "qml/Carnopy/components/StatusBadge.qml",
     "qml/Carnopy/components/ToastHost.qml",
+    "qml/Carnopy/components/WorkspaceOperationDialog.qml",
     "qml/Carnopy/pages/EmptyStatePage.qml",
     "qml/Carnopy/pages/HelpPage.qml",
     "qml/Carnopy/pages/SettingsPage.qml",
+    "qml/Carnopy/pages/WorkspacePage.qml",
 )
 MANDATORY_ICON_FILES = (
     "resources/icons/activity.svg",

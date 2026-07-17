@@ -7,7 +7,8 @@ Control {
     id: root
 
     property bool closeButtonVisible: false
-    property string pageTitle: qsTr("Workspace")
+    property string workspacePath: ""
+    property string workspaceState: "unavailable"
 
     signal closeRequested
 
@@ -23,110 +24,120 @@ Control {
         color: Theme.surfaceRaised
     }
 
-    contentItem: Flickable {
-        boundsBehavior: Flickable.StopAtBounds
-        clip: true
-        contentHeight: inspectorColumn.implicitHeight
-        contentWidth: width
+    contentItem: ColumnLayout {
+        spacing: Theme.spacingMedium
 
-        ColumnLayout {
-            id: inspectorColumn
+        RowLayout {
+            Layout.fillWidth: true
 
-            spacing: Theme.spacingMedium
-            width: parent.width
-
-            RowLayout {
+            Label {
                 Layout.fillWidth: true
-
-                Label {
-                    Layout.fillWidth: true
-                    color: Theme.text
-                    font.family: Theme.sansFamily
-                    font.pixelSize: 16
-                    font.weight: Font.DemiBold
-                    text: qsTr("Context inspector")
-                }
-
-                AppButton {
-                    Accessible.description: qsTr("Close context inspector")
-                    compact: true
-                    iconName: "panel-right-close"
-                    onClicked: root.closeRequested()
-                    visible: root.closeButtonVisible
-                }
+                color: Theme.text
+                font.family: Theme.sansFamily
+                font.pixelSize: 16
+                font.weight: Font.DemiBold
+                text: qsTr("Context inspector")
             }
 
-            Card {
-                Layout.fillWidth: true
-                subtitle: qsTr("This shell does not fabricate document or worker state.")
-                title: root.pageTitle
-
-                Label {
-                    Layout.fillWidth: true
-                    color: Theme.textMuted
-                    font.family: Theme.sansFamily
-                    font.pixelSize: 12
-                    text: qsTr(
-                              "Page-specific issues and guidance will appear here as each authoritative workflow is bound.")
-                    wrapMode: Text.Wrap
-                }
+            AppButton {
+                Accessible.description: qsTr("Close context inspector")
+                compact: true
+                iconName: "panel-right-close"
+                objectName: "inspectorCloseButton"
+                onClicked: root.closeRequested()
+                visible: root.closeButtonVisible
             }
+        }
 
-            Card {
-                Layout.fillWidth: true
-                title: qsTr("Document state")
+        Flickable {
+            Layout.fillHeight: true
+            Layout.fillWidth: true
+            boundsBehavior: Flickable.StopAtBounds
+            clip: true
+            contentHeight: inspectorColumn.implicitHeight
+            contentWidth: width
 
-                RowLayout {
+            ColumnLayout {
+                id: inspectorColumn
+
+                spacing: Theme.spacingMedium
+                width: parent.width
+
+                Card {
                     Layout.fillWidth: true
+                    subtitle: root.workspacePath.length > 0 ? root.workspacePath : qsTr(
+                                                                  "No local workspace is open.")
+                    title: qsTr("Workspace")
 
                     Label {
                         Layout.fillWidth: true
                         color: Theme.textMuted
                         font.family: Theme.sansFamily
                         font.pixelSize: 12
-                        text: qsTr("Configuration")
-                    }
-
-                    Label {
-                        color: Theme.text
-                        font.family: Theme.sansFamily
-                        font.pixelSize: 12
-                        font.weight: Font.Medium
-                        text: qsTr("Not loaded")
+                        text: root.workspaceState === "loading" ? qsTr(
+                                                                      "Worker capabilities are loading through the shared request coordinator.") :
+                                                                  qsTr("Workspace state comes from the authoritative desktop composition.")
+                        wrapMode: Text.Wrap
                     }
                 }
 
-                RowLayout {
+                Card {
                     Layout.fillWidth: true
+                    title: qsTr("Document state")
 
-                    Label {
+                    RowLayout {
                         Layout.fillWidth: true
-                        color: Theme.textMuted
-                        font.family: Theme.sansFamily
-                        font.pixelSize: 12
-                        text: qsTr("Worker validation")
+
+                        Label {
+                            Layout.fillWidth: true
+                            color: Theme.textMuted
+                            font.family: Theme.sansFamily
+                            font.pixelSize: 12
+                            text: qsTr("Configuration")
+                        }
+
+                        Label {
+                            color: Theme.text
+                            font.family: Theme.sansFamily
+                            font.pixelSize: 12
+                            font.weight: Font.Medium
+                            text: root.workspaceState === "editing" ? qsTr("Open") : qsTr(
+                                                                          "Not loaded")
+                        }
                     }
 
-                    Label {
-                        color: Theme.text
-                        font.family: Theme.sansFamily
-                        font.pixelSize: 12
-                        font.weight: Font.Medium
-                        text: qsTr("Not available")
+                    RowLayout {
+                        Layout.fillWidth: true
+
+                        Label {
+                            Layout.fillWidth: true
+                            color: Theme.textMuted
+                            font.family: Theme.sansFamily
+                            font.pixelSize: 12
+                            text: qsTr("Worker validation")
+                        }
+
+                        Label {
+                            color: Theme.text
+                            font.family: Theme.sansFamily
+                            font.pixelSize: 12
+                            font.weight: Font.Medium
+                            text: qsTr("Not available")
+                        }
                     }
                 }
-            }
 
-            Card {
-                Layout.fillWidth: true
-                subtitle: qsTr(
-                              "Workspace lifecycle binding is the next independently verified implementation commit.")
-                title: qsTr("Next implementation step")
-            }
+                Card {
+                    Layout.fillWidth: true
+                    subtitle: qsTr(
+                                  "Dataset cards and safe unit changes are the next independently verified implementation commit.")
+                    title: qsTr("Next implementation step")
+                }
 
-            Item {
-                Layout.fillHeight: true
-                Layout.minimumHeight: 1
+                Item {
+                    Layout.fillHeight: true
+                    Layout.minimumHeight: 1
+                }
             }
         }
     }

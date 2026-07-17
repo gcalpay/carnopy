@@ -17,6 +17,7 @@ from carnopy.app.qml_settings import (
     INSPECTOR_COLLAPSED_KEY,
     MAXIMIZED_KEY,
     NORMAL_GEOMETRY_KEY,
+    NORMAL_SCREEN_KEY,
     RAIL_COLLAPSED_KEY,
     REDUCED_MOTION_KEY,
     THEME_MODE_KEY,
@@ -48,6 +49,7 @@ def test_qml_settings_persist_namespaced_preferences_in_shared_settings(
     controller.set_reduced_motion(True)
     controller.set_rail_collapsed(True)
     controller.set_inspector_collapsed(True)
+    controller.remember_normal_screen("rdp-2")
     controller.set_maximized(True)
     settings.sync()
 
@@ -57,6 +59,7 @@ def test_qml_settings_persist_namespaced_preferences_in_shared_settings(
     assert restored.get_reduced_motion()
     assert restored.get_rail_collapsed()
     assert restored.get_inspector_collapsed()
+    assert restored.get_normal_screen_name() == "rdp-2"
     assert restored.get_maximized()
     assert settings.value("recent_workspaces", [], type=list) == ["/tmp/example"]
     assert {
@@ -64,6 +67,7 @@ def test_qml_settings_persist_namespaced_preferences_in_shared_settings(
         REDUCED_MOTION_KEY,
         RAIL_COLLAPSED_KEY,
         INSPECTOR_COLLAPSED_KEY,
+        NORMAL_SCREEN_KEY,
         MAXIMIZED_KEY,
     }.issubset(settings.allKeys())
 
@@ -126,6 +130,7 @@ def test_layout_reset_preserves_theme_accessibility_and_unrelated_settings(
     controller.set_reduced_motion(True)
     controller.set_rail_collapsed(True)
     controller.set_inspector_collapsed(True)
+    controller.remember_normal_screen("rdp-2")
     controller.rememberNormalGeometry(
         screen.x() + 8,
         screen.y() + 8,
@@ -140,6 +145,7 @@ def test_layout_reset_preserves_theme_accessibility_and_unrelated_settings(
     assert controller.get_reduced_motion()
     assert not controller.get_rail_collapsed()
     assert not controller.get_inspector_collapsed()
+    assert controller.get_normal_screen_name() == ""
     assert not controller.get_maximized()
     assert settings.value("recent_workspaces", [], type=list) == ["/tmp/example"]
     assert THEME_MODE_KEY in settings.allKeys()
@@ -147,6 +153,7 @@ def test_layout_reset_preserves_theme_accessibility_and_unrelated_settings(
     assert RAIL_COLLAPSED_KEY not in settings.allKeys()
     assert INSPECTOR_COLLAPSED_KEY not in settings.allKeys()
     assert NORMAL_GEOMETRY_KEY not in settings.allKeys()
+    assert NORMAL_SCREEN_KEY not in settings.allKeys()
     assert MAXIMIZED_KEY not in settings.allKeys()
 
 

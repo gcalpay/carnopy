@@ -151,16 +151,19 @@ To preselect a workspace without initializing it silently:
 uv run --locked carnopy-gui --workspace /path/to/workspace
 ```
 
-Qt normally selects its platform integration automatically. If WSLg leaves
-drop-down popups visible after they close, and the system Qt XCB runtime is
-available, start the application explicitly with XCB:
+Qt normally selects its platform integration automatically. On WSLg, Carnopy's
+`auto` mode prefers XCB when both WSLg display transports are available because
+native Wayland dialogs can remain detached after selection. To select XCB
+explicitly:
 
 ```bash
 uv run --locked carnopy-gui --qt-platform xcb --workspace /path/to/workspace
 ```
 
 The corresponding explicit Wayland selection is `--qt-platform wayland`;
-omit the option or use `auto` for normal Qt platform detection.
+omit the option or use `auto` for native platform detection outside WSLg and
+the guarded XCB selection on WSLg. An existing `QT_QPA_PLATFORM` environment
+override remains authoritative.
 
 GUI-1 currently provides workspace lifecycle, a worker-validated editor for all
 three dataset configuration modes, dataset validation and generation, output

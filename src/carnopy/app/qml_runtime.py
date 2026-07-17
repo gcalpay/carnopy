@@ -5,8 +5,20 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QSettings, QTimer, Signal
-from PySide6.QtGui import QFontDatabase
+from PySide6.QtCore import (
+    QCoreApplication,
+    QEvent,
+    QMargins,
+    QObject,
+    QPoint,
+    QRect,
+    QSettings,
+    QSize,
+    Qt,
+    QTimer,
+    Signal,
+)
+from PySide6.QtGui import QCloseEvent, QFontDatabase, QGuiApplication, QScreen, QWindow
 from PySide6.QtQml import QQmlApplicationEngine, QQmlError
 from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtWidgets import QApplication
@@ -36,6 +48,106 @@ EXPECTED_FONT_FAMILIES = {
 
 class QmlStartupError(RuntimeError):
     """Raised when the private QML application cannot start cleanly."""
+
+
+def fitted_window_frame(
+    client_size: QSize,
+    frame_margins: QMargins,
+    frame_position: QPoint,
+    available_geometry: QRect,
+) -> tuple[QSize, QPoint]:
+    """Fit one decorated window inside one logical screen's available geometry."""
+
+    horizontal_frame = max(0, frame_margins.left()) + max(0, frame_margins.right())
+    vertical_frame = max(0, frame_margins.top()) + max(0, frame_margins.bottom())
+    width = min(max(1, client_size.width()), max(1, available_geometry.width() - horizontal_frame))
+    height = min(
+        max(1, client_size.height()),
+        max(1, available_geometry.height() - vertical_frame),
+    )
+    frame_width = width + horizontal_frame
+    frame_height = height + vertical_frame
+    maximum_x = available_geometry.x() + max(0, available_geometry.width() - frame_width)
+    maximum_y = available_geometry.y() + max(0, available_geometry.height() - frame_height)
+    x = min(max(frame_position.x(), available_geometry.x()), maximum_x)
+    y = min(max(frame_position.y(), available_geometry.y()), maximum_y)
+    return QSize(width, height), QPoint(x, y)
+
+
+def _fit_window_to_available_screen(
+    window: QWindow,
+    preferred_screen_name: str = "",
+) -> QScreen | None:
+    application = QGuiApplication.instance()
+    if not isinstance(application, QGuiApplication):
+        return None
+    frame = window.frameGeometry()
+    screens = tuple(application.screens())
+    if not screens:
+        return None
+
+    def intersection_area(screen: QScreen) -> int:
+        geometry = screen.availableGeometry()
+        intersection = frame.intersected(geometry)
+        return max(0, intersection.width()) * max(0, intersection.height())
+
+    preferred = next(
+        (screen for screen in screens if screen.name() == preferred_screen_name),
+        None,
+    )
+    if preferred is not None:
+        screen = preferred
+    else:
+        screen = max(screens, key=intersection_area)
+        if intersection_area(screen) == 0 and window.screen() is not None:
+            screen = window.screen()
+    frame_margins = window.frameMargins()
+    client_size, frame_position = fitted_window_frame(
+        window.size(),
+        frame_margins,
+        window.framePosition(),
+        screen.availableGeometry(),
+    )
+    if client_size != window.size():
+        window.resize(client_size)
+    client_position = QPoint(
+        frame_position.x() + max(0, frame_margins.left()),
+        frame_position.y() + max(0, frame_margins.top()),
+    )
+    if client_position != window.position():
+        window.setPosition(client_position)
+    return screen
+
+
+class QmlWindowCloseGuard(QObject):
+    """Route QML window shutdown through the authoritative composition."""
+
+    def __init__(self, controller: DesktopController, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self._controller = controller
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if event.type() != QEvent.Type.Close or not isinstance(watched, QWindow):
+            return False
+        if not isinstance(event, QCloseEvent):
+            return False
+        if not self._controller.request_shutdown():
+            event.ignore()
+            return True
+        settings = self._controller.qml_settings
+        screen = watched.screen()
+        settings.remember_normal_screen("" if screen is None else screen.name())
+        settings.set_maximized(watched.visibility() == QWindow.Visibility.Maximized)
+        if watched.visibility() == QWindow.Visibility.Windowed:
+            geometry = watched.geometry()
+            settings.rememberNormalGeometry(
+                geometry.x(),
+                geometry.y(),
+                geometry.width(),
+                geometry.height(),
+            )
+        self._controller.settings.sync()
+        return False
 
 
 class QmlWarningCapture(QObject):
@@ -86,8 +198,19 @@ class QmlApplicationRuntime:
         self.initial_workspace = initial_workspace
         self.engine = QQmlApplicationEngine()
         self.warning_capture = QmlWarningCapture(self.engine)
+        self._close_guard: QmlWindowCloseGuard | None = None
+        self._geometry_fit_timer = QTimer(self.engine)
+        self._geometry_fit_timer.setSingleShot(True)
+        self._geometry_fit_timer.setInterval(100)
         self._font_ids: list[int] = []
         self._loaded = False
+
+    def _complete_geometry_restoration(self, window: QWindow) -> None:
+        _fit_window_to_available_screen(
+            window,
+            self.controller.qml_settings.get_normal_screen_name(),
+        )
+        window.setProperty("geometryTrackingReady", True)
 
     def _register_fonts(self) -> None:
         for relative_path in MANDATORY_FONT_FILES:
@@ -135,22 +258,62 @@ class QmlApplicationRuntime:
             raise QmlStartupError(f"QML emitted warnings during startup:\n{details}")
         if len(roots) != 1:
             raise QmlStartupError(f"QML created {len(roots)} root objects; expected exactly one")
+        self._connect_qml_facade(roots[0])
+        if isinstance(roots[0], QWindow):
+            self._close_guard = QmlWindowCloseGuard(self.controller, self.engine)
+            roots[0].installEventFilter(self._close_guard)
+            roots[0].requestActivate()
+            self._geometry_fit_timer.timeout.connect(
+                lambda window=roots[0]: self._complete_geometry_restoration(window)
+            )
+            if self.application.platformName() == "offscreen":
+                self._complete_geometry_restoration(roots[0])
+            else:
+                self._geometry_fit_timer.start()
         self._loaded = True
         return roots[0]
 
+    def _connect_qml_facade(self, root: QObject) -> None:
+        connections = (
+            ("workspaceCreateRequested", self.controller.request_create_workspace),
+            ("workspaceCreatePathRequested", self.controller.request_create_workspace_path),
+            ("workspaceInitializeRequested", self.controller.request_initialize_workspace),
+            ("workspaceOpenRequested", self.controller.request_open_workspace),
+            ("workspaceCommitRequested", self.controller.request_commit_workspace_operation),
+            ("workspaceCancelRequested", self.controller.request_cancel_workspace_operation),
+            (
+                "normalGeometryRememberRequested",
+                self.controller.qml_settings.rememberNormalGeometry,
+            ),
+            ("settingsLayoutResetRequested", self.controller.qml_settings.resetLayout),
+        )
+        for signal_name, callback in connections:
+            signal = getattr(root, signal_name, None)
+            if signal is None:
+                raise QmlStartupError(f"QML root does not expose {signal_name}")
+            signal.connect(callback, Qt.ConnectionType.QueuedConnection)
+
     def close(self) -> bool:
+        self._geometry_fit_timer.stop()
         for root in self.engine.rootObjects():
             root.setProperty("visible", False)
             root.deleteLater()
+        _drain_deferred_deletes(self.application)
         self.engine.collectGarbage()
         self.engine.deleteLater()
+        _drain_deferred_deletes(self.application)
         closed = self.controller.shutdown()
-        self.application.processEvents()
         removal_results = [
             QFontDatabase.removeApplicationFont(font_id) for font_id in reversed(self._font_ids)
         ]
         self._font_ids.clear()
         return closed and all(removal_results)
+
+
+def _drain_deferred_deletes(application: QApplication) -> None:
+    application.processEvents()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    application.processEvents()
 
 
 def _application(arguments: Sequence[str] | None = None) -> QApplication:
@@ -181,6 +344,11 @@ def create_qml_runtime(
     )
     try:
         runtime.load()
+        if initial_workspace is not None:
+            if not controller.prepare_open_workspace(str(initial_workspace)):
+                raise QmlStartupError(controller.get_workspace_error_message())
+            if not controller.commit_workspace_operation():
+                raise QmlStartupError(controller.get_workspace_error_message())
     except Exception:
         runtime.close()
         raise

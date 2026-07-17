@@ -10,6 +10,7 @@ REDUCED_MOTION_KEY = "qml/accessibility/reduced_motion"
 RAIL_COLLAPSED_KEY = "qml/layout/wide_rail_collapsed"
 INSPECTOR_COLLAPSED_KEY = "qml/layout/wide_inspector_collapsed"
 NORMAL_GEOMETRY_KEY = "qml/window/normal_geometry"
+NORMAL_SCREEN_KEY = "qml/window/normal_screen"
 MAXIMIZED_KEY = "qml/window/maximized"
 
 THEME_MODES = ("system", "light", "dark")
@@ -107,6 +108,8 @@ class QmlSettingsController(QObject):
             requested,
             _available_screen_geometries(),
         )
+        raw_screen = settings.value(NORMAL_SCREEN_KEY, "")
+        self._normal_screen_name = raw_screen if isinstance(raw_screen, str) else ""
         self._maximized = _bool_setting(settings, MAXIMIZED_KEY, False)
         self._effective_theme = self._resolve_effective_theme()
 
@@ -211,6 +214,19 @@ class QmlSettingsController(QObject):
 
     normalGeometry = Property(QRect, get_normal_geometry, notify=normalGeometryChanged)
 
+    def get_normal_screen_name(self) -> str:
+        return self._normal_screen_name
+
+    def remember_normal_screen(self, value: str) -> None:
+        name = value.strip()
+        if name == self._normal_screen_name:
+            return
+        self._normal_screen_name = name
+        if name:
+            self.settings.setValue(NORMAL_SCREEN_KEY, name)
+        else:
+            self.settings.remove(NORMAL_SCREEN_KEY)
+
     def get_maximized(self) -> bool:
         return self._maximized
 
@@ -246,12 +262,14 @@ class QmlSettingsController(QObject):
             RAIL_COLLAPSED_KEY,
             INSPECTOR_COLLAPSED_KEY,
             NORMAL_GEOMETRY_KEY,
+            NORMAL_SCREEN_KEY,
             MAXIMIZED_KEY,
         ):
             self.settings.remove(key)
         self._rail_collapsed = False
         self._inspector_collapsed = False
         self._normal_geometry = clamp_window_geometry(QRect(), _available_screen_geometries())
+        self._normal_screen_name = ""
         self._maximized = False
 
         if old_rail:

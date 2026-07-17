@@ -466,7 +466,7 @@ The generated vector candidates were rejected and final logo refinement was
 deferred. This completed gate does not reopen the settled layout, scope, Qt,
 packaging, workflow, or scientific decisions.
 
-Current implementation status as of 2026-07-15:
+Current implementation status as of 2026-07-16:
 
 - Commits 1 through 4 are implemented in the Stage 2 branch history. The design
   and branding gate required between Commits 3 and 4 is complete under the
@@ -478,15 +478,84 @@ Current implementation status as of 2026-07-15:
   reduced-motion-aware transitions, the exact locked navigation names, disabled
   future-workflow affordances, Settings and Help pages, the used Lucide resource
   inventory, and focused QML/runtime/distribution regressions.
-- Verification at this boundary includes the 15-file QML tooling check, the full
-  Ruff and mypy gates, 620 passing repository tests, `preflight.py`, environment
-  compatibility checking, and successful wheel/sdist build, Twine, installed
-  resource, and distribution-inventory checks. This does not claim native
-  cross-platform acceptance or complete Stage 2.
-- Commits 6 through 10 have not started. In particular, no QML workspace,
-  Dataset, Visualization, YAML, validated-save, or public-launcher parity is
-  inferred from the shell. Both public launchers remain on Widgets, and Stage 2
-  remains active until the later implementation, automated gates, native manual
+- The Commit 6 boundary is implemented and its focused and repository-wide
+  verification passes. It adds the authoritative unavailable/loading/landing/
+  editing workspace state, direct recent-workspace model binding, correct
+  parent-plus-new-name and expert-path Create flows, existing-folder Initialize
+  and Open flows, confirmation for every Initialize operation, and an in-shell
+  workspace landing page. `DesktopController` now owns the QML/Widgets workspace
+  facade, binds workspace activation to `DatasetConfigController` exactly once,
+  and guards active plot edits both before preflight and again before commit.
+  The child workspace and configuration-context mutation methods used by that
+  facade are no longer QML-invokable slots. Widgets use the same facade without
+  changing their active public workflow.
+- Native interaction stabilization keeps platform dialogs and model-backed
+  delegates out of direct QML-to-Python method calls. Workspace controls emit
+  root-level QML request signals; `QmlApplicationRuntime` connects those signals
+  to the composition facade with queued Qt connections. Recent-workspace model
+  reordering is deferred until the activating delegate has unwound, and window
+  close events pass through a runtime-owned composition guard before teardown.
+  Create selects the parent folder before opening the QML name dialog, so it
+  never nests the native chooser inside another modal surface. Initialize and
+  Open likewise defer accepted-path dispatch until the native chooser reports
+  hidden and the event loop advances. Folder dialogs
+  declare the Carnopy window as their explicit transient parent.
+- Workspace copy now distinguishes the two existing-directory operations:
+  Initialize converts an explicitly confirmed ordinary directory into a Carnopy
+  workspace by adding the marker and managed directories without deleting
+  unrelated contents, while Open accepts only an already initialized Carnopy
+  workspace. Neither operation selects a file. Exactly one inspector control is
+  visible at a time: the command bar opens a closed inspector, while the visible
+  inspector header closes it from the same stable right-edge region. The
+  inspector header and close control stay outside its scrollable content so
+  Flickable gesture recognition cannot delay or cancel the toggle. The
+  inspector's Workspace card remains workspace-scoped when Settings or Help is
+  selected. Settings describes the persisted rail and inspector states as
+  immediate wide-layout preferences rather than startup-only choices.
+- Verification at the current boundary includes the 17-file QML tooling check,
+  full Ruff and mypy gates, the complete repository tests, `preflight.py`,
+  environment compatibility checking, warning-free offscreen QML startup and
+  deterministic QML/Dialog teardown, and the complete local source/build gate
+  with successful wheel/sdist build, Twine checks, and distribution inventory
+  verification. Focused real-window diagnostics also cover actual QML delegate
+  clicks, capability-worker completion, and a ten-second parented native-folder-
+  dialog soak without teardown. Native folder selection, cursor behavior, and
+  monitor/compositor interaction still require the planned human acceptance;
+  this does not claim native cross-platform acceptance or complete Stage 2.
+- On the current WSLg development host, the Wayland integration can leave native
+  folder dialogs detached after selection, while Mesa's automatic Zink/EGL probe
+  can fail before falling back and produce a variable multi-second delay. The
+  existing `auto|xcb|wayland` contract now selects XCB automatically only when
+  WSLg and both display transports are detected and no explicit
+  `QT_QPA_PLATFORM` override exists. Explicit Wayland remains available for
+  qualification, and native Linux selection is unchanged. XCB resolves both
+  observed dialog failures on this host without forcing software rendering
+  globally. Scene-graph diagnostics show that this host's XCB OpenGL path uses
+  Mesa llvmpipe, so remaining native 2D responsiveness must be assessed
+  separately from controller latency. Qt's dedicated 2D software scene graph is
+  available as a diagnostic alternative but is not selected automatically
+  because Stage 7 must still qualify the final native-3D rendering path.
+- Window restoration applies persisted client geometry once rather than keeping
+  live QML bindings from the window back to its own persistence model. After the
+  decorated native window exists, its complete frame is fitted inside the
+  selected screen's logical available geometry. Subsequent debounced native
+  moves and resizes update persistence without feeding the stored rectangle
+  back into the running window, preventing decoration-offset drift and initial
+  placement below a smaller screen's work area. Normal close also stores the
+  monitor identity under the QML settings namespace. The next launch prefers
+  that monitor, falls back to geometry intersection when it is unavailable, and
+  does not enable geometry persistence until one-time restoration completes.
+- The root QML palette binds every Basic Control text role to the selected
+  Carnopy theme, including Switch and CheckBox labels. A workspace action
+  rejected only because the capability worker is active clears that transient
+  message when the worker becomes idle; persistent operation errors remain
+  visible.
+- Commits 7 through 10 have not started. In particular, no QML Dataset,
+  Visualization, YAML, validated-save, or public-launcher parity is inferred
+  from the workspace slice. The three dataset-mode cards and Import action are
+  present on the workspace landing but remain disabled until Commit 7 binds the
+  Dataset workflow. Both public launchers remain on Widgets, and Stage 2 remains
+  active until the later implementation, automated gates, native manual
   acceptance, and explicit maintainer approval are complete.
 - Git staging, commits, synchronization with the remote branch, and publication
   remain human-owned and are not implied by this implementation-status record.

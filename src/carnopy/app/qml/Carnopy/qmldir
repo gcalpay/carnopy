@@ -11,6 +11,8 @@ NavRail 1.0 components/NavRail.qml
 ResponsiveCardGrid 1.0 components/ResponsiveCardGrid.qml
 StatusBadge 1.0 components/StatusBadge.qml
 ToastHost 1.0 components/ToastHost.qml
+WorkspaceOperationDialog 1.0 components/WorkspaceOperationDialog.qml
 EmptyStatePage 1.0 pages/EmptyStatePage.qml
 HelpPage 1.0 pages/HelpPage.qml
 SettingsPage 1.0 pages/SettingsPage.qml
+WorkspacePage 1.0 pages/WorkspacePage.qml

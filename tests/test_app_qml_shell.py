@@ -12,6 +12,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QAbstractItemModel, QCoreApplication, QObject, QSettings
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication
 
 from carnopy.app.qml_runtime import QmlApplicationRuntime, create_qml_runtime
@@ -138,6 +139,81 @@ def test_shell_breakpoints_adapt_rail_inspector_and_card_columns_without_mutatin
     assert runtime.warning_capture.runtime_warnings == ()
 
 
+def test_context_inspector_has_two_way_controls_in_the_main_shell(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    settings = runtime.controller.qml_settings
+    settings.set_inspector_collapsed(False)
+    _set_size(root, 1440, 900)
+
+    command_bar = root.findChild(QObject, "documentCommandBar")
+    inspector = root.findChild(QObject, "persistentContextInspector")
+    assert command_bar is not None
+    assert inspector is not None
+    assert command_bar.property("showInspectorButton") is False
+    assert command_bar.property("inspectorOpen") is True
+    assert inspector.property("visible") is True
+    assert inspector.property("closeButtonVisible") is True
+    assert inspector.findChild(QObject, "inspectorCloseButton") is not None
+
+    inspector.closeRequested.emit()
+    _process_events()
+    assert settings.get_inspector_collapsed()
+    assert command_bar.property("showInspectorButton") is True
+    assert command_bar.property("inspectorOpen") is False
+    assert inspector.property("visible") is False
+
+    command_bar.inspectorToggleRequested.emit()
+    _process_events()
+    assert not settings.get_inspector_collapsed()
+    assert command_bar.property("showInspectorButton") is False
+    assert command_bar.property("inspectorOpen") is True
+    assert inspector.property("visible") is True
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_context_inspector_close_button_is_fixed_above_scrollable_content(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    settings = runtime.controller.qml_settings
+    settings.set_inspector_collapsed(False)
+    _set_size(root, 1440, 900)
+    inspector = root.findChild(QObject, "persistentContextInspector")
+    assert inspector is not None
+    close_button = inspector.findChild(QObject, "inspectorCloseButton")
+    assert close_button is not None
+
+    ancestor = close_button.parent()
+    while ancestor is not None and ancestor is not inspector:
+        assert "Flickable" not in ancestor.metaObject().className()
+        ancestor = ancestor.parent()
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_context_inspector_workspace_card_title_is_page_independent(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    settings = runtime.controller.qml_settings
+    settings.set_inspector_collapsed(False)
+    _set_size(root, 1440, 900)
+    inspector = root.findChild(QObject, "persistentContextInspector")
+    assert inspector is not None
+
+    assert root.setProperty("currentPage", "settings")
+    _process_events()
+    assert inspector.property("visible") is True
+    assert inspector.metaObject().indexOfProperty("pageTitle") == -1
+
+    source = (ROOT / "src/carnopy/app/qml/Carnopy/components/ContextInspector.qml").read_text(
+        encoding="utf-8"
+    )
+    assert 'title: qsTr("Workspace")' in source
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
 def test_theme_motion_and_local_pages_bind_to_one_settings_controller(
     runtime: QmlApplicationRuntime,
 ) -> None:
@@ -163,6 +239,29 @@ def test_theme_motion_and_local_pages_bind_to_one_settings_controller(
     assert root.property("effectiveTheme") == "light"
     assert root.property("motionDuration") > 0
     assert root.findChild(QObject, "helpPage") is not None
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_dark_theme_basic_control_labels_use_carnopy_palette(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    settings = runtime.controller.qml_settings
+    settings.set_theme_mode("dark")
+    assert root.setProperty("currentPage", "settings")
+    _process_events()
+
+    for object_name in (
+        "reducedMotionSwitch",
+        "railPreferenceSwitch",
+        "inspectorPreferenceSwitch",
+    ):
+        control = root.findChild(QObject, object_name)
+        assert control is not None
+        content = control.property("contentItem")
+        assert isinstance(content, QObject)
+        assert content.property("color") == QColor("#f0f5f8")
+
     assert runtime.warning_capture.runtime_warnings == ()
 
 

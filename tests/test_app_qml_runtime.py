@@ -12,7 +12,17 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QCoreApplication, QSettings
+from PySide6.QtCore import (
+    QCoreApplication,
+    QEventLoop,
+    QMargins,
+    QPoint,
+    QRect,
+    QSettings,
+    QSize,
+    QTimer,
+)
+from PySide6.QtGui import QWindow
 from PySide6.QtQml import QQmlError
 from PySide6.QtWidgets import QApplication
 
@@ -25,7 +35,9 @@ from carnopy.app.qml_resources import (
     packaged_path,
     verify_packaged_resources,
 )
-from carnopy.app.qml_runtime import QmlWarningCapture, create_qml_runtime
+from carnopy.app.qml_runtime import QmlWarningCapture, create_qml_runtime, fitted_window_frame
+from carnopy.app.qml_settings import NORMAL_SCREEN_KEY
+from carnopy.app.workspace import initialize_workspace
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -67,10 +79,10 @@ def test_private_qml_runtime_loads_one_warning_free_root(
     tmp_path: Path,
 ) -> None:
     settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
-    workspace = tmp_path / "workspace"
+    workspace = initialize_workspace(tmp_path / "workspace")
     runtime = create_qml_runtime(
         settings=settings,
-        initial_workspace=workspace,
+        initial_workspace=workspace.root,
         application_arguments=[],
     )
     roots = runtime.engine.rootObjects()
@@ -80,14 +92,120 @@ def test_private_qml_runtime_loads_one_warning_free_root(
     assert root.property("runtimeReady") is True
     assert root.property("desktopController") is runtime.controller
     assert root.property("qmlSettings") is runtime.controller.qml_settings
-    assert root.property("startupWorkspace") == str(workspace)
+    assert root.property("geometryTrackingReady") is True
+    assert root.property("startupWorkspace") == str(workspace.root)
+    assert runtime.controller.workspace_controller.workspace == workspace
     assert runtime.warning_capture.startup_warnings == ()
     assert runtime.warning_capture.runtime_warnings == ()
     assert QCoreApplication.organizationName() == ORGANIZATION_NAME
     assert QCoreApplication.applicationName() == APPLICATION_NAME
+    if runtime.controller.request_coordinator.is_busy:
+        loop = QEventLoop()
+        runtime.controller.request_coordinator.busy_changed.connect(
+            lambda busy: None if busy else loop.quit()
+        )
+        QTimer.singleShot(15_000, loop.quit)
+        loop.exec()
+    assert not runtime.controller.request_coordinator.is_busy
     assert runtime.close()
     assert runtime._font_ids == []
     application.processEvents()
+
+
+def test_decorated_window_frame_is_fitted_inside_available_screen() -> None:
+    client_size, frame_position = fitted_window_frame(
+        QSize(1440, 900),
+        QMargins(8, 30, 8, 8),
+        QPoint(100, 100),
+        QRect(0, 0, 1366, 768),
+    )
+    assert client_size == QSize(1350, 730)
+    assert frame_position == QPoint(0, 0)
+
+    client_size, frame_position = fitted_window_frame(
+        QSize(1200, 900),
+        QMargins(8, 30, 8, 8),
+        QPoint(4300, 1200),
+        QRect(1920, 0, 2560, 1440),
+    )
+    assert client_size == QSize(1200, 900)
+    assert frame_position == QPoint(3264, 502)
+
+
+def test_persisting_native_geometry_does_not_reposition_the_running_window(
+    application: QApplication,
+    tmp_path: Path,
+) -> None:
+    runtime = create_qml_runtime(
+        settings=QSettings(str(tmp_path / "geometry.ini"), QSettings.Format.IniFormat),
+        application_arguments=[],
+    )
+    root = runtime.engine.rootObjects()[0]
+    original = (
+        root.property("x"),
+        root.property("y"),
+        root.property("width"),
+        root.property("height"),
+    )
+
+    runtime.controller.qml_settings.rememberNormalGeometry(20, 30, 700, 650)
+    application.processEvents()
+
+    assert (
+        root.property("x"),
+        root.property("y"),
+        root.property("width"),
+        root.property("height"),
+    ) == original
+    assert runtime.close()
+
+
+def test_qml_close_event_uses_composition_guard(
+    application: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runtime = create_qml_runtime(
+        settings=QSettings(str(tmp_path / "close.ini"), QSettings.Format.IniFormat),
+        application_arguments=[],
+    )
+    root = runtime.engine.rootObjects()[0]
+    calls: list[object] = []
+    monkeypatch.setattr(
+        runtime.controller,
+        "request_shutdown",
+        lambda: calls.append(object()) or False,
+    )
+
+    root.close()
+    application.processEvents()
+
+    assert len(calls) == 1
+    assert root.property("visible") is True
+    assert runtime.close()
+
+
+def test_qml_close_records_the_last_used_monitor(
+    application: QApplication,
+    tmp_path: Path,
+) -> None:
+    settings = QSettings(str(tmp_path / "monitor.ini"), QSettings.Format.IniFormat)
+    runtime = create_qml_runtime(settings=settings, application_arguments=[])
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QWindow)
+    screen = root.screen()
+    assert screen is not None
+
+    root.close()
+    application.processEvents()
+    settings.sync()
+
+    assert runtime.controller.qml_settings.get_normal_screen_name() == screen.name()
+    if screen.name():
+        assert settings.value(NORMAL_SCREEN_KEY) == screen.name()
+    else:
+        assert NORMAL_SCREEN_KEY not in settings.allKeys()
+    assert runtime.close()
 
 
 def test_qml_warning_capture_distinguishes_startup_and_later_warnings(
@@ -158,4 +276,4 @@ def test_qml_sources_pass_non_writing_qt_tooling() -> None:
         timeout=30,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
-    assert completed.stdout == "QML checks passed for 15 file(s).\n"
+    assert completed.stdout == "QML checks passed for 17 file(s).\n"

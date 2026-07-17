@@ -151,6 +151,130 @@ def test_desktop_shutdown_is_idle_only_and_idempotent(
     assert sync_calls == ["sync"]
 
 
+def test_desktop_workspace_facade_validates_create_name_and_binds_configuration_once(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    activated: list[object] = []
+    monkeypatch.setattr(
+        desktop.dataset_config_controller,
+        "set_workspace",
+        activated.append,
+    )
+    parent = tmp_path / "parent"
+    parent.mkdir()
+
+    for invalid in ("", ".", "..", "nested/name", "nested\\name"):
+        assert not desktop.prepare_create_workspace(str(parent), invalid)
+        assert desktop.workspace_controller.get_pending_operation() == ""
+
+    target = parent / "new-workspace"
+    assert desktop.prepare_create_workspace(str(parent), target.name)
+    assert desktop.get_pending_workspace_path() == str(target.resolve())
+    assert not desktop.get_workspace_confirmation_required()
+    assert desktop.commit_workspace_operation()
+
+    assert desktop.workspace_controller.workspace is not None
+    assert desktop.workspace_controller.workspace.root == target.resolve()
+    assert activated == [desktop.workspace_controller.workspace]
+    assert desktop.get_workspace_state() == "landing"
+    assert desktop.shutdown()
+
+
+def test_desktop_workspace_facade_requires_initialization_confirmation(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    monkeypatch.setattr(desktop.dataset_config_controller, "set_workspace", lambda _value: None)
+    target = tmp_path / "existing"
+    target.mkdir()
+
+    assert desktop.prepare_initialize_workspace(str(target))
+    assert desktop.get_workspace_confirmation_required()
+    assert desktop.get_workspace_confirmation_title() == "Initialize Existing Folder"
+    assert not desktop.commit_workspace_operation()
+    assert not (target / ".carnopy-gui").exists()
+    assert desktop.get_pending_workspace_operation() == "initialize_existing"
+
+    assert desktop.commit_workspace_operation(confirmed=True)
+    assert (target / ".carnopy-gui" / "workspace.json").is_file()
+    assert desktop.shutdown()
+
+
+def test_desktop_workspace_facade_rechecks_dirty_confirmation_before_commit(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    monkeypatch.setattr(desktop.dataset_config_controller, "set_workspace", lambda _value: None)
+    monkeypatch.setattr(
+        desktop.dataset_config_controller,
+        "needs_discard_confirmation",
+        lambda: True,
+    )
+    target = tmp_path / "replacement"
+
+    assert desktop.prepare_create_workspace_path(str(target))
+    assert desktop.get_workspace_confirmation_required()
+    assert "unsaved changes" in desktop.get_workspace_confirmation_message()
+    assert not desktop.commit_workspace_operation()
+    assert desktop.get_pending_workspace_operation() == "create"
+    assert not target.exists()
+
+    assert desktop.commit_workspace_operation(confirmed=True)
+    assert target.is_dir()
+    assert desktop.shutdown()
+
+
+def test_active_plot_edit_blocks_workspace_preflight_commit_and_shutdown(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    target = tmp_path / "workspace"
+    active = QObject()
+    preflight_calls: list[object] = []
+    with monkeypatch.context() as scoped:
+        scoped.setattr(
+            desktop.workspace_controller,
+            "prepare_create",
+            lambda _path: preflight_calls.append(object()) or True,
+        )
+        scoped.setattr(
+            desktop.visualization_draft,
+            "get_active_plot_draft",
+            lambda: active,
+        )
+
+        assert not desktop.prepare_create_workspace_path(str(target))
+        assert preflight_calls == []
+        assert not desktop.get_can_change_workspace()
+        assert "Commit or cancel" in desktop.get_workspace_error_message()
+        assert not desktop.shutdown()
+
+    assert desktop.prepare_create_workspace_path(str(target))
+    with monkeypatch.context() as scoped:
+        scoped.setattr(
+            desktop.visualization_draft,
+            "get_active_plot_draft",
+            lambda: active,
+        )
+        assert not desktop.commit_workspace_operation()
+    assert desktop.get_pending_workspace_operation() == ""
+    assert not target.exists()
+    assert desktop.shutdown()
+
+
 def test_prepare_cancel_replace_and_commit_pending_lifecycle(
     tmp_path: Path,
     application: QCoreApplication,
@@ -198,6 +322,25 @@ def test_busy_rejection_calls_no_workspace_service(
     assert calls == []
     assert not controller.get_can_change_workspace()
     assert "worker request is active" in controller.get_error_message()
+
+    coordinator.set_busy(False)
+
+    assert controller.get_can_change_workspace()
+    assert controller.get_error_message() == ""
+
+
+def test_worker_idle_does_not_clear_persistent_workspace_error(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    controller, coordinator = controller_for(settings_for(tmp_path / "settings.ini"))
+    controller.report_error("Persistent workspace failure")
+
+    coordinator.set_busy(True)
+    coordinator.set_busy(False)
+
+    assert controller.get_error_message() == "Persistent workspace failure"
 
 
 def test_commit_rejects_new_busy_state_and_clears_pending_without_mutation(
