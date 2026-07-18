@@ -22,6 +22,7 @@ from PySide6.QtCore import (
 )
 
 from carnopy.app.desktop_controller import DesktopController
+from carnopy.app.draft_models import DraftItem
 from carnopy.app.request_coordinator import DesktopRequestCoordinator
 from carnopy.app.workspace import initialize_workspace
 from carnopy.app.workspace_controller import (
@@ -272,6 +273,49 @@ def test_active_plot_edit_blocks_workspace_preflight_commit_and_shutdown(
         assert not desktop.commit_workspace_operation()
     assert desktop.get_pending_workspace_operation() == ""
     assert not target.exists()
+    assert desktop.shutdown()
+
+
+def test_dataset_replacement_decisions_are_owned_by_desktop_facade(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    desktop.dataset_draft.mode_choices.replace(
+        DraftItem(value=value, display=value, canonical=value)
+        for value in ("property_table", "saturation_table")
+    )
+    desktop.dataset_draft.coordinate_choices.replace(
+        DraftItem(value=value, display=value, canonical=value)
+        for value in ("temperature", "pressure")
+    )
+    monkeypatch.setattr(desktop.dataset_draft, "get_mode_name", lambda: "property_table")
+    monkeypatch.setattr(desktop.dataset_draft, "get_coordinate_name", lambda: "temperature")
+    applied: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        desktop.dataset_config_controller,
+        "apply_mode_change",
+        lambda value: applied.append(("mode", value)) or True,
+    )
+    monkeypatch.setattr(
+        desktop.dataset_config_controller,
+        "apply_coordinate_change",
+        lambda value: applied.append(("coordinate", value)) or True,
+    )
+    decisions: list[object] = []
+    desktop.datasetDecisionRequested.connect(lambda: decisions.append(object()))
+
+    assert desktop.request_dataset_mode_change("saturation_table")
+    assert desktop.get_dataset_decision_title() == "Change Dataset Mode"
+    assert desktop.commit_dataset_decision(True)
+    assert desktop.request_dataset_coordinate_change("pressure")
+    assert desktop.get_dataset_decision_title() == "Change Sampling Coordinate"
+    assert desktop.commit_dataset_decision(True)
+
+    assert len(decisions) == 2
+    assert applied == [("mode", "saturation_table"), ("coordinate", "pressure")]
     assert desktop.shutdown()
 
 

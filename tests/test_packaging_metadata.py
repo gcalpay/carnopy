@@ -60,6 +60,7 @@ def test_qml_runtime_is_private_and_resources_live_in_the_app_package() -> None:
     app_root = root / "src" / "carnopy" / "app"
     for relative_path in (
         "qml/Carnopy/Main.qml",
+        "qml/Carnopy/pages/DatasetPage.qml",
         "qml/Carnopy/qmldir",
         "resources/third-party-resources.json",
         "resources/branding/carnopy-mark.png",

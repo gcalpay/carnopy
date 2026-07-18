@@ -27,6 +27,10 @@ Item {
     signal createWorkspaceRequested(string parentPath, string childName)
     signal initializeWorkspaceRequested(string path)
     signal openWorkspaceRequested(string path)
+    signal importDatasetRequested(string path)
+    signal newDatasetRequested(string mode)
+    property bool importSelectionAccepted: false
+    property string importSelectionPath: ""
 
     function chooseCreateParent(reopenCreateDialog) {
         reopenCreateDialogAfterFolderSelection = reopenCreateDialog;
@@ -68,6 +72,21 @@ Item {
         });
     }
 
+    function completeImportSelection() {
+        if (!importSelectionAccepted || importConfigurationDialog.visible)
+            return;
+        const path = importSelectionPath;
+        importSelectionAccepted = false;
+        importSelectionPath = "";
+        Qt.callLater(() => {
+            const window = root.Window.window;
+            if (window !== null)
+                window.requestActivate();
+            if (root.controllerAvailable)
+                root.importDatasetRequested(path);
+        });
+    }
+
     Timer {
         id: createParentFolderOpenTimer
 
@@ -81,6 +100,13 @@ Item {
         clip: true
         contentHeight: pageColumn.implicitHeight + 48
         contentWidth: width
+        flickableDirection: Flickable.VerticalFlick
+        objectName: "workspacePageFlickable"
+        pixelAligned: true
+
+        ScrollBar.vertical: ScrollBar {
+            policy: ScrollBar.AsNeeded
+        }
 
         ColumnLayout {
             id: pageColumn
@@ -244,9 +270,16 @@ Item {
                     Layout.preferredHeight: Math.min(220, Math.max(48, contentHeight))
                     boundsBehavior: Flickable.StopAtBounds
                     clip: true
+                    flickableDirection: Flickable.VerticalFlick
+                    interactive: contentHeight > height
                     model: root.controllerAvailable ? root.desktopController.recentWorkspaces : null
                     objectName: "recentWorkspaceList"
+                    pixelAligned: true
                     spacing: Theme.spacingSmall
+
+                    ScrollBar.vertical: ScrollBar {
+                        policy: ScrollBar.AsNeeded
+                    }
 
                     delegate: AppButton {
                         id: recentButton
@@ -280,20 +313,30 @@ Item {
                 visible: root.workspaceState === "landing"
 
                 Repeater {
-                    model: [qsTr("Property table"), qsTr("Saturation table"), qsTr(
-                            "Vapor-mass-fraction table")]
+                    model: root.controllerAvailable
+                           ? root.desktopController.datasetDraft.modeChoices : null
 
                     delegate: Card {
-                        required property string modelData
+                        required property string value
 
                         Layout.fillWidth: true
                         subtitle: qsTr(
-                                      "Dataset editing is activated in the next independently verified Stage 2 slice.")
-                        title: modelData
+                                      "Start from Carnopy's packaged, worker-validated mode template.")
+                        title: {
+                            if (value === "property_table")
+                            return qsTr("Property table");
+                            if (value === "saturation_table")
+                            return qsTr("Saturation table");
+                            return qsTr("Vapor-mass-fraction table");
+                        }
 
                         AppButton {
-                            enabled: false
+                            enabled: root.controllerAvailable
+                                     && root.desktopController.datasetConfigController.canCreate
+                            objectName: "newDatasetButton-" + value
+                            onClicked: root.newDatasetRequested(value)
                             text: qsTr("New Dataset")
+                            tone: "primary"
                         }
                     }
                 }
@@ -307,7 +350,10 @@ Item {
                 visible: root.workspaceState === "landing"
 
                 AppButton {
-                    enabled: false
+                    enabled: root.controllerAvailable
+                             && root.desktopController.datasetConfigController.canImport
+                    objectName: "importDatasetButton"
+                    onClicked: importConfigurationDialog.open()
                     text: qsTr("Import YAML")
                 }
             }
@@ -408,5 +454,25 @@ Item {
             root.openSelectionPath = "";
         }
         onVisibleChanged: root.completeOpenSelection()
+    }
+
+    FileDialog {
+        id: importConfigurationDialog
+
+        fileMode: FileDialog.OpenFile
+        nameFilters: [qsTr("YAML configurations (*.yaml *.yml)")]
+        objectName: "importConfigurationDialog"
+        parentWindow: root.Window.window
+        title: qsTr("Import a dataset configuration")
+        onAccepted: {
+            root.importSelectionPath = selectedFile.toString();
+            root.importSelectionAccepted = true;
+            Qt.callLater(root.completeImportSelection);
+        }
+        onRejected: {
+            root.importSelectionAccepted = false;
+            root.importSelectionPath = "";
+        }
+        onVisibleChanged: root.completeImportSelection()
     }
 }

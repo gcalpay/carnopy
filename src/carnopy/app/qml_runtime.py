@@ -281,6 +281,38 @@ class QmlApplicationRuntime:
             ("workspaceOpenRequested", self.controller.request_open_workspace),
             ("workspaceCommitRequested", self.controller.request_commit_workspace_operation),
             ("workspaceCancelRequested", self.controller.request_cancel_workspace_operation),
+            ("datasetNewRequested", self.controller.request_new_dataset),
+            ("datasetImportRequested", self.controller.request_import_dataset),
+            ("datasetModelChangeRequested", self.controller.request_dataset_model_change),
+            ("datasetFluidAddRequested", self.controller.request_dataset_fluid_add),
+            ("datasetFluidMoveRequested", self.controller.request_dataset_fluid_move),
+            ("datasetFluidRemoveRequested", self.controller.request_dataset_fluid_remove),
+            ("datasetPropertyAddRequested", self.controller.request_dataset_property_add),
+            ("datasetPropertyMoveRequested", self.controller.request_dataset_property_move),
+            ("datasetPropertyRemoveRequested", self.controller.request_dataset_property_remove),
+            (
+                "datasetOutputSelectionRequested",
+                self.controller.request_dataset_output_selection,
+            ),
+            (
+                "datasetSamplerKindChangeRequested",
+                self.controller.request_dataset_sampler_kind_change,
+            ),
+            (
+                "datasetSamplerTextChangeRequested",
+                self.controller.request_dataset_sampler_text_change,
+            ),
+            (
+                "datasetSamplerUnitChangeRequested",
+                self.controller.request_dataset_sampler_unit_change,
+            ),
+            ("datasetModeChangeRequested", self.controller.request_dataset_mode_change),
+            (
+                "datasetCoordinateChangeRequested",
+                self.controller.request_dataset_coordinate_change,
+            ),
+            ("datasetDecisionCommitRequested", self.controller.commit_dataset_decision),
+            ("datasetDecisionCancelRequested", self.controller.cancel_dataset_decision),
             (
                 "normalGeometryRememberRequested",
                 self.controller.qml_settings.rememberNormalGeometry,

@@ -73,7 +73,7 @@ class MainWindow(QMainWindow):
         self.navigation.setFixedWidth(220)
         self.pages = QStackedWidget()
         self.configure_page = DatasetConfigEditor(
-            controller=self.dataset_config_controller,
+            desktop_controller=self.desktop_controller,
         )
         self.execution_page = DatasetExecutionPage(self.coordinator)
         self.inspection_page = InspectionPage(self.coordinator)

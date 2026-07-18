@@ -4,7 +4,25 @@ import math
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from pydantic import ValidationError
 from PySide6.QtCore import Property, QObject, Signal, Slot
+
+from carnopy.app.field_ids import dataset_grid_field
+from carnopy.domain.numbers import stable_number_text
+from carnopy.domain.units import validate_axis_unit
+from carnopy.sampling.canonical import (
+    CanonicalSamplerKey,
+    canonical_sampler_key,
+    convert_sampler_unit,
+)
+from carnopy.sampling.models import (
+    ExplicitSampler,
+    GeomspaceSampler,
+    LinspaceSampler,
+    LogspaceSampler,
+    Sampler,
+    StepspaceSampler,
+)
 
 SAMPLER_FIELDS: dict[str, tuple[str, ...]] = {
     "explicit": ("values",),
@@ -30,11 +48,12 @@ class SamplerDraft(QObject):
     """Keep one sampler's raw editable state outside the presentation layer."""
 
     changed = Signal()
-    kind_changed = Signal()
-    unit_changed = Signal()
-    fields_changed = Signal()
-    available_units_changed = Signal()
-    validity_changed = Signal()
+    kind_changed = Signal(name="kindChanged")
+    unit_changed = Signal(name="unitChanged")
+    fields_changed = Signal(name="fieldsChanged")
+    available_units_changed = Signal(name="availableUnitsChanged")
+    validity_changed = Signal(name="validityChanged")
+    unitChangeRejected = Signal(str, str)
 
     def __init__(self, axis: str, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -46,6 +65,9 @@ class SamplerDraft(QObject):
         self._texts["num"] = "2"
         self._valid = False
         self._issue = ""
+        self._first_invalid_field = ""
+        self._anchor_sampler: Sampler | None = None
+        self._anchor_key: CanonicalSamplerKey | None = None
         self._refresh_validity()
 
     def get_axis(self) -> str:
@@ -62,21 +84,14 @@ class SamplerDraft(QObject):
         self._kind = value
         self.kind_changed.emit()
         self.fields_changed.emit()
-        self._changed()
+        self._changed(update_anchor=True)
 
     kind = Property(str, get_kind, set_kind, notify=kind_changed)
 
     def get_unit(self) -> str:
         return self._unit
 
-    def set_unit(self, value: str) -> None:
-        if value == self._unit:
-            return
-        self._unit = value
-        self.unit_changed.emit()
-        self._changed()
-
-    unit = Property(str, get_unit, set_unit, notify=unit_changed)
+    unit = Property(str, get_unit, notify=unit_changed)
 
     def get_available_units(self) -> list[str]:
         return list(self._available_units)
@@ -92,6 +107,11 @@ class SamplerDraft(QObject):
 
     activeFields = Property(list, get_active_fields, notify=fields_changed)
 
+    def get_available_kinds(self) -> list[str]:
+        return list(SAMPLER_FIELDS)
+
+    availableKinds = Property(list, get_available_kinds, constant=True)
+
     def get_valid(self) -> bool:
         return self._valid
 
@@ -102,17 +122,26 @@ class SamplerDraft(QObject):
 
     issue = Property(str, get_issue, notify=validity_changed)
 
+    def get_first_invalid_field(self) -> str:
+        return self._first_invalid_field
+
+    firstInvalidField = Property(
+        str,
+        get_first_invalid_field,
+        notify=validity_changed,
+    )
+
     @Slot(str, result=str)
     def text(self, field: str) -> str:
         return self._texts.get(field, "")
 
-    @Slot(str, str)
+    @Slot(str, str, name="setText")
     def set_text(self, field: str, value: str) -> None:
         if field not in self._texts or self._texts[field] == value:
             return
         self._texts[field] = value
         self.fields_changed.emit()
-        self._changed()
+        self._changed(update_anchor=True)
 
     def set_available_units(self, values: Sequence[str]) -> None:
         units = tuple(dict.fromkeys(str(value) for value in values if str(value)))
@@ -129,7 +158,8 @@ class SamplerDraft(QObject):
         available_units: Sequence[str],
     ) -> None:
         before = self.raw_state()
-        previous_validity = (self._valid, self._issue)
+        previous_validity = (self._valid, self._issue, self._first_invalid_field)
+        self.clear_anchor()
         self._available_units = tuple(
             dict.fromkeys(str(value) for value in available_units if str(value))
         )
@@ -148,35 +178,21 @@ class SamplerDraft(QObject):
             texts["num"] = str(payload["num"])
         self._texts = texts
         self._refresh_validity(emit=False)
+        self._establish_anchor_if_valid()
         if before != self.raw_state():
             self.kind_changed.emit()
             self.unit_changed.emit()
             self.fields_changed.emit()
             self.available_units_changed.emit()
             self.changed.emit()
-        if previous_validity != (self._valid, self._issue):
+        if previous_validity != (self._valid, self._issue, self._first_invalid_field):
             self.validity_changed.emit()
 
     def payload(self) -> dict[str, Any]:
         issue = self._validation_issue()
         if issue:
             raise ValueError(issue)
-        payload: dict[str, Any] = {"kind": self._kind}
-        if self._kind == "explicit":
-            parts = [part.strip() for part in self._texts["values"].split(",")]
-            payload["values"] = [_finite_float(part, self._axis, "value") for part in parts]
-        else:
-            for name in SAMPLER_FIELDS[self._kind]:
-                if name == "num":
-                    payload[name] = _sample_count(self._texts[name], self._axis)
-                else:
-                    payload[name] = _finite_float(
-                        self._texts[name],
-                        self._axis,
-                        name.replace("_", " "),
-                    )
-        payload["unit"] = self._unit
-        return payload
+        return self._payload_without_validation()
 
     def raw_state(self) -> tuple[object, ...]:
         return (
@@ -186,31 +202,107 @@ class SamplerDraft(QObject):
             tuple((name, self._texts[name]) for name in SAMPLER_FIELDS[self._kind]),
         )
 
-    def _changed(self) -> None:
+    @Slot(str, result=bool)
+    def requestUnitChange(self, target_unit: str) -> bool:
+        """Atomically express the anchored sampler in another compatible unit."""
+
+        target = target_unit.strip()
+        if target == self._unit:
+            return True
+        field, issue = self._validation_result()
+        if issue:
+            self.unitChangeRejected.emit(
+                self._field_id(field),
+                "Complete the current sampler before changing its unit.",
+            )
+            return False
+        if target not in self._available_units:
+            self.unitChangeRejected.emit(
+                self._field_id("unit"),
+                f"Unit {target!r} is not available for {self._axis}.",
+            )
+            return False
+        try:
+            validate_axis_unit(self._axis, target)
+        except ValueError as exc:
+            self.unitChangeRejected.emit(self._field_id("unit"), str(exc))
+            return False
+        anchor = self._anchor_sampler
+        anchor_key = self._anchor_key
+        if anchor is None or anchor_key is None:
+            self.unitChangeRejected.emit(
+                self._field_id("unit"),
+                "This sampler has no valid conversion anchor.",
+            )
+            return False
+        try:
+            candidate = convert_sampler_unit(self._axis, anchor, target)
+            candidate_key = canonical_sampler_key(self._axis, candidate)
+        except (TypeError, ValueError, ValidationError) as exc:
+            self.unitChangeRejected.emit(self._field_id("unit"), str(exc))
+            return False
+        if candidate_key != anchor_key:
+            self.unitChangeRejected.emit(
+                self._field_id("unit"),
+                "The target unit cannot exactly preserve this sampler's canonical identity.",
+            )
+            return False
+        candidate = _compact_exact_representation(self._axis, candidate, anchor_key)
+
+        before_validity = (self._valid, self._issue, self._first_invalid_field)
+        self._unit = target
+        self._apply_sampler_text(candidate)
+        self._refresh_validity(emit=False)
+        self.unit_changed.emit()
+        self.fields_changed.emit()
+        if before_validity != (self._valid, self._issue, self._first_invalid_field):
+            self.validity_changed.emit()
+        self.changed.emit()
+        return True
+
+    def clear_anchor(self) -> None:
+        self._anchor_sampler = None
+        self._anchor_key = None
+
+    def _changed(self, *, update_anchor: bool) -> None:
         self._refresh_validity()
+        if update_anchor:
+            self._establish_anchor_if_valid()
         self.changed.emit()
 
     def _refresh_validity(self, *, emit: bool = True) -> None:
-        issue = self._validation_issue()
+        field, issue = self._validation_result()
         valid = not issue
-        changed = (valid, issue) != (self._valid, self._issue)
+        first_invalid_field = self._field_id(field) if issue else ""
+        changed = (valid, issue, first_invalid_field) != (
+            self._valid,
+            self._issue,
+            self._first_invalid_field,
+        )
         self._valid = valid
         self._issue = issue
+        self._first_invalid_field = first_invalid_field
         if emit and changed:
             self.validity_changed.emit()
 
     def _validation_issue(self) -> str:
+        return self._validation_result()[1]
+
+    def _validation_result(self) -> tuple[str, str]:
         if self._kind not in SAMPLER_FIELDS:
-            return f"{self._axis} uses an unsupported sampler kind"
+            return "kind", f"{self._axis} uses an unsupported sampler kind"
         if not self._unit:
-            return f"{self._axis} requires a unit"
+            return "unit", f"{self._axis} requires a unit"
         if self._available_units and self._unit not in self._available_units:
-            return f"{self._axis} unit {self._unit!r} is not available"
+            return "unit", f"{self._axis} unit {self._unit!r} is not available"
         try:
             if self._kind == "explicit":
                 parts = [part.strip() for part in self._texts["values"].split(",")]
                 if not parts or any(not part for part in parts):
-                    return f"{self._axis} explicit sampler requires comma-separated values"
+                    return (
+                        "values",
+                        f"{self._axis} explicit sampler requires comma-separated values",
+                    )
                 for part in parts:
                     _finite_float(part, self._axis, "value")
             else:
@@ -224,8 +316,69 @@ class SamplerDraft(QObject):
                             name.replace("_", " "),
                         )
         except ValueError as exc:
-            return str(exc)
-        return ""
+            field = "values" if self._kind == "explicit" else name
+            return field, str(exc)
+        try:
+            sampler = self._sampler_model()
+            canonical_sampler_key(self._axis, sampler)
+        except ValidationError as exc:
+            error = exc.errors(include_url=False)[0]
+            location = error.get("loc", ())
+            field = str(location[-1]) if location else SAMPLER_FIELDS[self._kind][0]
+            return field, str(error.get("msg", "invalid sampler"))
+        except (TypeError, ValueError) as exc:
+            return SAMPLER_FIELDS[self._kind][0], str(exc)
+        return "", ""
+
+    def _sampler_model(self) -> Sampler:
+        payload = self._payload_without_validation()
+        kind = self._kind
+        if kind == "explicit":
+            return ExplicitSampler.model_validate(payload)
+        if kind == "linspace":
+            return LinspaceSampler.model_validate(payload)
+        if kind == "stepspace":
+            return StepspaceSampler.model_validate(payload)
+        if kind == "geomspace":
+            return GeomspaceSampler.model_validate(payload)
+        if kind == "logspace":
+            return LogspaceSampler.model_validate(payload)
+        raise ValueError(f"unsupported sampler kind: {kind}")
+
+    def _payload_without_validation(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {"kind": self._kind}
+        if self._kind == "explicit":
+            parts = [part.strip() for part in self._texts["values"].split(",")]
+            payload["values"] = [_finite_float(part, self._axis, "value") for part in parts]
+        else:
+            for name in SAMPLER_FIELDS[self._kind]:
+                if name == "num":
+                    payload[name] = _sample_count(self._texts[name], self._axis)
+                else:
+                    payload[name] = _finite_float(
+                        self._texts[name], self._axis, name.replace("_", " ")
+                    )
+        payload["unit"] = self._unit
+        return payload
+
+    def _establish_anchor_if_valid(self) -> None:
+        if not self._valid:
+            return
+        sampler = self._sampler_model()
+        self._anchor_sampler = sampler.model_copy(deep=True)
+        self._anchor_key = canonical_sampler_key(self._axis, sampler)
+
+    def _apply_sampler_text(self, sampler: Sampler) -> None:
+        payload = sampler.model_dump(mode="python")
+        if isinstance(sampler, ExplicitSampler):
+            self._texts["values"] = ", ".join(stable_number_text(value) for value in sampler.values)
+            return
+        for name in SAMPLER_FIELDS[sampler.kind]:
+            value = payload[name]
+            self._texts[name] = str(value) if name == "num" else stable_number_text(float(value))
+
+    def _field_id(self, field: str) -> str:
+        return dataset_grid_field(self._axis, field)
 
 
 def _finite_float(text: str, axis: str, field: str) -> float:
@@ -236,6 +389,64 @@ def _finite_float(text: str, axis: str, field: str) -> float:
     if not math.isfinite(value):
         raise ValueError(f"{axis} {field} must be finite")
     return value
+
+
+def _compact_exact_representation(
+    axis: str,
+    sampler: Sampler,
+    anchor_key: CanonicalSamplerKey,
+) -> Sampler:
+    """Choose shorter decimal fields only when exact identity still holds."""
+
+    compacted = sampler
+    if isinstance(compacted, ExplicitSampler):
+        values = list(compacted.values)
+        for index, value in enumerate(values):
+            for candidate_value in _shorter_binary64_candidates(value):
+                candidate_values = [*values]
+                candidate_values[index] = candidate_value
+                explicit_candidate = compacted.model_copy(update={"values": candidate_values})
+                if _has_canonical_key(axis, explicit_candidate, anchor_key):
+                    compacted = explicit_candidate
+                    values = candidate_values
+                    break
+        return compacted
+
+    payload = compacted.model_dump(mode="python")
+    for name in SAMPLER_FIELDS[compacted.kind]:
+        if name == "num":
+            continue
+        value = float(payload[name])
+        for candidate_value in _shorter_binary64_candidates(value):
+            compact_candidate = compacted.model_copy(update={name: candidate_value})
+            if _has_canonical_key(axis, compact_candidate, anchor_key):
+                compacted = compact_candidate
+                payload[name] = candidate_value
+                break
+    return compacted
+
+
+def _shorter_binary64_candidates(value: float) -> tuple[float, ...]:
+    stable = stable_number_text(value)
+    candidates: list[float] = []
+    for significant_digits in range(1, 15):
+        candidate = float(format(value, f".{significant_digits}g"))
+        if stable_number_text(candidate) == stable:
+            break
+        if candidate not in candidates:
+            candidates.append(candidate)
+    return tuple(candidates)
+
+
+def _has_canonical_key(
+    axis: str,
+    sampler: Sampler,
+    anchor_key: CanonicalSamplerKey,
+) -> bool:
+    try:
+        return canonical_sampler_key(axis, sampler) == anchor_key
+    except (TypeError, ValueError, ValidationError):
+        return False
 
 
 def _sample_count(text: str, axis: str) -> int:
@@ -253,4 +464,4 @@ def _sample_count(text: str, axis: str) -> int:
 
 
 def _number_text(value: object) -> str:
-    return format(float(str(value)), ".15g")
+    return stable_number_text(float(str(value)))

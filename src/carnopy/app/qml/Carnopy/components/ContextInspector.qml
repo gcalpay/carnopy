@@ -7,6 +7,8 @@ Control {
     id: root
 
     property bool closeButtonVisible: false
+    property bool datasetValid: false
+    property string datasetIssue: ""
     property string workspacePath: ""
     property string workspaceState: "unavailable"
 
@@ -56,6 +58,12 @@ Control {
             clip: true
             contentHeight: inspectorColumn.implicitHeight
             contentWidth: width
+            flickableDirection: Flickable.VerticalFlick
+            pixelAligned: true
+
+            ScrollBar.vertical: ScrollBar {
+                policy: ScrollBar.AsNeeded
+            }
 
             ColumnLayout {
                 id: inspectorColumn
@@ -129,8 +137,28 @@ Control {
 
                 Card {
                     Layout.fillWidth: true
+                    subtitle: root.workspaceState !== "editing" ? qsTr(
+                                                                      "Open a configuration to see Dataset validation.") :
+                                                                  (root.datasetValid ? qsTr(
+                                                                                           "All Dataset fields are locally complete. Worker validation still runs before Save.") :
+                                                                                       root.datasetIssue)
+                    title: qsTr("Dataset validation")
+
+                    StatusBadge {
+                        label: root.workspaceState !== "editing" ? qsTr("Not available") : (
+                                                                       root.datasetValid ? qsTr(
+                                                                                               "Locally complete") :
+                                                                                           qsTr("Needs attention"))
+                        tone: root.workspaceState !== "editing" ? "neutral" : (root.datasetValid
+                                                                               ? "success" :
+                                                                                 "danger")
+                    }
+                }
+
+                Card {
+                    Layout.fillWidth: true
                     subtitle: qsTr(
-                                  "Dataset cards and safe unit changes are the next independently verified implementation commit.")
+                                  "Guarded inline Visualization editing is the next independently verified implementation commit.")
                     title: qsTr("Next implementation step")
                 }
 

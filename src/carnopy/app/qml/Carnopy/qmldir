@@ -2,6 +2,7 @@ module Carnopy
 singleton Theme 1.0 Theme.qml
 Main 1.0 Main.qml
 AppButton 1.0 components/AppButton.qml
+AppComboBox 1.0 components/AppComboBox.qml
 AppIcon 1.0 components/AppIcon.qml
 Card 1.0 components/Card.qml
 CommandBar 1.0 components/CommandBar.qml
@@ -12,7 +13,11 @@ ResponsiveCardGrid 1.0 components/ResponsiveCardGrid.qml
 StatusBadge 1.0 components/StatusBadge.qml
 ToastHost 1.0 components/ToastHost.qml
 WorkspaceOperationDialog 1.0 components/WorkspaceOperationDialog.qml
+ChoiceList 1.0 components/ChoiceList.qml
+SamplerEditor 1.0 components/SamplerEditor.qml
+ValidationIssue 1.0 components/ValidationIssue.qml
 EmptyStatePage 1.0 pages/EmptyStatePage.qml
 HelpPage 1.0 pages/HelpPage.qml
 SettingsPage 1.0 pages/SettingsPage.qml
 WorkspacePage 1.0 pages/WorkspacePage.qml
+DatasetPage 1.0 pages/DatasetPage.qml

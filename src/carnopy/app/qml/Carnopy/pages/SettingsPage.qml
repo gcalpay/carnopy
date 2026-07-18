@@ -16,6 +16,13 @@ Item {
         clip: true
         contentHeight: pageColumn.implicitHeight + 48
         contentWidth: width
+        flickableDirection: Flickable.VerticalFlick
+        objectName: "settingsPageFlickable"
+        pixelAligned: true
+
+        ScrollBar.vertical: ScrollBar {
+            policy: ScrollBar.AsNeeded
+        }
 
         ColumnLayout {
             id: pageColumn
@@ -112,8 +119,10 @@ Item {
 
             Card {
                 Layout.fillWidth: true
-                subtitle: qsTr(
-                              "Transitions remain interruptible. Reduced motion removes nonessential duration without delaying controls.")
+                objectName: "motionPreferenceCard"
+                subtitle: root.qmlSettings !== null && root.qmlSettings.reducedMotion ? qsTr(
+                                                                                            "Reduced motion is active. Subsequent control and notification transitions are immediate; scrolling remains direct.") :
+                                                                                        qsTr("Standard motion is active. Brief control and notification transitions remain interruptible; scrolling remains direct.")
                 title: qsTr("Motion and accessibility")
 
                 Switch {

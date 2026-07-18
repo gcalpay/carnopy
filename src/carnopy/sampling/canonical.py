@@ -139,6 +139,71 @@ def canonical_sampler_key(axis: str, sampler: Sampler) -> CanonicalSamplerKey:
     )
 
 
+def convert_sampler_unit(axis: str, sampler: Sampler, target_unit: str) -> Sampler:
+    """Return an exact-key candidate expressed in ``target_unit``.
+
+    This is a lightweight definition transformation.  It never materializes a
+    sampling grid; callers must still compare canonical keys before accepting
+    the returned representation.
+    """
+
+    target = validate_axis_unit(axis, target_unit)
+    canonical = canonicalize_sampler(axis, sampler)
+    context = canonical_decimal_context()
+    scale = decimal_from_binary64(target.scale)
+    offset = decimal_from_binary64(target.offset)
+
+    if isinstance(canonical, ExplicitSampler):
+        return ExplicitSampler(
+            kind="explicit",
+            values=[_from_si(context, value, scale, offset) for value in canonical.values],
+            unit=target_unit,
+        )
+    if isinstance(canonical, LinspaceSampler):
+        return LinspaceSampler(
+            kind="linspace",
+            start=_from_si(context, canonical.start, scale, offset),
+            stop=_from_si(context, canonical.stop, scale, offset),
+            num=canonical.num,
+            unit=target_unit,
+        )
+    if isinstance(canonical, StepspaceSampler):
+        return StepspaceSampler(
+            kind="stepspace",
+            start=_from_si(context, canonical.start, scale, offset),
+            stop=_from_si(context, canonical.stop, scale, offset),
+            step=_unscale(context, canonical.step, scale),
+            unit=target_unit,
+        )
+    if isinstance(canonical, GeomspaceSampler):
+        if target.offset != 0.0:
+            raise ValueError("geomspace unit changes require scale-only units")
+        return GeomspaceSampler(
+            kind="geomspace",
+            start=_from_si(context, canonical.start, scale, offset),
+            stop=_from_si(context, canonical.stop, scale, offset),
+            num=canonical.num,
+            unit=target_unit,
+        )
+    if isinstance(canonical, LogspaceSampler):
+        if target.offset != 0.0:
+            raise ValueError("logspace unit changes require scale-only units")
+        shift = _logspace_shift(context, scale, canonical.base)
+        return LogspaceSampler(
+            kind="logspace",
+            start_exp=binary64_from_decimal(
+                context.subtract(decimal_from_binary64(canonical.start_exp), shift)
+            ),
+            stop_exp=binary64_from_decimal(
+                context.subtract(decimal_from_binary64(canonical.stop_exp), shift)
+            ),
+            num=canonical.num,
+            base=canonical.base,
+            unit=target_unit,
+        )
+    raise TypeError(f"unsupported sampler type: {type(canonical).__name__}")
+
+
 def _validate_supported_combination(
     axis: str,
     sampler: Sampler,
@@ -164,6 +229,21 @@ def _to_si(
 
 def _scale_only(context: Context, value: float, scale: Decimal) -> float:
     return binary64_from_decimal(context.multiply(decimal_from_binary64(value), scale))
+
+
+def _from_si(
+    context: Context,
+    value: float,
+    scale: Decimal,
+    offset: Decimal,
+) -> float:
+    return binary64_from_decimal(
+        context.divide(context.subtract(decimal_from_binary64(value), offset), scale)
+    )
+
+
+def _unscale(context: Context, value: float, scale: Decimal) -> float:
+    return binary64_from_decimal(context.divide(decimal_from_binary64(value), scale))
 
 
 def _logspace_shift(context: Context, scale: Decimal, base: float) -> Decimal:

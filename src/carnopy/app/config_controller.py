@@ -111,6 +111,31 @@ class DatasetConfigController(QObject):
 
     yamlPreview = Property(str, get_yaml_preview, notify=state_changed)
 
+    def get_first_invalid_field(self) -> str:
+        if not self.dataset_draft.get_locally_valid():
+            return self.dataset_draft.get_first_invalid_field()
+        if not self.visualization_draft.get_locally_valid():
+            return "visualization.plots"
+        return ""
+
+    firstInvalidField = Property(str, get_first_invalid_field, notify=state_changed)
+
+    def get_first_invalid_row(self) -> int:
+        if not self.dataset_draft.get_locally_valid():
+            return self.dataset_draft.get_first_invalid_row()
+        return -1
+
+    firstInvalidRow = Property(int, get_first_invalid_row, notify=state_changed)
+
+    def get_first_invalid_issue(self) -> str:
+        if not self.dataset_draft.get_locally_valid():
+            return self.dataset_draft.get_issue()
+        if not self.visualization_draft.get_locally_valid():
+            return self.visualization_draft.get_issue()
+        return ""
+
+    firstInvalidIssue = Property(str, get_first_invalid_issue, notify=state_changed)
+
     def get_file_display(self) -> str:
         return self._file_display
 
@@ -301,6 +326,11 @@ class DatasetConfigController(QObject):
             self._syncing_document = False
         self._refresh_document()
         return changed
+
+    def apply_coordinate_change(self, selected: str) -> bool:
+        if self.document is None:
+            return False
+        return self.dataset_draft.set_coordinate(selected)
 
     def open_document(self, document: DatasetConfigDocument) -> None:
         self.document = document

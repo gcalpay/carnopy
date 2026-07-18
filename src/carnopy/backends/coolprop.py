@@ -53,6 +53,12 @@ class CoolPropBackend:
         return aliases
 
     def list_fluids(self) -> list[str]:
+        if self.model == "heos":
+            # CoolProp's compiled fluid registry is the HEOS registry.  Avoid
+            # constructing one AbstractState per fluid merely to rediscover it;
+            # selected fluids are still instantiated during canonicalization
+            # and worker-authoritative validation.
+            return self._all_fluids()
         fluids: list[str] = []
         for fluid in self._all_fluids():
             try:

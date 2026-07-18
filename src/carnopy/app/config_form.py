@@ -156,9 +156,9 @@ class DatasetConfigForm(QWidget):
         body_layout.addLayout(output_row)
         body_layout.addStretch(1)
 
-        self.model.currentTextChanged.connect(draft.set_model_name)
-        self.mode.currentTextChanged.connect(draft.request_mode_change)
-        self.coordinate.currentTextChanged.connect(self._coordinate_requested)
+        self.model.activated.connect(self._model_requested)
+        self.mode.activated.connect(self._mode_requested)
+        self.coordinate.activated.connect(self._coordinate_requested)
         self.fluid_input.currentTextChanged.connect(self._fluid_text_changed)
         self.csv_output.toggled.connect(lambda selected: draft.set_output_selected("csv", selected))
         self.parquet_output.toggled.connect(
@@ -246,9 +246,13 @@ class DatasetConfigForm(QWidget):
                 self.parquet_output,
             )
         ]
-        self.model.setCurrentText(self.draft.get_model_name())
-        self.mode.setCurrentText(self.draft.get_mode_name())
-        self.coordinate.setCurrentText(self.draft.get_coordinate_name())
+        self.model.setCurrentIndex(
+            self.model.findData(self.draft.get_model_name(), role=VALUE_ROLE)
+        )
+        self.mode.setCurrentIndex(self.mode.findData(self.draft.get_mode_name(), role=VALUE_ROLE))
+        self.coordinate.setCurrentIndex(
+            self.coordinate.findData(self.draft.get_coordinate_name(), role=VALUE_ROLE)
+        )
         self.csv_output.setChecked(self.draft.output_selected("csv"))
         self.parquet_output.setChecked(self.draft.output_selected("parquet"))
         visible = self.draft.get_mode_name() != "property_table"
@@ -270,9 +274,20 @@ class DatasetConfigForm(QWidget):
             self.grid_layout.addWidget(editor)
             self._sampler_editors[sampler.get_axis()] = editor
 
-    def _coordinate_requested(self, axis: str) -> None:
-        if self.draft.set_coordinate(axis):
-            self.coordinate_change_requested.emit(axis)
+    def _mode_requested(self, index: int) -> None:
+        value = self.mode.itemData(index, VALUE_ROLE)
+        if isinstance(value, str):
+            self.draft.request_mode_change(value)
+
+    def _coordinate_requested(self, index: int) -> None:
+        value = self.coordinate.itemData(index, VALUE_ROLE)
+        if isinstance(value, str) and value != self.draft.get_coordinate_name():
+            self.coordinate_change_requested.emit(value)
+
+    def _model_requested(self, index: int) -> None:
+        value = self.model.itemData(index, VALUE_ROLE)
+        if isinstance(value, str):
+            self.draft.set_model_name(value)
 
     def _add_fluid(self) -> None:
         self.draft.add_fluid(self.fluid_input.currentText())

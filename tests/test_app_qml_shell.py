@@ -87,13 +87,14 @@ def test_shell_uses_exact_navigation_order_and_disables_future_workflows(
     )
     assert tuple(
         model.data(model.index(row, 0), available_role) for row in range(model.rowCount())
-    ) == (True, False, False, False, False, False, False, False, False, False)
-
+    ) == (True, True, False, False, False, False, False, False, False, False)
     nav_source = (ROOT / "src/carnopy/app/qml/Carnopy/components/NavRail.qml").read_text(
         encoding="utf-8"
     )
-    assert "activeFocusOnTab: available" in nav_source
-    assert "enabled: available" in nav_source
+    assert "activeFocusOnTab: effectivelyAvailable" in nav_source
+    assert "enabled: effectivelyAvailable" in nav_source
+    assert 'pageKey !== "dataset"' in nav_source
+    assert "root.datasetAvailable" in nav_source
     assert root.property("hasFake3dViewport") is False
 
 
@@ -239,6 +240,38 @@ def test_theme_motion_and_local_pages_bind_to_one_settings_controller(
     assert root.property("effectiveTheme") == "light"
     assert root.property("motionDuration") > 0
     assert root.findChild(QObject, "helpPage") is not None
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_page_scrolling_avoids_layout_animation_and_reports_motion_mode(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    settings = runtime.controller.qml_settings
+
+    workspace_flickable = root.findChild(QObject, "workspacePageFlickable")
+    assert workspace_flickable is not None
+    assert workspace_flickable.property("pixelAligned") is True
+
+    assert root.setProperty("currentPage", "settings")
+    _process_events()
+    settings_flickable = root.findChild(QObject, "settingsPageFlickable")
+    motion_card = root.findChild(QObject, "motionPreferenceCard")
+    assert settings_flickable is not None
+    assert settings_flickable.property("pixelAligned") is True
+    assert motion_card is not None
+
+    settings.set_reduced_motion(False)
+    _process_events()
+    assert "Standard motion is active" in motion_card.property("subtitle")
+    settings.set_reduced_motion(True)
+    _process_events()
+    assert "Reduced motion is active" in motion_card.property("subtitle")
+
+    navigation_source = (ROOT / "src/carnopy/app/qml/Carnopy/components/NavRail.qml").read_text(
+        encoding="utf-8"
+    )
+    assert "Behavior on implicitWidth" not in navigation_source
     assert runtime.warning_capture.runtime_warnings == ()
 
 

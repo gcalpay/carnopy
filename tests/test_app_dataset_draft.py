@@ -60,6 +60,15 @@ def capabilities() -> dict[str, Any]:
             {"name": "surface_tension", "supported_models": ["heos"]},
         ],
         "reference_dependent_fields": ["specific_enthalpy"],
+        "reference_state": {
+            "policy": "coolprop_DEF",
+            "display": "CoolProp DEF",
+            "description": (
+                "CoolProp's factory reference state is reset before generation and is not "
+                "changed while rows are evaluated."
+            ),
+            "user_selectable": False,
+        },
     }
 
 
@@ -280,6 +289,27 @@ def test_model_change_retains_incompatible_property_and_blocks_payload(
     assert not choice.flags() & Qt.ItemFlag.ItemIsEnabled
 
 
+def test_model_choices_use_scientific_display_names_and_stable_values(
+    application: QCoreApplication,
+) -> None:
+    del application
+    draft = configured_draft()
+
+    observed = [
+        (
+            draft.model_choices.index(row, 0).data(VALUE_ROLE),
+            draft.model_choices.index(row, 0).data(DISPLAY_ROLE),
+        )
+        for row in range(draft.model_choices.rowCount())
+    ]
+
+    assert observed == [
+        ("heos", "Helmholtz Equation of State (HEOS)"),
+        ("pr", "Peng-Robinson (PR)"),
+        ("srk", "Soave-Redlich-Kwong (SRK)"),
+    ]
+
+
 def test_mode_request_is_provisional_and_apply_resets_only_mode_state(
     application: QCoreApplication,
 ) -> None:
@@ -314,10 +344,27 @@ def test_coordinate_change_preserves_vapor_fraction_sampler(
 
     assert draft.get_coordinate_name() == "pressure"
     assert draft.sampler("temperature") is None
-    assert draft.sampler("pressure") is not None
+    pressure = draft.sampler("pressure")
+    assert pressure is not None
+    assert pressure.raw_state() == (
+        "pressure",
+        "explicit",
+        "Pa",
+        (("values", "101325"),),
+    )
     retained = draft.sampler("vapor_mass_fraction")
     assert retained is vapor
     assert retained.raw_state() == vapor_state
+
+    assert draft.set_coordinate("temperature")
+    temperature = draft.sampler("temperature")
+    assert temperature is not None
+    assert temperature.raw_state() == (
+        "temperature",
+        "explicit",
+        "K",
+        (("values", "293.15"),),
+    )
 
 
 def test_reference_advisory_comes_from_capabilities(
@@ -326,7 +373,10 @@ def test_reference_advisory_comes_from_capabilities(
     del application
     draft = configured_draft(dataset_payload(properties=["specific_enthalpy"]))
 
-    assert "Reference-state advisory" in draft.get_reference_advisory()
+    advisory = draft.get_reference_advisory()
+    assert "Reference state: CoolProp DEF" in advisory
+    assert "factory reference state is reset before generation" in advisory
+    assert "backend, model, version" in advisory
 
     payload = capabilities()
     payload["reference_dependent_fields"] = []
@@ -334,6 +384,25 @@ def test_reference_advisory_comes_from_capabilities(
     without_advisory.apply_capabilities(payload)
     without_advisory.load_payload(dataset_payload(properties=["specific_enthalpy"]))
     assert without_advisory.get_reference_advisory() == ""
+
+
+def test_mode_and_coordinate_choices_have_human_readable_labels(
+    application: QCoreApplication,
+) -> None:
+    del application
+    draft = configured_draft()
+
+    assert [
+        draft.mode_choices.data(draft.mode_choices.index(row, 0), DISPLAY_ROLE)
+        for row in range(draft.mode_choices.rowCount())
+    ] == ["Property table", "Saturation table", "Vapor-mass-fraction table"]
+    assert [
+        draft.coordinate_choices.data(
+            draft.coordinate_choices.index(row, 0),
+            DISPLAY_ROLE,
+        )
+        for row in range(draft.coordinate_choices.rowCount())
+    ] == ["Temperature", "Pressure"]
 
 
 def test_change_signals_emit_only_for_effective_changes(
@@ -385,3 +454,63 @@ for name in (
     )
 
     assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
+def test_structured_first_invalid_field_and_row_follow_authoritative_order(
+    application: QCoreApplication,
+) -> None:
+    del application
+    draft = configured_draft(dataset_payload(properties=["surface_tension"]))
+    draft.set_model_name("pr")
+
+    assert draft.get_first_invalid_field() == "dataset.properties"
+    assert draft.get_first_invalid_row() == 0
+
+    draft.remove_property(0)
+    assert draft.get_first_invalid_field() == "dataset.properties"
+    assert draft.get_first_invalid_row() == -1
+
+    pressure = draft.sampler("pressure")
+    assert pressure is not None
+    pressure.set_text("values", "")
+    assert draft.get_first_invalid_field() == "dataset.grid.pressure.values"
+    assert draft.get_first_invalid_row() == -1
+
+
+def test_rejected_unit_change_does_not_change_dataset_dirty_state(
+    application: QCoreApplication,
+) -> None:
+    del application
+    payload = dataset_payload()
+    grid = payload["grid"]
+    assert isinstance(grid, dict)
+    grid["temperature"] = {
+        "kind": "explicit",
+        "values": [0.0072992700729927],
+        "unit": "K",
+    }
+    draft = configured_draft(payload)
+    temperature = draft.sampler("temperature")
+    assert temperature is not None
+    before = draft.raw_state()
+
+    assert not temperature.requestUnitChange("degC")
+
+    assert draft.raw_state() == before
+    assert not draft.get_dirty()
+    assert draft.get_locally_valid()
+
+
+def test_destructive_dataset_methods_are_not_qml_invokable(
+    application: QCoreApplication,
+) -> None:
+    del application
+    draft = configured_draft()
+    meta = draft.metaObject()
+    methods = {
+        bytes(meta.method(index).name()).decode("utf-8")
+        for index in range(meta.methodOffset(), meta.methodCount())
+    }
+
+    assert "apply_mode_change" not in methods
+    assert "set_coordinate" not in methods

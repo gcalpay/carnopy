@@ -148,6 +148,7 @@ def test_window_uses_one_shared_request_coordinator(
     assert window.dataset_config_controller is window.desktop_controller.dataset_config_controller
     assert window.coordinator.client is window.client
     assert window.configure_page.controller is window.dataset_config_controller
+    assert window.configure_page.desktop_controller is window.desktop_controller
     assert window.configure_page.coordinator is window.coordinator
     assert window.configure_page.dataset_draft is window.desktop_controller.dataset_draft
     assert (

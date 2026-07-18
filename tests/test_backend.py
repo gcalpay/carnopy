@@ -13,6 +13,19 @@ def test_backend_lists_and_canonicalizes_fluids() -> None:
     assert backend.canonicalize_fluid("R290") == "n-Propane"
 
 
+def test_heos_fluid_listing_uses_compiled_registry_without_state_probes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected = sorted(str(fluid) for fluid in CP.FluidsList())
+
+    def unexpected_state_probe(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("HEOS capability discovery must not instantiate every fluid")
+
+    monkeypatch.setattr(CP, "AbstractState", unexpected_state_probe)
+
+    assert CoolPropBackend(model="heos").list_fluids() == expected
+
+
 def test_cubic_backend_lists_only_model_supported_fluids() -> None:
     backend = CoolPropBackend(model="pr")
     assert "n-Propane" in backend.list_fluids()

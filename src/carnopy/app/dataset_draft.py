@@ -13,6 +13,14 @@ from carnopy.app.draft_models import (
     DraftListModel,
     SamplerDraftModel,
 )
+from carnopy.app.field_ids import (
+    DATASET_FLUIDS,
+    DATASET_MODE,
+    DATASET_MODEL,
+    DATASET_OUTPUT_FORMATS,
+    DATASET_PROPERTIES,
+    dataset_grid_field,
+)
 from carnopy.app.sampler_draft import SamplerDraft
 from carnopy.templates import template_text
 
@@ -26,6 +34,21 @@ DATASET_OWNED_FIELDS = (
     "properties",
     "outputs",
 )
+
+MODEL_DISPLAY_NAMES = {
+    "heos": "Helmholtz Equation of State (HEOS)",
+    "pr": "Peng-Robinson (PR)",
+    "srk": "Soave-Redlich-Kwong (SRK)",
+}
+MODE_DISPLAY_NAMES = {
+    "property_table": "Property table",
+    "saturation_table": "Saturation table",
+    "vapor_mass_fraction_table": "Vapor-mass-fraction table",
+}
+COORDINATE_DISPLAY_NAMES = {
+    "temperature": "Temperature",
+    "pressure": "Pressure",
+}
 
 
 class DatasetDraft(QObject):
@@ -61,6 +84,8 @@ class DatasetDraft(QObject):
         self._fluid_choice_values: tuple[tuple[str, str], ...] = ()
         self._property_catalog: dict[str, dict[str, Any]] = {}
         self._reference_fields: frozenset[str] = frozenset()
+        self._reference_state_display = ""
+        self._reference_state_description = ""
         self._loaded = False
         self._model_name = ""
         self._mode_name = ""
@@ -73,13 +98,15 @@ class DatasetDraft(QObject):
         self._baseline_raw: tuple[object, ...] | None = None
         self._valid = False
         self._issue = "No dataset configuration is open."
+        self._first_invalid_field = ""
+        self._first_invalid_row = -1
         self._dirty = False
         self._reference_advisory = ""
 
     def get_model_name(self) -> str:
         return self._model_name
 
-    @Slot(str)
+    @Slot(str, name="setModelName")
     def set_model_name(self, value: str) -> None:
         if not self._loaded or value not in self._models or value == self._model_name:
             return
@@ -117,6 +144,24 @@ class DatasetDraft(QObject):
         return self._issue
 
     issue = Property(str, get_issue, notify=validity_changed)
+
+    def get_first_invalid_field(self) -> str:
+        return self._first_invalid_field
+
+    firstInvalidField = Property(
+        str,
+        get_first_invalid_field,
+        notify=validity_changed,
+    )
+
+    def get_first_invalid_row(self) -> int:
+        return self._first_invalid_row
+
+    firstInvalidRow = Property(
+        int,
+        get_first_invalid_row,
+        notify=validity_changed,
+    )
 
     def get_dirty(self) -> bool:
         return self._dirty
@@ -214,6 +259,15 @@ class DatasetDraft(QObject):
             if isinstance(entry, Mapping) and "name" in entry
         }
         self._reference_fields = frozenset(_string_tuple(payload.get("reference_dependent_fields")))
+        reference_state = payload.get("reference_state")
+        self._reference_state_display = (
+            str(reference_state.get("display", "")) if isinstance(reference_state, Mapping) else ""
+        )
+        self._reference_state_description = (
+            str(reference_state.get("description", ""))
+            if isinstance(reference_state, Mapping)
+            else ""
+        )
         for axis, sampler in self._sampler_by_axis.items():
             sampler.set_available_units(self._units_by_axis.get(axis, ()))
         self._refresh_models()
@@ -255,6 +309,8 @@ class DatasetDraft(QObject):
 
     def clear(self) -> None:
         previous = self._observable_state()
+        for sampler in self._sampler_by_axis.values():
+            sampler.clear_anchor()
         self._loaded = False
         self._model_name = ""
         self._mode_name = ""
@@ -325,7 +381,6 @@ class DatasetDraft(QObject):
         if self._loaded and value in self._modes and value != self._mode_name:
             self.mode_change_requested.emit(value)
 
-    @Slot(str, result=bool)
     def apply_mode_change(self, value: str) -> bool:
         if not self._loaded or value not in self._modes or value == self._mode_name:
             return False
@@ -345,7 +400,6 @@ class DatasetDraft(QObject):
         self._state_changed(previous=previous)
         return True
 
-    @Slot(str, result=bool)
     def set_coordinate(self, axis: str) -> bool:
         if (
             not self._loaded
@@ -369,7 +423,7 @@ class DatasetDraft(QObject):
         self._state_changed(previous=previous)
         return True
 
-    @Slot(str, result=bool)
+    @Slot(str, result=bool, name="addFluid")
     def add_fluid(self, requested: str) -> bool:
         if not self._loaded:
             return False
@@ -388,7 +442,7 @@ class DatasetDraft(QObject):
         self._state_changed()
         return True
 
-    @Slot(int, result=bool)
+    @Slot(int, result=bool, name="removeFluid")
     def remove_fluid(self, row: int) -> bool:
         if not self._loaded:
             return False
@@ -399,7 +453,7 @@ class DatasetDraft(QObject):
         self._state_changed()
         return True
 
-    @Slot(int, int, result=bool)
+    @Slot(int, int, result=bool, name="moveFluid")
     def move_fluid(self, row: int, offset: int) -> bool:
         if not self._loaded:
             return False
@@ -410,7 +464,7 @@ class DatasetDraft(QObject):
         self._state_changed()
         return True
 
-    @Slot(str, result=bool)
+    @Slot(str, result=bool, name="addProperty")
     def add_property(self, name: str) -> bool:
         if not self._loaded:
             return False
@@ -427,7 +481,7 @@ class DatasetDraft(QObject):
         self._state_changed()
         return True
 
-    @Slot(int, result=bool)
+    @Slot(int, result=bool, name="removeProperty")
     def remove_property(self, row: int) -> bool:
         if not self._loaded:
             return False
@@ -438,7 +492,7 @@ class DatasetDraft(QObject):
         self._state_changed()
         return True
 
-    @Slot(int, int, result=bool)
+    @Slot(int, int, result=bool, name="moveProperty")
     def move_property(self, row: int, offset: int) -> bool:
         if not self._loaded:
             return False
@@ -449,7 +503,7 @@ class DatasetDraft(QObject):
         self._state_changed()
         return True
 
-    @Slot(str, bool, result=bool)
+    @Slot(str, bool, result=bool, name="setOutputSelected")
     def set_output_selected(self, name: str, selected: bool) -> bool:
         if not self._loaded or name not in self._dataset_formats:
             return False
@@ -474,6 +528,7 @@ class DatasetDraft(QObject):
     def unsupported_properties(self) -> tuple[str, ...]:
         return tuple(name for name in self._properties if not self._property_supported(name))
 
+    @Slot(str, result=bool, name="outputSelected")
     def output_selected(self, name: str) -> bool:
         return name in self._selected_formats
 
@@ -521,7 +576,7 @@ class DatasetDraft(QObject):
         self.model_choices.replace(
             DraftItem(
                 value=value,
-                display=value,
+                display=MODEL_DISPLAY_NAMES.get(value, value),
                 canonical=value,
                 selected=value == self._model_name,
             )
@@ -530,7 +585,7 @@ class DatasetDraft(QObject):
         self.mode_choices.replace(
             DraftItem(
                 value=value,
-                display=value,
+                display=MODE_DISPLAY_NAMES.get(value, value),
                 canonical=value,
                 selected=value == self._mode_name,
             )
@@ -539,7 +594,7 @@ class DatasetDraft(QObject):
         self.coordinate_choices.replace(
             DraftItem(
                 value=value,
-                display=value,
+                display=COORDINATE_DISPLAY_NAMES.get(value, value),
                 canonical=value,
                 selected=value == self._coordinate_name,
             )
@@ -618,16 +673,29 @@ class DatasetDraft(QObject):
         return isinstance(models, list) and self._model_name in models
 
     def _refresh_derived(self) -> None:
-        issue = self._validation_issue()
+        field, row, issue = self._validation_result()
         self._valid = not issue
         self._issue = issue
+        self._first_invalid_field = field if issue else ""
+        self._first_invalid_row = row if issue else -1
         selected_reference = self._reference_fields.intersection(self._properties)
-        self._reference_advisory = (
-            "Reference-state advisory: absolute enthalpy, entropy, and internal-energy "
-            "values depend on the recorded reference-state context."
-            if selected_reference
-            else ""
-        )
+        if selected_reference:
+            context = (
+                f"Reference state: {self._reference_state_display}. "
+                if self._reference_state_display
+                else "Reference-state advisory: "
+            )
+            detail = (
+                f"{self._reference_state_description} " if self._reference_state_description else ""
+            )
+            self._reference_advisory = (
+                context
+                + detail
+                + "Absolute enthalpy, entropy, and internal-energy values require a compatible "
+                "recorded backend, model, version, and reference-state context."
+            )
+        else:
+            self._reference_advisory = ""
         if self._baseline_yaml is None or self._baseline_raw is None:
             self._dirty = False
         elif self._valid:
@@ -636,32 +704,48 @@ class DatasetDraft(QObject):
             self._dirty = self.raw_state() != self._baseline_raw
 
     def _validation_issue(self) -> str:
+        return self._validation_result()[2]
+
+    def _validation_result(self) -> tuple[str, int, str]:
         if not self._loaded:
-            return "No dataset configuration is open."
+            return "", -1, "No dataset configuration is open."
         if self._capabilities is None:
-            return "Dataset capabilities are not loaded."
+            return DATASET_MODEL, -1, "Dataset capabilities are not loaded."
         if self._model_name not in self._models:
-            return "Choose a supported thermodynamic model."
+            return DATASET_MODEL, -1, "Choose a supported thermodynamic model."
         if self._mode_name not in self._modes:
-            return "Choose a supported dataset mode."
+            return DATASET_MODE, -1, "Choose a supported dataset mode."
         if not self._fluids:
-            return "Add at least one fluid."
+            return DATASET_FLUIDS, -1, "Add at least one fluid."
         expected_axes = _expected_axes(self._mode_name, self._coordinate_name)
         actual_axes = set(self._sampler_by_axis)
         if actual_axes != expected_axes:
-            return f"{self._mode_name} has an incomplete sampling grid."
+            missing = next(
+                (axis for axis in GRID_AXIS_ORDER if axis in expected_axes - actual_axes),
+                self._coordinate_name,
+            )
+            return (
+                dataset_grid_field(missing, "kind"),
+                -1,
+                f"{self._mode_name} has an incomplete sampling grid.",
+            )
         for axis in GRID_AXIS_ORDER:
             sampler = self._sampler_by_axis.get(axis)
             if sampler is not None and not sampler.get_valid():
-                return sampler.get_issue()
+                return sampler.get_first_invalid_field(), -1, sampler.get_issue()
         if not self._properties:
-            return "Add at least one property."
+            return DATASET_PROPERTIES, -1, "Add at least one property."
         if not self._selected_formats:
-            return "Select CSV, Parquet, or both."
+            return DATASET_OUTPUT_FORMATS, -1, "Select CSV, Parquet, or both."
         unsupported = self.unsupported_properties()
         if unsupported:
-            return f"Remove properties unsupported by {self._model_name}: " + ", ".join(unsupported)
-        return ""
+            row = next(index for index, name in enumerate(self._properties) if name in unsupported)
+            return (
+                DATASET_PROPERTIES,
+                row,
+                f"Remove properties unsupported by {self._model_name}: " + ", ".join(unsupported),
+            )
+        return "", -1, ""
 
     def _observable_state(self) -> tuple[object, ...]:
         return (
@@ -670,6 +754,8 @@ class DatasetDraft(QObject):
             self._coordinate_name,
             self._valid,
             self._issue,
+            self._first_invalid_field,
+            self._first_invalid_row,
             self._dirty,
             self._reference_advisory,
             self.raw_state(),
@@ -683,11 +769,11 @@ class DatasetDraft(QObject):
             self.mode_name_changed.emit()
         if previous[2] != current[2]:
             self.coordinate_name_changed.emit()
-        if previous[3:5] != current[3:5]:
+        if previous[3:7] != current[3:7]:
             self.validity_changed.emit()
-        if previous[5] != current[5]:
+        if previous[7] != current[7]:
             self.dirty_changed.emit()
-        if previous[6] != current[6]:
+        if previous[8] != current[8]:
             self.reference_advisory_changed.emit()
 
 
@@ -713,9 +799,16 @@ def _blank_sampler(
     parent: QObject,
 ) -> SamplerDraft:
     unit = str(units[0]) if units else ""
+    values = [1.0]
+    if axis == "temperature" and "K" in units:
+        unit = "K"
+        values = [293.15]
+    elif axis == "pressure" and "Pa" in units:
+        unit = "Pa"
+        values = [101_325.0]
     sampler = SamplerDraft(axis, parent)
     sampler.load_payload(
-        {"kind": "explicit", "values": [1.0], "unit": unit},
+        {"kind": "explicit", "values": values, "unit": unit},
         available_units=units,
     )
     return sampler

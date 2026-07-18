@@ -14,6 +14,13 @@ Item {
         clip: true
         contentHeight: pageColumn.implicitHeight + 48
         contentWidth: width
+        flickableDirection: Flickable.VerticalFlick
+        objectName: "emptyStatePageFlickable"
+        pixelAligned: true
+
+        ScrollBar.vertical: ScrollBar {
+            policy: ScrollBar.AsNeeded
+        }
 
         ColumnLayout {
             id: pageColumn

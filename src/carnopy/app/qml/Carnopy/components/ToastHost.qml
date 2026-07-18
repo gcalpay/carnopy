@@ -12,7 +12,7 @@ Item {
     function showMessage(nextMessage, nextTone) {
         root.message = nextMessage;
         root.tone = nextTone || "information";
-        toast.visible = true;
+        toast.opacity = 1;
         dismissTimer.restart();
     }
 
@@ -24,7 +24,7 @@ Item {
         id: dismissTimer
 
         interval: 3600
-        onTriggered: toast.visible = false
+        onTriggered: toast.opacity = 0
     }
 
     Rectangle {
@@ -37,8 +37,9 @@ Item {
         color: Theme.surface
         implicitHeight: toastRow.implicitHeight + 20
         implicitWidth: Math.min(520, toastRow.implicitWidth + 28)
+        opacity: 0
         radius: Theme.radiusMedium
-        visible: false
+        visible: opacity > 0
 
         RowLayout {
             id: toastRow

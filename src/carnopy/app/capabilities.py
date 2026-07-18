@@ -11,6 +11,7 @@ from carnopy.config.outputs import DATASET_FORMAT_ORDER
 from carnopy.domain.phases import PHASE_MAP
 from carnopy.domain.properties import PROPERTY_REGISTRY, REFERENCE_DEPENDENT_PROPERTIES
 from carnopy.domain.units import AXIS_DIMENSIONS, UNITS
+from carnopy.provenance import REFERENCE_STATE_POLICY
 from carnopy.sampling.models import (
     ExplicitSampler,
     GeomspaceSampler,
@@ -72,6 +73,15 @@ def describe_capabilities(model: CoolPropModel) -> dict[str, object]:
         "properties": [PROPERTY_REGISTRY[name].metadata() for name in supported_properties(model)],
         "property_catalog": property_catalog,
         "reference_dependent_fields": list(REFERENCE_DEPENDENT_PROPERTIES),
+        "reference_state": {
+            "policy": REFERENCE_STATE_POLICY,
+            "display": "CoolProp DEF",
+            "description": (
+                "CoolProp's factory reference state is reset before generation and is not "
+                "changed while rows are evaluated."
+            ),
+            "user_selectable": False,
+        },
         "visualization": {
             "plot_kinds": list(get_args(PlotKindV2)),
             "formats": list(get_args(PlotFormat)),

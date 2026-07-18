@@ -19,6 +19,23 @@ ApplicationWindow {
     signal workspaceCreateRequested(string parentPath, string childName)
     signal workspaceInitializeRequested(string path)
     signal workspaceOpenRequested(string path)
+    signal datasetDecisionCommitRequested(bool confirmed)
+    signal datasetDecisionCancelRequested
+    signal datasetFluidAddRequested(string value)
+    signal datasetFluidMoveRequested(int row, int offset)
+    signal datasetFluidRemoveRequested(int row)
+    signal datasetImportRequested(string path)
+    signal datasetModelChangeRequested(string model)
+    signal datasetModeChangeRequested(string mode)
+    signal datasetCoordinateChangeRequested(string axis)
+    signal datasetNewRequested(string mode)
+    signal datasetOutputSelectionRequested(string format, bool selected)
+    signal datasetPropertyAddRequested(string value)
+    signal datasetPropertyMoveRequested(int row, int offset)
+    signal datasetPropertyRemoveRequested(int row)
+    signal datasetSamplerKindChangeRequested(var draft, string kind)
+    signal datasetSamplerTextChangeRequested(var draft, string field, string text)
+    signal datasetSamplerUnitChangeRequested(var draft, string unit)
     signal normalGeometryRememberRequested(int x, int y, int width, int height)
     signal settingsLayoutResetRequested
 
@@ -50,6 +67,8 @@ ApplicationWindow {
             return qsTr("Settings");
         if (pageKey === "help")
             return qsTr("Help");
+        if (pageKey === "dataset")
+            return qsTr("Dataset");
         return qsTr("Workspace");
     }
 
@@ -159,6 +178,8 @@ ApplicationWindow {
             allowCollapse: root.shellMode === "wide"
             collapsed: root.railEffectiveCollapsed
             currentPage: root.currentPage
+            datasetAvailable: root.controllerAvailable && root.desktopController.workspaceState
+                              === "editing"
             objectName: "persistentNavigationRail"
             onCollapseRequested: root.toggleRail()
             onPageRequested: pageKey => root.routeTo(pageKey)
@@ -190,12 +211,20 @@ ApplicationWindow {
                         if (root.controllerAvailable && root.desktopController.workspaceState
                             === "loading")
                         return qsTr("Loading");
+                        if (root.controllerAvailable && root.desktopController.workspaceState
+                            === "editing")
+                        return root.desktopController.datasetDraft.locallyValid ? qsTr(
+                                                                                      "Dataset complete") :
+                                                                                  qsTr("Needs attention");
                         if (root.controllerAvailable && root.desktopController.workspaceAvailable)
                         return qsTr("Workspace ready");
                         return qsTr("No workspace");
                     }
-                    statusTone: root.controllerAvailable
-                                && root.desktopController.workspaceAvailable ? "success" : "neutral"
+                    statusTone: root.controllerAvailable && root.desktopController.workspaceState
+                                === "editing" && !root.desktopController.datasetDraft.locallyValid
+                                ? "danger" : (root.controllerAvailable
+                                              && root.desktopController.workspaceAvailable
+                                              ? "success" : "neutral")
                 }
 
                 Loader {
@@ -207,6 +236,8 @@ ApplicationWindow {
                         return settingsPage;
                         if (root.currentPage === "help")
                         return helpPage;
+                        if (root.currentPage === "dataset")
+                        return datasetPage;
                         return workspacePage;
                     }
                 }
@@ -255,6 +286,9 @@ ApplicationWindow {
             Layout.fillHeight: true
             Layout.preferredWidth: root.inspectorWidth
             closeButtonVisible: true
+            datasetIssue: root.controllerAvailable ? root.desktopController.datasetDraft.issue : ""
+            datasetValid: root.controllerAvailable
+                          && root.desktopController.datasetDraft.locallyValid
             objectName: "persistentContextInspector"
             onCloseRequested: root.toggleInspector()
             workspacePath: root.controllerAvailable ? root.desktopController.workspaceRootPath : ""
@@ -276,6 +310,8 @@ ApplicationWindow {
             allowCollapse: false
             collapsed: false
             currentPage: root.currentPage
+            datasetAvailable: root.controllerAvailable && root.desktopController.workspaceState
+                              === "editing"
             onPageRequested: pageKey => root.routeTo(pageKey)
         }
     }
@@ -291,6 +327,9 @@ ApplicationWindow {
 
         contentItem: ContextInspector {
             closeButtonVisible: true
+            datasetIssue: root.controllerAvailable ? root.desktopController.datasetDraft.issue : ""
+            datasetValid: root.controllerAvailable
+                          && root.desktopController.datasetDraft.locallyValid
             objectName: "drawerContextInspector"
             onCloseRequested: inspectorDrawer.close()
             workspacePath: root.controllerAvailable ? root.desktopController.workspaceRootPath : ""
@@ -313,6 +352,37 @@ ApplicationWindow {
                                                                        parentPath, childName)
             onInitializeWorkspaceRequested: path => root.workspaceInitializeRequested(path)
             onOpenWorkspaceRequested: path => root.workspaceOpenRequested(path)
+            onImportDatasetRequested: path => root.datasetImportRequested(path)
+            onNewDatasetRequested: mode => root.datasetNewRequested(mode)
+        }
+    }
+
+    Component {
+        id: datasetPage
+
+        DatasetPage {
+            datasetDraft: root.desktopController.datasetDraft
+            desktopController: root.desktopController
+            expectedColumns: root.cardColumnCount
+            objectName: "datasetPage"
+            onCoordinateChangeRequested: axis => root.datasetCoordinateChangeRequested(axis)
+            onFluidAddRequested: value => root.datasetFluidAddRequested(value)
+            onFluidMoveRequested: (row, offset) => root.datasetFluidMoveRequested(row, offset)
+            onFluidRemoveRequested: row => root.datasetFluidRemoveRequested(row)
+            onModelChangeRequested: model => root.datasetModelChangeRequested(model)
+            onModeChangeRequested: mode => root.datasetModeChangeRequested(mode)
+            onOutputSelectionRequested: (format, selected) => root.datasetOutputSelectionRequested(
+                                                                  format, selected)
+            onPropertyAddRequested: value => root.datasetPropertyAddRequested(value)
+            onPropertyMoveRequested: (row, offset) => root.datasetPropertyMoveRequested(row, offset)
+            onPropertyRemoveRequested: row => root.datasetPropertyRemoveRequested(row)
+            onSamplerKindChangeRequested: (draft, kind) => root.datasetSamplerKindChangeRequested(
+                                                               draft, kind)
+            onSamplerTextChangeRequested: (draft, field, text)
+                                          => root.datasetSamplerTextChangeRequested(draft, field,
+                                                                                    text)
+            onSamplerUnitChangeRequested: (draft, unit) => root.datasetSamplerUnitChangeRequested(
+                                                               draft, unit)
         }
     }
 
@@ -338,6 +408,36 @@ ApplicationWindow {
         id: toastHost
 
         objectName: "toastHost"
+    }
+
+    Connections {
+        function onDatasetDecisionRequested() {
+            datasetDecisionDialog.open();
+        }
+
+        function onDatasetDocumentOpened() {
+            root.routeTo("dataset");
+        }
+
+        function onWorkspaceStateChanged() {
+            if (root.currentPage === "dataset" && root.desktopController.workspaceState
+                    !== "editing")
+                root.routeTo("workspace");
+        }
+
+        target: root.controllerAvailable ? root.desktopController : null
+    }
+
+    DecisionDialog {
+        id: datasetDecisionDialog
+
+        acceptText: qsTr("Continue")
+        bodyText: root.controllerAvailable ? root.desktopController.datasetDecisionMessage : ""
+        objectName: "datasetDecisionDialog"
+        onAccepted: root.datasetDecisionCommitRequested(true)
+        onRejected: root.datasetDecisionCancelRequested()
+        rejectText: qsTr("Cancel")
+        title: root.controllerAvailable ? root.desktopController.datasetDecisionTitle : ""
     }
 
     Shortcut {

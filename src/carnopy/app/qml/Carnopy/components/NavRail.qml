@@ -11,6 +11,7 @@ Control {
     property bool collapsed: false
     property bool allowCollapse: true
     property string currentPage: "workspace"
+    property bool datasetAvailable: false
     readonly property alias navigationModel: navigationModel
     readonly property int preferredWidth: collapsed ? 76 : 224
 
@@ -19,13 +20,6 @@ Control {
 
     implicitWidth: preferredWidth
     padding: 10
-
-    Behavior on implicitWidth {
-        NumberAnimation {
-            duration: Theme.durationEmphasis
-            easing.type: Easing.OutCubic
-        }
-    }
 
     background: Rectangle {
         color: Theme.navigation
@@ -47,8 +41,8 @@ Control {
             pageKey: "dataset"
             title: qsTr("Dataset")
             iconName: "database"
-            available: false
-            unavailableReason: qsTr("Dataset editing is introduced in a later Stage 2 commit.")
+            available: true
+            unavailableReason: qsTr("Create or import a dataset configuration first.")
         }
         ListElement {
             pageKey: "visualization"
@@ -167,8 +161,14 @@ Control {
             Layout.fillWidth: true
             boundsBehavior: Flickable.StopAtBounds
             clip: true
+            flickableDirection: Flickable.VerticalFlick
             model: navigationModel
+            pixelAligned: true
             spacing: 3
+
+            ScrollBar.vertical: ScrollBar {
+                policy: ScrollBar.AsNeeded
+            }
 
             delegate: Button {
                 id: navigationButton
@@ -179,12 +179,15 @@ Control {
                 required property string title
                 required property string unavailableReason
 
-                Accessible.description: available ? "" : unavailableReason
+                readonly property bool effectivelyAvailable: available && (pageKey !== "dataset"
+                                                                           || root.datasetAvailable)
+
+                Accessible.description: effectivelyAvailable ? "" : unavailableReason
                 Accessible.name: title
-                activeFocusOnTab: available
-                checkable: available
+                activeFocusOnTab: effectivelyAvailable
+                checkable: effectivelyAvailable
                 checked: root.currentPage === pageKey
-                enabled: available
+                enabled: effectivelyAvailable
                 height: 42
                 hoverEnabled: true
                 objectName: "nav-" + pageKey
@@ -192,8 +195,8 @@ Control {
                 width: navigationList.width
 
                 ToolTip.delay: 500
-                ToolTip.text: available && root.collapsed ? title : unavailableReason
-                ToolTip.visible: hovered && (root.collapsed || !available)
+                ToolTip.text: effectivelyAvailable && root.collapsed ? title : unavailableReason
+                ToolTip.visible: hovered && (root.collapsed || !effectivelyAvailable)
 
                 contentItem: RowLayout {
                     spacing: 11

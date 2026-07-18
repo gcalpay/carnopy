@@ -9,6 +9,7 @@ from carnopy.app.config_controller import DatasetConfigController
 from carnopy.app.dataset_draft import DatasetDraft
 from carnopy.app.qml_settings import QmlSettingsController
 from carnopy.app.request_coordinator import DesktopRequestCoordinator
+from carnopy.app.sampler_draft import SamplerDraft
 from carnopy.app.visualization_draft import VisualizationDraft
 from carnopy.app.workspace_controller import WorkspaceController
 
@@ -20,6 +21,9 @@ class DesktopController(QObject):
     workspace_feedback_changed = Signal()
     workspace_confirmation_changed = Signal()
     workspaceConfirmationRequested = Signal()
+    datasetDecisionRequested = Signal()
+    datasetDecisionChanged = Signal()
+    datasetDocumentOpened = Signal()
 
     def __init__(
         self,
@@ -54,9 +58,11 @@ class DesktopController(QObject):
             self.workspace_confirmation_changed
         )
         self.dataset_config_controller.state_changed.connect(self._configuration_state_changed)
+        self.dataset_config_controller.document_opened.connect(self.datasetDocumentOpened)
         self.request_coordinator.busy_changed.connect(self._request_state_changed)
         self.visualization_draft.active_plot_draft_changed.connect(self._active_plot_state_changed)
         self._queued_workspace_request: tuple[str, str, str, bool] | None = None
+        self._pending_dataset_decision: tuple[str, str] | None = None
         self._workspace_request_timer = QTimer(self)
         self._workspace_request_timer.setSingleShot(True)
         self._workspace_request_timer.setInterval(0)
@@ -233,6 +239,159 @@ class DesktopController(QObject):
         get_dataset_config_controller,
         constant=True,
     )
+
+    def get_dataset_decision_title(self) -> str:
+        decision = self._pending_dataset_decision
+        if decision is None:
+            return ""
+        return "Change Dataset Mode" if decision[0] == "mode" else "Change Sampling Coordinate"
+
+    datasetDecisionTitle = Property(
+        str,
+        get_dataset_decision_title,
+        notify=datasetDecisionRequested,
+    )
+
+    def get_dataset_decision_message(self) -> str:
+        decision = self._pending_dataset_decision
+        if decision is None:
+            return ""
+        if decision[0] == "mode":
+            return (
+                "Changing dataset mode resets the sampling grid and removes configured "
+                "visualization requests. Shared model, fluids, properties, and output formats "
+                "are preserved."
+            )
+        return (
+            "Changing the independent coordinate replaces that coordinate's sampler. "
+            "Other compatible dataset selections are retained."
+        )
+
+    datasetDecisionMessage = Property(
+        str,
+        get_dataset_decision_message,
+        notify=datasetDecisionRequested,
+    )
+
+    @Slot(str, result=bool, name="requestNewDataset")
+    def request_new_dataset(self, mode: str) -> bool:
+        if not self._guard_active_plot_edit():
+            return False
+        return self.dataset_config_controller.new_dataset(mode)
+
+    @Slot(str, result=bool, name="requestImportDataset")
+    def request_import_dataset(self, path: str) -> bool:
+        if not self._guard_active_plot_edit():
+            return False
+        return self.dataset_config_controller.import_dataset(_local_path(path))
+
+    @Slot(str, result=bool, name="requestDatasetModeChange")
+    def request_dataset_mode_change(self, mode: str) -> bool:
+        if not self._guard_active_plot_edit():
+            return False
+        if mode == self.dataset_draft.get_mode_name():
+            return False
+        if mode not in self.dataset_draft.mode_choices.values:
+            return False
+        self._pending_dataset_decision = ("mode", mode)
+        self.datasetDecisionRequested.emit()
+        return True
+
+    @Slot(str, result=bool, name="requestDatasetCoordinateChange")
+    def request_dataset_coordinate_change(self, axis: str) -> bool:
+        if not self._guard_active_plot_edit():
+            return False
+        if axis == self.dataset_draft.get_coordinate_name():
+            return False
+        if axis not in self.dataset_draft.coordinate_choices.values:
+            return False
+        self._pending_dataset_decision = ("coordinate", axis)
+        self.datasetDecisionRequested.emit()
+        return True
+
+    @Slot(bool, result=bool, name="commitDatasetDecision")
+    def commit_dataset_decision(self, confirmed: bool) -> bool:
+        decision = self._pending_dataset_decision
+        if decision is None:
+            return False
+        if not confirmed or not self._guard_active_plot_edit():
+            self._pending_dataset_decision = None
+            self.datasetDecisionChanged.emit()
+            return False
+        self._pending_dataset_decision = None
+        operation, value = decision
+        if operation == "mode":
+            changed = self.dataset_config_controller.apply_mode_change(value)
+        else:
+            changed = self.dataset_config_controller.apply_coordinate_change(value)
+        self.datasetDecisionChanged.emit()
+        return changed
+
+    @Slot(name="cancelDatasetDecision")
+    def cancel_dataset_decision(self) -> None:
+        self._pending_dataset_decision = None
+        self.datasetDecisionChanged.emit()
+
+    @Slot(str, name="requestDatasetModelChange")
+    def request_dataset_model_change(self, model: str) -> None:
+        self.dataset_draft.set_model_name(model)
+
+    @Slot(str, name="requestDatasetFluidAdd")
+    def request_dataset_fluid_add(self, value: str) -> None:
+        self.dataset_draft.add_fluid(value)
+
+    @Slot(int, int, name="requestDatasetFluidMove")
+    def request_dataset_fluid_move(self, row: int, offset: int) -> None:
+        self.dataset_draft.move_fluid(row, offset)
+
+    @Slot(int, name="requestDatasetFluidRemove")
+    def request_dataset_fluid_remove(self, row: int) -> None:
+        self.dataset_draft.remove_fluid(row)
+
+    @Slot(str, name="requestDatasetPropertyAdd")
+    def request_dataset_property_add(self, value: str) -> None:
+        self.dataset_draft.add_property(value)
+
+    @Slot(int, int, name="requestDatasetPropertyMove")
+    def request_dataset_property_move(self, row: int, offset: int) -> None:
+        self.dataset_draft.move_property(row, offset)
+
+    @Slot(int, name="requestDatasetPropertyRemove")
+    def request_dataset_property_remove(self, row: int) -> None:
+        self.dataset_draft.remove_property(row)
+
+    @Slot(str, bool, name="requestDatasetOutputSelection")
+    def request_dataset_output_selection(self, output_format: str, selected: bool) -> None:
+        self.dataset_draft.set_output_selected(output_format, selected)
+
+    @Slot(QObject, str, name="requestDatasetSamplerKindChange")
+    def request_dataset_sampler_kind_change(self, candidate: QObject, kind: str) -> None:
+        sampler = self._owned_dataset_sampler(candidate)
+        if sampler is not None:
+            sampler.set_kind(kind)
+
+    @Slot(QObject, str, str, name="requestDatasetSamplerTextChange")
+    def request_dataset_sampler_text_change(
+        self,
+        candidate: QObject,
+        field: str,
+        text: str,
+    ) -> None:
+        sampler = self._owned_dataset_sampler(candidate)
+        if sampler is not None:
+            sampler.set_text(field, text)
+
+    @Slot(QObject, str, name="requestDatasetSamplerUnitChange")
+    def request_dataset_sampler_unit_change(self, candidate: QObject, unit: str) -> None:
+        sampler = self._owned_dataset_sampler(candidate)
+        if sampler is not None:
+            sampler.requestUnitChange(unit)
+
+    def _owned_dataset_sampler(self, candidate: QObject) -> SamplerDraft | None:
+        return next(
+            (sampler for sampler in self.dataset_draft.samplers.drafts if sampler is candidate),
+            None,
+        )
 
     @Slot(str, str, result=bool, name="prepareCreateWorkspace")
     def prepare_create_workspace(self, parent_path: str, child_name: str) -> bool:
