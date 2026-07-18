@@ -153,6 +153,38 @@ Current optional baseline regressors assess dataset learnability only. Carnopy
 will not add model registries, training loops, checkpoints, hyperparameter
 search, or deployment behavior to preparation.
 
+Neural-network architecture and optimization choices remain outside this
+boundary. Flatten or dense layers, activation functions, cross-entropy and
+other training losses, optimizers, epochs, and backpropagation belong to the
+external framework consuming a prepared Carnopy bundle. They are not
+preparation transformations or quality diagnostics.
+
+## Future consumption-format evaluation
+
+The implemented `.npy`, `.npz`, and SafeTensors exports already cover direct
+array and framework-neutral tensor consumption while Parquet remains the
+canonical structured dataset. Do not add formats merely to increase the format
+count.
+
+Two additions may justify a later reviewed export stage:
+
+- Arrow IPC or Feather for explicit low-copy columnar interchange with
+  PyArrow, pandas, Polars, and compatible consumers; and
+- HDF5 for a demonstrated engineering workflow that needs hierarchical arrays
+  and embedded metadata unavailable from the existing Parquet plus manifest
+  bundle.
+
+Either addition requires a concrete consumer, deterministic serialization and
+hashing rules, dtype and null semantics, metadata placement, optional-dependency
+review, round-trip tests, and an explicit statement that the file is derived
+from canonical Parquet data.
+
+NetCDF or Zarr is deferred unless Carnopy later owns a reviewed labelled,
+multidimensional data model rather than only flat tabular outputs. JSON Lines,
+Excel, SQLite, and other database-shaped exports are not current priorities:
+they either weaken numerical/tabular behavior or duplicate capabilities already
+covered by Parquet and downstream tools.
+
 ## Later research directions
 
 Active learning belongs to a separate backend-aware generation workflow. It
