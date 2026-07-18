@@ -150,6 +150,9 @@ opening.
 GUI-2 migration. Read it before changing desktop controllers, QML, native 3D,
 desktop packaging, or Widgets retirement. Delete it only after GUI-2 is complete
 and permanent documentation and Graphify outputs describe the final design.
+[DESKTOP_ARCHITECTURE.md](DESKTOP_ARCHITECTURE.md) is the durable record of the
+implemented desktop structure and evolution; update it when accepted work
+changes a major ownership or process boundary.
 
 Out of scope for now:
 

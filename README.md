@@ -1079,6 +1079,10 @@ over the same Carnopy Python pipelines used by the CLI. Widgets do not parse or
 invoke CLI output. Scientific validation and execution run in a short-lived
 worker process through a private, versioned JSON Lines protocol.
 
+See [Desktop architecture and evolution](DESKTOP_ARCHITECTURE.md) for the
+implemented controller ownership, process boundary, frontend migration status,
+verification layers, and GUI-1/GUI-2 evolution record.
+
 The prepared `0.1.0a3` source implementation includes:
 
 - explicit workspace creation, initialization, and reopening;

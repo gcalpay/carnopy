@@ -112,6 +112,7 @@ packages = ["src/carnopy"]
 [tool.hatch.build.targets.sdist]
 include = [
   "/AGENTS.md",
+  "/DESKTOP_ARCHITECTURE.md",
   "/LICENSE",
   "/ML_PREPARATION_ROADMAP.md",
   "/README.md",

@@ -163,6 +163,7 @@ def test_public_and_community_markdown_have_intentional_distribution_boundaries(
     root = Path(__file__).resolve().parents[1]
     assert (root / "README.md").is_file()
     assert (root / "AGENTS.md").is_file()
+    assert (root / "DESKTOP_ARCHITECTURE.md").is_file()
     assert (root / "ML_PREPARATION_ROADMAP.md").is_file()
     community = root / ".github"
     for name in ("CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "SECURITY.md"):
@@ -173,6 +174,7 @@ def test_public_and_community_markdown_have_intentional_distribution_boundaries(
     sdist_includes = set(pyproject["tool"]["hatch"]["build"]["targets"]["sdist"]["include"])
     assert "/README.md" in sdist_includes
     assert "/AGENTS.md" in sdist_includes
+    assert "/DESKTOP_ARCHITECTURE.md" in sdist_includes
     assert "/ML_PREPARATION_ROADMAP.md" in sdist_includes
     assert not any(path.startswith("/.github") for path in sdist_includes)
     assert "/docs" not in sdist_includes

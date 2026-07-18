@@ -173,6 +173,7 @@ WHEEL_REQUIRED = {
 }
 SDIST_REQUIRED = {
     "AGENTS.md",
+    "DESKTOP_ARCHITECTURE.md",
     "LICENSE",
     "ML_PREPARATION_ROADMAP.md",
     "README.md",
@@ -284,6 +285,7 @@ WHEEL_REQUIRED.update(f"carnopy/app/{path}" for path in QML_SHELL_APP_FILES)
 SDIST_REQUIRED.update(f"src/carnopy/app/{path}" for path in QML_SHELL_APP_FILES)
 SDIST_MARKDOWN = {
     "AGENTS.md",
+    "DESKTOP_ARCHITECTURE.md",
     "ML_PREPARATION_ROADMAP.md",
     "README.md",
 }

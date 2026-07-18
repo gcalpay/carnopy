@@ -6,6 +6,10 @@ compaction. Delete it only after every GUI-2 stage is complete, permanent
 documentation and Graphify outputs describe the final architecture, and the
 maintainer has accepted the completed implementation.
 
+[`DESKTOP_ARCHITECTURE.md`](DESKTOP_ARCHITECTURE.md) is the durable record of
+implemented desktop structure and evolution. This plan remains authoritative
+for unfinished GUI-2 work and stage acceptance.
+
 ## Release and frontend baseline
 
 - `0.1.0a3` is the published baseline and contains the completed Qt Widgets
@@ -488,7 +492,7 @@ The generated vector candidates were rejected and final logo refinement was
 deferred. This completed gate does not reopen the settled layout, scope, Qt,
 packaging, workflow, or scientific decisions.
 
-Current implementation status as of 2026-07-18:
+Current implementation status as of 2026-07-19:
 
 - Commits 1 through 4 are implemented in the Stage 2 branch history. The design
   and branding gate required between Commits 3 and 4 is complete under the
@@ -639,7 +643,8 @@ Current implementation status as of 2026-07-18:
   repository tests, `preflight.py`, and environment compatibility checking.
   Native human inspection of the Dataset page and both successful and rejected
   unit toggles remains required before the maintainer accepts this commit.
-- The separately approved Commit 8 boundary is implemented in the working tree.
+- The separately approved Commit 8 boundary is implemented in the Stage 2
+  branch history.
   Public input units now additionally accept `hPa` and `atm` through the same
   exact sampler canonicalization boundary. Packaged starters
   and byte-identical repository examples use HEOS, Propane and Isobutane, CSV
