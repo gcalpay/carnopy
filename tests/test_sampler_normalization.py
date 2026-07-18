@@ -38,6 +38,14 @@ SamplerFactory = Callable[[], Sampler]
 
 PRESSURE_EQUIVALENTS: tuple[tuple[SamplerFactory, SamplerFactory], ...] = (
     (
+        lambda: ExplicitSampler(kind="explicit", values=[100.0, 200.0], unit="Pa"),
+        lambda: ExplicitSampler(kind="explicit", values=[1.0, 2.0], unit="hPa"),
+    ),
+    (
+        lambda: ExplicitSampler(kind="explicit", values=[101_325.0, 202_650.0], unit="Pa"),
+        lambda: ExplicitSampler(kind="explicit", values=[1.0, 2.0], unit="atm"),
+    ),
+    (
         lambda: ExplicitSampler(kind="explicit", values=[100_000.0, 200_000.0], unit="Pa"),
         lambda: ExplicitSampler(kind="explicit", values=[1.0, 2.0], unit="bar"),
     ),
@@ -156,6 +164,26 @@ def test_affine_temperature_definitions_have_exact_canonical_keys(
 ) -> None:
     assert canonical_sampler_key("temperature", si_sampler) == canonical_sampler_key(
         "temperature", declared_sampler
+    )
+
+
+@pytest.mark.parametrize(
+    ("value", "unit", "si_value"),
+    [
+        (1_013.25, "hPa", 101_325.0),
+        (1.0, "atm", 101_325.0),
+    ],
+)
+def test_added_pressure_units_have_exact_canonical_keys(
+    value: float,
+    unit: str,
+    si_value: float,
+) -> None:
+    declared = ExplicitSampler(kind="explicit", values=[value], unit=unit)
+    si_sampler = ExplicitSampler(kind="explicit", values=[si_value], unit="Pa")
+
+    assert canonical_sampler_key("pressure", declared) == canonical_sampler_key(
+        "pressure", si_sampler
     )
 
 

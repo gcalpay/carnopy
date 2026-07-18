@@ -44,7 +44,9 @@ Locked GUI-2 requirements:
 
 - QML becomes the only normal frontend after tested parity.
 - Preserve the CLI, public Python API, YAML schemas, immutable output layouts,
-  provenance, integrity, units, identities, and no-overwrite behavior.
+  provenance, integrity, identities, and no-overwrite behavior. Preserve unit
+  semantics except for the explicitly approved additive Stage 2 sampler units
+  recorded below.
 - Preserve one short-lived private worker process per request and one globally
   active desktop request.
 - Keep CoolProp, pandas, PyArrow, Matplotlib, scientific pipelines, and rendering
@@ -308,11 +310,13 @@ security, and publication rehearsal.
   `attentionRequested` signals while retaining the current status and warning
   adapters for Widgets. No controller or QML code may infer a field by parsing
   English issue text.
-- Keep all additions private to `carnopy.app`. Do not change the public CLI,
-  Python API, YAML schema, normalized-configuration schema, worker protocol, or
-  scientific identity definitions. The definition-first sampler correction
+- Keep GUI additions private to `carnopy.app`. Do not change the public CLI,
+  Python API, YAML structure, normalized-configuration schema, worker protocol,
+  or scientific identity definitions. The definition-first sampler correction
   below may change normalized bytes for representations that were not previously
-  unit-invariant; it must make equivalent canonical sampler keys identical.
+  unit-invariant; it must make equivalent canonical sampler keys identical. The
+  only approved additive public configuration change is the Commit 8 sampler
+  unit and starter-template extension recorded below.
 
 ### Workspace and document workflow
 
@@ -351,6 +355,24 @@ security, and publication rehearsal.
   after successful writing. Do not add autosave or a recovery snapshot format.
 
 ### Scientific numeric and unit-entry contract
+
+- Preserve `K` and `degC`. Preserve `Pa`, `kPa`, `MPa`, and `bar` and add the
+  public pressure tokens `hPa` and `atm`. QML and Widgets display human-readable
+  symbols while YAML retains these stable tokens. Use the exact scale factors
+  `1 hPa = 100 Pa` and `1 atm = 101325 Pa`; both pass through the same fixed
+  Decimal boundary and exact canonical-key rules as every existing unit. Do not
+  add Fahrenheit or psi: their affine or nonterminating representations add
+  avoidable unit-toggle and presentation complexity to the current scope.
+- Use practical starter grids without changing sampler syntax: HEOS, Propane and
+  Isobutane, and CSV plus Parquet remain the defaults for all dataset modes;
+  property tables use temperature linspace from -50 through 50 degC with 101
+  points and pressure linspace from 101325 through 506625 Pa with 41 points,
+  exactly 1 through 5 atm in 0.1-atm increments; saturation tables use the same
+  101-point temperature coordinate; vapor-mass-fraction tables use that
+  temperature coordinate plus stepspace from 0 through 1 with step 0.1.
+  Coordinate replacement uses one ambient fallback point of 293.15 K for
+  temperature or 101325 Pa for pressure. These are starter declarations, not
+  claims of universal ML adequacy or guaranteed valid saturation states.
 
 - Production sampling and GUI unit conversion share one lightweight,
   deterministic binary64 sampler canonicalizer. It supports every valid public
@@ -466,7 +488,7 @@ The generated vector candidates were rejected and final logo refinement was
 deferred. This completed gate does not reopen the settled layout, scope, Qt,
 packaging, workflow, or scientific decisions.
 
-Current implementation status as of 2026-07-16:
+Current implementation status as of 2026-07-18:
 
 - Commits 1 through 4 are implemented in the Stage 2 branch history. The design
   and branding gate required between Commits 3 and 4 is complete under the
@@ -550,13 +572,94 @@ Current implementation status as of 2026-07-16:
   rejected only because the capability worker is active clears that transient
   message when the worker becomes idle; persistent operation errors remain
   visible.
-- Commits 7 through 10 have not started. In particular, no QML Dataset,
-  Visualization, YAML, validated-save, or public-launcher parity is inferred
-  from the workspace slice. The three dataset-mode cards and Import action are
-  present on the workspace landing but remain disabled until Commit 7 binds the
-  Dataset workflow. Both public launchers remain on Widgets, and Stage 2 remains
-  active until the later implementation, automated gates, native manual
-  acceptance, and explicit maintainer approval are complete.
+- The Commit 7 boundary is implemented and its focused and repository-wide
+  automated verification passes. The three workspace mode cards now create real
+  template-backed documents, worker-authoritative Import opens validated
+  configurations, Dataset navigation activates only for an open document, and
+  the responsive Dataset page binds directly to the authoritative model, mode,
+  coordinate, fluid, sampler, property, and output-format models. It exposes
+  structured first-invalid fields and rows without parsing English issue text.
+- `SamplerDraft.requestUnitChange()` is the only Widgets/QML unit-change path.
+  It keeps a private valid-definition anchor, derives every candidate through
+  fixed-context Decimal operations over `.15g`-stabilized binary64 text, and
+  commits only when the candidate's exact canonical key equals the anchor key.
+  Affine geomspace/logspace changes and target representations that cannot
+  reproduce the exact key are rejected atomically without changing raw state,
+  validity, or dirty state. The GUI path remains lightweight and does not import
+  NumPy or materialize production grids, bytes, hashes, or `spec_id`.
+- Dataset mode and coordinate replacement are provisional composition-owned
+  decisions. QML emits root requests connected by the runtime to
+  `DesktopController`; the public Widgets composition uses the same facade and
+  confirmation boundary. The destructive draft methods are not QML-invokable.
+  Cancelled decisions restore the authoritative selection, while accepted mode
+  changes retain shared Dataset state and clear configured visualization as
+  already defined by Stage 1. A newly introduced temperature or pressure
+  coordinate starts from one ambient point of 293.15 K or 101325 Pa rather than
+  the previous unit value of one.
+- All QML Dataset mutations cross a queued Qt connection before changing the
+  authoritative Python drafts. This includes model, fluid, property, output,
+  sampler-kind, sampler-unit, and raw sampler-text edits. Native interaction
+  regressions exercise the real Add buttons and sampler signals; they prevent
+  re-entrant QML model/view updates from becoming process-level crashes while
+  preserving direct draft ownership and the unchanged Widgets workflow.
+- Dataset model choices retain the schema values `heos`, `pr`, and `srk` while
+  presenting Helmholtz Equation of State (HEOS), Peng-Robinson (PR), and
+  Soave-Redlich-Kwong (SRK). Selected fluid/property rows expose named Up,
+  Down, and Remove actions. Workspace initialization errors direct an already
+  initialized folder to Open Workspace; initialization remains the one-time
+  creation of the private marker and managed workspace directories.
+- Reusable Dataset selectors preserve readable foreground/background contrast
+  for highlighted and hovered rows. Page and inspector Flickables use vertical,
+  pixel-aligned scrolling with attached scrollbars, short nested selected-value
+  lists do not capture wheel input, and rail collapse avoids an animated
+  full-workbench relayout. The Reduce Motion preference controls subsequent
+  micro-transitions and notification fades and reports its active behavior; it
+  does not alter direct scrolling speed.
+- Capability diagnostics on the current WSLg host identified two independent
+  latency sources. HEOS fluid discovery no longer instantiates every compiled
+  CoolProp fluid merely to reproduce the compiled HEOS registry; selected-fluid
+  validation and PR/SRK support filtering remain authoritative. A fresh HEOS
+  capability request fell from approximately 17.6 to 3.5 seconds on this host.
+  Native scene-graph diagnostics still report OpenGL through Mesa llvmpipe, so
+  the remaining 2D rendering and scroll cost is a CPU-only host graphics
+  limitation, not a database or controller-ownership issue. The dedicated Qt
+  software scene graph remains an explicit diagnostic alternative and is not
+  forced globally ahead of native-3D qualification.
+- Capability metadata and both frontends identify the fixed generation policy
+  as CoolProp DEF. It remains non-user-selectable: Carnopy resets each requested
+  fluid to DEF before row evaluation, does not change reference state during
+  generation, and warns that absolute enthalpy, entropy, and internal energy
+  require a compatible recorded backend, model, version, and reference-state
+  context. A future backend cannot silently reuse this label without providing
+  its own explicit policy metadata.
+- Commit 7 verification includes the 22-file non-writing QML format/lint gate,
+  warning-free engine and interaction tests, exact success and rejection
+  families for every sampler kind, anchor lifecycle and structured-field
+  regressions, unchanged Widgets bindings, full Ruff and mypy gates, 673 passing
+  repository tests, `preflight.py`, and environment compatibility checking.
+  Native human inspection of the Dataset page and both successful and rejected
+  unit toggles remains required before the maintainer accepts this commit.
+- The separately approved Commit 8 boundary is implemented in the working tree.
+  Public input units now additionally accept `hPa` and `atm` through the same
+  exact sampler canonicalization boundary. Packaged starters
+  and byte-identical repository examples use HEOS, Propane and Isobutane, CSV
+  and Parquet, the approved 101-by-41 property grid whose pressure axis is
+  101325 through 506625 Pa (exactly 1 through 5 atm), 101-point saturation
+  coordinate, and 101-by-11 vapor-fraction grid.
+- Commit 8 verification includes exact new-unit canonical-key and production
+  identity regressions, worker/QML capability projection, starter-template and
+  safe-toggle tests, all static gates, and 686 passing repository tests,
+  `preflight.py`, and environment compatibility checking. Authoritative CLI
+  validation projected 8,282 property rows, 404 saturation rows, and 2,222
+  vapor-fraction rows. Non-repository rehearsal generation completed all three
+  starters with zero invalid rows; the final atmospheric property starter was
+  regenerated separately with all 8,282 rows valid.
+- Commits 9 through 11 have not started. No QML Visualization, YAML,
+  validated-save, generation, inspection, plotting, VTK, or public-launcher
+  parity is inferred from the Dataset slice. Both public launchers remain on
+  Widgets, and Stage 2 remains active until the later implementation, automated
+  gates, native manual acceptance, and explicit maintainer approval are
+  complete.
 - Git staging, commits, synchronization with the remote branch, and publication
   remain human-owned and are not implied by this implementation-status record.
 
@@ -592,18 +695,28 @@ Current implementation status as of 2026-07-16:
 7. `feat(app): add QML dataset workflow and safe unit changes`
    - Add the Dataset card grid, direct model bindings, local issue projection,
      guarded mode/coordinate decisions, the anchor-based exact-key unit-change
-     operation, the matching Widgets adaptation, and exact canonical-identity
-     tests.
-8. `feat(app): add guarded QML visualization editing`
+     operation, ambient coordinate-replacement fallbacks, the matching Widgets
+     adaptation, and exact canonical-identity tests.
+8. `feat(sampler): add practical grids and engineering units`
+   - Add `hPa` and `atm` as public input-unit tokens through the existing exact
+     canonicalization boundary; update all public unit catalogs, capabilities,
+     documentation, and normalization regressions; replace the three packaged
+     starter grids with the approved practical ranges; keep repository examples
+     byte-identical to their packaged templates. Explicitly leave Fahrenheit
+     and psi unsupported.
+   - Do not add alternate range syntax, float32 sampling, tolerance, implicit
+     saturation behavior, visualization display units, or another numeric
+     authority.
+9. `feat(app): add guarded QML visualization editing`
    - Add inline master-detail plot editing, stable invalid-field focus,
      authoritative model locks, and the composition-owned cross-controller
      lifecycle guard.
-9. `feat(app): add QML YAML and validated save flows`
+10. `feat(app): add QML YAML and validated save flows`
    - Add typed YAML availability, search/copy and blocking-field navigation,
      typed operation feedback, worker-validated Save and Save As, reformat,
      external-change, dirty-close, QML integration tests, three-platform smoke,
      and installed-wheel verification.
-10. `docs(app): complete GUI-2 Stage 2`
+11. `docs(app): complete GUI-2 Stage 2`
    - Create this documentation-only status commit only after explicit
      maintainer acceptance of the automated and native results.
    - Record the exact verified platforms and gates, mark Stage 2 complete, and

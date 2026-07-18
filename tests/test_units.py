@@ -13,7 +13,9 @@ from carnopy.domain.units import convert_axis_values_to_si, validate_axis_unit
 
 def test_engineering_units_convert_to_si() -> None:
     assert convert_axis_values_to_si("temperature", "degC", [0.0]) == [273.15]
+    assert convert_axis_values_to_si("pressure", "hPa", [1_013.25]) == [101_325.0]
     assert convert_axis_values_to_si("pressure", "bar", [1.0]) == [100_000.0]
+    assert convert_axis_values_to_si("pressure", "atm", [1.0]) == [101_325.0]
 
 
 def test_invalid_unit_and_physical_values_fail() -> None:

@@ -10,13 +10,14 @@ backend:
 mode: saturation_table
 fluids:
   - Propane
+  - Isobutane
 grid:
-  # stepspace is inclusive; stop must be reachable by an integral step count.
+  # linspace includes both endpoints at one-degree-Celsius intervals.
   temperature:
-    kind: stepspace
-    start: -30.0
-    stop: 60.0
-    step: 10.0
+    kind: linspace
+    start: -50.0
+    stop: 50.0
+    num: 101
     unit: degC
 properties:
   - specific_enthalpy

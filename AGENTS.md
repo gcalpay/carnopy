@@ -426,9 +426,13 @@ Supported input units:
 
 ```text
 temperature: K, degC
-pressure: Pa, kPa, MPa, bar
+pressure: Pa, hPa, kPa, MPa, bar, atm
 vapor_mass_fraction: "1"
 ```
+
+Use `1 hPa = 100 Pa` and `1 atm = 101325 Pa`. These exact decimal scale factors
+pass through the same sampler-canonicalization boundary as every other input
+unit.
 
 Normalization deterministically canonicalizes each valid sampler definition to
 SI before materializing it. Declared-unit definitions with the same exact

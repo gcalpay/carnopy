@@ -328,21 +328,21 @@ backend:
   name: coolprop
   model: heos
 mode: property_table
-fluids: [Propane]
+fluids: [Propane, Isobutane]
 
 grid:
   temperature:
     kind: linspace
-    start: 20
-    stop: 100
-    num: 5
+    start: -50
+    stop: 50
+    num: 101
     unit: degC
   pressure:
     kind: linspace
-    start: 1
-    stop: 20
-    num: 5
-    unit: bar
+    start: 101325
+    stop: 506625
+    num: 41
+    unit: Pa
 
 properties:
   - specific_enthalpy
@@ -667,9 +667,13 @@ Supported input units:
 
 ```text
 temperature: K, degC
-pressure: Pa, kPa, MPa, bar
+pressure: Pa, hPa, kPa, MPa, bar, atm
 vapor_mass_fraction: "1"
 ```
+
+YAML uses `degC` as the stable token for degrees Celsius. One hectopascal is
+exactly `100 Pa`, and one standard atmosphere is exactly `101325 Pa`. All valid
+declared units are canonicalized to SI before sampling.
 
 Carnopy deterministically canonicalizes each sampler definition to SI before it
 materializes the grid. Engineering-unit declarations with the same exact

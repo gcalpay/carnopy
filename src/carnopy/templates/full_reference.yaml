@@ -101,8 +101,9 @@
 #
 # Supported input units:
 #   temperature: K, degC
-#   pressure: Pa, kPa, MPa, bar
+#   pressure: Pa, hPa, kPa, MPa, bar, atm
 #   vapor_mass_fraction: "1"
+#   1 hPa = 100 Pa; 1 atm = 101325 Pa.
 #
 # Carnopy canonicalizes each valid sampler definition to SI before
 # materialization. Declarations with the same exact canonical sampler key
