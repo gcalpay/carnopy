@@ -3,13 +3,30 @@ from __future__ import annotations
 import copy
 import re
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from typing import Any
 
 from PySide6.QtCore import Property, QObject, Signal, SignalInstance, Slot
 
 from carnopy.app.draft_models import DraftItem, DraftListModel
+from carnopy.app.field_ids import (
+    PLOT_DISPLAY_UNITS,
+    PLOT_FILTERS,
+    PLOT_FLUIDS,
+    PLOT_KIND,
+    PLOT_NAME,
+    PLOT_SERIES,
+    plot_field,
+)
 from carnopy.app.mapping_draft import MappingDraftModel
 from carnopy.visualization.requests import PLOT_NAME_PATTERN
+
+
+@dataclass(frozen=True)
+class _PlotIssue:
+    field: str
+    row: int
+    message: str
 
 
 class PlotDraft(QObject):
@@ -133,6 +150,11 @@ class PlotDraft(QObject):
         lambda self: self._constant_model(self.display_units),
         constant=True,
     )
+
+    def get_applicable_fields(self) -> list[str]:
+        return sorted(self._applicable_fields())
+
+    applicableFields = Property(list, get_applicable_fields, notify=changed)
 
     def get_name(self) -> str:
         return self._name
@@ -259,9 +281,22 @@ class PlotDraft(QObject):
     locallyValid = Property(bool, get_locally_valid, notify=validity_changed)
 
     def get_issue(self) -> str:
-        return self._validation_issue()
+        issue = self._validation_problem()
+        return "" if issue is None else issue.message
 
     issue = Property(str, get_issue, notify=validity_changed)
+
+    def get_first_invalid_field(self) -> str:
+        issue = self._validation_problem()
+        return "" if issue is None else issue.field
+
+    firstInvalidField = Property(str, get_first_invalid_field, notify=validity_changed)
+
+    def get_first_invalid_row(self) -> int:
+        issue = self._validation_problem()
+        return -1 if issue is None else issue.row
+
+    firstInvalidRow = Property(int, get_first_invalid_row, notify=validity_changed)
 
     def load_payload(self, plot: Mapping[str, object]) -> None:
         before = self._observable_state()
@@ -503,20 +538,38 @@ class PlotDraft(QObject):
         )
 
     def _validation_issue(self) -> str:
+        issue = self._validation_problem()
+        return "" if issue is None else issue.message
+
+    def _validation_problem(self) -> _PlotIssue | None:
         name = self._name.strip()
         if not name:
-            return "plot name is required"
+            return _PlotIssue(PLOT_NAME, -1, "plot name is required")
         if re.fullmatch(PLOT_NAME_PATTERN, name) is None:
-            return (
+            return _PlotIssue(
+                PLOT_NAME,
+                -1,
                 "plot name must contain lowercase ASCII letters or digits separated "
-                "by single '-' or '_' characters"
+                "by single '-' or '_' characters",
             )
         if self._kind not in self._plot_kinds():
-            return f"plot kind {self._kind!r} is unavailable for this dataset"
+            return _PlotIssue(
+                PLOT_KIND,
+                -1,
+                f"plot kind {self._kind!r} is unavailable for this dataset",
+            )
         if self._kind == "pv" and "mass_density" not in self._properties():
-            return "pv requires the dataset property 'mass_density'"
+            return _PlotIssue(
+                PLOT_KIND,
+                -1,
+                "pv requires the dataset property 'mass_density'",
+            )
         if self._kind == "ts" and "specific_entropy" not in self._properties():
-            return "ts requires the dataset property 'specific_entropy'"
+            return _PlotIssue(
+                PLOT_KIND,
+                -1,
+                "ts requires the dataset property 'specific_entropy'",
+            )
         applicable = self._applicable_fields()
         required = set(_string_tuple(self._kind_contract().get("required")))
         if self._kind == "property_curves" and self.dataset_payload.get("mode") == "property_table":
@@ -534,7 +587,11 @@ class PlotDraft(QObject):
         }
         missing = sorted(field for field in required if not scalar_values.get(field))
         if missing:
-            return f"{self._kind} requires: {', '.join(missing)}"
+            return _PlotIssue(
+                plot_field(missing[0]),
+                -1,
+                f"{self._kind} requires: {', '.join(missing)}",
+            )
         allowed_by_field = {
             "property": self._properties(),
             "x": self._axis_fields(),
@@ -550,22 +607,38 @@ class PlotDraft(QObject):
             if field not in applicable or not value:
                 continue
             if value not in allowed_by_field[field]:
-                return f"plot {field} value {value!r} is unavailable"
+                return _PlotIssue(
+                    plot_field(field),
+                    -1,
+                    f"plot {field} value {value!r} is unavailable",
+                )
         canonical_fluids = self._canonical_fluid_values(self._fluids)
         if len(set(canonical_fluids)) != len(canonical_fluids):
-            return "visualization fluid aliases resolve to duplicate canonical fluids"
+            return _PlotIssue(
+                PLOT_FLUIDS,
+                -1,
+                "visualization fluid aliases resolve to duplicate canonical fluids",
+            )
         dataset_canonical = set(self._canonical_fluid_values(self.dataset_fluid_values()))
         for value, canonical in zip(self._fluids, canonical_fluids, strict=True):
             if canonical not in dataset_canonical:
-                return f"visualization fluid {value!r} is not in the dataset"
-        for field, model in (
-            ("filters", self.filters),
-            ("series", self.series),
-            ("display_units", self.display_units),
+                return _PlotIssue(
+                    PLOT_FLUIDS,
+                    -1,
+                    f"visualization fluid {value!r} is not in the dataset",
+                )
+        for field, field_id, model in (
+            ("filters", PLOT_FILTERS, self.filters),
+            ("series", PLOT_SERIES, self.series),
+            ("display_units", PLOT_DISPLAY_UNITS, self.display_units),
         ):
             if field in applicable and not model.get_valid():
-                return model.get_issue()
-        return ""
+                return _PlotIssue(
+                    field_id,
+                    model.get_first_invalid_row(),
+                    model.get_issue(),
+                )
+        return None
 
     def _plot_kinds(self) -> tuple[str, ...]:
         kinds = _string_tuple(self._visualization_capabilities().get("plot_kinds"))

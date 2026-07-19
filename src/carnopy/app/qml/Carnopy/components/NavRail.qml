@@ -12,6 +12,7 @@ Control {
     property bool allowCollapse: true
     property string currentPage: "workspace"
     property bool datasetAvailable: false
+    property bool visualizationAvailable: false
     readonly property alias navigationModel: navigationModel
     readonly property int preferredWidth: collapsed ? 76 : 224
 
@@ -48,9 +49,8 @@ Control {
             pageKey: "visualization"
             title: qsTr("Visualization")
             iconName: "chart-spline"
-            available: false
-            unavailableReason: qsTr(
-                                   "Visualization editing is introduced in a later Stage 2 commit.")
+            available: true
+            unavailableReason: qsTr("Create or import a dataset configuration first.")
         }
         ListElement {
             pageKey: "yaml"
@@ -181,6 +181,8 @@ Control {
 
                 readonly property bool effectivelyAvailable: available && (pageKey !== "dataset"
                                                                            || root.datasetAvailable)
+                                                             && (pageKey !== "visualization"
+                                                                 || root.visualizationAvailable)
 
                 Accessible.description: effectivelyAvailable ? "" : unavailableReason
                 Accessible.name: title

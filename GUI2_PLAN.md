@@ -659,12 +659,38 @@ Current implementation status as of 2026-07-19:
   vapor-fraction rows. Non-repository rehearsal generation completed all three
   starters with zero invalid rows; the final atmospheric property starter was
   regenerated separately with all 8,282 rows valid.
-- Commits 9 through 11 have not started. No QML Visualization, YAML,
-  validated-save, generation, inspection, plotting, VTK, or public-launcher
-  parity is inferred from the Dataset slice. Both public launchers remain on
-  Widgets, and Stage 2 remains active until the later implementation, automated
-  gates, native manual acceptance, and explicit maintainer approval are
-  complete.
+- The Commit 9 boundary is implemented in the working tree. The QML
+  Visualization page binds the authoritative shared format, fluid, filter,
+  display-unit, and ordered durable plot models, and presents the single
+  workflow-local Add/Edit `PlotDraft` as an inline master-detail editor. It
+  preserves disabled latent state, per-plot inheritance, raw shared/per-plot
+  mapping separation, ordered snapshot ownership, and worker-only rendering.
+- Stable `visualization.*` and `plot.*` field identifiers plus a separate row
+  projection drive invalid-field focus without parsing English issue text.
+  Invalid Commit retains the temporary editor and focuses its first structured
+  issue; Cancel destroys only transient state and does not alter durable dirty
+  state.
+- `DesktopController` is the QML-invokable lifecycle facade for workspace
+  replacement, document replacement, Save, mode or coordinate replacement, and
+  shutdown. The active-plot guard runs before workspace preflight and commit,
+  and before every guarded configuration operation. Shared visualization
+  changes, durable plot removal or movement, and starting another editor are
+  locked at both the facade and draft boundaries while one edit is active.
+  Widgets retain their modal editor and use the same composition-owned
+  lifecycle boundary.
+- Commit 9 verification includes the 25-file non-writing QML
+  format/lint gate, warning-free QML Add/invalid Commit/valid Commit/Cancel
+  interaction tests, structured validation and mapping-row regressions,
+  composition lifecycle tests, unchanged manual-plot and Widgets regressions,
+  full Ruff and mypy gates, 694 passing repository tests, `preflight.py`, and
+  environment compatibility checking. Native human inspection of the
+  Visualization page remains required before the maintainer accepts this
+  commit.
+- Commits 10 and 11 have not started. No QML YAML, validated-save, generation,
+  inspection, plotting, VTK, or public-launcher parity is inferred from the
+  Visualization slice. Both public launchers remain on Widgets, and Stage 2
+  remains active until the remaining implementation, automated gates, native
+  manual acceptance, and explicit maintainer approval are complete.
 - Git staging, commits, synchronization with the remote branch, and publication
   remain human-owned and are not implied by this implementation-status record.
 

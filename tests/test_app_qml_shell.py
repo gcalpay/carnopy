@@ -87,7 +87,7 @@ def test_shell_uses_exact_navigation_order_and_disables_future_workflows(
     )
     assert tuple(
         model.data(model.index(row, 0), available_role) for row in range(model.rowCount())
-    ) == (True, True, False, False, False, False, False, False, False, False)
+    ) == (True, True, True, False, False, False, False, False, False, False)
     nav_source = (ROOT / "src/carnopy/app/qml/Carnopy/components/NavRail.qml").read_text(
         encoding="utf-8"
     )
@@ -95,6 +95,8 @@ def test_shell_uses_exact_navigation_order_and_disables_future_workflows(
     assert "enabled: effectivelyAvailable" in nav_source
     assert 'pageKey !== "dataset"' in nav_source
     assert "root.datasetAvailable" in nav_source
+    assert 'pageKey !== "visualization"' in nav_source
+    assert "root.visualizationAvailable" in nav_source
     assert root.property("hasFake3dViewport") is False
 
 

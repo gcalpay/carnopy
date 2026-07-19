@@ -10,6 +10,7 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
+from carnopy.app.field_ids import PLOT_FILTERS, PLOT_KIND, PLOT_NAME, plot_field
 from carnopy.app.mapping_draft import FIELD_ROLE, ISSUE_ROLE, MappingDraftModel
 from carnopy.app.plot_draft import PlotDraft
 
@@ -226,6 +227,7 @@ def test_numeric_mapping_rows_preserve_invalid_text(
     assert not model.get_valid()
     assert model.data(model.index(0, 0), FIELD_ROLE) == "pressure"
     assert model.data(model.index(0, 0), ISSUE_ROLE)
+    assert model.get_first_invalid_row() == 0
     with pytest.raises(ValueError):
         model.mapping()
 
@@ -284,6 +286,8 @@ def test_fixed_axis_plots_require_their_emitted_properties(
 
     assert not draft.get_locally_valid()
     assert required in draft.get_issue()
+    assert draft.get_first_invalid_field() == PLOT_KIND
+    assert draft.get_first_invalid_row() == -1
 
 
 def test_context_refresh_preserves_raw_plot_state() -> None:
@@ -308,6 +312,21 @@ def test_plot_names_use_the_public_pattern(
 
     assert not draft.get_locally_valid()
     assert "plot name" in draft.get_issue()
+    assert draft.get_first_invalid_field() == PLOT_NAME
+
+
+def test_plot_structured_issue_projects_scalar_and_mapping_rows() -> None:
+    draft = PlotDraft(capabilities(), dataset(), curves_plot())
+    draft.set_property_name("")
+
+    assert draft.get_first_invalid_field() == plot_field("property")
+    assert draft.get_first_invalid_row() == -1
+
+    draft.set_property_name("mass_density")
+    draft.filters.add_row("pressure", "not-a-number")
+
+    assert draft.get_first_invalid_field() == PLOT_FILTERS
+    assert draft.get_first_invalid_row() == 0
 
 
 def test_gui_plot_draft_import_excludes_heavy_modules() -> None:

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
 
 import yaml
-from PySide6.QtCore import Property, QObject, Signal, Slot
+from PySide6.QtCore import Property, QObject, Signal
 
 from carnopy.app.client import WorkerClient
 from carnopy.app.config_document import (
@@ -73,13 +74,20 @@ class DatasetConfigController(QObject):
         self._yaml_preview = ""
         self._file_display = "No dataset configuration is open."
         self._status_message = "Open a workspace to create or import a dataset configuration."
+        self._lifecycle_guard: Callable[[str], bool] | None = None
 
         self.dataset_draft.changed.connect(self._refresh_document)
         self.visualization_draft.changed.connect(self._refresh_document)
         self.dataset_draft.mode_change_requested.connect(self.mode_change_requested)
         self.dataset_draft.message.connect(self._set_status)
         self.visualization_draft.message.connect(self._set_status)
+        self.visualization_draft.active_plot_draft_changed.connect(self.state_changed)
         self.coordinator.busy_changed.connect(self._worker_busy_changed)
+
+    def set_lifecycle_guard(self, guard: Callable[[str], bool]) -> None:
+        """Install the composition-owned guard for destructive workflow operations."""
+
+        self._lifecycle_guard = guard
 
     def get_editor_available(self) -> bool:
         return self.workspace is not None and self.capabilities is not None
@@ -115,7 +123,7 @@ class DatasetConfigController(QObject):
         if not self.dataset_draft.get_locally_valid():
             return self.dataset_draft.get_first_invalid_field()
         if not self.visualization_draft.get_locally_valid():
-            return "visualization.plots"
+            return self.visualization_draft.get_first_invalid_field()
         return ""
 
     firstInvalidField = Property(str, get_first_invalid_field, notify=state_changed)
@@ -123,6 +131,8 @@ class DatasetConfigController(QObject):
     def get_first_invalid_row(self) -> int:
         if not self.dataset_draft.get_locally_valid():
             return self.dataset_draft.get_first_invalid_row()
+        if not self.visualization_draft.get_locally_valid():
+            return self.visualization_draft.get_first_invalid_row()
         return -1
 
     firstInvalidRow = Property(int, get_first_invalid_row, notify=state_changed)
@@ -153,12 +163,20 @@ class DatasetConfigController(QObject):
     defaultSavePath = Property(str, get_default_save_path, notify=state_changed)
 
     def get_can_create(self) -> bool:
-        return self.get_editor_available() and not self.coordinator.is_busy
+        return (
+            self.get_editor_available()
+            and not self.coordinator.is_busy
+            and not self.visualization_draft.get_has_active_plot_edit()
+        )
 
     canCreate = Property(bool, get_can_create, notify=state_changed)
 
     def get_can_import(self) -> bool:
-        return self.workspace is not None and not self.coordinator.is_busy
+        return (
+            self.workspace is not None
+            and not self.coordinator.is_busy
+            and not self.visualization_draft.get_has_active_plot_edit()
+        )
 
     canImport = Property(bool, get_can_import, notify=state_changed)
 
@@ -170,7 +188,12 @@ class DatasetConfigController(QObject):
     canEdit = Property(bool, get_can_edit, notify=state_changed)
 
     def get_can_save(self) -> bool:
-        return self.document is not None and self._locally_valid and not self.coordinator.is_busy
+        return (
+            self.document is not None
+            and self._locally_valid
+            and not self.coordinator.is_busy
+            and not self.visualization_draft.get_has_active_plot_edit()
+        )
 
     canSave = Property(bool, get_can_save, notify=state_changed)
     canSaveAs = Property(bool, get_can_save, notify=state_changed)
@@ -188,6 +211,8 @@ class DatasetConfigController(QObject):
     def set_workspace(self, value: object) -> None:
         workspace = value if isinstance(value, Workspace) else None
         changed = self.workspace != workspace
+        if changed and not self._lifecycle_allowed("workspace replacement"):
+            return
         self.workspace = workspace
         if changed:
             self._clear_document()
@@ -208,8 +233,9 @@ class DatasetConfigController(QObject):
     def needs_discard_confirmation(self) -> bool:
         return self.get_dirty()
 
-    @Slot(str, bool, result=bool)
     def new_dataset(self, mode: str, discard_confirmed: bool = False) -> bool:
+        if not self._lifecycle_allowed("New Dataset"):
+            return False
         if self.workspace is None or self.capabilities is None:
             return False
         if self.needs_discard_confirmation() and not discard_confirmed:
@@ -223,8 +249,9 @@ class DatasetConfigController(QObject):
         self._set_status("New configuration. Save it under the workspace configs folder.")
         return True
 
-    @Slot(str, bool, result=bool)
     def import_dataset(self, path: str, discard_confirmed: bool = False) -> bool:
+        if not self._lifecycle_allowed("Import"):
+            return False
         if self.workspace is None:
             return False
         if self.needs_discard_confirmation() and not discard_confirmed:
@@ -241,8 +268,9 @@ class DatasetConfigController(QObject):
             {"config_path": str(self._pending_path)},
         )
 
-    @Slot(bool, result=bool)
     def request_save(self, allow_reformat: bool = False) -> bool:
+        if not self._lifecycle_allowed("Save"):
+            return False
         document = self.document
         if document is None or not self._locally_valid or self.coordinator.is_busy:
             return False
@@ -258,21 +286,23 @@ class DatasetConfigController(QObject):
         self._validate_before_save(document.source_path, replace=True)
         return True
 
-    @Slot(bool, result=bool)
     def request_save_as(self, allow_reformat: bool = False) -> bool:
+        if not self._lifecycle_allowed("Save As"):
+            return False
         if self.document is None or not self._locally_valid or self.coordinator.is_busy:
             return False
         return self._request_save_as(allow_reformat=allow_reformat)
 
-    @Slot(str)
     def confirm_reformat(self, action: str) -> None:
         if action == "save":
             self.request_save(allow_reformat=True)
         elif action == "save_as":
             self.request_save_as(allow_reformat=True)
 
-    @Slot(str, result=bool)
     def save_path_selected(self, path: str) -> bool:
+        if not self._lifecycle_allowed("Save As"):
+            self._awaiting_save_path = False
+            return False
         if not self._awaiting_save_path:
             self._set_status("Save As is not awaiting a destination.")
             return False
@@ -287,12 +317,12 @@ class DatasetConfigController(QObject):
         self._validate_before_save(candidate.resolve(), replace=False)
         return True
 
-    @Slot()
     def cancel_save_path(self) -> None:
         self._awaiting_save_path = False
 
-    @Slot(bool, result=bool)
     def reload_source(self, discard_confirmed: bool = False) -> bool:
+        if not self._lifecycle_allowed("Reload"):
+            return False
         document = self.document
         if document is None or document.source_path is None or self.coordinator.is_busy:
             return False
@@ -306,8 +336,9 @@ class DatasetConfigController(QObject):
             {"config_path": str(document.source_path)},
         )
 
-    @Slot(str, result=bool)
     def apply_mode_change(self, selected: str) -> bool:
+        if not self._lifecycle_allowed("dataset mode change"):
+            return False
         document = self.document
         if document is None:
             return False
@@ -328,11 +359,15 @@ class DatasetConfigController(QObject):
         return changed
 
     def apply_coordinate_change(self, selected: str) -> bool:
+        if not self._lifecycle_allowed("dataset coordinate change"):
+            return False
         if self.document is None:
             return False
         return self.dataset_draft.set_coordinate(selected)
 
-    def open_document(self, document: DatasetConfigDocument) -> None:
+    def open_document(self, document: DatasetConfigDocument) -> bool:
+        if not self._lifecycle_allowed("document replacement"):
+            return False
         self.document = document
         self._syncing_document = True
         try:
@@ -349,9 +384,11 @@ class DatasetConfigController(QObject):
         )
         self._refresh_document()
         self.document_opened.emit()
+        return True
 
-    @Slot(bool, result=bool)
     def clear_document(self, discard_confirmed: bool = False) -> bool:
+        if not self._lifecycle_allowed("Close Configuration"):
+            return False
         if self.needs_discard_confirmation() and not discard_confirmed:
             self._set_status("Confirm discarding the current configuration before closing it.")
             return False
@@ -505,11 +542,16 @@ class DatasetConfigController(QObject):
         except ConfigDocumentError as exc:
             self._set_status(str(exc))
             return
-        self.open_document(document)
+        if not self.open_document(document):
+            return
         location = "workspace configuration" if document.workspace_owned else "external import"
         self._set_status(f"Loaded valid {location}: {document.source_path}")
 
     def _finish_save(self, *, replace: bool) -> None:
+        if not self._lifecycle_allowed("Save"):
+            self._pending_path = None
+            self._pending_content = None
+            return
         document = self.document
         workspace = self.workspace
         path = self._pending_path
@@ -610,6 +652,9 @@ class DatasetConfigController(QObject):
         self.state_changed.emit()
         self.draft_changed.emit(self.get_dirty())
         self.document_state_changed.emit()
+
+    def _lifecycle_allowed(self, operation: str) -> bool:
+        return self._lifecycle_guard is None or self._lifecycle_guard(operation)
 
 
 def _template_payload(mode: str) -> dict[str, Any]:

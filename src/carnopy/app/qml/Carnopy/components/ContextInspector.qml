@@ -9,6 +9,9 @@ Control {
     property bool closeButtonVisible: false
     property bool datasetValid: false
     property string datasetIssue: ""
+    property bool visualizationActiveEdit: false
+    property string visualizationIssue: ""
+    property bool visualizationValid: false
     property string workspacePath: ""
     property string workspaceState: "unavailable"
 
@@ -157,9 +160,28 @@ Control {
 
                 Card {
                     Layout.fillWidth: true
-                    subtitle: qsTr(
-                                  "Guarded inline Visualization editing is the next independently verified implementation commit.")
-                    title: qsTr("Next implementation step")
+                    subtitle: root.workspaceState !== "editing" ? qsTr(
+                                                                      "Open a configuration to define configured visualization.") :
+                                                                  (root.visualizationActiveEdit
+                                                                   ? qsTr("A temporary plot edit must be committed or cancelled before lifecycle changes.") :
+                                                                     (root.visualizationValid ? qsTr(
+                                                                                                    "Configured visualization is locally complete or disabled with latent state retained.") :
+                                                                                                root.visualizationIssue))
+                    title: qsTr("Visualization validation")
+
+                    StatusBadge {
+                        label: root.workspaceState !== "editing" ? qsTr("Not available") : (
+                                                                       root.visualizationActiveEdit
+                                                                       ? qsTr("Edit active") : (
+                                                                             root.visualizationValid
+                                                                             ? qsTr("Locally complete") :
+                                                                               qsTr("Needs attention")))
+                        tone: root.workspaceState !== "editing" ? "neutral" : (
+                                                                      root.visualizationActiveEdit
+                                                                      ? "warning" : (
+                                                                            root.visualizationValid
+                                                                            ? "success" : "danger"))
+                    }
                 }
 
                 Item {

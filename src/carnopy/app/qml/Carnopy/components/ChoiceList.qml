@@ -12,10 +12,13 @@ Item {
     property var selectedModel: null
     property string emptyText: qsTr("Nothing selected")
     property string noun: qsTr("item")
+    property bool allowMove: true
+    property bool locked: false
 
     signal addRequested(string value)
     signal moveRequested(int row, int offset)
     signal removeRequested(int row)
+    signal removeValueRequested(int row, string value)
 
     implicitHeight: content.implicitHeight
 
@@ -43,7 +46,7 @@ Item {
             }
 
             AppButton {
-                enabled: choiceBox.count > 0 && choiceBox.currentValue !== undefined
+                enabled: !root.locked && choiceBox.count > 0 && choiceBox.currentValue !== undefined
                 objectName: root.objectName + "AddButton"
                 onClicked: root.addRequested(String(choiceBox.currentValue))
                 text: qsTr("Add")
@@ -76,6 +79,7 @@ Item {
                 required property string display
                 required property int index
                 required property string issue
+                required property string value
 
                 border.color: issue.length > 0 ? Theme.danger : Theme.border
                 border.width: 1
@@ -101,24 +105,30 @@ Item {
 
                     AppButton {
                         Accessible.description: qsTr("Move %1 up").arg(selectedRow.display)
-                        enabled: selectedRow.index > 0
+                        enabled: !root.locked && selectedRow.index > 0
                         implicitWidth: 56
                         onClicked: root.moveRequested(selectedRow.index, -1)
                         text: qsTr("Up")
+                        visible: root.allowMove
                     }
 
                     AppButton {
                         Accessible.description: qsTr("Move %1 down").arg(selectedRow.display)
-                        enabled: selectedRow.index + 1 < selectedList.count
+                        enabled: !root.locked && selectedRow.index + 1 < selectedList.count
                         implicitWidth: 64
                         onClicked: root.moveRequested(selectedRow.index, 1)
                         text: qsTr("Down")
+                        visible: root.allowMove
                     }
 
                     AppButton {
                         Accessible.description: qsTr("Remove %1").arg(selectedRow.display)
+                        enabled: !root.locked
                         implicitWidth: 78
-                        onClicked: root.removeRequested(selectedRow.index)
+                        onClicked: {
+                            root.removeRequested(selectedRow.index);
+                            root.removeValueRequested(selectedRow.index, selectedRow.value);
+                        }
                         text: qsTr("Remove")
                     }
                 }

@@ -313,6 +313,57 @@ class QmlApplicationRuntime:
             ),
             ("datasetDecisionCommitRequested", self.controller.commit_dataset_decision),
             ("datasetDecisionCancelRequested", self.controller.cancel_dataset_decision),
+            ("visualizationEnabledRequested", self.controller.request_visualization_enabled),
+            ("visualizationFormatRequested", self.controller.request_visualization_format),
+            (
+                "visualizationFluidSelectionRequested",
+                self.controller.request_visualization_fluid_selection,
+            ),
+            (
+                "visualizationAddPlotRequested",
+                self.controller.request_visualization_add_plot,
+            ),
+            (
+                "visualizationEditPlotRequested",
+                self.controller.request_visualization_edit_plot,
+            ),
+            (
+                "visualizationCommitPlotRequested",
+                self.controller.request_visualization_commit_plot,
+            ),
+            (
+                "visualizationCancelPlotRequested",
+                self.controller.request_visualization_cancel_plot,
+            ),
+            (
+                "visualizationRemovePlotRequested",
+                self.controller.request_visualization_remove_plot,
+            ),
+            (
+                "visualizationMovePlotRequested",
+                self.controller.request_visualization_move_plot,
+            ),
+            ("plotFieldChangeRequested", self.controller.request_plot_field_change),
+            (
+                "plotFluidSelectionRequested",
+                self.controller.request_plot_fluid_selection,
+            ),
+            (
+                "visualizationMappingAddRequested",
+                self.controller.request_visualization_mapping_add,
+            ),
+            (
+                "visualizationMappingFieldChangeRequested",
+                self.controller.request_visualization_mapping_field_change,
+            ),
+            (
+                "visualizationMappingValueChangeRequested",
+                self.controller.request_visualization_mapping_value_change,
+            ),
+            (
+                "visualizationMappingRemoveRequested",
+                self.controller.request_visualization_mapping_remove,
+            ),
             (
                 "normalGeometryRememberRequested",
                 self.controller.qml_settings.rememberNormalGeometry,

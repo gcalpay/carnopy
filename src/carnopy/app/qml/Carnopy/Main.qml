@@ -36,6 +36,21 @@ ApplicationWindow {
     signal datasetSamplerKindChangeRequested(var draft, string kind)
     signal datasetSamplerTextChangeRequested(var draft, string field, string text)
     signal datasetSamplerUnitChangeRequested(var draft, string unit)
+    signal plotFieldChangeRequested(var draft, string field, string value)
+    signal plotFluidSelectionRequested(var draft, string value, bool selected)
+    signal visualizationAddPlotRequested
+    signal visualizationCancelPlotRequested
+    signal visualizationCommitPlotRequested
+    signal visualizationEditPlotRequested(int row)
+    signal visualizationEnabledRequested(bool enabled)
+    signal visualizationFluidSelectionRequested(string value, bool selected)
+    signal visualizationFormatRequested(string format)
+    signal visualizationMappingAddRequested(var model)
+    signal visualizationMappingFieldChangeRequested(var model, int row, string field)
+    signal visualizationMappingRemoveRequested(var model, int row)
+    signal visualizationMappingValueChangeRequested(var model, int row, string value)
+    signal visualizationMovePlotRequested(int row, int offset)
+    signal visualizationRemovePlotRequested(int row)
     signal normalGeometryRememberRequested(int x, int y, int width, int height)
     signal settingsLayoutResetRequested
 
@@ -61,6 +76,9 @@ ApplicationWindow {
     readonly property int motionDuration: Theme.durationStandard
     property string currentPage: "workspace"
     property bool geometryTrackingReady: false
+    property string pendingAttentionField: ""
+    property int pendingAttentionRow: -1
+    property int pendingAttentionSerial: 0
 
     function pageTitle(pageKey) {
         if (pageKey === "settings")
@@ -69,6 +87,8 @@ ApplicationWindow {
             return qsTr("Help");
         if (pageKey === "dataset")
             return qsTr("Dataset");
+        if (pageKey === "visualization")
+            return qsTr("Visualization");
         return qsTr("Workspace");
     }
 
@@ -180,6 +200,7 @@ ApplicationWindow {
             currentPage: root.currentPage
             datasetAvailable: root.controllerAvailable && root.desktopController.workspaceState
                               === "editing"
+            visualizationAvailable: datasetAvailable
             objectName: "persistentNavigationRail"
             onCollapseRequested: root.toggleRail()
             onPageRequested: pageKey => root.routeTo(pageKey)
@@ -228,6 +249,8 @@ ApplicationWindow {
                 }
 
                 Loader {
+                    id: pageLoader
+
                     Layout.fillHeight: true
                     Layout.fillWidth: true
                     objectName: "workbenchPageLoader"
@@ -238,6 +261,8 @@ ApplicationWindow {
                         return helpPage;
                         if (root.currentPage === "dataset")
                         return datasetPage;
+                        if (root.currentPage === "visualization")
+                        return visualizationPage;
                         return workspacePage;
                     }
                 }
@@ -294,6 +319,12 @@ ApplicationWindow {
             workspacePath: root.controllerAvailable ? root.desktopController.workspaceRootPath : ""
             workspaceState: root.controllerAvailable ? root.desktopController.workspaceState :
                                                        "unavailable"
+            visualizationActiveEdit: root.controllerAvailable
+                                     && root.desktopController.hasActivePlotEdit
+            visualizationIssue: root.controllerAvailable
+                                ? root.desktopController.visualizationDraft.issue : ""
+            visualizationValid: root.controllerAvailable
+                                && root.desktopController.visualizationDraft.locallyValid
             visible: root.inspectorWideVisible
         }
     }
@@ -312,6 +343,7 @@ ApplicationWindow {
             currentPage: root.currentPage
             datasetAvailable: root.controllerAvailable && root.desktopController.workspaceState
                               === "editing"
+            visualizationAvailable: datasetAvailable
             onPageRequested: pageKey => root.routeTo(pageKey)
         }
     }
@@ -335,6 +367,12 @@ ApplicationWindow {
             workspacePath: root.controllerAvailable ? root.desktopController.workspaceRootPath : ""
             workspaceState: root.controllerAvailable ? root.desktopController.workspaceState :
                                                        "unavailable"
+            visualizationActiveEdit: root.controllerAvailable
+                                     && root.desktopController.hasActivePlotEdit
+            visualizationIssue: root.controllerAvailable
+                                ? root.desktopController.visualizationDraft.issue : ""
+            visualizationValid: root.controllerAvailable
+                                && root.desktopController.visualizationDraft.locallyValid
         }
     }
 
@@ -387,6 +425,43 @@ ApplicationWindow {
     }
 
     Component {
+        id: visualizationPage
+
+        VisualizationPage {
+            attentionField: root.pendingAttentionField
+            attentionRow: root.pendingAttentionRow
+            attentionSerial: root.pendingAttentionSerial
+            expectedColumns: root.cardColumnCount
+            objectName: "visualizationPage"
+            visualizationDraft: root.desktopController.visualizationDraft
+            onAddPlotRequested: root.visualizationAddPlotRequested()
+            onCancelPlotRequested: root.visualizationCancelPlotRequested()
+            onCommitPlotRequested: root.visualizationCommitPlotRequested()
+            onEditPlotRequested: row => root.visualizationEditPlotRequested(row)
+            onEnabledChangeRequested: enabled => root.visualizationEnabledRequested(enabled)
+            onFluidSelectionRequested: (value, selected)
+                                       => root.visualizationFluidSelectionRequested(value, selected)
+            onFormatChangeRequested: format => root.visualizationFormatRequested(format)
+            onMappingAddRequested: model => root.visualizationMappingAddRequested(model)
+            onMappingFieldChangeRequested: (model, row, field)
+                                           => root.visualizationMappingFieldChangeRequested(model,
+                                                                                            row, field)
+            onMappingRemoveRequested: (model, row) => root.visualizationMappingRemoveRequested(model,
+                                                                                               row)
+            onMappingValueChangeRequested: (model, row, value)
+                                           => root.visualizationMappingValueChangeRequested(model,
+                                                                                            row, value)
+            onMovePlotRequested: (row, offset) => root.visualizationMovePlotRequested(row, offset)
+            onPlotFieldChangeRequested: (draft, field, value) => root.plotFieldChangeRequested(draft,
+                                                                                               field, value)
+            onPlotFluidSelectionRequested: (draft, value, selected)
+                                           => root.plotFluidSelectionRequested(draft, value,
+                                                                               selected)
+            onRemovePlotRequested: row => root.visualizationRemovePlotRequested(row)
+        }
+    }
+
+    Component {
         id: settingsPage
 
         SettingsPage {
@@ -411,6 +486,15 @@ ApplicationWindow {
     }
 
     Connections {
+        function onAttentionRequested(section, field, row) {
+            if (section !== "visualization")
+                return;
+            root.pendingAttentionField = field;
+            root.pendingAttentionRow = row;
+            root.pendingAttentionSerial += 1;
+            root.routeTo("visualization");
+        }
+
         function onDatasetDecisionRequested() {
             datasetDecisionDialog.open();
         }
@@ -420,8 +504,8 @@ ApplicationWindow {
         }
 
         function onWorkspaceStateChanged() {
-            if (root.currentPage === "dataset" && root.desktopController.workspaceState
-                    !== "editing")
+            if ((root.currentPage === "dataset" || root.currentPage === "visualization")
+                    && root.desktopController.workspaceState !== "editing")
                 root.routeTo("workspace");
         }
 

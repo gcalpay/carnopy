@@ -24,9 +24,9 @@ The desktop has two frontend implementations during the GUI-2 migration:
 - both frontends reuse the same authoritative QtCore controllers and private
   worker boundary;
 - the QML application currently implements the responsive shell, Workspace,
-  Dataset, Settings, and Help surfaces;
-- QML Visualization editing, YAML availability and validated Save flows are
-  the remaining Stage 2 application slices;
+  Dataset, Visualization, Settings, and Help surfaces;
+- QML YAML availability and validated Save flows are the remaining Stage 2
+  application slice;
 - generation, inspection, table preview, plotting, jobs, recovery, and Widgets
   retirement belong to later GUI-2 stages.
 
@@ -275,9 +275,20 @@ Stored plot rows are snapshots, not persistent `PlotDraft` instances. Exactly
 one temporary workflow-local `PlotDraft` may exist for Add or Edit. It must be
 committed or cancelled explicitly; it is transient unresolved state rather
 than durable configuration dirtiness. Dataset-context replacement and other
-cross-controller operations therefore require composition-owned active-edit
-guards. The QML Visualization surface and the complete guard projection are
-the next Stage 2 implementation slice.
+cross-controller operations therefore pass through composition-owned
+active-edit guards before workspace preflight and commit, document replacement,
+Save, mode or coordinate replacement, and shutdown. Shared visualization
+mutations and durable plot-list changes are also locked while the temporary
+editor exists.
+
+The QML Visualization page binds the ordered durable snapshot model directly
+and presents the one active `PlotDraft` as an inline master-detail editor. Plot
+fields, workflow-local fluid overrides, filters, series selections, display
+units, and optional format inheritance remain separate raw draft state until
+Commit. Invalid Commit retains the temporary editor and focuses a stable
+`plot.*` field and optional row; controller and QML code never parse issue prose
+to navigate. Widgets keep the established modal dialog over the same draft and
+lifecycle.
 
 ## Frontends
 
@@ -439,7 +450,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | --- | --- | --- |
 | 0 | Qualified a same-repository `QQuickVTKItem` companion bridge on the pinned Linux/Qt/VTK baseline | Complete |
 | 1 | Extracted request ownership, workspace state, dataset/visualization drafts, and complete configuration workflow into QML-ready QtCore controllers | Complete |
-| 2 | Package the Precision Grid QML Workspace, Dataset, Visualization, and YAML/Save workflows | Active; Workspace and Dataset implemented, Visualization and YAML/Save pending |
+| 2 | Package the Precision Grid QML Workspace, Dataset, Visualization, and YAML/Save workflows | Active; Workspace, Dataset, and Visualization implemented; YAML/Save pending |
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, and remove Widgets | Pending |
 | 4 | Add controlled sweep and preparation worker operations | Pending |
 | 5 | Add structured sweep and preparation QML workflows | Pending |
@@ -457,8 +468,9 @@ do not imply QML parity or public-launcher migration.
 
 - The public desktop experience is still Widgets; the modern QML launcher is a
   private development entry point.
-- The QML application cannot yet edit configured visualization or expose the
-  final YAML/validated Save flows.
+- The QML application cannot yet expose the final YAML/validated Save flows or
+  execute/render its configured visualization; rendering remains worker-owned
+  later-stage functionality.
 - QML generation, inspection, tables, plotting, jobs, recovery, sweep,
   preparation, and 3D are not implemented.
 - Native folder dialogs and compositor behavior require human acceptance;

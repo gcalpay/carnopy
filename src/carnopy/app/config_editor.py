@@ -106,6 +106,8 @@ class DatasetConfigEditor(QWidget):
         self.controller.save_path_requested.connect(self._choose_save_path)
         self.controller.reformat_confirmation_requested.connect(self._confirm_import_reformat)
         self.controller.external_change_requested.connect(self._handle_external_change)
+        if self.desktop_controller is not None:
+            self.desktop_controller.attentionRequested.connect(self._attention_requested)
         self._sync_view()
 
     @property
@@ -199,7 +201,10 @@ class DatasetConfigEditor(QWidget):
         if not accepted:
             return
         mode = next(name for name, label in MODE_LABELS.items() if label == selected)
-        self.controller.new_dataset(mode, discard_confirmed=True)
+        if self.desktop_controller is None:
+            self.controller.new_dataset(mode, discard_confirmed=True)
+        else:
+            self.desktop_controller.request_new_dataset(mode, discard_confirmed=True)
 
     def import_dataset(self) -> None:
         workspace = self.workspace
@@ -212,13 +217,25 @@ class DatasetConfigEditor(QWidget):
             "YAML configurations (*.yaml *.yml)",
         )
         if selected:
-            self.controller.import_dataset(selected, discard_confirmed=True)
+            if self.desktop_controller is None:
+                self.controller.import_dataset(selected, discard_confirmed=True)
+            else:
+                self.desktop_controller.request_import_dataset(
+                    selected,
+                    discard_confirmed=True,
+                )
 
     def save(self) -> None:
-        self.controller.request_save()
+        if self.desktop_controller is None:
+            self.controller.request_save()
+        else:
+            self.desktop_controller.request_save()
 
     def save_as(self) -> None:
-        self.controller.request_save_as()
+        if self.desktop_controller is None:
+            self.controller.request_save_as()
+        else:
+            self.desktop_controller.request_save_as()
 
     def _apply_capabilities(self, payload: dict[str, Any]) -> None:
         self.controller._apply_capabilities(payload)
@@ -272,9 +289,15 @@ class DatasetConfigEditor(QWidget):
             "YAML configurations (*.yaml *.yml)",
         )
         if selected:
-            self.controller.save_path_selected(selected)
+            if self.desktop_controller is None:
+                self.controller.save_path_selected(selected)
+            else:
+                self.desktop_controller.request_save_path_selected(selected)
         else:
-            self.controller.cancel_save_path()
+            if self.desktop_controller is None:
+                self.controller.cancel_save_path()
+            else:
+                self.desktop_controller.request_cancel_save_path()
 
     def _confirm_import_reformat(self, action: str) -> None:
         answer = QMessageBox.question(
@@ -286,7 +309,10 @@ class DatasetConfigEditor(QWidget):
             QMessageBox.StandardButton.No,
         )
         if answer == QMessageBox.StandardButton.Yes:
-            self.controller.confirm_reformat(action)
+            if self.desktop_controller is None:
+                self.controller.confirm_reformat(action)
+            else:
+                self.desktop_controller.request_confirm_reformat(action)
 
     def _handle_external_change(self) -> None:
         message = QMessageBox(self)
@@ -301,9 +327,16 @@ class DatasetConfigEditor(QWidget):
         message.exec()
         clicked = message.clickedButton()
         if clicked is reload_button:
-            self.controller.reload_source(discard_confirmed=True)
+            if self.desktop_controller is None:
+                self.controller.reload_source(discard_confirmed=True)
+            else:
+                self.desktop_controller.request_reload_source(discard_confirmed=True)
         elif clicked is save_as_button:
-            self.controller.request_save_as()
+            self.save_as()
+
+    def _attention_requested(self, section: str, _field: str, _row: int) -> None:
+        if section == "visualization":
+            self.tabs.setCurrentIndex(1)
 
     def _show_warning(self, title: str, message: str) -> None:
         QMessageBox.warning(self, title, message)

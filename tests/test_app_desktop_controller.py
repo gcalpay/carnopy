@@ -276,6 +276,124 @@ def test_active_plot_edit_blocks_workspace_preflight_commit_and_shutdown(
     assert desktop.shutdown()
 
 
+def test_active_plot_edit_blocks_all_composition_lifecycle_paths(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    active = QObject()
+    calls: list[str] = []
+    attention: list[tuple[str, str, int]] = []
+    desktop.attentionRequested.connect(
+        lambda section, field, row: attention.append((section, field, row))
+    )
+    monkeypatch.setattr(
+        desktop.visualization_draft,
+        "get_active_plot_draft",
+        lambda: active,
+    )
+    for name in (
+        "new_dataset",
+        "import_dataset",
+        "request_save",
+        "request_save_as",
+        "reload_source",
+        "apply_mode_change",
+        "apply_coordinate_change",
+    ):
+        monkeypatch.setattr(
+            desktop.dataset_config_controller,
+            name,
+            lambda *_args, operation=name: calls.append(operation) or True,
+        )
+
+    assert not desktop.request_new_dataset("property_table")
+    assert not desktop.request_import_dataset("input.yaml")
+    assert not desktop.request_save()
+    assert not desktop.request_save_as()
+    assert not desktop.request_reload_source()
+    assert not desktop.request_close_configuration()
+    assert not desktop.request_dataset_mode_change("saturation_table")
+    assert not desktop.request_dataset_coordinate_change("pressure")
+    assert not desktop.request_visualization_add_plot()
+    assert not desktop.request_visualization_edit_plot(0)
+    assert not desktop.request_visualization_remove_plot(0)
+    assert not desktop.request_visualization_move_plot(0, 1)
+    assert not desktop.dataset_config_controller.clear_document(discard_confirmed=True)
+    assert not desktop.shutdown()
+
+    assert calls == []
+    assert attention
+    assert all(item == ("visualization", "visualization.plots", -1) for item in attention)
+
+
+def test_visualization_facade_accepts_only_the_owned_active_plot_and_mappings(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    draft = desktop.visualization_draft
+    draft.apply_capabilities(
+        {
+            "fluids": [{"name": "Propane", "aliases": []}],
+            "visualization": {
+                "plot_kinds": ["property_curves"],
+                "formats": ["png"],
+                "scales": ["linear", "log"],
+                "kind_contracts": {
+                    "property_curves": {
+                        "required": ["property"],
+                        "applicable": ["property", "x", "filters", "format"],
+                    }
+                },
+                "fields": [
+                    {
+                        "name": "temperature",
+                        "kind": "numeric",
+                        "axis_allowed": True,
+                        "filter_allowed": True,
+                    },
+                    {
+                        "name": "mass_density",
+                        "kind": "numeric",
+                        "axis_allowed": True,
+                        "filter_allowed": False,
+                    },
+                ],
+                "display_units": {},
+            },
+        }
+    )
+    draft.set_dataset_context(
+        {
+            "mode": "property_table",
+            "fluids": ["Propane"],
+            "grid": {"temperature": {}, "pressure": {}},
+            "properties": ["mass_density"],
+        }
+    )
+    draft.load_visualization(None)
+    draft.set_enabled(True)
+    assert desktop.request_visualization_add_plot()
+    active = draft.get_active_plot_draft()
+    assert active is not None
+
+    desktop.request_plot_field_change(active, "name", "density")
+    desktop.request_visualization_mapping_add(active.filters)
+    desktop.request_visualization_mapping_value_change(active.filters, 0, "300")
+    outsider = QObject()
+    desktop.request_plot_field_change(outsider, "name", "ignored")
+    desktop.request_visualization_mapping_add(outsider)
+
+    assert active.get_name() == "density"
+    assert active.filters.raw_rows() == (("temperature", "300"),)
+    assert desktop.request_visualization_cancel_plot()
+    assert desktop.shutdown()
+
+
 def test_dataset_replacement_decisions_are_owned_by_desktop_facade(
     tmp_path: Path,
     application: QCoreApplication,

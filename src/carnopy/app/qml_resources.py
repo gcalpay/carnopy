@@ -33,7 +33,9 @@ MANDATORY_QML_FILES = (
     "qml/Carnopy/components/CommandBar.qml",
     "qml/Carnopy/components/ContextInspector.qml",
     "qml/Carnopy/components/DecisionDialog.qml",
+    "qml/Carnopy/components/MappingEditor.qml",
     "qml/Carnopy/components/NavRail.qml",
+    "qml/Carnopy/components/PlotEditor.qml",
     "qml/Carnopy/components/ResponsiveCardGrid.qml",
     "qml/Carnopy/components/SamplerEditor.qml",
     "qml/Carnopy/components/StatusBadge.qml",
@@ -45,6 +47,7 @@ MANDATORY_QML_FILES = (
     "qml/Carnopy/pages/HelpPage.qml",
     "qml/Carnopy/pages/SettingsPage.qml",
     "qml/Carnopy/pages/WorkspacePage.qml",
+    "qml/Carnopy/pages/VisualizationPage.qml",
 )
 MANDATORY_ICON_FILES = (
     "resources/icons/activity.svg",

@@ -7,6 +7,9 @@ from PySide6.QtCore import Property, QObject, QSettings, QTimer, QUrl, Signal, S
 from carnopy.app.client import WorkerClient
 from carnopy.app.config_controller import DatasetConfigController
 from carnopy.app.dataset_draft import DatasetDraft
+from carnopy.app.field_ids import VISUALIZATION_PLOTS
+from carnopy.app.mapping_draft import MappingDraftModel
+from carnopy.app.plot_draft import PlotDraft
 from carnopy.app.qml_settings import QmlSettingsController
 from carnopy.app.request_coordinator import DesktopRequestCoordinator
 from carnopy.app.sampler_draft import SamplerDraft
@@ -24,6 +27,7 @@ class DesktopController(QObject):
     datasetDecisionRequested = Signal()
     datasetDecisionChanged = Signal()
     datasetDocumentOpened = Signal()
+    attentionRequested = Signal(str, str, int)
 
     def __init__(
         self,
@@ -44,6 +48,7 @@ class DesktopController(QObject):
             self.visualization_draft,
             self,
         )
+        self.dataset_config_controller.set_lifecycle_guard(self._guard_active_plot_edit)
         self.workspace_controller = WorkspaceController(
             self.request_coordinator,
             self.settings,
@@ -61,6 +66,7 @@ class DesktopController(QObject):
         self.dataset_config_controller.document_opened.connect(self.datasetDocumentOpened)
         self.request_coordinator.busy_changed.connect(self._request_state_changed)
         self.visualization_draft.active_plot_draft_changed.connect(self._active_plot_state_changed)
+        self.visualization_draft.plot_commit_rejected.connect(self._plot_commit_rejected)
         self._queued_workspace_request: tuple[str, str, str, bool] | None = None
         self._pending_dataset_decision: tuple[str, str] | None = None
         self._workspace_request_timer = QTimer(self)
@@ -231,6 +237,15 @@ class DesktopController(QObject):
 
     visualizationDraft = Property(QObject, get_visualization_draft, constant=True)
 
+    def get_has_active_plot_edit(self) -> bool:
+        return self.visualization_draft.get_has_active_plot_edit()
+
+    hasActivePlotEdit = Property(
+        bool,
+        get_has_active_plot_edit,
+        notify=workspace_state_changed,
+    )
+
     def get_dataset_config_controller(self) -> QObject:
         return self.dataset_config_controller
 
@@ -274,20 +289,62 @@ class DesktopController(QObject):
     )
 
     @Slot(str, result=bool, name="requestNewDataset")
-    def request_new_dataset(self, mode: str) -> bool:
-        if not self._guard_active_plot_edit():
+    def request_new_dataset(self, mode: str, discard_confirmed: bool = False) -> bool:
+        if not self._guard_active_plot_edit("New Dataset"):
             return False
-        return self.dataset_config_controller.new_dataset(mode)
+        return self.dataset_config_controller.new_dataset(mode, discard_confirmed)
 
     @Slot(str, result=bool, name="requestImportDataset")
-    def request_import_dataset(self, path: str) -> bool:
-        if not self._guard_active_plot_edit():
+    def request_import_dataset(self, path: str, discard_confirmed: bool = False) -> bool:
+        if not self._guard_active_plot_edit("Import"):
             return False
-        return self.dataset_config_controller.import_dataset(_local_path(path))
+        return self.dataset_config_controller.import_dataset(
+            _local_path(path),
+            discard_confirmed,
+        )
+
+    @Slot(bool, result=bool, name="requestSave")
+    def request_save(self, allow_reformat: bool = False) -> bool:
+        if not self._guard_active_plot_edit("Save"):
+            return False
+        return self.dataset_config_controller.request_save(allow_reformat)
+
+    @Slot(bool, result=bool, name="requestSaveAs")
+    def request_save_as(self, allow_reformat: bool = False) -> bool:
+        if not self._guard_active_plot_edit("Save As"):
+            return False
+        return self.dataset_config_controller.request_save_as(allow_reformat)
+
+    @Slot(str, result=bool, name="requestSavePathSelected")
+    def request_save_path_selected(self, path: str) -> bool:
+        if not self._guard_active_plot_edit("Save As"):
+            return False
+        return self.dataset_config_controller.save_path_selected(path)
+
+    @Slot(name="requestCancelSavePath")
+    def request_cancel_save_path(self) -> None:
+        self.dataset_config_controller.cancel_save_path()
+
+    @Slot(str, name="requestConfirmReformat")
+    def request_confirm_reformat(self, action: str) -> None:
+        if self._guard_active_plot_edit("Save"):
+            self.dataset_config_controller.confirm_reformat(action)
+
+    @Slot(bool, result=bool, name="requestReloadSource")
+    def request_reload_source(self, discard_confirmed: bool = False) -> bool:
+        if not self._guard_active_plot_edit("Reload"):
+            return False
+        return self.dataset_config_controller.reload_source(discard_confirmed)
+
+    @Slot(bool, result=bool, name="requestCloseConfiguration")
+    def request_close_configuration(self, discard_confirmed: bool = False) -> bool:
+        if not self._guard_active_plot_edit("Close Configuration"):
+            return False
+        return self.dataset_config_controller.clear_document(discard_confirmed)
 
     @Slot(str, result=bool, name="requestDatasetModeChange")
     def request_dataset_mode_change(self, mode: str) -> bool:
-        if not self._guard_active_plot_edit():
+        if not self._guard_active_plot_edit("dataset mode change"):
             return False
         if mode == self.dataset_draft.get_mode_name():
             return False
@@ -299,7 +356,7 @@ class DesktopController(QObject):
 
     @Slot(str, result=bool, name="requestDatasetCoordinateChange")
     def request_dataset_coordinate_change(self, axis: str) -> bool:
-        if not self._guard_active_plot_edit():
+        if not self._guard_active_plot_edit("dataset coordinate change"):
             return False
         if axis == self.dataset_draft.get_coordinate_name():
             return False
@@ -314,7 +371,7 @@ class DesktopController(QObject):
         decision = self._pending_dataset_decision
         if decision is None:
             return False
-        if not confirmed or not self._guard_active_plot_edit():
+        if not confirmed or not self._guard_active_plot_edit("dataset replacement"):
             self._pending_dataset_decision = None
             self.datasetDecisionChanged.emit()
             return False
@@ -387,11 +444,149 @@ class DesktopController(QObject):
         if sampler is not None:
             sampler.requestUnitChange(unit)
 
+    @Slot(bool, name="requestVisualizationEnabled")
+    def request_visualization_enabled(self, enabled: bool) -> None:
+        if self._guard_active_plot_edit("visualization enable or disable"):
+            self.visualization_draft.set_enabled(enabled)
+
+    @Slot(str, name="requestVisualizationFormat")
+    def request_visualization_format(self, output_format: str) -> None:
+        if self._guard_active_plot_edit("shared visualization format change"):
+            self.visualization_draft.set_format(output_format)
+
+    @Slot(str, bool, name="requestVisualizationFluidSelection")
+    def request_visualization_fluid_selection(self, value: str, selected: bool) -> None:
+        if self._guard_active_plot_edit("shared visualization fluid change"):
+            self.visualization_draft.set_fluid_selected(value, selected)
+
+    @Slot(result=bool, name="requestVisualizationAddPlot")
+    def request_visualization_add_plot(self) -> bool:
+        if not self._guard_active_plot_edit("starting another plot edit"):
+            return False
+        return self.visualization_draft.begin_add_plot() is not None
+
+    @Slot(int, result=bool, name="requestVisualizationEditPlot")
+    def request_visualization_edit_plot(self, row: int) -> bool:
+        if not self._guard_active_plot_edit("starting another plot edit"):
+            return False
+        return self.visualization_draft.begin_edit_plot(row) is not None
+
+    @Slot(result=bool, name="requestVisualizationCommitPlot")
+    def request_visualization_commit_plot(self) -> bool:
+        return self.visualization_draft.commit_plot()
+
+    @Slot(result=bool, name="requestVisualizationCancelPlot")
+    def request_visualization_cancel_plot(self) -> bool:
+        return self.visualization_draft.cancel_plot()
+
+    @Slot(int, result=bool, name="requestVisualizationRemovePlot")
+    def request_visualization_remove_plot(self, row: int) -> bool:
+        if not self._guard_active_plot_edit("plot removal"):
+            return False
+        return self.visualization_draft.remove_plot(row)
+
+    @Slot(int, int, result=bool, name="requestVisualizationMovePlot")
+    def request_visualization_move_plot(self, row: int, offset: int) -> bool:
+        if not self._guard_active_plot_edit("plot movement"):
+            return False
+        return self.visualization_draft.move_plot(row, offset)
+
+    @Slot(QObject, str, str, name="requestPlotFieldChange")
+    def request_plot_field_change(self, candidate: QObject, field: str, value: str) -> None:
+        draft = self._owned_active_plot(candidate)
+        if draft is None:
+            return
+        setters = {
+            "name": draft.set_name,
+            "kind": draft.set_kind,
+            "property": draft.set_property_name,
+            "x": draft.set_x_field,
+            "y": draft.set_y_field,
+            "group_by": draft.set_group_by,
+            "value_scale": draft.set_value_scale,
+            "color_scale": draft.set_color_scale,
+            "x_scale": draft.set_x_scale,
+            "y_scale": draft.set_y_scale,
+            "format": draft.set_output_format,
+        }
+        setter = setters.get(field)
+        if setter is not None:
+            setter(value)
+
+    @Slot(QObject, str, bool, name="requestPlotFluidSelection")
+    def request_plot_fluid_selection(
+        self,
+        candidate: QObject,
+        value: str,
+        selected: bool,
+    ) -> None:
+        draft = self._owned_active_plot(candidate)
+        if draft is not None:
+            draft.set_fluid_selected(value, selected)
+
+    @Slot(QObject, name="requestVisualizationMappingAdd")
+    def request_visualization_mapping_add(self, candidate: QObject) -> None:
+        mapping = self._owned_visualization_mapping(candidate)
+        if mapping is not None:
+            mapping.add_row()
+
+    @Slot(QObject, int, str, name="requestVisualizationMappingFieldChange")
+    def request_visualization_mapping_field_change(
+        self,
+        candidate: QObject,
+        row: int,
+        field: str,
+    ) -> None:
+        mapping = self._owned_visualization_mapping(candidate)
+        if mapping is not None:
+            mapping.set_field(row, field)
+
+    @Slot(QObject, int, str, name="requestVisualizationMappingValueChange")
+    def request_visualization_mapping_value_change(
+        self,
+        candidate: QObject,
+        row: int,
+        value: str,
+    ) -> None:
+        mapping = self._owned_visualization_mapping(candidate)
+        if mapping is not None:
+            mapping.set_raw_value(row, value)
+
+    @Slot(QObject, int, name="requestVisualizationMappingRemove")
+    def request_visualization_mapping_remove(self, candidate: QObject, row: int) -> None:
+        mapping = self._owned_visualization_mapping(candidate)
+        if mapping is not None:
+            mapping.remove_row(row)
+
     def _owned_dataset_sampler(self, candidate: QObject) -> SamplerDraft | None:
         return next(
             (sampler for sampler in self.dataset_draft.samplers.drafts if sampler is candidate),
             None,
         )
+
+    def _owned_active_plot(self, candidate: QObject) -> PlotDraft | None:
+        active = self.visualization_draft.get_active_plot_draft()
+        return active if isinstance(active, PlotDraft) and active is candidate else None
+
+    def _owned_visualization_mapping(
+        self,
+        candidate: QObject,
+    ) -> MappingDraftModel | None:
+        shared = (
+            self.visualization_draft.filters,
+            self.visualization_draft.display_units,
+        )
+        if candidate in shared:
+            if not self._guard_active_plot_edit("shared visualization mapping change"):
+                return None
+            return candidate if isinstance(candidate, MappingDraftModel) else None
+        active = self.visualization_draft.get_active_plot_draft()
+        if not isinstance(active, PlotDraft):
+            return None
+        mappings = (active.filters, active.series, active.display_units)
+        if isinstance(candidate, MappingDraftModel) and candidate in mappings:
+            return candidate
+        return None
 
     @Slot(str, str, result=bool, name="prepareCreateWorkspace")
     def prepare_create_workspace(self, parent_path: str, child_name: str) -> bool:
@@ -467,7 +662,7 @@ class DesktopController(QObject):
         self._queue_workspace_request("cancel", "")
 
     def shutdown(self) -> bool:
-        if not self._guard_active_plot_edit():
+        if not self._guard_active_plot_edit("closing Carnopy"):
             return False
         self.workspace_controller.cancel_pending()
         if self.request_coordinator.is_busy:
@@ -508,14 +703,21 @@ class DesktopController(QObject):
             self.workspace_controller.cancel_pending()
         return False
 
-    def _guard_active_plot_edit(self) -> bool:
+    def _guard_active_plot_edit(self, operation: str = "this operation") -> bool:
         if self.visualization_draft.get_active_plot_draft() is None:
             return True
-        self.workspace_controller.report_error(
-            "Commit or cancel the active plot edit before changing the workspace or closing "
-            "Carnopy."
+        message = f"Commit or cancel the active plot edit before {operation}."
+        self.visualization_draft.message.emit(message)
+        self.workspace_controller.report_error(message)
+        self.attentionRequested.emit(
+            "visualization",
+            VISUALIZATION_PLOTS,
+            -1,
         )
         return False
+
+    def _plot_commit_rejected(self, field: str, row: int, _message: str) -> None:
+        self.attentionRequested.emit("visualization", field, row)
 
     def _queue_workspace_request(
         self,
