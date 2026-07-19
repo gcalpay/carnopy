@@ -306,6 +306,8 @@ def smoke_app_inspection(*sources: Path) -> None:
 
 
 def build_plot_arguments(run_directory: Path, figure: Path) -> list[str]:
+    # The packaged starter intentionally emits multiple fluids. Select one
+    # emitted canonical value so this request reaches the renderer boundary.
     return [
         "plot",
         str(run_directory),
@@ -313,6 +315,8 @@ def build_plot_arguments(run_directory: Path, figure: Path) -> list[str]:
         "property-curves",
         "--property",
         "mass_density",
+        "--fluid",
+        "IsoButane",
         "--output",
         str(figure),
     ]

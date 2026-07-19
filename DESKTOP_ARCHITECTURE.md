@@ -379,6 +379,16 @@ The desktop remains optional through the `app` extra. It uses
 installer. The companion native VTK bridge retains its separately qualified
 Python and Qt bounds.
 
+Matplotlib is a required renderer for current plotting workflows but remains an
+optional packaging dependency: `viz`, `app`, and `all` install it, while the
+base CLI-first distribution does not. Distribution CI therefore keeps two
+complementary contracts. Base wheel and sdist smokes submit an otherwise valid
+plot request and require the actionable missing-visualization-extra failure;
+`app` and `all` smokes submit the same request with Matplotlib installed and
+require a real image and provenance sidecar. Multi-fluid smoke sources must
+select one emitted canonical fluid so source ambiguity does not mask either
+renderer result.
+
 Desktop verification is layered:
 
 | Surface | Purpose |

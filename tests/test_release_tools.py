@@ -384,6 +384,8 @@ def test_installed_smoke_plot_arguments_use_current_cli_contract(tmp_path: Path)
         "property-curves",
         "--property",
         "mass_density",
+        "--fluid",
+        "IsoButane",
         "--output",
         str(figure),
     ]

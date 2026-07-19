@@ -787,6 +787,15 @@ Extract and migrate the remaining existing desktop workflows incrementally:
   opening;
 - job history and guarded staging recovery.
 
+Preserve the existing plotting dependency and process boundary during that
+migration. The `app` extra already includes Matplotlib, rendering stays in the
+short-lived worker, and the QML process must not import it. Installed `app` and
+`all` smokes must continue rendering a real image and sidecar, while base-wheel
+and sdist smokes must continue verifying the actionable missing-`viz` failure.
+For a multi-fluid source, manual plot requests select an inspected emitted fluid
+identity explicitly. QML may present the corresponding requested alias for
+clarity, but it must not rename immutable emitted dataset values.
+
 Rename the final page **Activity and Recovery** and explain its purpose. Switch
 both public launchers to QML only after equivalent tests pass. Then delete the
 Widgets implementation and implementation-specific Widgets tests while keeping
