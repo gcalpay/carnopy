@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import QtQuick.Window
 import Carnopy
@@ -24,11 +25,14 @@ ApplicationWindow {
     signal datasetFluidAddRequested(string value)
     signal datasetFluidMoveRequested(int row, int offset)
     signal datasetFluidRemoveRequested(int row)
-    signal datasetImportRequested(string path)
+    signal configurationAttentionRequested(string section, string field, int row)
+    signal datasetCloseRequested(bool discardConfirmed)
+    signal datasetConfirmReformatRequested(string action)
+    signal datasetImportRequested(string path, bool discardConfirmed)
     signal datasetModelChangeRequested(string model)
     signal datasetModeChangeRequested(string mode)
     signal datasetCoordinateChangeRequested(string axis)
-    signal datasetNewRequested(string mode)
+    signal datasetNewRequested(string mode, bool discardConfirmed)
     signal datasetOutputSelectionRequested(string format, bool selected)
     signal datasetPropertyAddRequested(string value)
     signal datasetPropertyMoveRequested(int row, int offset)
@@ -36,6 +40,11 @@ ApplicationWindow {
     signal datasetSamplerKindChangeRequested(var draft, string kind)
     signal datasetSamplerTextChangeRequested(var draft, string field, string text)
     signal datasetSamplerUnitChangeRequested(var draft, string unit)
+    signal datasetSaveAsRequested(bool allowReformat)
+    signal datasetSavePathCancelled
+    signal datasetSavePathSelected(string path)
+    signal datasetSaveRequested(bool allowReformat)
+    signal datasetReloadRequested(bool discardConfirmed)
     signal plotFieldChangeRequested(var draft, string field, string value)
     signal plotFluidSelectionRequested(var draft, string value, bool selected)
     signal visualizationAddPlotRequested
@@ -53,6 +62,7 @@ ApplicationWindow {
     signal visualizationRemovePlotRequested(int row)
     signal normalGeometryRememberRequested(int x, int y, int width, int height)
     signal settingsLayoutResetRequested
+    signal shutdownConfirmed(bool discardConfirmed)
 
     readonly property bool runtimeReady: true
     readonly property string shellMode: width >= 1280 ? "wide" : (width >= 800 ? "compact" :
@@ -71,14 +81,26 @@ ApplicationWindow {
                                                                                   - 48 + 12)
                                                                               / 312)))
     readonly property bool controllerAvailable: desktopController !== null
+    readonly property var configController: controllerAvailable
+                                            ? desktopController.datasetConfigController : null
     readonly property bool hasFake3dViewport: false
     readonly property string effectiveTheme: qmlSettings.effectiveTheme
     readonly property int motionDuration: Theme.durationStandard
     property string currentPage: "workspace"
     property bool geometryTrackingReady: false
+    property string operationFailureMessage: ""
+    property string operationFailureOperation: ""
+    property string operationFailureTitle: ""
+    property var operationFailureIssues: []
     property string pendingAttentionField: ""
     property int pendingAttentionRow: -1
     property int pendingAttentionSerial: 0
+    property string pendingReplacementAction: ""
+    property string pendingReplacementMode: ""
+    property string pendingReplacementPath: ""
+    property string pendingReformatAction: ""
+    property bool saveSelectionAccepted: false
+    property string saveSelectionPath: ""
 
     function pageTitle(pageKey) {
         if (pageKey === "settings")
@@ -89,7 +111,73 @@ ApplicationWindow {
             return qsTr("Dataset");
         if (pageKey === "visualization")
             return qsTr("Visualization");
+        if (pageKey === "yaml")
+            return qsTr("YAML Preview");
         return qsTr("Workspace");
+    }
+
+    function clearOperationFailure() {
+        operationFailureOperation = "";
+        operationFailureTitle = "";
+        operationFailureMessage = "";
+        operationFailureIssues = [];
+    }
+
+    function localFileUrl(path) {
+        let normalized = String(path).replace(/\\/g, "/");
+        if (/^[A-Za-z]:\//.test(normalized))
+            return "file:///" + encodeURI(normalized);
+        return "file://" + encodeURI(normalized);
+    }
+
+    function completeSaveSelection() {
+        if (!saveSelectionAccepted || saveConfigurationDialog.visible)
+            return;
+        const path = saveSelectionPath;
+        saveSelectionAccepted = false;
+        saveSelectionPath = "";
+        Qt.callLater(() => root.datasetSavePathSelected(path));
+    }
+
+    function requestConfigurationClose() {
+        if (controllerAvailable && desktopController.hasActivePlotEdit) {
+            root.datasetCloseRequested(false);
+            return;
+        }
+        if (configController !== null && configController.dirty) {
+            pendingReplacementAction = "close";
+            configurationDiscardDialog.open();
+            return;
+        }
+        root.datasetCloseRequested(false);
+    }
+
+    function requestDatasetImport(path) {
+        if (controllerAvailable && desktopController.hasActivePlotEdit) {
+            root.datasetImportRequested(path, false);
+            return;
+        }
+        if (configController !== null && configController.dirty) {
+            pendingReplacementAction = "import";
+            pendingReplacementPath = path;
+            configurationDiscardDialog.open();
+            return;
+        }
+        root.datasetImportRequested(path, false);
+    }
+
+    function requestDatasetNew(mode) {
+        if (controllerAvailable && desktopController.hasActivePlotEdit) {
+            root.datasetNewRequested(mode, false);
+            return;
+        }
+        if (configController !== null && configController.dirty) {
+            pendingReplacementAction = "new";
+            pendingReplacementMode = mode;
+            configurationDiscardDialog.open();
+            return;
+        }
+        root.datasetNewRequested(mode, false);
     }
 
     function routeTo(pageKey) {
@@ -201,6 +289,7 @@ ApplicationWindow {
             datasetAvailable: root.controllerAvailable && root.desktopController.workspaceState
                               === "editing"
             visualizationAvailable: datasetAvailable
+            yamlAvailable: datasetAvailable
             objectName: "persistentNavigationRail"
             onCollapseRequested: root.toggleRail()
             onPageRequested: pageKey => root.routeTo(pageKey)
@@ -218,13 +307,26 @@ ApplicationWindow {
 
                 CommandBar {
                     Layout.fillWidth: true
-                    breadcrumb: root.controllerAvailable
-                                && root.desktopController.workspaceAvailable
-                                ? root.desktopController.workspaceRootPath : qsTr("Local workbench")
+                    breadcrumb: {
+                        if (!root.controllerAvailable || !root.desktopController.workspaceAvailable)
+                        return qsTr("Local workbench");
+                        if (root.configController !== null && root.configController.hasDocument)
+                        return root.desktopController.workspaceRootPath + "  ›  "
+                        + root.configController.fileDisplay;
+                        return root.desktopController.workspaceRootPath;
+                    }
+                    canSave: root.configController !== null && root.configController.canSave
+                    canSaveAs: root.configController !== null && root.configController.canSaveAs
+                    documentDirty: root.configController !== null && root.configController.dirty
+                    documentOpen: root.configController !== null
+                                  && root.configController.hasDocument
                     inspectorOpen: root.inspectorWideVisible || inspectorDrawer.opened
                     objectName: "documentCommandBar"
+                    onCloseConfigurationRequested: root.requestConfigurationClose()
                     onInspectorToggleRequested: root.toggleInspector()
                     onRailMenuRequested: navigationDrawer.open()
+                    onSaveAsRequested: root.datasetSaveAsRequested(false)
+                    onSaveRequested: root.datasetSaveRequested(false)
                     pageTitle: root.pageTitle(root.currentPage)
                     showInspectorButton: !(root.inspectorWideVisible || inspectorDrawer.opened)
                     showRailMenu: root.shellMode === "narrow"
@@ -248,6 +350,16 @@ ApplicationWindow {
                                               ? "success" : "neutral")
                 }
 
+                OperationFeedback {
+                    Layout.fillWidth: true
+                    issues: root.operationFailureIssues
+                    message: root.operationFailureMessage
+                    objectName: "operationFeedback"
+                    onDismissed: root.clearOperationFailure()
+                    operation: root.operationFailureOperation
+                    title: root.operationFailureTitle
+                }
+
                 Loader {
                     id: pageLoader
 
@@ -263,6 +375,8 @@ ApplicationWindow {
                         return datasetPage;
                         if (root.currentPage === "visualization")
                         return visualizationPage;
+                        if (root.currentPage === "yaml")
+                        return yamlPage;
                         return workspacePage;
                     }
                 }
@@ -308,13 +422,24 @@ ApplicationWindow {
         }
 
         ContextInspector {
+            blockingField: root.configController !== null ? root.configController.blockingField : ""
+            blockingIssue: root.configController !== null ? root.configController.blockingIssue : ""
+            blockingRow: root.configController !== null ? root.configController.blockingRow : -1
+            blockingSection: root.configController !== null ? root.configController.blockingSection :
+                                                              "none"
             Layout.fillHeight: true
             Layout.preferredWidth: root.inspectorWidth
             closeButtonVisible: true
+            configurationDirty: root.configController !== null && root.configController.dirty
+            configurationFile: root.configController !== null ? root.configController.fileDisplay :
+                                                                ""
+            configurationOpen: root.configController !== null && root.configController.hasDocument
             datasetIssue: root.controllerAvailable ? root.desktopController.datasetDraft.issue : ""
             datasetValid: root.controllerAvailable
                           && root.desktopController.datasetDraft.locallyValid
             objectName: "persistentContextInspector"
+            onAttentionRequested: (section, field, row) => root.configurationAttentionRequested(
+                                                               section, field, row)
             onCloseRequested: root.toggleInspector()
             workspacePath: root.controllerAvailable ? root.desktopController.workspaceRootPath : ""
             workspaceState: root.controllerAvailable ? root.desktopController.workspaceState :
@@ -326,6 +451,7 @@ ApplicationWindow {
             visualizationValid: root.controllerAvailable
                                 && root.desktopController.visualizationDraft.locallyValid
             visible: root.inspectorWideVisible
+            yamlAvailable: root.configController !== null && root.configController.yamlAvailable
         }
     }
 
@@ -344,6 +470,7 @@ ApplicationWindow {
             datasetAvailable: root.controllerAvailable && root.desktopController.workspaceState
                               === "editing"
             visualizationAvailable: datasetAvailable
+            yamlAvailable: datasetAvailable
             onPageRequested: pageKey => root.routeTo(pageKey)
         }
     }
@@ -358,11 +485,22 @@ ApplicationWindow {
         width: Math.min(328, root.width * 0.9)
 
         contentItem: ContextInspector {
+            blockingField: root.configController !== null ? root.configController.blockingField : ""
+            blockingIssue: root.configController !== null ? root.configController.blockingIssue : ""
+            blockingRow: root.configController !== null ? root.configController.blockingRow : -1
+            blockingSection: root.configController !== null ? root.configController.blockingSection :
+                                                              "none"
             closeButtonVisible: true
+            configurationDirty: root.configController !== null && root.configController.dirty
+            configurationFile: root.configController !== null ? root.configController.fileDisplay :
+                                                                ""
+            configurationOpen: root.configController !== null && root.configController.hasDocument
             datasetIssue: root.controllerAvailable ? root.desktopController.datasetDraft.issue : ""
             datasetValid: root.controllerAvailable
                           && root.desktopController.datasetDraft.locallyValid
             objectName: "drawerContextInspector"
+            onAttentionRequested: (section, field, row) => root.configurationAttentionRequested(
+                                                               section, field, row)
             onCloseRequested: inspectorDrawer.close()
             workspacePath: root.controllerAvailable ? root.desktopController.workspaceRootPath : ""
             workspaceState: root.controllerAvailable ? root.desktopController.workspaceState :
@@ -373,6 +511,7 @@ ApplicationWindow {
                                 ? root.desktopController.visualizationDraft.issue : ""
             visualizationValid: root.controllerAvailable
                                 && root.desktopController.visualizationDraft.locallyValid
+            yamlAvailable: root.configController !== null && root.configController.yamlAvailable
         }
     }
 
@@ -390,8 +529,8 @@ ApplicationWindow {
                                                                        parentPath, childName)
             onInitializeWorkspaceRequested: path => root.workspaceInitializeRequested(path)
             onOpenWorkspaceRequested: path => root.workspaceOpenRequested(path)
-            onImportDatasetRequested: path => root.datasetImportRequested(path)
-            onNewDatasetRequested: mode => root.datasetNewRequested(mode)
+            onImportDatasetRequested: path => root.requestDatasetImport(path)
+            onNewDatasetRequested: mode => root.requestDatasetNew(mode)
         }
     }
 
@@ -399,6 +538,9 @@ ApplicationWindow {
         id: datasetPage
 
         DatasetPage {
+            attentionField: root.pendingAttentionField
+            attentionRow: root.pendingAttentionRow
+            attentionSerial: root.pendingAttentionSerial
             datasetDraft: root.desktopController.datasetDraft
             desktopController: root.desktopController
             expectedColumns: root.cardColumnCount
@@ -421,6 +563,18 @@ ApplicationWindow {
                                                                                     text)
             onSamplerUnitChangeRequested: (draft, unit) => root.datasetSamplerUnitChangeRequested(
                                                                draft, unit)
+        }
+    }
+
+    Component {
+        id: yamlPage
+
+        YamlPreviewPage {
+            configController: root.desktopController.datasetConfigController
+            objectName: "yamlPreviewPage"
+            onAttentionRequested: (section, field, row) => root.configurationAttentionRequested(
+                                                               section, field, row)
+            onCopyCompleted: toastHost.showMessage(qsTr("YAML copied to the clipboard."), "success")
         }
     }
 
@@ -487,12 +641,16 @@ ApplicationWindow {
 
     Connections {
         function onAttentionRequested(section, field, row) {
-            if (section !== "visualization")
+            if (section !== "dataset" && section !== "visualization")
                 return;
+            root.routeTo(section);
             root.pendingAttentionField = field;
             root.pendingAttentionRow = row;
             root.pendingAttentionSerial += 1;
-            root.routeTo("visualization");
+        }
+
+        function onCloseWindowRequested() {
+            root.close();
         }
 
         function onDatasetDecisionRequested() {
@@ -503,13 +661,55 @@ ApplicationWindow {
             root.routeTo("dataset");
         }
 
+        function onShutdownConfirmationRequested() {
+            shutdownDiscardDialog.open();
+        }
+
         function onWorkspaceStateChanged() {
-            if ((root.currentPage === "dataset" || root.currentPage === "visualization")
-                    && root.desktopController.workspaceState !== "editing")
+            if ((root.currentPage === "dataset" || root.currentPage === "visualization"
+                 || root.currentPage === "yaml") && root.desktopController.workspaceState
+                    !== "editing")
                 root.routeTo("workspace");
         }
 
         target: root.controllerAvailable ? root.desktopController : null
+    }
+
+    Connections {
+        function onExternalChangeRequested() {
+            externalChangeDialog.open();
+        }
+
+        function onImportSucceeded(path, importedExternally) {
+            root.clearOperationFailure();
+            const detail = importedExternally ? qsTr("Imported external configuration: ") : qsTr(
+                                                    "Opened workspace configuration: ");
+            toastHost.showMessage(detail + path, "success");
+        }
+
+        function onOperationFailed(operation, title, message, issues) {
+            root.operationFailureOperation = operation;
+            root.operationFailureTitle = title;
+            root.operationFailureMessage = message;
+            root.operationFailureIssues = issues;
+        }
+
+        function onReformatConfirmationRequested(action) {
+            root.pendingReformatAction = action;
+            reformatConfirmationDialog.open();
+        }
+
+        function onSavePathRequested(defaultPath) {
+            saveConfigurationDialog.selectedFile = root.localFileUrl(defaultPath);
+            saveConfigurationDialog.open();
+        }
+
+        function onSaveSucceeded(path) {
+            root.clearOperationFailure();
+            toastHost.showMessage(qsTr("Saved validated configuration: ") + path, "success");
+        }
+
+        target: root.configController
     }
 
     DecisionDialog {
@@ -522,6 +722,103 @@ ApplicationWindow {
         onRejected: root.datasetDecisionCancelRequested()
         rejectText: qsTr("Cancel")
         title: root.controllerAvailable ? root.desktopController.datasetDecisionTitle : ""
+    }
+
+    DecisionDialog {
+        id: configurationDiscardDialog
+
+        acceptText: qsTr("Discard and continue")
+        bodyText: qsTr(
+                      "The current configuration has unsaved changes. Discard them and continue with this operation?")
+        objectName: "configurationDiscardDialog"
+        onAccepted: {
+            const action = root.pendingReplacementAction;
+            root.pendingReplacementAction = "";
+            if (action === "new") {
+                const mode = root.pendingReplacementMode;
+                root.pendingReplacementMode = "";
+                root.datasetNewRequested(mode, true);
+            } else if (action === "import") {
+                const path = root.pendingReplacementPath;
+                root.pendingReplacementPath = "";
+                root.datasetImportRequested(path, true);
+            } else if (action === "close") {
+                root.datasetCloseRequested(true);
+            }
+        }
+        onRejected: {
+            root.pendingReplacementAction = "";
+            root.pendingReplacementMode = "";
+            root.pendingReplacementPath = "";
+        }
+        rejectText: qsTr("Cancel")
+        title: qsTr("Discard unsaved configuration?")
+    }
+
+    DecisionDialog {
+        id: reformatConfirmationDialog
+
+        acceptText: qsTr("Reformat and continue")
+        bodyText: qsTr(
+                      "This imported file will be written in Carnopy's deterministic YAML format. Comments and source formatting are not preserved.")
+        objectName: "reformatConfirmationDialog"
+        onAccepted: {
+            const action = root.pendingReformatAction;
+            root.pendingReformatAction = "";
+            root.datasetConfirmReformatRequested(action);
+        }
+        onRejected: root.pendingReformatAction = ""
+        rejectText: qsTr("Cancel")
+        title: qsTr("Confirm deterministic reformat")
+    }
+
+    DecisionDialog {
+        id: externalChangeDialog
+
+        acceptText: qsTr("Reload external file")
+        alternateText: qsTr("Save As…")
+        bodyText: qsTr(
+                      "The saved configuration changed outside Carnopy. Reload the external file, save this draft under a new name, or cancel.")
+        objectName: "externalChangeDialog"
+        onAccepted: root.datasetReloadRequested(true)
+        onAlternate: root.datasetSaveAsRequested(false)
+        rejectText: qsTr("Cancel")
+        title: qsTr("Configuration changed outside Carnopy")
+    }
+
+    DecisionDialog {
+        id: shutdownDiscardDialog
+
+        acceptText: qsTr("Discard and close")
+        bodyText: qsTr(
+                      "The open configuration has unsaved changes. Discard them and close Carnopy?")
+        objectName: "shutdownDiscardDialog"
+        onAccepted: root.shutdownConfirmed(true)
+        onRejected: root.shutdownConfirmed(false)
+        rejectText: qsTr("Cancel")
+        title: qsTr("Close Carnopy?")
+    }
+
+    FileDialog {
+        id: saveConfigurationDialog
+
+        defaultSuffix: "yaml"
+        fileMode: FileDialog.SaveFile
+        nameFilters: [qsTr("YAML configurations (*.yaml *.yml)")]
+        objectName: "saveConfigurationDialog"
+        parentWindow: root
+        title: qsTr("Save dataset configuration")
+        onAccepted: {
+            root.saveSelectionPath = selectedFile.toString();
+            root.saveSelectionAccepted = true;
+            Qt.callLater(root.completeSaveSelection);
+        }
+        onRejected: {
+            root.saveSelectionAccepted = false;
+            root.saveSelectionPath = "";
+            root.datasetSavePathCancelled();
+        }
+        onVisibleChanged: root.completeSaveSelection()
     }
 
     Shortcut {

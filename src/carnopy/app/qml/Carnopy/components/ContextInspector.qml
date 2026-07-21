@@ -7,6 +7,13 @@ Control {
     id: root
 
     property bool closeButtonVisible: false
+    property string blockingField: ""
+    property string blockingIssue: ""
+    property int blockingRow: -1
+    property string blockingSection: "none"
+    property bool configurationDirty: false
+    property string configurationFile: ""
+    property bool configurationOpen: false
     property bool datasetValid: false
     property string datasetIssue: ""
     property bool visualizationActiveEdit: false
@@ -14,8 +21,10 @@ Control {
     property bool visualizationValid: false
     property string workspacePath: ""
     property string workspaceState: "unavailable"
+    property bool yamlAvailable: false
 
     signal closeRequested
+    signal attentionRequested(string section, string field, int row)
 
     implicitWidth: 304
     leftPadding: 16
@@ -112,8 +121,11 @@ Control {
                             font.family: Theme.sansFamily
                             font.pixelSize: 12
                             font.weight: Font.Medium
-                            text: root.workspaceState === "editing" ? qsTr("Open") : qsTr(
-                                                                          "Not loaded")
+                            objectName: "inspectorConfigurationState"
+                            text: !root.configurationOpen ? qsTr("Not loaded") : (
+                                                                root.configurationDirty ? qsTr(
+                                                                                              "Unsaved") :
+                                                                                          qsTr("Saved"))
                         }
                     }
 
@@ -133,9 +145,37 @@ Control {
                             font.family: Theme.sansFamily
                             font.pixelSize: 12
                             font.weight: Font.Medium
-                            text: qsTr("Not available")
+                            objectName: "inspectorWorkerValidationState"
+                            text: !root.configurationOpen ? qsTr("Not available") : (
+                                                                root.yamlAvailable ? qsTr(
+                                                                                         "Validated on Save") :
+                                                                                     qsTr("Blocked locally"))
                         }
                     }
+
+                    Label {
+                        Layout.fillWidth: true
+                        color: Theme.textMuted
+                        elide: Text.ElideMiddle
+                        font.family: Theme.monoFamily
+                        font.pixelSize: 10
+                        text: root.configurationFile
+                        visible: root.configurationOpen && text.length > 0
+                    }
+                }
+
+                BlockingBanner {
+                    Layout.fillWidth: true
+                    actionText: qsTr("Focus")
+                    field: root.blockingField
+                    message: root.blockingIssue
+                    onActionRequested: (section, field, row) => root.attentionRequested(section,
+                                                                                        field, row)
+                    row: root.blockingRow
+                    section: root.blockingSection
+                    title: qsTr("Configuration blocker")
+                    visible: root.configurationOpen && !root.yamlAvailable && root.blockingSection
+                             !== "none"
                 }
 
                 Card {

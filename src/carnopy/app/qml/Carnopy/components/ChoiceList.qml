@@ -20,6 +20,13 @@ Item {
     signal removeRequested(int row)
     signal removeValueRequested(int row, string value)
 
+    function focusRow(row) {
+        if (row >= 0 && row < selectedList.count)
+            selectedList.positionViewAtIndex(row, ListView.Contain);
+        choiceBox.forceActiveFocus();
+        return choiceBox;
+    }
+
     implicitHeight: content.implicitHeight
 
     ColumnLayout {

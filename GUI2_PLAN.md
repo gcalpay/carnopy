@@ -659,7 +659,7 @@ Current implementation status as of 2026-07-19:
   vapor-fraction rows. Non-repository rehearsal generation completed all three
   starters with zero invalid rows; the final atmospheric property starter was
   regenerated separately with all 8,282 rows valid.
-- The Commit 9 boundary is implemented in the working tree. The QML
+- The Commit 9 boundary is implemented in the Stage 2 branch history. The QML
   Visualization page binds the authoritative shared format, fluid, filter,
   display-unit, and ordered durable plot models, and presents the single
   workflow-local Add/Edit `PlotDraft` as an inline master-detail editor. It
@@ -686,11 +686,43 @@ Current implementation status as of 2026-07-19:
   environment compatibility checking. Native human inspection of the
   Visualization page remains required before the maintainer accepts this
   commit.
-- Commits 10 and 11 have not started. No QML YAML, validated-save, generation,
-  inspection, plotting, VTK, or public-launcher parity is inferred from the
-  Visualization slice. Both public launchers remain on Widgets, and Stage 2
-  remains active until the remaining implementation, automated gates, native
-  manual acceptance, and explicit maintainer approval are complete.
+- The Commit 10 boundary is implemented in the working tree. The configuration
+  controller now exposes typed YAML availability and blocking section, field,
+  row, and issue projections. Invalid state clears `yamlPreview` instead of
+  retaining stale or best-effort YAML. Typed operation-failure, Save-success,
+  Import-success, and attention signals coexist with the unchanged Widgets
+  adapters.
+- The QML YAML Preview page is an authoritative read-only projection with line
+  numbers, case-insensitive search, selection and copy, file and dirty-state
+  context, an explicit unavailable state, and navigation through stable typed
+  section/field/row identifiers. The command bar exposes New, Import, Save,
+  Save As, and Close through root requests connected to the composition facade.
+  Reformat, external-change, dirty-replacement, and dirty-shutdown choices are
+  explicit consequential dialogs; QML does not duplicate the document or Save
+  workflow.
+- Save and Save As still submit the exact complete-document YAML to the worker
+  before writing and retain imported-reformat consent, external-change
+  protection, atomic verified replacement, Save As no-overwrite, in-flight
+  mutation detection, and baseline refresh only after success. Window close is
+  now guarded by the same composition-owned active-edit, busy, and dirty-state
+  decisions as other replacement operations.
+- Commit 10 focused verification includes the 29-file non-writing QML gate,
+  warning-free QML YAML/search/blocker/decision interactions, controller and
+  unchanged Widgets regressions, source and installed-resource inventory tests,
+  workflow-policy tests, the full 705-test repository suite, `preflight.py`,
+  environment compatibility checking, an outside-checkout installed-wheel QML
+  smoke, and the complete local source/build/Twine/distribution-inventory gate.
+  The CI and release workflows include a Python 3.12 installed-wheel QML smoke
+  on Linux, Windows, and macOS covering warning-free startup, responsive state,
+  YAML-page creation, one settings-controller interaction, and teardown. Those
+  remote jobs remain to be observed after the human commit and push. Native
+  dialogs remain outside headless CI, and this smoke is not Stage 8 platform
+  qualification.
+- Commit 11 has not started. No generation, inspection, plotting, VTK, or
+  public-launcher parity is inferred from Commit 10. Both public launchers
+  remain on Widgets, and Stage 2 remains active until the complete automated
+  gates, three-platform PR checks, native manual acceptance, and explicit
+  maintainer approval are complete.
 - Git staging, commits, synchronization with the remote branch, and publication
   remain human-owned and are not implied by this implementation-status record.
 

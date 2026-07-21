@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import tempfile
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -283,6 +284,20 @@ class QmlApplicationRuntime:
             ("workspaceCancelRequested", self.controller.request_cancel_workspace_operation),
             ("datasetNewRequested", self.controller.request_new_dataset),
             ("datasetImportRequested", self.controller.request_import_dataset),
+            ("datasetSaveRequested", self.controller.request_save),
+            ("datasetSaveAsRequested", self.controller.request_save_as),
+            ("datasetSavePathSelected", self.controller.request_save_path_selected),
+            ("datasetSavePathCancelled", self.controller.request_cancel_save_path),
+            (
+                "datasetConfirmReformatRequested",
+                self.controller.request_confirm_reformat,
+            ),
+            ("datasetReloadRequested", self.controller.request_reload_source),
+            ("datasetCloseRequested", self.controller.request_close_configuration),
+            (
+                "configurationAttentionRequested",
+                self.controller.request_configuration_attention,
+            ),
             ("datasetModelChangeRequested", self.controller.request_dataset_model_change),
             ("datasetFluidAddRequested", self.controller.request_dataset_fluid_add),
             ("datasetFluidMoveRequested", self.controller.request_dataset_fluid_move),
@@ -369,6 +384,7 @@ class QmlApplicationRuntime:
                 self.controller.qml_settings.rememberNormalGeometry,
             ),
             ("settingsLayoutResetRequested", self.controller.qml_settings.resetLayout),
+            ("shutdownConfirmed", self.controller.confirm_shutdown),
         )
         for signal_name, callback in connections:
             signal = getattr(root, signal_name, None)
@@ -443,10 +459,47 @@ def run_qml_application(
     *,
     smoke_test: bool = False,
 ) -> int:
-    runtime = create_qml_runtime(initial_workspace=initial_workspace)
     if smoke_test:
-        QTimer.singleShot(0, runtime.application.quit)
+        with tempfile.TemporaryDirectory(prefix="carnopy-qml-smoke-") as directory:
+            settings = QSettings(str(Path(directory) / "settings.ini"), QSettings.Format.IniFormat)
+            runtime = create_qml_runtime(
+                initial_workspace=initial_workspace,
+                settings=settings,
+            )
+            _exercise_installed_qml_smoke(runtime)
+            QTimer.singleShot(0, runtime.application.quit)
+            result = runtime.application.exec()
+            if not runtime.close():
+                raise QmlStartupError(
+                    "the QML runtime could not shut down while a request was active"
+                )
+            return result
+    runtime = create_qml_runtime(initial_workspace=initial_workspace)
     result = runtime.application.exec()
     if not runtime.close():
         raise QmlStartupError("the QML runtime could not shut down while a request was active")
     return result
+
+
+def _exercise_installed_qml_smoke(runtime: QmlApplicationRuntime) -> None:
+    roots = runtime.engine.rootObjects()
+    if len(roots) != 1:
+        raise QmlStartupError("installed QML smoke lost its root object")
+    root = roots[0]
+    if root.property("configController") is not runtime.controller.dataset_config_controller:
+        raise QmlStartupError("installed QML smoke did not bind the configuration controller")
+    if not root.setProperty("width", 1024) or not root.setProperty("height", 768):
+        raise QmlStartupError("installed QML smoke could not resize the workbench")
+    if not root.setProperty("currentPage", "yaml"):
+        raise QmlStartupError("installed QML smoke could not select the YAML page")
+    runtime.controller.qml_settings.set_reduced_motion(True)
+    runtime.application.processEvents()
+    if root.property("shellMode") != "compact" or root.property("motionDuration") != 0:
+        raise QmlStartupError("installed QML smoke did not apply responsive controller state")
+    if root.findChild(QObject, "yamlPreviewPage") is None:
+        raise QmlStartupError("installed QML smoke did not instantiate the YAML page")
+    if runtime.controller.dataset_config_controller.get_yaml_available():
+        raise QmlStartupError("installed QML smoke unexpectedly exposed YAML without a document")
+    if runtime.warning_capture.runtime_warnings:
+        details = "\n".join(runtime.warning_capture.runtime_warnings)
+        raise QmlStartupError(f"installed QML smoke emitted runtime warnings:\n{details}")

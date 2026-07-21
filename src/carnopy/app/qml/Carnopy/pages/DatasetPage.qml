@@ -10,7 +10,14 @@ Item {
 
     required property var datasetDraft
     required property var desktopController
+    property string attentionField: ""
+    property int attentionRow: -1
+    property int attentionSerial: 0
     property int expectedColumns: 1
+    property var outputFocusControl: null
+    property string samplerAttentionAxis: ""
+    property string samplerAttentionField: ""
+    property int samplerAttentionSerial: 0
 
     signal coordinateChangeRequested(string axis)
     signal fluidAddRequested(string value)
@@ -41,6 +48,49 @@ Item {
                                                       root.datasetDraft.coordinateName);
     }
 
+    function reveal(item) {
+        if (item === null || item === undefined)
+            return;
+        const position = item.mapToItem(pageFlickable.contentItem, 0, 0);
+        const maximum = Math.max(0, pageFlickable.contentHeight - pageFlickable.height);
+        pageFlickable.contentY = Math.min(maximum, Math.max(0, position.y - 80));
+    }
+
+    function focusField(field, row) {
+        let target = null;
+        if (field === "dataset.model") {
+            target = modelChoice;
+            target.forceActiveFocus();
+        } else if (field === "dataset.mode") {
+            target = modeChoice;
+            target.forceActiveFocus();
+        } else if (field === "dataset.fluids") {
+            target = fluidChoices.focusRow(row);
+        } else if (field === "dataset.properties") {
+            target = propertyChoices.focusRow(row);
+        } else if (field === "dataset.outputs.dataset_formats") {
+            target = root.outputFocusControl;
+            if (target !== null)
+                target.forceActiveFocus();
+        } else if (field.indexOf("dataset.grid.") === 0) {
+            const parts = field.split(".");
+            root.samplerAttentionAxis = parts.length > 2 ? parts[2] : "";
+            root.samplerAttentionField = parts.length > 3 ? parts[3] : "unit";
+            root.samplerAttentionSerial += 1;
+            root.reveal(samplerGrid);
+            return;
+        }
+        if (target === null) {
+            target = modeChoice;
+            target.forceActiveFocus();
+        }
+        root.reveal(target);
+    }
+
+    onAttentionSerialChanged: Qt.callLater(function () {
+        root.focusField(root.attentionField, root.attentionRow);
+    })
+
     Connections {
         function onCoordinateNameChanged() {
             root.syncChoices();
@@ -68,6 +118,8 @@ Item {
     Component.onCompleted: syncChoices()
 
     Flickable {
+        id: pageFlickable
+
         anchors.fill: parent
         boundsBehavior: Flickable.StopAtBounds
         clip: true
@@ -135,6 +187,8 @@ Item {
             }
 
             ResponsiveCardGrid {
+                id: samplerGrid
+
                 Layout.fillWidth: true
                 Layout.preferredHeight: implicitHeight
                 maximumColumns: Math.min(3, root.expectedColumns)
@@ -228,6 +282,8 @@ Item {
                 title: qsTr("Fluids")
 
                 ChoiceList {
+                    id: fluidChoices
+
                     Layout.fillWidth: true
                     choiceModel: root.datasetDraft.fluidChoices
                     emptyText: qsTr("Add at least one fluid")
@@ -257,9 +313,15 @@ Item {
                 objectName: "datasetSamplerGrid"
 
                 Repeater {
+                    id: samplerRepeater
+
                     model: root.datasetDraft.samplerDrafts
 
                     delegate: SamplerEditor {
+                        attentionField: root.samplerAttentionAxis === String(draft.axis)
+                                        ? root.samplerAttentionField : ""
+                        attentionSerial: root.samplerAttentionAxis === String(draft.axis)
+                                         ? root.samplerAttentionSerial : 0
                         Layout.fillWidth: true
                         onKindChangeRequested: (draft, kind) => root.samplerKindChangeRequested(
                                                                     draft, kind)
@@ -285,6 +347,8 @@ Item {
                     title: qsTr("Properties")
 
                     ChoiceList {
+                        id: propertyChoices
+
                         Layout.fillWidth: true
                         choiceModel: root.datasetDraft.propertyChoices
                         emptyText: qsTr("Add at least one property")
@@ -303,9 +367,12 @@ Item {
                     title: qsTr("Dataset outputs")
 
                     Repeater {
+                        id: outputRepeater
+
                         model: root.datasetDraft.outputFormats
 
                         delegate: Item {
+                            required property int index
                             required property bool selected
                             required property string display
                             required property string value
@@ -321,6 +388,10 @@ Item {
                                 anchors.right: parent.right
                                 checked: parent.selected
                                 objectName: "datasetOutput-" + parent.value
+                                Component.onCompleted: {
+                                    if (parent.index === 0)
+                                    root.outputFocusControl = outputCheck;
+                                }
                                 onClicked: root.outputSelectionRequested(parent.value, checked)
                                 text: parent.display
                             }

@@ -4,12 +4,15 @@ Main 1.0 Main.qml
 AppButton 1.0 components/AppButton.qml
 AppComboBox 1.0 components/AppComboBox.qml
 AppIcon 1.0 components/AppIcon.qml
+BlockingBanner 1.0 components/BlockingBanner.qml
 Card 1.0 components/Card.qml
 CommandBar 1.0 components/CommandBar.qml
 ContextInspector 1.0 components/ContextInspector.qml
 DecisionDialog 1.0 components/DecisionDialog.qml
 MappingEditor 1.0 components/MappingEditor.qml
+LineNumberedTextArea 1.0 components/LineNumberedTextArea.qml
 NavRail 1.0 components/NavRail.qml
+OperationFeedback 1.0 components/OperationFeedback.qml
 PlotEditor 1.0 components/PlotEditor.qml
 ResponsiveCardGrid 1.0 components/ResponsiveCardGrid.qml
 StatusBadge 1.0 components/StatusBadge.qml
@@ -24,3 +27,4 @@ SettingsPage 1.0 pages/SettingsPage.qml
 WorkspacePage 1.0 pages/WorkspacePage.qml
 DatasetPage 1.0 pages/DatasetPage.qml
 VisualizationPage 1.0 pages/VisualizationPage.qml
+YamlPreviewPage 1.0 pages/YamlPreviewPage.qml

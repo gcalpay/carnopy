@@ -247,11 +247,21 @@ def test_controller_owns_complete_merge_dirty_and_execution_gates(
 
     assert not controller.get_locally_valid()
     assert controller.get_dirty()
-    assert "unavailable" in controller.get_yaml_preview()
+    assert controller.get_yaml_preview() == ""
+    assert not controller.get_yaml_available()
+    assert controller.get_blocking_section() == "dataset"
+    assert controller.get_blocking_field() == "dataset.outputs.dataset_formats"
+    assert controller.get_blocking_row() == -1
+    assert controller.get_blocking_issue()
     assert not controller.get_can_save()
 
     controller.dataset_draft.set_output_selected("parquet", True)
     assert controller.get_locally_valid()
+    assert controller.get_yaml_available()
+    assert controller.get_blocking_section() == "none"
+    assert controller.get_blocking_field() == ""
+    assert controller.get_blocking_row() == -1
+    assert controller.get_blocking_issue() == ""
     assert controller.document.payload["outputs"] == {"dataset_formats": ["parquet"]}
 
 
@@ -263,7 +273,9 @@ def test_controller_validates_exact_yaml_before_writing_and_refreshes_baselines(
     controller, coordinator = configured_controller(tmp_path)
     controller.open_document(new_document(payload(visualization=True)))
     destinations: list[str] = []
+    saves: list[str] = []
     controller.save_path_requested.connect(destinations.append)
+    controller.saveSucceeded.connect(saves.append)
 
     assert controller.request_save_as()
     assert destinations == [str(controller.workspace.configs / "dataset.yaml")]
@@ -282,6 +294,7 @@ def test_controller_validates_exact_yaml_before_writing_and_refreshes_baselines(
     coordinator.succeed({})
 
     assert destination.read_text(encoding="utf-8") == expected
+    assert saves == [str(destination)]
     assert not controller.get_dirty()
     assert not controller.dataset_draft.get_dirty()
     assert not controller.visualization_draft.get_dirty()
@@ -297,7 +310,13 @@ def test_worker_validation_failure_never_writes_pending_yaml(
     controller.open_document(new_document(payload()))
     controller.save_path_requested.connect(controller.save_path_selected)
     warnings: list[tuple[str, str]] = []
+    failures: list[tuple[str, str, str, list[dict[str, str]]]] = []
     controller.warning_requested.connect(lambda title, message: warnings.append((title, message)))
+    controller.operationFailed.connect(
+        lambda operation, title, message, issues: failures.append(
+            (operation, title, message, issues)
+        )
+    )
     destination = controller.workspace.configs / "dataset.yaml"
 
     assert controller.request_save_as()
@@ -310,7 +329,40 @@ def test_worker_validation_failure_never_writes_pending_yaml(
 
     assert not destination.exists()
     assert warnings == [("Validation Failed", "worker rejected exact YAML\n$.grid: invalid grid")]
+    assert failures == [
+        (
+            "save_as",
+            "Validation Failed",
+            "worker rejected exact YAML",
+            [{"path": "$.grid", "message": "invalid grid"}],
+        )
+    ]
     assert controller.get_dirty()
+
+
+def test_successful_import_reports_typed_source_location(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    controller, coordinator = configured_controller(tmp_path)
+    source = tmp_path / "external.yaml"
+    content = serialize_dataset_config(payload())
+    source.write_bytes(content)
+    imported: list[tuple[str, bool]] = []
+    controller.importSucceeded.connect(lambda path, external: imported.append((path, external)))
+
+    assert controller.import_dataset(str(source))
+    coordinator.succeed(
+        {
+            "config": payload(),
+            "source_name": str(source),
+            "source_sha256": sha256_bytes(content),
+        }
+    )
+
+    assert imported == [(str(source.resolve()), True)]
+    assert controller.get_yaml_available()
 
 
 def test_controller_refuses_stale_validated_bytes_if_draft_changes_in_flight(

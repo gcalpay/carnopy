@@ -8,7 +8,10 @@ Dialog {
 
     property string bodyText: ""
     property string acceptText: qsTr("Continue")
+    property string alternateText: ""
     property string rejectText: qsTr("Cancel")
+
+    signal alternate
 
     anchors.centerIn: Overlay.overlay
     closePolicy: Popup.CloseOnEscape
@@ -43,6 +46,15 @@ Dialog {
             AppButton {
                 text: root.rejectText
                 onClicked: root.reject()
+            }
+
+            AppButton {
+                onClicked: {
+                    root.close();
+                    root.alternate();
+                }
+                text: root.alternateText
+                visible: text.length > 0
             }
 
             AppButton {

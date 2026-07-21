@@ -9,6 +9,8 @@ Card {
     id: root
 
     required property var draft
+    property string attentionField: ""
+    property int attentionSerial: 0
     property string unitRejectionMessage: ""
 
     signal kindChangeRequested(var draft, string kind)
@@ -27,6 +29,30 @@ Card {
         return -1;
     }
 
+    function focusField(field) {
+        let target = unitChoice;
+        if (field === "kind")
+            target = kindChoice;
+        else if (field === "values")
+            target = valuesField;
+        else if (field === "start")
+            target = startField;
+        else if (field === "stop")
+            target = stopField;
+        else if (field === "step")
+            target = stepField;
+        else if (field === "start_exp")
+            target = startExponentField;
+        else if (field === "stop_exp")
+            target = stopExponentField;
+        else if (field === "num")
+            target = countField;
+        else if (field === "base")
+            target = baseField;
+        target.forceActiveFocus();
+        return target;
+    }
+
     function syncFromDraft() {
         kindChoice.currentIndex = indexForValue(kindChoice, root.draft.kind);
         unitChoice.currentIndex = indexForValue(unitChoice, root.draft.unit);
@@ -38,6 +64,11 @@ Card {
         stopExponentField.text = root.draft.text("stop_exp");
         countField.text = root.draft.text("num");
         baseField.text = root.draft.text("base");
+    }
+
+    onAttentionSerialChanged: {
+        if (root.attentionField.length > 0)
+        Qt.callLater(() => root.focusField(root.attentionField));
     }
 
     objectName: "samplerEditor-" + String(draft.axis)

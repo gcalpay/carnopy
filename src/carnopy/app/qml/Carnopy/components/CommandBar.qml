@@ -7,6 +7,10 @@ Control {
     id: root
 
     property string breadcrumb: qsTr("Local workbench")
+    property bool canSave: false
+    property bool canSaveAs: false
+    property bool documentOpen: false
+    property bool documentDirty: false
     property string pageTitle: qsTr("Workspace")
     property bool showRailMenu: false
     property bool showInspectorButton: false
@@ -16,6 +20,9 @@ Control {
 
     signal inspectorToggleRequested
     signal railMenuRequested
+    signal closeConfigurationRequested
+    signal saveAsRequested
+    signal saveRequested
 
     implicitHeight: 68
     leftPadding: 18
@@ -67,6 +74,30 @@ Control {
             label: root.statusLabel
             tone: root.statusTone
             visible: root.width >= 560
+        }
+
+        AppButton {
+            enabled: root.canSave
+            objectName: "commandSaveButton"
+            onClicked: root.saveRequested()
+            text: root.documentDirty ? qsTr("Save changes") : qsTr("Save")
+            tone: "primary"
+            visible: root.documentOpen
+        }
+
+        AppButton {
+            enabled: root.canSaveAs
+            objectName: "commandSaveAsButton"
+            onClicked: root.saveAsRequested()
+            text: qsTr("Save As…")
+            visible: root.documentOpen && root.width >= 760
+        }
+
+        AppButton {
+            objectName: "commandCloseConfigurationButton"
+            onClicked: root.closeConfigurationRequested()
+            text: qsTr("Close")
+            visible: root.documentOpen && root.width >= 620
         }
 
         AppButton {

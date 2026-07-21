@@ -44,6 +44,12 @@ class DatasetConfigController(QObject):
     save_path_requested = Signal(str)
     reformat_confirmation_requested = Signal(str)
     external_change_requested = Signal()
+    savePathRequested = Signal(str)
+    reformatConfirmationRequested = Signal(str)
+    externalChangeRequested = Signal()
+    operationFailed = Signal(str, str, str, list)
+    saveSucceeded = Signal(str)
+    importSucceeded = Signal(str, bool)
 
     def __init__(
         self,
@@ -119,30 +125,64 @@ class DatasetConfigController(QObject):
 
     yamlPreview = Property(str, get_yaml_preview, notify=state_changed)
 
-    def get_first_invalid_field(self) -> str:
+    def get_yaml_available(self) -> bool:
+        return self.document is not None and self._locally_valid and bool(self._yaml_preview)
+
+    yamlAvailable = Property(bool, get_yaml_available, notify=state_changed)
+
+    def get_blocking_section(self) -> str:
+        if self.document is None or self._locally_valid:
+            return "none"
         if not self.dataset_draft.get_locally_valid():
-            return self.dataset_draft.get_first_invalid_field()
+            return "dataset"
         if not self.visualization_draft.get_locally_valid():
+            return "visualization"
+        return "none"
+
+    blockingSection = Property(str, get_blocking_section, notify=state_changed)
+
+    def get_blocking_field(self) -> str:
+        section = self.get_blocking_section()
+        if section == "dataset":
+            return self.dataset_draft.get_first_invalid_field()
+        if section == "visualization":
             return self.visualization_draft.get_first_invalid_field()
         return ""
+
+    blockingField = Property(str, get_blocking_field, notify=state_changed)
+
+    def get_blocking_row(self) -> int:
+        section = self.get_blocking_section()
+        if section == "dataset":
+            return self.dataset_draft.get_first_invalid_row()
+        if section == "visualization":
+            return self.visualization_draft.get_first_invalid_row()
+        return -1
+
+    blockingRow = Property(int, get_blocking_row, notify=state_changed)
+
+    def get_blocking_issue(self) -> str:
+        section = self.get_blocking_section()
+        if section == "dataset":
+            return self.dataset_draft.get_issue()
+        if section == "visualization":
+            return self.visualization_draft.get_issue()
+        return ""
+
+    blockingIssue = Property(str, get_blocking_issue, notify=state_changed)
+
+    def get_first_invalid_field(self) -> str:
+        return self.get_blocking_field()
 
     firstInvalidField = Property(str, get_first_invalid_field, notify=state_changed)
 
     def get_first_invalid_row(self) -> int:
-        if not self.dataset_draft.get_locally_valid():
-            return self.dataset_draft.get_first_invalid_row()
-        if not self.visualization_draft.get_locally_valid():
-            return self.visualization_draft.get_first_invalid_row()
-        return -1
+        return self.get_blocking_row()
 
     firstInvalidRow = Property(int, get_first_invalid_row, notify=state_changed)
 
     def get_first_invalid_issue(self) -> str:
-        if not self.dataset_draft.get_locally_valid():
-            return self.dataset_draft.get_issue()
-        if not self.visualization_draft.get_locally_valid():
-            return self.visualization_draft.get_issue()
-        return ""
+        return self.get_blocking_issue()
 
     firstInvalidIssue = Property(str, get_first_invalid_issue, notify=state_changed)
 
@@ -282,6 +322,7 @@ class DatasetConfigController(QObject):
             return True
         if document.imported and not allow_reformat:
             self.reformat_confirmation_requested.emit("save")
+            self.reformatConfirmationRequested.emit("save")
             return True
         self._validate_before_save(document.source_path, replace=True)
         return True
@@ -415,9 +456,12 @@ class DatasetConfigController(QObject):
             return False
         if document.imported and not allow_reformat:
             self.reformat_confirmation_requested.emit("save_as")
+            self.reformatConfirmationRequested.emit("save_as")
             return True
         self._awaiting_save_path = True
-        self.save_path_requested.emit(self.get_default_save_path())
+        default_path = self.get_default_save_path()
+        self.save_path_requested.emit(default_path)
+        self.savePathRequested.emit(default_path)
         return True
 
     def _validate_before_save(self, path: Path, *, replace: bool) -> None:
@@ -446,8 +490,10 @@ class DatasetConfigController(QObject):
                 payload,
             )
         except (RuntimeError, ValueError) as exc:
+            action = self._pending_action or request_type
             self._clear_pending()
             self._set_status(str(exc))
+            self._emit_operation_failed(action, _failure_title(action), str(exc), [])
             self.state_changed.emit()
             return False
         self._session = session
@@ -479,7 +525,7 @@ class DatasetConfigController(QObject):
                 self._capability_cache[model] = result
             self._apply_capabilities(result)
         elif action in {"import", "reload"}:
-            self._finish_import(result)
+            self._finish_import(result, operation=action)
         elif action in {"save_new", "save_replace"}:
             self._finish_save(replace=action == "save_replace")
 
@@ -491,18 +537,24 @@ class DatasetConfigController(QObject):
         self._clear_pending()
         message = str(failure.get("message", "worker request failed"))
         details = failure.get("details")
-        issues = details.get("issues") if isinstance(details, dict) else None
-        if isinstance(issues, list):
+        raw_issues = details.get("issues") if isinstance(details, dict) else None
+        issues = _structured_issues(raw_issues)
+        if issues:
             issue_lines = [
                 f"{item.get('path', '$')}: {item.get('message', 'invalid value')}"
                 for item in issues
-                if isinstance(item, dict)
             ]
             if issue_lines:
                 message += "\n" + "\n".join(issue_lines)
         self._set_status(message)
         title = "Import Failed" if action in {"import", "reload"} else "Validation Failed"
         self.warning_requested.emit(title, message)
+        self._emit_operation_failed(
+            action,
+            _failure_title(action),
+            str(failure.get("message", message)),
+            issues,
+        )
         self.state_changed.emit()
 
     def _worker_busy_changed(self, _busy: bool) -> None:
@@ -533,7 +585,7 @@ class DatasetConfigController(QObject):
         self._clear_pending()
         self._emit_document_state()
 
-    def _finish_import(self, payload: dict[str, Any]) -> None:
+    def _finish_import(self, payload: dict[str, Any], *, operation: str) -> None:
         workspace = self.workspace
         if workspace is None:
             return
@@ -541,11 +593,14 @@ class DatasetConfigController(QObject):
             document = document_from_worker_payload(payload, configs_root=workspace.configs)
         except ConfigDocumentError as exc:
             self._set_status(str(exc))
+            self._emit_operation_failed(operation, _failure_title(operation), str(exc), [])
             return
         if not self.open_document(document):
             return
         location = "workspace configuration" if document.workspace_owned else "external import"
         self._set_status(f"Loaded valid {location}: {document.source_path}")
+        if operation == "import" and document.source_path is not None:
+            self.importSucceeded.emit(str(document.source_path), not document.workspace_owned)
 
     def _finish_save(self, *, replace: bool) -> None:
         if not self._lifecycle_allowed("Save"):
@@ -559,7 +614,14 @@ class DatasetConfigController(QObject):
         self._pending_path = None
         self._pending_content = None
         if document is None or workspace is None or path is None or content is None:
-            self._set_status("Save state was lost before the validated YAML could be written.")
+            message = "Save state was lost before the validated YAML could be written."
+            self._set_status(message)
+            self._emit_operation_failed(
+                "save" if replace else "save_as",
+                "Save Failed",
+                message,
+                [],
+            )
             return
         if document.yaml_bytes != content:
             message = (
@@ -568,6 +630,12 @@ class DatasetConfigController(QObject):
             )
             self._set_status(message)
             self.warning_requested.emit("Save Cancelled", message)
+            self._emit_operation_failed(
+                "save" if replace else "save_as",
+                "Save Cancelled",
+                message,
+                [],
+            )
             return
         try:
             if replace:
@@ -588,6 +656,12 @@ class DatasetConfigController(QObject):
         except ConfigDocumentError as exc:
             self._set_status(str(exc))
             self.warning_requested.emit("Save Failed", str(exc))
+            self._emit_operation_failed(
+                "save" if replace else "save_as",
+                "Save Failed",
+                str(exc),
+                [],
+            )
             return
         document.mark_saved(destination, content)
         self.dataset_draft.mark_baseline()
@@ -595,6 +669,7 @@ class DatasetConfigController(QObject):
         self._file_display = str(destination)
         self._refresh_document()
         self._set_status(f"Saved valid configuration: {destination}")
+        self.saveSucceeded.emit(str(destination))
 
     def _refresh_document(self) -> None:
         if self._syncing_document:
@@ -618,9 +693,7 @@ class DatasetConfigController(QObject):
                 payload["visualization"] = visualization
         except ValueError as exc:
             self._locally_valid = False
-            self._yaml_preview = (
-                f"# YAML preview is unavailable until the form is complete.\n# {exc}\n"
-            )
+            self._yaml_preview = ""
             self._set_status(str(exc))
         else:
             document.set_payload(payload)
@@ -635,6 +708,7 @@ class DatasetConfigController(QObject):
             return
         self._set_status(f"Saved configuration changed outside Carnopy: {document.source_path}")
         self.external_change_requested.emit()
+        self.externalChangeRequested.emit()
 
     def _clear_pending(self, *, keep_paths: bool = False) -> None:
         self._pending_action = None
@@ -647,6 +721,15 @@ class DatasetConfigController(QObject):
             return
         self._status_message = message
         self.status_message_changed.emit()
+
+    def _emit_operation_failed(
+        self,
+        action: str,
+        title: str,
+        message: str,
+        issues: list[dict[str, str]],
+    ) -> None:
+        self.operationFailed.emit(_operation_name(action), title, message, issues)
 
     def _emit_document_state(self) -> None:
         self.state_changed.emit()
@@ -662,3 +745,41 @@ def _template_payload(mode: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ConfigDocumentError(f"packaged {mode} template is not a mapping")
     return cast(dict[str, Any], value)
+
+
+def _operation_name(action: str) -> str:
+    return {
+        "save_new": "save_as",
+        "save_replace": "save",
+        "load_dataset_config": "import",
+        "validate_dataset_config": "save",
+        "describe_capabilities": "capabilities",
+    }.get(action, action)
+
+
+def _failure_title(action: str) -> str:
+    operation = _operation_name(action)
+    return {
+        "capabilities": "Capability Loading Failed",
+        "import": "Import Failed",
+        "reload": "Reload Failed",
+        "save": "Validation Failed",
+        "save_as": "Validation Failed",
+    }.get(operation, "Operation Failed")
+
+
+def _structured_issues(value: object) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        return []
+    issues: list[dict[str, str]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        issue: dict[str, str] = {}
+        for key in ("path", "code", "message"):
+            candidate = item.get(key)
+            if candidate is not None:
+                issue[key] = str(candidate)
+        if issue:
+            issues.append(issue)
+    return issues

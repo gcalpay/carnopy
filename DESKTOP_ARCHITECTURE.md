@@ -24,9 +24,11 @@ The desktop has two frontend implementations during the GUI-2 migration:
 - both frontends reuse the same authoritative QtCore controllers and private
   worker boundary;
 - the QML application currently implements the responsive shell, Workspace,
-  Dataset, Visualization, Settings, and Help surfaces;
-- QML YAML availability and validated Save flows are the remaining Stage 2
-  application slice;
+  Dataset, Visualization, YAML Preview, Settings, and Help surfaces, including
+  worker-validated Save and Save As;
+- typed blocking state, operation feedback, and composition-owned document and
+  shutdown decisions are shared with the authoritative controllers rather than
+  reimplemented in QML;
 - generation, inspection, table preview, plotting, jobs, recovery, and Widgets
   retirement belong to later GUI-2 stages.
 
@@ -239,6 +241,21 @@ The document is updated only from locally valid dataset and visualization
 state. A successful worker validation and file write refreshes baselines;
 failed validation or writing does not declare the draft saved.
 
+The controller projects YAML availability and its first blocker as typed state:
+`yamlAvailable`, `blockingSection`, `blockingField`, `blockingRow`, and
+`blockingIssue`. Invalid draft state always exposes an empty YAML preview; the
+last valid serialization and a best-effort replacement are never presented as
+current. Stable field and row identifiers drive navigation in both QML and
+Widgets adapters without parsing issue prose.
+
+Save and Save As submit the exact visible complete-document YAML to the worker
+before any write. Imported-document reformat consent, external-change choices,
+no-overwrite Save As, atomic verified replacement, in-flight mutation checks,
+and baseline refresh retain the established controller and document ownership.
+Typed `operationFailed`, `saveSucceeded`, and `importSucceeded` signals provide
+QML feedback while the existing Widgets signals remain available during the
+migration.
+
 ### `DatasetDraft` and `SamplerDraft`
 
 `DatasetDraft` owns model, mode, coordinate choice, ordered fluids, properties,
@@ -290,6 +307,14 @@ Commit. Invalid Commit retains the temporary editor and focuses a stable
 to navigate. Widgets keep the established modal dialog over the same draft and
 lifecycle.
 
+The QML YAML Preview page is a read-only projection of the complete document.
+It provides line numbers, search, selection/copy, file and dirty-state context,
+and typed navigation to the first blocking Dataset or Visualization field. It
+does not edit YAML or retain stale text. Command-bar New, Import, Save, Save As,
+and Close actions cross the root runtime bridge into `DesktopController`; QML
+owns only the consequential decision dialogs and native file selection, not the
+underlying workflow.
+
 ## Frontends
 
 ### Public Qt Widgets frontend
@@ -329,7 +354,9 @@ QML views emit root-level request signals. `QmlApplicationRuntime` connects
 them to Python with queued Qt connections, avoiding re-entrant model mutation
 while delegates are handling input. Native folder dialogs have an explicit
 transient parent and defer path dispatch until the dialog is hidden and the
-event loop advances.
+event loop advances. Save-file selection follows the same deferred boundary.
+Window close is routed through the composition-owned active-edit, worker-busy,
+and dirty-document guards before runtime teardown.
 
 ### Responsive shell and settings
 
@@ -407,7 +434,7 @@ Desktop verification is layered:
 | `tests/test_app_*.py` | Controller, draft, Widgets, QML engine, and interaction contracts |
 | `scripts/check_qml.py` | Non-writing QML format, import, and lint checks |
 | dedicated Linux app CI job | App-extra typing and desktop tests under Qt offscreen execution |
-| installed smoke tests | Public Widgets launchers plus private packaged-QML startup and resource checks |
+| installed smoke tests | Public Widgets launchers plus private packaged-QML startup, responsive state, YAML-page creation, one controller interaction, teardown, and resource checks |
 | distribution checker | Exact wheel/sdist module, QML, font, icon, license, and provenance inventories |
 | manual native acceptance | File dialogs, monitor/DPI behavior, themes, keyboard use, and perceived interaction |
 | native qualification workflow | Explicit Qt Quick/VTK bridge qualification, not a routine PR requirement |
@@ -450,7 +477,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | --- | --- | --- |
 | 0 | Qualified a same-repository `QQuickVTKItem` companion bridge on the pinned Linux/Qt/VTK baseline | Complete |
 | 1 | Extracted request ownership, workspace state, dataset/visualization drafts, and complete configuration workflow into QML-ready QtCore controllers | Complete |
-| 2 | Package the Precision Grid QML Workspace, Dataset, Visualization, and YAML/Save workflows | Active; Workspace, Dataset, and Visualization implemented; YAML/Save pending |
+| 2 | Package the Precision Grid QML Workspace, Dataset, Visualization, and YAML/Save workflows | Active; implementation and local gates complete, remote CI and native acceptance pending |
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, and remove Widgets | Pending |
 | 4 | Add controlled sweep and preparation worker operations | Pending |
 | 5 | Add structured sweep and preparation QML workflows | Pending |
@@ -461,15 +488,16 @@ GUI-2 is delivered one stage branch and pull request at a time:
 Stage 2 has also established definition-first sampler canonicalization, exact
 anchor-based GUI unit changes, Qt 6.11.1 as the QML baseline, packaged QML
 resources, responsive settings, trusted workspace flows, structured Dataset
-editing, practical starter grids, and `hPa`/`atm` input units. These additions
-do not imply QML parity or public-launcher migration.
+and Visualization editing, typed YAML and operation state, worker-validated
+Save flows, practical starter grids, and `hPa`/`atm` input units. These
+additions do not imply QML parity or public-launcher migration.
 
 ## Known current limitations
 
 - The public desktop experience is still Widgets; the modern QML launcher is a
   private development entry point.
-- The QML application cannot yet expose the final YAML/validated Save flows or
-  execute/render its configured visualization; rendering remains worker-owned
+- The QML application can configure and save YAML but cannot yet execute or
+  render its configured visualization; rendering remains worker-owned
   later-stage functionality.
 - QML generation, inspection, tables, plotting, jobs, recovery, sweep,
   preparation, and 3D are not implemented.

@@ -130,6 +130,34 @@ def test_desktop_jobs_run_the_non_writing_qml_gate() -> None:
         assert app_job.index("Check QML sources") < app_job.index("Run strict desktop mypy")
 
 
+def test_installed_qml_smoke_covers_three_platforms_without_native_dialogs() -> None:
+    downstream = {
+        "ci.yml": "distribution",
+        "publish.yml": "inspect",
+    }
+    for name, downstream_name in downstream.items():
+        text = workflow_text(name)
+        job = workflow_job(text, "qml-smoke")
+        for runner in ("ubuntu-latest", "windows-latest", "macos-latest"):
+            assert f"          - {runner}" in job
+        assert 'python-version: "3.12"' in job
+        if name == "ci.yml":
+            assert "uv build --wheel --out-dir qml-smoke-dist" in job
+        else:
+            assert "- build" in job
+            assert "actions/download-artifact@" in job
+            assert "name: candidate-distributions" in job
+        assert '"carnopy[app] @ ${WHEEL_URI}"' in job
+        assert "-m carnopy.app.qml_launcher --smoke-test" in job
+        assert "QT_QPA_PLATFORM=offscreen" in job
+        assert "FileDialog" not in job
+        assert "FolderDialog" not in job
+        assert "if: runner.os == 'Linux'" in job
+        assert "sudo apt-get install --yes --no-install-recommends libegl1" in job
+        downstream_job = workflow_job(text, downstream_name)
+        assert "- qml-smoke" in downstream_job
+
+
 def test_distribution_checks_install_qt_only_after_core_smokes() -> None:
     jobs = {
         "ci.yml": workflow_job(workflow_text("ci.yml"), "distribution"),

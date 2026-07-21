@@ -13,6 +13,7 @@ Control {
     property string currentPage: "workspace"
     property bool datasetAvailable: false
     property bool visualizationAvailable: false
+    property bool yamlAvailable: false
     readonly property alias navigationModel: navigationModel
     readonly property int preferredWidth: collapsed ? 76 : 224
 
@@ -56,9 +57,8 @@ Control {
             pageKey: "yaml"
             title: qsTr("YAML Preview")
             iconName: "file-code"
-            available: false
-            unavailableReason: qsTr(
-                                   "Validated YAML and Save flows are introduced later in Stage 2.")
+            available: true
+            unavailableReason: qsTr("Create or import a dataset configuration first.")
         }
         ListElement {
             pageKey: "run"
@@ -182,7 +182,9 @@ Control {
                 readonly property bool effectivelyAvailable: available && (pageKey !== "dataset"
                                                                            || root.datasetAvailable)
                                                              && (pageKey !== "visualization"
-                                                                 || root.visualizationAvailable)
+                                                                 || root.visualizationAvailable) && (
+                                                                 pageKey !== "yaml"
+                                                                 || root.yamlAvailable)
 
                 Accessible.description: effectivelyAvailable ? "" : unavailableReason
                 Accessible.name: title

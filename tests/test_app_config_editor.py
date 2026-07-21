@@ -423,7 +423,9 @@ def test_incomplete_saved_dataset_draft_is_dirty_and_requires_discard(
     assert editor.dataset_draft.get_dirty()
     assert not editor._form_valid
     assert not editor.save_button.isEnabled()
-    assert "unavailable" in editor.preview.toPlainText()
+    assert editor.preview.toPlainText() == ""
+    assert not editor.controller.get_yaml_available()
+    assert editor.controller.get_blocking_section() == "dataset"
     assert not editor.confirm_discard()
     assert questions == ["asked"]
     editor.shutdown()

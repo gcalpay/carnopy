@@ -18,6 +18,7 @@ from PySide6.QtCore import (
     QObject,
     QSettings,
     Qt,
+    QUrl,
     Signal,
 )
 
@@ -150,6 +151,74 @@ def test_desktop_shutdown_is_idle_only_and_idempotent(
         assert not desktop.shutdown()
     assert shutdown_calls == ["shutdown"]
     assert sync_calls == ["sync"]
+
+
+def test_qml_shutdown_requires_explicit_dirty_discard_confirmation(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    confirmations: list[str] = []
+    close_requests: list[str] = []
+    desktop.shutdownConfirmationRequested.connect(lambda: confirmations.append("confirm"))
+    desktop.closeWindowRequested.connect(lambda: close_requests.append("close"))
+    monkeypatch.setattr(
+        desktop.dataset_config_controller,
+        "needs_discard_confirmation",
+        lambda: True,
+    )
+
+    assert not desktop.request_shutdown()
+    assert confirmations == ["confirm"]
+    assert not desktop.confirm_shutdown(False)
+    assert close_requests == []
+    assert desktop.confirm_shutdown(True)
+    assert close_requests == ["close"]
+    assert desktop.request_shutdown()
+
+
+def test_configuration_attention_facade_accepts_only_stable_sections(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    attention: list[tuple[str, str, int]] = []
+    desktop.attentionRequested.connect(
+        lambda section, field, row: attention.append((section, field, row))
+    )
+
+    assert desktop.request_configuration_attention("dataset", "dataset.properties", 2)
+    assert desktop.request_configuration_attention("visualization", "plot.name", -1)
+    assert not desktop.request_configuration_attention("workspace", "dataset.mode", -1)
+    assert not desktop.request_configuration_attention("dataset", "plot.name", -1)
+    assert attention == [
+        ("dataset", "dataset.properties", 2),
+        ("visualization", "plot.name", -1),
+    ]
+    assert desktop.shutdown()
+
+
+def test_save_as_facade_converts_qml_file_urls_at_the_composition_boundary(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    destination = tmp_path / "workspace" / "configs" / "dataset.yaml"
+    observed: list[str] = []
+    monkeypatch.setattr(
+        desktop.dataset_config_controller,
+        "save_path_selected",
+        lambda path: observed.append(path) or True,
+    )
+
+    assert desktop.request_save_path_selected(QUrl.fromLocalFile(str(destination)).toString())
+    assert observed == [str(destination)]
+    assert desktop.shutdown()
 
 
 def test_desktop_workspace_facade_validates_create_name_and_binds_configuration_once(

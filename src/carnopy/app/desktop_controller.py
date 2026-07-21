@@ -28,6 +28,8 @@ class DesktopController(QObject):
     datasetDecisionChanged = Signal()
     datasetDocumentOpened = Signal()
     attentionRequested = Signal(str, str, int)
+    shutdownConfirmationRequested = Signal()
+    closeWindowRequested = Signal()
 
     def __init__(
         self,
@@ -74,6 +76,7 @@ class DesktopController(QObject):
         self._workspace_request_timer.setInterval(0)
         self._workspace_request_timer.timeout.connect(self._run_queued_workspace_request)
         self._shutdown = False
+        self._shutdown_discard_confirmed = False
 
     def get_workspace_controller(self) -> QObject:
         return self.workspace_controller
@@ -288,13 +291,13 @@ class DesktopController(QObject):
         notify=datasetDecisionRequested,
     )
 
-    @Slot(str, result=bool, name="requestNewDataset")
+    @Slot(str, bool, result=bool, name="requestNewDataset")
     def request_new_dataset(self, mode: str, discard_confirmed: bool = False) -> bool:
         if not self._guard_active_plot_edit("New Dataset"):
             return False
         return self.dataset_config_controller.new_dataset(mode, discard_confirmed)
 
-    @Slot(str, result=bool, name="requestImportDataset")
+    @Slot(str, bool, result=bool, name="requestImportDataset")
     def request_import_dataset(self, path: str, discard_confirmed: bool = False) -> bool:
         if not self._guard_active_plot_edit("Import"):
             return False
@@ -319,7 +322,7 @@ class DesktopController(QObject):
     def request_save_path_selected(self, path: str) -> bool:
         if not self._guard_active_plot_edit("Save As"):
             return False
-        return self.dataset_config_controller.save_path_selected(path)
+        return self.dataset_config_controller.save_path_selected(_local_path(path))
 
     @Slot(name="requestCancelSavePath")
     def request_cancel_save_path(self) -> None:
@@ -341,6 +344,17 @@ class DesktopController(QObject):
         if not self._guard_active_plot_edit("Close Configuration"):
             return False
         return self.dataset_config_controller.clear_document(discard_confirmed)
+
+    @Slot(str, str, int, result=bool, name="requestConfigurationAttention")
+    def request_configuration_attention(self, section: str, field: str, row: int) -> bool:
+        if section not in {"dataset", "visualization"}:
+            return False
+        if not field.startswith(f"{section}.") and not (
+            section == "visualization" and field.startswith("plot.")
+        ):
+            return False
+        self.attentionRequested.emit(section, field, row)
+        return True
 
     @Slot(str, result=bool, name="requestDatasetModeChange")
     def request_dataset_mode_change(self, mode: str) -> bool:
@@ -678,7 +692,37 @@ class DesktopController(QObject):
 
     @Slot(result=bool, name="requestShutdown")
     def request_shutdown(self) -> bool:
+        if not self._guard_active_plot_edit("closing Carnopy"):
+            return False
+        if self.request_coordinator.is_busy:
+            self.workspace_controller.report_error(
+                "Wait for the active worker request to finish before closing Carnopy."
+            )
+            return False
+        if (
+            self.dataset_config_controller.needs_discard_confirmation()
+            and not self._shutdown_discard_confirmed
+        ):
+            self.shutdownConfirmationRequested.emit()
+            return False
+        self._shutdown_discard_confirmed = False
         return self.shutdown()
+
+    @Slot(bool, result=bool, name="confirmShutdown")
+    def confirm_shutdown(self, discard_confirmed: bool) -> bool:
+        if not discard_confirmed:
+            self._shutdown_discard_confirmed = False
+            return False
+        if not self._guard_active_plot_edit("closing Carnopy"):
+            return False
+        if self.request_coordinator.is_busy:
+            self.workspace_controller.report_error(
+                "Wait for the active worker request to finish before closing Carnopy."
+            )
+            return False
+        self._shutdown_discard_confirmed = True
+        self.closeWindowRequested.emit()
+        return True
 
     def _workspace_activated(self, value: object) -> None:
         self.dataset_config_controller.set_workspace(value)
