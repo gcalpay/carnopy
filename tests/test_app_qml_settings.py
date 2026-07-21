@@ -21,6 +21,8 @@ from carnopy.app.qml_settings import (
     RAIL_COLLAPSED_KEY,
     REDUCED_MOTION_KEY,
     THEME_MODE_KEY,
+    WINDOW_STATE_VERSION,
+    WINDOW_STATE_VERSION_KEY,
     QmlSettingsController,
     clamp_window_geometry,
 )
@@ -69,7 +71,32 @@ def test_qml_settings_persist_namespaced_preferences_in_shared_settings(
         INSPECTOR_COLLAPSED_KEY,
         NORMAL_SCREEN_KEY,
         MAXIMIZED_KEY,
+        WINDOW_STATE_VERSION_KEY,
     }.issubset(settings.allKeys())
+
+
+def test_obsolete_window_state_resets_once_without_losing_other_preferences(
+    tmp_path: Path,
+    application: QGuiApplication,
+) -> None:
+    del application
+    settings = settings_for(tmp_path / "obsolete.ini")
+    settings.setValue(THEME_MODE_KEY, "dark")
+    settings.setValue("window_geometry", b"widgets-owned-geometry")
+    settings.setValue("recent_workspaces", ["/tmp/example"])
+    settings.setValue(NORMAL_GEOMETRY_KEY, QRect(2500, 900, 1800, 1200))
+    settings.setValue(NORMAL_SCREEN_KEY, "removed-screen")
+    settings.setValue(MAXIMIZED_KEY, True)
+
+    controller = QmlSettingsController(settings)
+
+    assert controller.get_theme_mode() == "dark"
+    assert controller.get_normal_screen_name() == ""
+    assert not controller.get_maximized()
+    assert settings.value(WINDOW_STATE_VERSION_KEY) == WINDOW_STATE_VERSION
+    assert settings.value(NORMAL_SCREEN_KEY) is None
+    assert settings.value("window_geometry") == b"widgets-owned-geometry"
+    assert settings.value("recent_workspaces", [], type=list) == ["/tmp/example"]
 
 
 def test_theme_mode_is_validated_and_system_mode_has_concrete_effective_theme(

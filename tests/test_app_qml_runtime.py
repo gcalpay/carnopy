@@ -22,7 +22,7 @@ from PySide6.QtCore import (
     QSize,
     QTimer,
 )
-from PySide6.QtGui import QWindow
+from PySide6.QtGui import QScreen, QWindow
 from PySide6.QtQml import QQmlError
 from PySide6.QtWidgets import QApplication
 
@@ -35,8 +35,18 @@ from carnopy.app.qml_resources import (
     packaged_path,
     verify_packaged_resources,
 )
-from carnopy.app.qml_runtime import QmlWarningCapture, create_qml_runtime, fitted_window_frame
-from carnopy.app.qml_settings import NORMAL_SCREEN_KEY
+from carnopy.app.qml_runtime import (
+    QmlStartupError,
+    QmlWarningCapture,
+    _acquire_instance_lock,
+    create_qml_runtime,
+    fitted_window_frame,
+)
+from carnopy.app.qml_settings import (
+    NORMAL_SCREEN_KEY,
+    WINDOW_STATE_VERSION,
+    WINDOW_STATE_VERSION_KEY,
+)
 from carnopy.app.workspace import initialize_workspace
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -158,6 +168,52 @@ def test_persisting_native_geometry_does_not_reposition_the_running_window(
         root.property("height"),
     ) == original
     assert runtime.close()
+
+
+def test_maximized_window_is_placed_while_hidden_before_being_shown(
+    application: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = QSettings(str(tmp_path / "maximized.ini"), QSettings.Format.IniFormat)
+    settings.setValue(WINDOW_STATE_VERSION_KEY, WINDOW_STATE_VERSION)
+    settings.setValue("qml/window/maximized", True)
+    observed_visibility: list[QWindow.Visibility] = []
+
+    from carnopy.app import qml_runtime
+
+    original_fit = qml_runtime._fit_window_to_available_screen
+
+    def record_fit(window: QWindow, preferred_screen_name: str = "") -> QScreen | None:
+        observed_visibility.append(window.visibility())
+        return original_fit(window, preferred_screen_name)
+
+    monkeypatch.setattr(qml_runtime, "_fit_window_to_available_screen", record_fit)
+    runtime = create_qml_runtime(
+        settings=settings,
+        application_arguments=[],
+    )
+    root = runtime.engine.rootObjects()[0]
+
+    assert observed_visibility == [QWindow.Visibility.Hidden]
+    assert root.property("visibility") == QWindow.Visibility.Maximized
+    assert root.property("geometryTrackingReady") is True
+    assert runtime.close()
+
+
+def test_qml_instance_lock_rejects_overlapping_launches(
+    application: QApplication,
+) -> None:
+    del application
+    first = _acquire_instance_lock()
+    try:
+        with pytest.raises(QmlStartupError, match="already running"):
+            _acquire_instance_lock()
+    finally:
+        first.unlock()
+
+    replacement = _acquire_instance_lock()
+    replacement.unlock()
 
 
 def test_qml_close_event_uses_composition_guard(

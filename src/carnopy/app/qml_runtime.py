@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import tempfile
 from collections.abc import Sequence
@@ -9,6 +10,7 @@ from pathlib import Path
 from PySide6.QtCore import (
     QCoreApplication,
     QEvent,
+    QLockFile,
     QMargins,
     QObject,
     QPoint,
@@ -213,6 +215,28 @@ class QmlApplicationRuntime:
         )
         window.setProperty("geometryTrackingReady", True)
 
+    def _begin_geometry_restoration(self, window: QWindow) -> None:
+        """Place a hidden window before exposing it to the native compositor."""
+
+        _fit_window_to_available_screen(
+            window,
+            self.controller.qml_settings.get_normal_screen_name(),
+        )
+        visibility = (
+            QWindow.Visibility.Maximized
+            if self.controller.qml_settings.get_maximized()
+            else QWindow.Visibility.Windowed
+        )
+        window.setVisibility(visibility)
+        window.requestActivate()
+        if (
+            self.application.platformName() == "offscreen"
+            or visibility == QWindow.Visibility.Maximized
+        ):
+            window.setProperty("geometryTrackingReady", True)
+        else:
+            self._geometry_fit_timer.start()
+
     def _register_fonts(self) -> None:
         for relative_path in MANDATORY_FONT_FILES:
             font_id = QFontDatabase.addApplicationFont(str(packaged_path(relative_path)))
@@ -263,14 +287,10 @@ class QmlApplicationRuntime:
         if isinstance(roots[0], QWindow):
             self._close_guard = QmlWindowCloseGuard(self.controller, self.engine)
             roots[0].installEventFilter(self._close_guard)
-            roots[0].requestActivate()
             self._geometry_fit_timer.timeout.connect(
                 lambda window=roots[0]: self._complete_geometry_restoration(window)
             )
-            if self.application.platformName() == "offscreen":
-                self._complete_geometry_restoration(roots[0])
-            else:
-                self._geometry_fit_timer.start()
+            self._begin_geometry_restoration(roots[0])
         self._loaded = True
         return roots[0]
 
@@ -424,6 +444,19 @@ def _application(arguments: Sequence[str] | None = None) -> QApplication:
     return existing
 
 
+def _acquire_instance_lock() -> QLockFile:
+    user_suffix = f"-{os.getuid()}" if hasattr(os, "getuid") else ""
+    lock_path = Path(tempfile.gettempdir()) / f"carnopy-qml-desktop{user_suffix}.lock"
+    lock = QLockFile(str(lock_path))
+    lock.setStaleLockTime(0)
+    if not lock.tryLock(0):
+        raise QmlStartupError(
+            "another Carnopy QML application is already running; close it before starting "
+            "a second instance"
+        )
+    return lock
+
+
 def create_qml_runtime(
     *,
     initial_workspace: Path | None = None,
@@ -459,26 +492,35 @@ def run_qml_application(
     *,
     smoke_test: bool = False,
 ) -> int:
-    if smoke_test:
-        with tempfile.TemporaryDirectory(prefix="carnopy-qml-smoke-") as directory:
-            settings = QSettings(str(Path(directory) / "settings.ini"), QSettings.Format.IniFormat)
-            runtime = create_qml_runtime(
-                initial_workspace=initial_workspace,
-                settings=settings,
-            )
-            _exercise_installed_qml_smoke(runtime)
-            QTimer.singleShot(0, runtime.application.quit)
-            result = runtime.application.exec()
-            if not runtime.close():
-                raise QmlStartupError(
-                    "the QML runtime could not shut down while a request was active"
+    application = _application()
+    apply_application_identity(application)
+    instance_lock = _acquire_instance_lock()
+    try:
+        if smoke_test:
+            with tempfile.TemporaryDirectory(prefix="carnopy-qml-smoke-") as directory:
+                settings = QSettings(
+                    str(Path(directory) / "settings.ini"),
+                    QSettings.Format.IniFormat,
                 )
-            return result
-    runtime = create_qml_runtime(initial_workspace=initial_workspace)
-    result = runtime.application.exec()
-    if not runtime.close():
-        raise QmlStartupError("the QML runtime could not shut down while a request was active")
-    return result
+                runtime = create_qml_runtime(
+                    initial_workspace=initial_workspace,
+                    settings=settings,
+                )
+                _exercise_installed_qml_smoke(runtime)
+                QTimer.singleShot(0, runtime.application.quit)
+                result = runtime.application.exec()
+                if not runtime.close():
+                    raise QmlStartupError(
+                        "the QML runtime could not shut down while a request was active"
+                    )
+                return result
+        runtime = create_qml_runtime(initial_workspace=initial_workspace)
+        result = runtime.application.exec()
+        if not runtime.close():
+            raise QmlStartupError("the QML runtime could not shut down while a request was active")
+        return result
+    finally:
+        instance_lock.unlock()
 
 
 def _exercise_installed_qml_smoke(runtime: QmlApplicationRuntime) -> None:

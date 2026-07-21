@@ -562,15 +562,23 @@ Current implementation status as of 2026-07-19:
   available as a diagnostic alternative but is not selected automatically
   because Stage 7 must still qualify the final native-3D rendering path.
 - Window restoration applies persisted client geometry once rather than keeping
-  live QML bindings from the window back to its own persistence model. After the
-  decorated native window exists, its complete frame is fitted inside the
-  selected screen's logical available geometry. Subsequent debounced native
-  moves and resizes update persistence without feeding the stored rectangle
-  back into the running window, preventing decoration-offset drift and initial
-  placement below a smaller screen's work area. Normal close also stores the
-  monitor identity under the QML settings namespace. The next launch prefers
-  that monitor, falls back to geometry intersection when it is unavailable, and
-  does not enable geometry persistence until one-time restoration completes.
+  live QML bindings from the window back to its own persistence model. The
+  runtime assigns and fits the still-hidden native window to the selected
+  screen before showing or maximizing it, so a restored launch does not expose
+  a compositor-visible cross-screen remap. A windowed launch receives one final
+  decorated-frame fit inside that screen's logical available geometry.
+  Subsequent debounced native moves and resizes update persistence without
+  feeding the stored rectangle back into the running window, preventing
+  decoration-offset drift and initial placement below a smaller screen's work
+  area. Normal close also stores the monitor identity under the QML settings
+  namespace. The next launch prefers that monitor, falls back to geometry
+  intersection when it is unavailable, and does not enable geometry
+  persistence until one-time restoration completes. Placement state written by
+  the retired restoration path is discarded by a one-time versioned migration,
+  while theme, layout, and recent-workspace settings are retained. The private
+  QML launcher holds a per-user runtime lock and rejects a concurrent second
+  instance instead of allowing two CPU-rendered shells to overlap and race on
+  the same settings.
 - The root QML palette binds every Basic Control text role to the selected
   Carnopy theme, including Switch and CheckBox labels. A workspace action
   rejected only because the capability worker is active clears that transient

@@ -212,7 +212,6 @@ ApplicationWindow {
         y = geometry.y;
         width = Math.max(minimumWidth, geometry.width);
         height = Math.max(minimumHeight, geometry.height);
-        visibility = qmlSettings.maximized ? Window.Maximized : Window.Windowed;
     }
 
     color: Theme.canvas

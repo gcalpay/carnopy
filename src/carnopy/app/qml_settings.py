@@ -12,6 +12,8 @@ INSPECTOR_COLLAPSED_KEY = "qml/layout/wide_inspector_collapsed"
 NORMAL_GEOMETRY_KEY = "qml/window/normal_geometry"
 NORMAL_SCREEN_KEY = "qml/window/normal_screen"
 MAXIMIZED_KEY = "qml/window/maximized"
+WINDOW_STATE_VERSION_KEY = "qml/window/state_version"
+WINDOW_STATE_VERSION = 2
 
 THEME_MODES = ("system", "light", "dark")
 DEFAULT_WINDOW_WIDTH = 1440
@@ -29,6 +31,19 @@ def _bool_setting(settings: QSettings, key: str, default: bool) -> bool:
         if normalized in {"0", "false", "no", "off"}:
             return False
     return bool(value)
+
+
+def _migrate_window_state(settings: QSettings) -> None:
+    raw_version = settings.value(WINDOW_STATE_VERSION_KEY, 0)
+    try:
+        version = int(raw_version) if isinstance(raw_version, (int, str)) else 0
+    except (TypeError, ValueError):
+        version = 0
+    if version == WINDOW_STATE_VERSION:
+        return
+    for key in (NORMAL_GEOMETRY_KEY, NORMAL_SCREEN_KEY, MAXIMIZED_KEY):
+        settings.remove(key)
+    settings.setValue(WINDOW_STATE_VERSION_KEY, WINDOW_STATE_VERSION)
 
 
 def _intersection_area(first: QRect, second: QRect) -> int:
@@ -95,6 +110,7 @@ class QmlSettingsController(QObject):
     ) -> None:
         super().__init__(parent)
         self.settings = settings
+        _migrate_window_state(settings)
         raw_theme = settings.value(THEME_MODE_KEY, "system")
         self._theme_mode = raw_theme if isinstance(raw_theme, str) else "system"
         if self._theme_mode not in THEME_MODES:

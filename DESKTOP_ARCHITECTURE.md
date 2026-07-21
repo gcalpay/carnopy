@@ -358,6 +358,40 @@ event loop advances. Save-file selection follows the same deferred boundary.
 Window close is routed through the composition-owned active-edit, worker-busy,
 and dirty-document guards before runtime teardown.
 
+### Native QML window lifecycle invariants
+
+Window restoration regressed twice when responsibility was split between QML
+and Python. A QML completion handler made the window visible or maximized on
+Qt's default screen, after which a delayed Python callback moved the already
+mapped native window to the remembered monitor. On WSLg/XCB this could create
+an off-screen decorated frame, a compositor-visible cross-screen remap, and an
+apparently frozen input surface. Starting another launcher while the first was
+still alive compounded the symptom because both software-rendered shells
+overlapped and wrote the same settings.
+
+The permanent invariants are:
+
+- `QmlApplicationRuntime` alone decides when the native window is shown or
+  maximized. QML may initialize the persisted client rectangle only while the
+  root remains hidden.
+- The hidden window is assigned and fitted to the selected logical screen
+  before it is exposed to the compositor. A windowed launch receives at most
+  one later decorated-frame fit before geometry tracking is enabled.
+- One per-user runtime lock rejects a concurrent QML launcher. Diagnostics must
+  close every process they start; before diagnosing a frozen event loop, check
+  for overlapping launcher and worker processes.
+- QML placement state is versioned. A restoration-contract change must migrate
+  or discard only `qml/window/*` placement keys; it must retain appearance,
+  layout, recent-workspace, and unrelated Widgets settings.
+- Widgets and QML deliberately share the stable application identity and
+  `recent_workspaces`. Widgets `window_geometry` and QML `qml/window/*` remain
+  separate, and neither frontend stores scientific draft or YAML state in
+  `QSettings`.
+- A clean close records the actual screen and normal client geometry. Tests
+  must cover hidden-before-show ordering, obsolete-state migration,
+  single-instance rejection, settings isolation, and a clean replacement
+  launch after the lock is released.
+
 ### Responsive shell and settings
 
 The approved Precision Grid shell is desktop-first and uses logical pixels:
@@ -370,7 +404,13 @@ Card columns depend on available central width with a 300-pixel minimum and a
 maximum of three. The navigation rail and context inspector have persisted
 wide-layout preferences; compact and narrow overrides do not overwrite them.
 Window restoration clamps the full decorated frame to an available screen and
-prefers the monitor on which the window was last closed.
+prefers the monitor on which the window was last closed. The runtime assigns
+and fits the still-hidden native window to that monitor before showing or
+maximizing it, avoiding a compositor-visible cross-screen remap on a restored
+launch. A versioned migration discards placement state written by the retired
+restoration path once, then subsequent clean closes again remember the actual
+monitor. The private QML launcher also holds a per-user runtime lock so two
+CPU-rendered native shells cannot overlap and race on the same settings.
 
 The stable QSettings identity preserves GUI-1 recent workspaces. New settings
 are namespaced:
@@ -383,6 +423,7 @@ qml/layout/wide_inspector_collapsed
 qml/window/normal_geometry
 qml/window/normal_screen
 qml/window/maximized
+qml/window/state_version
 ```
 
 The shell bundles IBM Plex Sans and Mono, a hashed subset of Lucide SVG icons,
