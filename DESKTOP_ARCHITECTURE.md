@@ -388,7 +388,9 @@ qml/window/maximized
 The shell bundles IBM Plex Sans and Mono, a hashed subset of Lucide SVG icons,
 their licenses, and a provisional raster Carnopy mark. The machine-readable
 resource manifest records provenance and hashes; distribution checks compare
-source and installed resources.
+source and installed resources. The manifest-hashed resource tree disables Git
+text conversion so every platform packages the exact committed bytes rather
+than rewriting vendored SVG or license line endings during checkout.
 
 ## Persistence, integrity, and failure behavior
 

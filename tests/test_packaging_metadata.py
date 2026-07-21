@@ -80,6 +80,13 @@ def test_qml_runtime_is_private_and_resources_live_in_the_app_package() -> None:
         assert (app_root / relative_path).is_file()
 
 
+def test_manifest_hashed_resources_disable_checkout_byte_rewriting() -> None:
+    root = Path(__file__).resolve().parents[1]
+    attributes = (root / ".gitattributes").read_text(encoding="utf-8").splitlines()
+
+    assert "src/carnopy/app/resources/** -text" in attributes
+
+
 def test_analysis_extra_is_optional_and_scoped() -> None:
     root = Path(__file__).resolve().parents[1]
     pyproject: dict[str, Any] = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
