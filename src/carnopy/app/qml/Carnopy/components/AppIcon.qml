@@ -16,12 +16,14 @@ Item {
         anchors.fill: parent
         Accessible.ignored: true
         display: AbstractButton.IconOnly
+        enabled: false
         focusPolicy: Qt.NoFocus
         hoverEnabled: false
         icon.color: root.iconColor
         icon.height: root.iconSize
         icon.source: Theme.iconSource(root.name)
         icon.width: root.iconSize
+        opacity: 1
         padding: 0
 
         background: Item {}

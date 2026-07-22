@@ -11,13 +11,25 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QAbstractItemModel, QCoreApplication, QMetaObject, QObject, QSettings, Qt
+from PySide6.QtCore import (
+    QAbstractItemModel,
+    QCoreApplication,
+    QEventLoop,
+    QMetaObject,
+    QObject,
+    QPoint,
+    QPointF,
+    QSettings,
+    Qt,
+    QTimer,
+)
 from PySide6.QtGui import QColor
 from PySide6.QtQuick import QQuickItem, QQuickWindow
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from carnopy.app.qml_runtime import QmlApplicationRuntime, create_qml_runtime
+from carnopy.app.workspace import initialize_workspace
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -93,6 +105,30 @@ def _visible_item(root: QQuickWindow, object_name: str) -> QQuickItem:
 def _activate(item: QQuickItem) -> None:
     assert QMetaObject.invokeMethod(item, "click")
     _process_events()
+
+
+def _mouse_click(root: QQuickWindow, item: QQuickItem) -> None:
+    center = item.mapToScene(QPointF(item.width() / 2, item.height() / 2))
+    QTest.mouseClick(
+        root,
+        Qt.MouseButton.LeftButton,
+        pos=QPoint(round(center.x()), round(center.y())),
+    )
+    _process_events()
+
+
+def _wait_for_idle(runtime: QmlApplicationRuntime) -> None:
+    if not runtime.controller.request_coordinator.is_busy:
+        _process_events()
+        return
+    loop = QEventLoop()
+    runtime.controller.request_coordinator.busy_changed.connect(
+        lambda busy: None if busy else loop.quit()
+    )
+    QTimer.singleShot(15_000, loop.quit)
+    loop.exec()
+    _process_events()
+    assert not runtime.controller.request_coordinator.is_busy
 
 
 def test_shell_uses_exact_navigation_order_and_disables_future_workflows(
@@ -246,6 +282,54 @@ def test_wide_shell_actions_respond_once_to_first_click_and_keyboard(
     _process_events()
     assert settings.get_inspector_collapsed()
     assert inspector_changes == [True, False, True]
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_wide_shell_pointer_toggles_remain_immediate_during_capability_loading(
+    runtime: QmlApplicationRuntime,
+    tmp_path: Path,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    desktop = runtime.controller
+    settings = desktop.qml_settings
+    settings.set_reduced_motion(False)
+    settings.set_rail_collapsed(False)
+    settings.set_inspector_collapsed(False)
+    _set_size(root, 1440, 900)
+
+    workspace = initialize_workspace(tmp_path / "capability-loading-workspace")
+    assert desktop.prepare_open_workspace(str(workspace.root))
+    assert desktop.commit_workspace_operation()
+    assert desktop.request_coordinator.is_busy
+    assert desktop.get_workspace_state() == "loading"
+    loading_banner = root.findChild(QQuickItem, "capabilityLoadingBanner")
+    loading_title = root.findChild(QQuickItem, "capabilityLoadingTitle")
+    loading_detail = root.findChild(QQuickItem, "capabilityLoadingDetail")
+    assert loading_banner is not None
+    assert loading_title is not None
+    assert loading_detail is not None
+    assert loading_banner.isVisible()
+    assert loading_title.property("text") == "Preparing local CoolProp capabilities"
+    assert "Importing the installed CoolProp package" in loading_detail.property("text")
+    assert "No network service is contacted" in loading_detail.property("text")
+    try:
+        _mouse_click(root, _visible_item(root, "railCollapseButton"))
+        assert settings.get_rail_collapsed()
+        _mouse_click(root, _visible_item(root, "railCollapseButton"))
+        assert not settings.get_rail_collapsed()
+
+        inspector_close = _visible_item(root, "inspectorCloseButton")
+        pointer_events: list[str] = []
+        inspector_close.clicked.connect(lambda: pointer_events.append("clicked"))
+        _mouse_click(root, inspector_close)
+        assert pointer_events == ["clicked"]
+        assert settings.get_inspector_collapsed()
+        _mouse_click(root, _visible_item(root, "inspectorToggleButton"))
+        assert not settings.get_inspector_collapsed()
+    finally:
+        _wait_for_idle(runtime)
+    assert not loading_banner.isVisible()
     assert runtime.warning_capture.runtime_warnings == ()
 
 

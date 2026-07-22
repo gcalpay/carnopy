@@ -436,10 +436,76 @@ ApplicationWindow {
                         return qsTr("No workspace");
                     }
                     statusTone: root.controllerAvailable && root.desktopController.workspaceState
-                                === "editing" && !root.desktopController.datasetDraft.locallyValid
-                                ? "danger" : (root.controllerAvailable
-                                              && root.desktopController.workspaceAvailable
-                                              ? "success" : "neutral")
+                                === "loading" ? "information" : (root.controllerAvailable
+                                                                 && root.desktopController.workspaceState
+                                                                 === "editing" &&
+                                                                 !root.desktopController.datasetDraft.locallyValid
+                                                                 ? "danger" : (
+                                                                       root.controllerAvailable
+                                                                       && root.desktopController.workspaceAvailable
+                                                                       ? "success" : "neutral"))
+                }
+
+                Rectangle {
+                    id: capabilityLoadingBanner
+
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: capabilityLoadingContent.implicitHeight + 18
+                    Accessible.name: capabilityLoadingTitle.text + ". "
+                                     + capabilityLoadingDetail.text
+                    border.color: Theme.information
+                    border.width: 1
+                    color: Theme.informationSoft
+                    objectName: "capabilityLoadingBanner"
+                    visible: root.controllerAvailable && root.desktopController.workspaceState
+                             === "loading"
+
+                    RowLayout {
+                        id: capabilityLoadingContent
+
+                        anchors.fill: parent
+                        anchors.leftMargin: 14
+                        anchors.rightMargin: 14
+                        spacing: Theme.spacingMedium
+
+                        BusyIndicator {
+                            Layout.alignment: Qt.AlignVCenter
+                            Layout.preferredHeight: 24
+                            Layout.preferredWidth: 24
+                            objectName: "capabilityLoadingIndicator"
+                            running: capabilityLoadingBanner.visible
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 1
+
+                            Label {
+                                id: capabilityLoadingTitle
+
+                                Layout.fillWidth: true
+                                color: Theme.text
+                                font.family: Theme.sansFamily
+                                font.pixelSize: 12
+                                font.weight: Font.DemiBold
+                                objectName: "capabilityLoadingTitle"
+                                text: qsTr("Preparing local CoolProp capabilities")
+                            }
+
+                            Label {
+                                id: capabilityLoadingDetail
+
+                                Layout.fillWidth: true
+                                color: Theme.textMuted
+                                font.family: Theme.sansFamily
+                                font.pixelSize: 11
+                                objectName: "capabilityLoadingDetail"
+                                text: qsTr(
+                                          "Importing the installed CoolProp package, enumerating local fluids and aliases, and constructing model, property, and visualization choices. No network service is contacted.")
+                                wrapMode: Text.Wrap
+                            }
+                        }
+                    }
                 }
 
                 OperationFeedback {
