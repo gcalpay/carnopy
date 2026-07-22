@@ -706,6 +706,16 @@ booleans.
 Use this exact commit sequence. Each implementation commit must be independently
 reviewable and must pass its focused gate before the next begins.
 
+Documentation synchronization is part of every implementation boundary. Before
+each implementation handoff, update this section's current-status record and
+every permanent document made stale by the change. Include those edits in the
+same coherent implementation commit unless this sequence explicitly assigns a
+separate documentation-only boundary. Do not leave status recording until the
+maintainer notices a stale plan. When no permanent document changes, the
+handoff must say which documents were reviewed and why they remain accurate.
+This requirement does not make Graphify refresh mandatory; public graph
+artifacts retain the separate intentional-refresh policy below.
+
 After Commit 3 and before Commit 4, complete the ignored design-reference gate.
 That gate selected Precision Grid, retained only the numbered next-steps
 progression as a named borrowed element, selected moderately expressive motion,
@@ -947,13 +957,53 @@ Current implementation status as of 2026-07-22:
   YAML-page creation, one settings-controller interaction, and teardown. Those
   remote jobs passed after the human commit and push. Native dialogs remain
   outside headless CI, and this smoke is not Stage 8 platform qualification.
-- This revision defines the Commit 11 documentation boundary and the remaining
-  Commits 12 through 19. Runtime implementation of the approved refinement has
-  not started. No generation, inspection, plotting, VTK, or public-launcher
-  parity is inferred from Commit 10. Both public launchers remain on Widgets,
-  and Stage 2 remains active until the complete automated gates,
-  three-platform PR checks, native manual acceptance, and explicit maintainer
-  approval are complete.
+- Commits 11 through 15 are implemented in the Stage 2 branch history. Commit
+  11 locked the approved scientific-workbench reference and visual contracts;
+  Commit 12 made guarded close and SIGINT handling deferred, idempotent, and
+  free of Python-override teardown tracebacks; and Commit 13 made rail and
+  inspector actions single-owner, first-click reliable, keyboard operable, and
+  deterministic across responsive breakpoints.
+- A focused corrective change after Commit 13 keeps the shell interactive
+  while capabilities load and exposes explicit preparation feedback. Workspace
+  creation, initialization, and opening remain filesystem operations. After a
+  workspace is activated, `DatasetConfigController` separately asks the local
+  worker for the current CoolProp capabilities. That worker imports the
+  installed package, enumerates fluids and aliases, and constructs the current
+  model, property, and visualization choices without contacting a network
+  service. The result is cached only for the application process. Milestone 1
+  still has one backend, CoolProp; a future approved backend must make
+  discovery and caching explicitly backend/model-aware rather than silently
+  reusing this single-backend bootstrap.
+- Commit 14 implements revision-bound standalone validation with exact YAML
+  bytes and SHA-256 binding, the approved typed states, stale-result rejection,
+  empty-issue `config`/`invalid_config` handling, and Save independence. A
+  standalone result remains informational; every Save and Save As starts a
+  fresh authoritative validation.
+- Commit 15 implements shared lightweight sampler counts and Dataset row
+  projections, the pre-materialization 1,000,000-row guard, and presentation-
+  only property labels, scientific symbols, formatted trusted subscripts, and
+  units. The approved Property Table projects 4,141 grid combinations and rows
+  per fluid and 8,282 rows across the two canonical-unique default fluids,
+  without importing NumPy or materializing a grid in the GUI process.
+- Commit 15 verification covers 30 QML files, the focused scientific and QML
+  regressions, all static gates, 767 passing repository tests, `preflight.py`,
+  and environment compatibility. The latest pushed branch passed all PR
+  checks, including installed-QML startup smokes on Linux, Windows, and macOS.
+  Those checks remain Stage 2 smoke coverage rather than Stage 8 platform
+  qualification.
+- Commits 16 through 19 remain. The approved palette, appearance modes,
+  searchable selectors, and final reference-matched styling are not yet
+  implemented. The current disabled navigation tooltips also retain obsolete
+  Stage 4/5 timing for workflows now assigned to Stage 3; Commit 18 must align
+  that presentation copy with this plan before Stage 2 completion.
+- No generation, inspection, table preview, plot rendering, VTK, or public-
+  launcher parity is inferred from Commits 11 through 15. Configured plot
+  requests remain under Visualization; rendered output discovery and preview
+  belong to Stage 3's Inspect workflow. Stage 3 planning must lock the exact
+  placement of its session-only manual-plot editor. Both public launchers
+  remain on Widgets, and Stage 2 remains active until Commits 16 through 19,
+  the complete automated gates, native manual acceptance, and explicit
+  maintainer approval are complete.
 - Git staging, commits, synchronization with the remote branch, and publication
   remain human-owned and are not implied by this implementation-status record.
 

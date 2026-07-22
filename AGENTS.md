@@ -213,6 +213,25 @@ Linux, Windows, and macOS.
 If a required command or dependency is unavailable, preserve the exact failure
 and ask before installing, upgrading, or substituting anything.
 
+Documentation synchronization is part of implementation, not optional
+follow-up work. Before handing off any completed implementation:
+
+- inspect the applicable tracked documentation, including active stage plans,
+  durable architecture records, user-facing guidance, public contracts,
+  examples, and contributor instructions;
+- update every document made stale by the change and record current stage or
+  implementation status where an active plan provides that record;
+- include those documentation edits in the same coherent implementation change
+  unless an approved plan explicitly assigns a separate documentation commit;
+- never declare an implementation complete while tracked documentation still
+  describes the previous behavior; and
+- if no tracked document requires a change, state in the final handoff which
+  documentation was reviewed and why it remains accurate.
+
+Do not wait for the maintainer to request this synchronization. Generated
+Graphify artifacts remain separate: refresh them only when intentionally
+updating the public graph, as described below.
+
 Use:
 
 - `rg` for searches;
@@ -729,13 +748,13 @@ Rules:
 - no trailing period;
 - body only when the reason or tradeoff matters.
 
-After completing and verifying an implementation, include a recommended commit
-message in the final handoff. Also list the exact repository-relative files to
-stage. If more than one commit is recommended, give the file group for each
-commit and state whether hunk-level staging is required. Prefer one coherent
-commit unless the proposed intermediate commits are independently reviewable
-and verifiable. This is guidance for the human operator and does not grant Git
-mutation authority.
+After completing and verifying an implementation and synchronizing its tracked
+documentation, include a recommended commit message in the final handoff. Also
+list the exact repository-relative files to stage. If more than one commit is
+recommended, give the file group for each commit and state whether hunk-level
+staging is required. Prefer one coherent commit unless the proposed
+intermediate commits are independently reviewable and verifiable. This is
+guidance for the human operator and does not grant Git mutation authority.
 
 Common types:
 

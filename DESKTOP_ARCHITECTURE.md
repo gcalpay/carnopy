@@ -11,7 +11,11 @@ for planned work, acceptance gates, and stage status. This document records
 only architecture that exists in the repository or an explicitly identified
 historical boundary. Update it when an accepted change alters ownership,
 process isolation, frontend status, persistence, packaging, or a major
-workflow. Small fixes remain discoverable through tests and Git history.
+workflow. Every implementation handoff must still review and synchronize the
+applicable tracked documentation. While GUI-2 is active, its plan records each
+implemented boundary; a small fix that does not alter durable architecture need
+not expand this document, but it must not leave the active plan or user-facing
+guidance stale.
 
 ## Current state
 
@@ -26,7 +30,8 @@ The desktop has two frontend implementations during the GUI-2 migration:
 - the QML application currently implements the responsive shell, Workspace,
   Dataset, Visualization, YAML Preview, Settings, and Help surfaces, including
   worker-validated Save and Save As;
-- typed blocking state, operation feedback, and composition-owned document and
+- typed blocking state, revision-bound standalone validation, operation
+  feedback, exact Dataset row projections, and composition-owned document and
   shutdown decisions are shared with the authoritative controllers rather than
   reimplemented in QML;
 - generation, inspection, table preview, plotting, jobs, recovery, and Widgets
@@ -237,6 +242,16 @@ structured drafts. This preserves unknown or non-edited document sections and
 allows the controller to merge authoritative draft sections into the complete
 document rather than reconstructing a partial file.
 
+Workspace initialization itself does not load a backend. After activation,
+`DatasetConfigController` prepares the configuration editor with a local
+`describe_capabilities` worker request. For the current single-backend
+milestone, that worker imports the installed CoolProp package, enumerates fluid
+names and aliases, and builds the supported model, property, and visualization
+choices. It performs no network request. Results are cached only for the life
+of the application process. If Carnopy later approves another backend, the
+capability request and cache identity must become explicitly backend/model-
+aware; the current CoolProp-only path is not a general plugin architecture.
+
 The document is updated only from locally valid dataset and visualization
 state. A successful worker validation and file write refreshes baselines;
 failed validation or writing does not declare the draft saved.
@@ -255,6 +270,15 @@ and baseline refresh retain the established controller and document ownership.
 Typed `operationFailed`, `saveSucceeded`, and `importSucceeded` signals provide
 QML feedback while the existing Widgets signals remain available during the
 migration.
+
+Standalone worker validation is transient and revision-bound. The controller
+captures the exact visible YAML bytes and SHA-256 and reports `unavailable`,
+`blocked`, `not_run`, `running`, `valid`, `invalid`, `failed`, or `stale`.
+Edits invalidate the relationship to any prior or in-flight result, and late
+results for other bytes are ignored. A `config`/`invalid_config` response is
+invalid even when its detailed issue list is empty. This state never authorizes
+Save: every Save and Save As starts fresh worker validation of the exact bytes
+immediately before writing.
 
 ### `DatasetDraft` and `SamplerDraft`
 
@@ -281,6 +305,21 @@ The public input-unit set is temperature `K`/`degC`, pressure
 Fahrenheit, psi, tolerances, and user-selectable float precision are not part of
 the current contract.
 
+`SamplerDraft.sampleCount` and the Dataset projections
+`gridCombinationsPerFluid`, `projectedRowsPerFluid`, `projectedRows`,
+`projectionAvailable`, and `projectionIssue` use the same lightweight sampler
+count, stepspace-reachability, saturation-expansion, canonical-fluid, and
+1,000,000-row rules as production normalization. They neither import NumPy nor
+materialize grids in the GUI process. Production rejects an oversized request
+before allocating a grid. Projection state is transient, nonserialized, and
+excluded from configuration identity and dirtiness.
+
+Dataset property rows add presentation-only label, symbol, and unit roles over
+the existing canonical token. Trusted static symbols deliberately use styled
+text for scientific subscripts; user input is never interpreted as markup.
+These roles do not alter YAML property names, generated columns, metadata, or
+worker behavior.
+
 ### `VisualizationDraft` and `PlotDraft`
 
 `VisualizationDraft` owns configured-visualization enabled state, shared
@@ -306,6 +345,12 @@ Commit. Invalid Commit retains the temporary editor and focuses a stable
 `plot.*` field and optional row; controller and QML code never parse issue prose
 to navigate. Widgets keep the established modal dialog over the same draft and
 lifecycle.
+
+Stage 2 edits configured plot requests but intentionally does not render them.
+Reusable post-generation requests remain on Visualization. Stage 3 will expose
+generated outputs and rendered artifacts through Inspect while preserving the
+worker-only rendering boundary; its design must explicitly place the separate
+session-only manual-plot workflow.
 
 The QML YAML Preview page is a read-only projection of the complete document.
 It provides line numbers, search, selection/copy, file and dirty-state context,
@@ -358,6 +403,12 @@ event loop advances. Save-file selection follows the same deferred boundary.
 Window close is routed through the composition-owned active-edit, worker-busy,
 and dirty-document guards before runtime teardown.
 
+Close processing is deferred out of the native event-filter callback. Teardown
+is idempotent, removes the close filter before object destruction, and uses a
+one-use bypass only after the composition guard accepts the close. SIGINT enters
+the same guarded path. This prevents re-entrant Qt destruction and Python-
+override tracebacks while preserving dirty, busy, and active-edit decisions.
+
 ### Native QML window lifecycle invariants
 
 Window restoration regressed twice when responsibility was split between QML
@@ -403,6 +454,10 @@ The approved Precision Grid shell is desktop-first and uses logical pixels:
 Card columns depend on available central width with a 300-pixel minimum and a
 maximum of three. The navigation rail and context inspector have persisted
 wide-layout preferences; compact and narrow overrides do not overwrite them.
+Each surface has one shared toggle action, so pointer, keyboard, settings, and
+breakpoint transitions cannot apply duplicate state changes. The shell remains
+interactive while capability discovery is active and shows that it is
+preparing local CoolProp capabilities rather than implying network activity.
 Window restoration clamps the full decorated frame to an available screen and
 prefers the monitor on which the window was last closed. The runtime assigns
 and fits the still-hidden native window to that monitor before showing or
@@ -520,7 +575,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | --- | --- | --- |
 | 0 | Qualified a same-repository `QQuickVTKItem` companion bridge on the pinned Linux/Qt/VTK baseline | Complete |
 | 1 | Extracted request ownership, workspace state, dataset/visualization drafts, and complete configuration workflow into QML-ready QtCore controllers | Complete |
-| 2 | Package the Precision Grid QML Workspace, Dataset, Visualization, and YAML/Save workflows | Active; implementation and local gates complete, remote CI and native acceptance pending |
+| 2 | Package the Precision Grid QML Workspace, Dataset, Visualization, and YAML/Save workflows | Active; implemented through Commit 15, latest PR checks green, Commits 16–19 and final native acceptance pending |
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, and remove Widgets | Pending |
 | 4 | Add controlled sweep and preparation worker operations | Pending |
 | 5 | Add structured sweep and preparation QML workflows | Pending |
@@ -532,8 +587,12 @@ Stage 2 has also established definition-first sampler canonicalization, exact
 anchor-based GUI unit changes, Qt 6.11.1 as the QML baseline, packaged QML
 resources, responsive settings, trusted workspace flows, structured Dataset
 and Visualization editing, typed YAML and operation state, worker-validated
-Save flows, practical starter grids, and `hPa`/`atm` input units. These
-additions do not imply QML parity or public-launcher migration.
+Save flows, practical starter grids, `hPa`/`atm` input units, safe native-window
+teardown, reliable responsive shell actions, revision-bound standalone
+validation, exact Dataset projections, and scientific property presentation.
+These additions do not imply QML parity or public-launcher migration. The
+approved appearance, searchable-selector, and final workbench styling commits
+remain pending.
 
 ## Known current limitations
 
