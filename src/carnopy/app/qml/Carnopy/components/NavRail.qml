@@ -14,8 +14,23 @@ Control {
     property bool datasetAvailable: false
     property bool visualizationAvailable: false
     property bool yamlAvailable: false
+    readonly property alias collapseControl: railCollapseButton
     readonly property alias navigationModel: navigationModel
     readonly property int preferredWidth: collapsed ? 76 : 224
+
+    function restoreCurrentPageFocus() {
+        for (let row = 0; row < navigationModel.count; ++row) {
+            if (navigationModel.get(row).pageKey !== root.currentPage)
+                continue;
+            navigationList.positionViewAtIndex(row, ListView.Contain);
+            Qt.callLater(() => {
+                const item = navigationList.itemAtIndex(row);
+                if (item !== null && item.visible && item.enabled)
+                    item.forceActiveFocus(Qt.OtherFocusReason);
+            });
+            return;
+        }
+    }
 
     signal collapseRequested
     signal pageRequested(string pageKey)
@@ -273,6 +288,8 @@ Control {
         }
 
         AppButton {
+            id: railCollapseButton
+
             Accessible.description: root.collapsed ? qsTr("Expand navigation rail") : qsTr(
                                                          "Collapse navigation rail")
             Layout.fillWidth: true

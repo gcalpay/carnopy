@@ -208,6 +208,13 @@ class QmlSettingsController(QObject):
         notify=railCollapsedChanged,
     )
 
+    @Slot(result=bool)
+    def toggleRailCollapsed(self) -> bool:
+        """Toggle the persisted wide-layout rail preference exactly once."""
+
+        self.set_rail_collapsed(not self._rail_collapsed)
+        return self._rail_collapsed
+
     def get_inspector_collapsed(self) -> bool:
         return self._inspector_collapsed
 
@@ -224,6 +231,13 @@ class QmlSettingsController(QObject):
         set_inspector_collapsed,
         notify=inspectorCollapsedChanged,
     )
+
+    @Slot(result=bool)
+    def toggleInspectorCollapsed(self) -> bool:
+        """Toggle the persisted wide-layout inspector preference exactly once."""
+
+        self.set_inspector_collapsed(not self._inspector_collapsed)
+        return self._inspector_collapsed
 
     def get_normal_geometry(self) -> QRect:
         return QRect(self._normal_geometry)

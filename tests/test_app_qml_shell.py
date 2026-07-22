@@ -11,8 +11,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QAbstractItemModel, QCoreApplication, QObject, QSettings
+from PySide6.QtCore import QAbstractItemModel, QCoreApplication, QMetaObject, QObject, QSettings, Qt
 from PySide6.QtGui import QColor
+from PySide6.QtQuick import QQuickItem, QQuickWindow
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from carnopy.app.qml_runtime import QmlApplicationRuntime, create_qml_runtime
@@ -69,6 +71,28 @@ def _set_size(root: QObject, width: int, height: int) -> None:
 
 def _role(model: QAbstractItemModel, name: bytes) -> int:
     return next(role for role, role_name in model.roleNames().items() if role_name == name)
+
+
+def _visual_items(root: QQuickWindow, object_name: str) -> tuple[QQuickItem, ...]:
+    matches: list[QQuickItem] = []
+    pending: list[QQuickItem] = [root.contentItem()]
+    while pending:
+        item = pending.pop()
+        pending.extend(item.childItems())
+        if item.objectName() == object_name:
+            matches.append(item)
+    return tuple(matches)
+
+
+def _visible_item(root: QQuickWindow, object_name: str) -> QQuickItem:
+    matches = tuple(item for item in _visual_items(root, object_name) if item.isVisible())
+    assert len(matches) == 1
+    return matches[0]
+
+
+def _activate(item: QQuickItem) -> None:
+    assert QMetaObject.invokeMethod(item, "click")
+    _process_events()
 
 
 def test_shell_uses_exact_navigation_order_and_disables_future_workflows(
@@ -175,6 +199,91 @@ def test_context_inspector_has_two_way_controls_in_the_main_shell(
     assert command_bar.property("showInspectorButton") is False
     assert command_bar.property("inspectorOpen") is True
     assert inspector.property("visible") is True
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_wide_shell_actions_respond_once_to_first_click_and_keyboard(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    settings = runtime.controller.qml_settings
+    settings.set_reduced_motion(True)
+    settings.set_rail_collapsed(False)
+    settings.set_inspector_collapsed(False)
+    _set_size(root, 1440, 900)
+    rail_changes: list[bool] = []
+    inspector_changes: list[bool] = []
+    settings.railCollapsedChanged.connect(
+        lambda: rail_changes.append(settings.get_rail_collapsed())
+    )
+    settings.inspectorCollapsedChanged.connect(
+        lambda: inspector_changes.append(settings.get_inspector_collapsed())
+    )
+
+    rail_button = _visible_item(root, "railCollapseButton")
+    _activate(rail_button)
+    assert settings.get_rail_collapsed()
+    assert rail_changes == [True]
+    _activate(rail_button)
+    assert not settings.get_rail_collapsed()
+    assert rail_changes == [True, False]
+
+    inspector_close = _visible_item(root, "inspectorCloseButton")
+    _activate(inspector_close)
+    assert settings.get_inspector_collapsed()
+    assert inspector_changes == [True]
+    inspector_open = _visible_item(root, "inspectorToggleButton")
+    _activate(inspector_open)
+    assert not settings.get_inspector_collapsed()
+    assert inspector_changes == [True, False]
+
+    QTest.keyClick(root, Qt.Key.Key_B, Qt.KeyboardModifier.ControlModifier)
+    _process_events()
+    assert settings.get_rail_collapsed()
+    assert rail_changes == [True, False, True]
+    QTest.keyClick(root, Qt.Key.Key_I, Qt.KeyboardModifier.ControlModifier)
+    _process_events()
+    assert settings.get_inspector_collapsed()
+    assert inspector_changes == [True, False, True]
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_breakpoint_changes_close_transient_drawers_and_preserve_wide_preferences(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    settings = runtime.controller.qml_settings
+    settings.set_reduced_motion(True)
+    settings.set_rail_collapsed(False)
+    settings.set_inspector_collapsed(False)
+
+    _set_size(root, 768, 768)
+    _activate(_visible_item(root, "railMenuButton"))
+    assert root.property("navigationDrawerOpen") is True
+    _set_size(root, 1024, 768)
+    QTest.qWait(300)
+    _process_events()
+    assert root.property("navigationDrawerOpen") is False
+    assert not settings.get_rail_collapsed()
+    assert not settings.get_inspector_collapsed()
+    focused = root.activeFocusItem()
+    assert focused is not None
+    assert focused.objectName() == "nav-workspace"
+
+    _activate(_visible_item(root, "inspectorToggleButton"))
+    assert root.property("inspectorDrawerOpen") is True
+    _set_size(root, 1440, 900)
+    QTest.qWait(300)
+    _process_events()
+    assert root.property("inspectorDrawerOpen") is False
+    assert root.property("inspectorWideVisible") is True
+    assert not settings.get_rail_collapsed()
+    assert not settings.get_inspector_collapsed()
+    focused = root.activeFocusItem()
+    assert focused is not None
+    assert focused.objectName() == "inspectorCloseButton"
     assert runtime.warning_capture.runtime_warnings == ()
 
 

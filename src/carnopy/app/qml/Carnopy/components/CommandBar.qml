@@ -17,6 +17,8 @@ Control {
     property bool inspectorOpen: false
     property string statusLabel: qsTr("Shell ready")
     property string statusTone: "success"
+    readonly property alias inspectorToggleControl: inspectorToggleButton
+    readonly property alias railMenuControl: railMenuButton
 
     signal inspectorToggleRequested
     signal railMenuRequested
@@ -38,6 +40,8 @@ Control {
         spacing: Theme.spacingMedium
 
         AppButton {
+            id: railMenuButton
+
             Accessible.description: qsTr("Open application navigation")
             compact: true
             iconName: "panel-left-open"
@@ -101,6 +105,8 @@ Control {
         }
 
         AppButton {
+            id: inspectorToggleButton
+
             Accessible.description: root.inspectorOpen ? qsTr("Collapse context inspector") : qsTr(
                                                              "Open context inspector")
             compact: true

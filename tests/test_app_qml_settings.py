@@ -184,6 +184,33 @@ def test_layout_reset_preserves_theme_accessibility_and_unrelated_settings(
     assert MAXIMIZED_KEY not in settings.allKeys()
 
 
+def test_layout_toggle_slots_change_each_preference_once(
+    tmp_path: Path,
+    application: QGuiApplication,
+) -> None:
+    del application
+    settings = settings_for(tmp_path / "settings.ini")
+    controller = QmlSettingsController(settings)
+    rail_changes: list[bool] = []
+    inspector_changes: list[bool] = []
+    controller.railCollapsedChanged.connect(
+        lambda: rail_changes.append(controller.get_rail_collapsed())
+    )
+    controller.inspectorCollapsedChanged.connect(
+        lambda: inspector_changes.append(controller.get_inspector_collapsed())
+    )
+
+    assert controller.toggleRailCollapsed()
+    assert controller.toggleInspectorCollapsed()
+    assert not controller.toggleRailCollapsed()
+    assert not controller.toggleInspectorCollapsed()
+
+    assert rail_changes == [True, False]
+    assert inspector_changes == [True, False]
+    assert settings.value(RAIL_COLLAPSED_KEY, type=bool) is False
+    assert settings.value(INSPECTOR_COLLAPSED_KEY, type=bool) is False
+
+
 def test_geometry_clamping_uses_logical_screen_bounds() -> None:
     first = QRect(0, 0, 1920, 1080)
     second = QRect(1920, 0, 2560, 1440)

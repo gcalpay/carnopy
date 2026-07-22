@@ -22,6 +22,7 @@ Control {
     property string workspacePath: ""
     property string workspaceState: "unavailable"
     property bool yamlAvailable: false
+    readonly property alias closeControl: inspectorCloseButton
 
     signal closeRequested
     signal attentionRequested(string section, string field, int row)
@@ -54,6 +55,8 @@ Control {
             }
 
             AppButton {
+                id: inspectorCloseButton
+
                 Accessible.description: qsTr("Close context inspector")
                 compact: true
                 iconName: "panel-right-close"

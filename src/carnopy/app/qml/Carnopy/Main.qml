@@ -71,6 +71,8 @@ ApplicationWindow {
     readonly property bool railEffectiveCollapsed: shellMode !== "wide" || qmlSettings.railCollapsed
     readonly property bool inspectorWideVisible: shellMode === "wide" &&
                                                  !qmlSettings.inspectorCollapsed
+    readonly property bool inspectorDrawerOpen: inspectorDrawer.visible
+    readonly property bool navigationDrawerOpen: navigationDrawer.visible
     readonly property int railWidth: shellMode === "narrow" ? 0 : (railEffectiveCollapsed ? 76 :
                                                                                             224)
 
@@ -88,6 +90,8 @@ ApplicationWindow {
     readonly property int motionDuration: Theme.durationStandard
     property string currentPage: "workspace"
     property bool geometryTrackingReady: false
+    property var inspectorFocusReturnTarget: null
+    property var navigationFocusReturnTarget: null
     property string operationFailureMessage: ""
     property string operationFailureOperation: ""
     property string operationFailureTitle: ""
@@ -182,23 +186,82 @@ ApplicationWindow {
 
     function routeTo(pageKey) {
         currentPage = pageKey;
-        navigationDrawer.close();
+        if (navigationDrawer.visible)
+            navigationDrawer.close();
     }
 
-    function toggleRail() {
-        if (shellMode === "wide")
-            qmlSettings.railCollapsed = !qmlSettings.railCollapsed;
-        else if (shellMode === "narrow")
-            navigationDrawer.open();
+    function focusControlSoon(preferred, fallback) {
+        Qt.callLater(() => {
+            let target = preferred;
+            if (target === null || !target.visible || !target.enabled)
+                target = fallback;
+            if (target !== null && target.visible && target.enabled)
+                target.forceActiveFocus(Qt.OtherFocusReason);
+        });
     }
 
-    function toggleInspector() {
-        if (shellMode === "wide")
-            qmlSettings.inspectorCollapsed = !qmlSettings.inspectorCollapsed;
-        else if (inspectorDrawer.opened)
+    function restoreNavigationFocus() {
+        const preferred = navigationFocusReturnTarget;
+        navigationFocusReturnTarget = null;
+        if (shellMode === "narrow") {
+            focusControlSoon(preferred, commandBar.railMenuControl);
+            return;
+        }
+        persistentRail.restoreCurrentPageFocus();
+    }
+
+    function restoreInspectorFocus() {
+        const preferred = inspectorFocusReturnTarget;
+        inspectorFocusReturnTarget = null;
+        Qt.callLater(() => {
+            let target = root.shellMode === "wide" ? (root.inspectorWideVisible
+                                                      ? persistentInspector.closeControl :
+                                                        commandBar.inspectorToggleControl) :
+                                                     preferred;
+            if (target === null || !target.visible || !target.enabled)
+                target = commandBar.inspectorToggleControl;
+            if (target !== null && target.visible && target.enabled)
+                target.forceActiveFocus(Qt.OtherFocusReason);
+        });
+    }
+
+    function requestRailToggle(opener) {
+        if (shellMode === "compact")
+            return;
+        if (!navigationDrawer.visible && opener !== null)
+            navigationFocusReturnTarget = opener;
+        railToggleAction.trigger();
+    }
+
+    function requestInspectorToggle(opener) {
+        if (shellMode === "wide" || !inspectorDrawer.visible) {
+            if (opener !== null)
+                inspectorFocusReturnTarget = opener;
+        }
+        inspectorToggleAction.trigger();
+    }
+
+    function applyRailToggle() {
+        if (shellMode === "wide") {
+            qmlSettings.toggleRailCollapsed();
+            focusControlSoon(persistentRail.collapseControl, persistentRail.collapseControl);
+        } else if (shellMode === "narrow") {
+            if (navigationDrawer.visible)
+                navigationDrawer.close();
+            else
+                navigationDrawer.open();
+        }
+    }
+
+    function applyInspectorToggle() {
+        if (shellMode === "wide") {
+            qmlSettings.toggleInspectorCollapsed();
+            restoreInspectorFocus();
+        } else if (inspectorDrawer.visible) {
             inspectorDrawer.close();
-        else
+        } else {
             inspectorDrawer.open();
+        }
     }
 
     function rememberGeometrySoon() {
@@ -273,6 +336,32 @@ ApplicationWindow {
 
     Component.onCompleted: restoreWindowState()
 
+    onShellModeChanged: {
+        navigationFocusReturnTarget = null;
+        inspectorFocusReturnTarget = null;
+        if (navigationDrawer.visible)
+        navigationDrawer.close();
+        if (inspectorDrawer.visible)
+        inspectorDrawer.close();
+    }
+
+    Action {
+        id: railToggleAction
+
+        enabled: root.shellMode !== "compact"
+        objectName: "railToggleAction"
+        shortcut: "Ctrl+B"
+        onTriggered: root.applyRailToggle()
+    }
+
+    Action {
+        id: inspectorToggleAction
+
+        objectName: "inspectorToggleAction"
+        shortcut: "Ctrl+I"
+        onTriggered: root.applyInspectorToggle()
+    }
+
     RowLayout {
         anchors.fill: parent
         spacing: 0
@@ -290,7 +379,7 @@ ApplicationWindow {
             visualizationAvailable: datasetAvailable
             yamlAvailable: datasetAvailable
             objectName: "persistentNavigationRail"
-            onCollapseRequested: root.toggleRail()
+            onCollapseRequested: root.requestRailToggle(persistentRail.collapseControl)
             onPageRequested: pageKey => root.routeTo(pageKey)
             visible: root.shellMode !== "narrow"
         }
@@ -305,6 +394,8 @@ ApplicationWindow {
                 spacing: 0
 
                 CommandBar {
+                    id: commandBar
+
                     Layout.fillWidth: true
                     breadcrumb: {
                         if (!root.controllerAvailable || !root.desktopController.workspaceAvailable)
@@ -319,15 +410,16 @@ ApplicationWindow {
                     documentDirty: root.configController !== null && root.configController.dirty
                     documentOpen: root.configController !== null
                                   && root.configController.hasDocument
-                    inspectorOpen: root.inspectorWideVisible || inspectorDrawer.opened
+                    inspectorOpen: root.inspectorWideVisible || inspectorDrawer.visible
                     objectName: "documentCommandBar"
                     onCloseConfigurationRequested: root.requestConfigurationClose()
-                    onInspectorToggleRequested: root.toggleInspector()
-                    onRailMenuRequested: navigationDrawer.open()
+                    onInspectorToggleRequested: root.requestInspectorToggle(
+                                                    commandBar.inspectorToggleControl)
+                    onRailMenuRequested: root.requestRailToggle(commandBar.railMenuControl)
                     onSaveAsRequested: root.datasetSaveAsRequested(false)
                     onSaveRequested: root.datasetSaveRequested(false)
                     pageTitle: root.pageTitle(root.currentPage)
-                    showInspectorButton: !(root.inspectorWideVisible || inspectorDrawer.opened)
+                    showInspectorButton: !(root.inspectorWideVisible || inspectorDrawer.visible)
                     showRailMenu: root.shellMode === "narrow"
                     statusLabel: {
                         if (root.controllerAvailable && root.desktopController.workspaceState
@@ -421,6 +513,8 @@ ApplicationWindow {
         }
 
         ContextInspector {
+            id: persistentInspector
+
             blockingField: root.configController !== null ? root.configController.blockingField : ""
             blockingIssue: root.configController !== null ? root.configController.blockingIssue : ""
             blockingRow: root.configController !== null ? root.configController.blockingRow : -1
@@ -439,7 +533,7 @@ ApplicationWindow {
             objectName: "persistentContextInspector"
             onAttentionRequested: (section, field, row) => root.configurationAttentionRequested(
                                                                section, field, row)
-            onCloseRequested: root.toggleInspector()
+            onCloseRequested: root.requestInspectorToggle(persistentInspector.closeControl)
             workspacePath: root.controllerAvailable ? root.desktopController.workspaceRootPath : ""
             workspaceState: root.controllerAvailable ? root.desktopController.workspaceState :
                                                        "unavailable"
@@ -460,6 +554,8 @@ ApplicationWindow {
         edge: Qt.LeftEdge
         height: root.height
         modal: true
+        objectName: "navigationDrawer"
+        onClosed: root.restoreNavigationFocus()
         width: Math.min(300, root.width * 0.88)
 
         contentItem: NavRail {
@@ -481,6 +577,7 @@ ApplicationWindow {
         height: root.height
         modal: root.shellMode === "narrow"
         objectName: "inspectorDrawer"
+        onClosed: root.restoreInspectorFocus()
         width: Math.min(328, root.width * 0.9)
 
         contentItem: ContextInspector {
@@ -500,7 +597,7 @@ ApplicationWindow {
             objectName: "drawerContextInspector"
             onAttentionRequested: (section, field, row) => root.configurationAttentionRequested(
                                                                section, field, row)
-            onCloseRequested: inspectorDrawer.close()
+            onCloseRequested: root.requestInspectorToggle(null)
             workspacePath: root.controllerAvailable ? root.desktopController.workspaceRootPath : ""
             workspaceState: root.controllerAvailable ? root.desktopController.workspaceState :
                                                        "unavailable"
@@ -818,17 +915,6 @@ ApplicationWindow {
             root.datasetSavePathCancelled();
         }
         onVisibleChanged: root.completeSaveSelection()
-    }
-
-    Shortcut {
-        enabled: root.shellMode === "wide"
-        onActivated: root.toggleRail()
-        sequence: "Ctrl+B"
-    }
-
-    Shortcut {
-        onActivated: root.toggleInspector()
-        sequence: "Ctrl+I"
     }
 
     Shortcut {
