@@ -148,7 +148,7 @@ def test_desktop_shutdown_is_idle_only_and_idempotent(
             "is_busy",
             property(lambda _self: True),
         )
-        assert not desktop.shutdown()
+        assert desktop.shutdown()
     assert shutdown_calls == ["shutdown"]
     assert sync_calls == ["sync"]
 
@@ -177,6 +177,29 @@ def test_qml_shutdown_requires_explicit_dirty_discard_confirmation(
     assert desktop.confirm_shutdown(True)
     assert close_requests == ["close"]
     assert desktop.request_shutdown()
+
+
+def test_qml_shutdown_refuses_an_active_worker_without_closing(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    close_requests: list[str] = []
+    desktop.closeWindowRequested.connect(lambda: close_requests.append("close"))
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(
+            type(desktop.request_coordinator),
+            "is_busy",
+            property(lambda _self: True),
+        )
+        assert not desktop.request_shutdown()
+
+    assert close_requests == []
+    assert "active worker request" in desktop.get_workspace_error_message()
+    assert desktop.shutdown()
 
 
 def test_configuration_attention_facade_accepts_only_stable_sections(

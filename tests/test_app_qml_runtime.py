@@ -234,11 +234,71 @@ def test_qml_close_event_uses_composition_guard(
     )
 
     root.close()
+    assert calls == []
+    assert root.property("visible") is True
     application.processEvents()
 
     assert len(calls) == 1
     assert root.property("visible") is True
     assert runtime.close()
+
+
+def test_qml_close_approval_uses_one_bypass_then_restores_the_guard(
+    application: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runtime = create_qml_runtime(
+        settings=QSettings(str(tmp_path / "bypass.ini"), QSettings.Format.IniFormat),
+        application_arguments=[],
+    )
+    root = runtime.engine.rootObjects()[0]
+    outcomes = iter((True, False))
+    calls: list[object] = []
+    monkeypatch.setattr(
+        runtime.controller,
+        "request_shutdown",
+        lambda: calls.append(object()) or next(outcomes),
+    )
+
+    root.close()
+    application.processEvents()
+    assert len(calls) == 1
+    assert root.property("visible") is False
+
+    root.setProperty("visible", True)
+    application.processEvents()
+    root.close()
+    application.processEvents()
+    assert len(calls) == 2
+    assert root.property("visible") is True
+    assert runtime.close()
+
+
+def test_qml_runtime_teardown_is_idempotent_and_removes_the_close_filter(
+    application: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runtime = create_qml_runtime(
+        settings=QSettings(str(tmp_path / "teardown.ini"), QSettings.Format.IniFormat),
+        application_arguments=[],
+    )
+    calls: list[str] = []
+    monkeypatch.setattr(
+        runtime.controller,
+        "shutdown",
+        lambda: calls.append("shutdown") or True,
+    )
+
+    assert runtime.close()
+    assert runtime.close()
+    assert calls == ["shutdown"]
+    assert runtime._close_guard is None
+    assert runtime._font_ids == []
+    with pytest.raises(QmlStartupError, match="closed QML runtime"):
+        runtime.load()
+    application.processEvents()
 
 
 def test_qml_close_records_the_last_used_monitor(
@@ -319,6 +379,46 @@ def test_private_qml_launcher_smoke_exits_cleanly() -> None:
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert completed.stdout == ""
+    assert completed.stderr == ""
+
+
+def test_guarded_sigint_closes_without_python_override_traceback(tmp_path: Path) -> None:
+    code = """
+import os
+import signal
+import sys
+from pathlib import Path
+from PySide6.QtCore import QSettings, QTimer
+from carnopy.app.qml_runtime import (
+    _execute_qml_event_loop,
+    create_qml_runtime,
+)
+
+settings_path = Path(sys.argv[1]) / "sigint.ini"
+runtime = create_qml_runtime(
+    settings=QSettings(str(settings_path), QSettings.Format.IniFormat),
+    application_arguments=[],
+)
+QTimer.singleShot(0, lambda: os.kill(os.getpid(), signal.SIGINT))
+result = _execute_qml_event_loop(runtime)
+if not runtime.close():
+    raise SystemExit("runtime did not close")
+raise SystemExit(result)
+"""
+    environment = {**os.environ, "QT_QPA_PLATFORM": "offscreen"}
+    completed = subprocess.run(
+        [sys.executable, "-c", code, str(tmp_path)],
+        cwd=ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "Error calling Python override" not in completed.stderr
+    assert "KeyboardInterrupt" not in completed.stderr
     assert completed.stderr == ""
 
 

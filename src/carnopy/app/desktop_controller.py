@@ -676,13 +676,13 @@ class DesktopController(QObject):
         self._queue_workspace_request("cancel", "")
 
     def shutdown(self) -> bool:
+        if self._shutdown:
+            return True
         if not self._guard_active_plot_edit("closing Carnopy"):
             return False
         self.workspace_controller.cancel_pending()
         if self.request_coordinator.is_busy:
             return False
-        if self._shutdown:
-            return True
         self._workspace_request_timer.stop()
         self._queued_workspace_request = None
         self.request_coordinator.shutdown()

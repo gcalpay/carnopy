@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import logging
 import os
+import signal
 import sys
 import tempfile
 from collections.abc import Sequence
 from pathlib import Path
+from types import FrameType
 
 from PySide6.QtCore import (
     QCoreApplication,
@@ -123,34 +125,45 @@ def _fit_window_to_available_screen(
 
 
 class QmlWindowCloseGuard(QObject):
-    """Route QML window shutdown through the authoritative composition."""
+    """Defer native close events to the authoritative composition."""
 
-    def __init__(self, controller: DesktopController, parent: QObject | None = None) -> None:
+    close_requested = Signal()
+
+    def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
-        self._controller = controller
+        self._enabled = True
+        self._request_pending = False
+        self._bypass_next_close = False
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
         if event.type() != QEvent.Type.Close or not isinstance(watched, QWindow):
             return False
         if not isinstance(event, QCloseEvent):
             return False
-        if not self._controller.request_shutdown():
-            event.ignore()
-            return True
-        settings = self._controller.qml_settings
-        screen = watched.screen()
-        settings.remember_normal_screen("" if screen is None else screen.name())
-        settings.set_maximized(watched.visibility() == QWindow.Visibility.Maximized)
-        if watched.visibility() == QWindow.Visibility.Windowed:
-            geometry = watched.geometry()
-            settings.rememberNormalGeometry(
-                geometry.x(),
-                geometry.y(),
-                geometry.width(),
-                geometry.height(),
-            )
-        self._controller.settings.sync()
-        return False
+        if not self._enabled:
+            return False
+        if self._bypass_next_close:
+            self._bypass_next_close = False
+            return False
+        event.ignore()
+        if not self._request_pending:
+            self._request_pending = True
+            self.close_requested.emit()
+        return True
+
+    def complete_request(self) -> None:
+        self._request_pending = False
+
+    def allow_next_close(self) -> None:
+        self._bypass_next_close = True
+
+    def revoke_bypass(self) -> None:
+        self._bypass_next_close = False
+
+    def disable(self) -> None:
+        self._enabled = False
+        self._request_pending = False
+        self._bypass_next_close = False
 
 
 class QmlWarningCapture(QObject):
@@ -205,8 +218,15 @@ class QmlApplicationRuntime:
         self._geometry_fit_timer = QTimer(self.engine)
         self._geometry_fit_timer.setSingleShot(True)
         self._geometry_fit_timer.setInterval(100)
+        self._close_request_timer = QTimer(self.engine)
+        self._close_request_timer.setSingleShot(True)
+        self._close_request_timer.setInterval(0)
+        self._close_request_timer.timeout.connect(self._process_close_request)
         self._font_ids: list[int] = []
         self._loaded = False
+        self._closing = False
+        self._closed = False
+        self._close_result = False
 
     def _complete_geometry_restoration(self, window: QWindow) -> None:
         _fit_window_to_available_screen(
@@ -251,6 +271,8 @@ class QmlApplicationRuntime:
             self._font_ids.append(font_id)
 
     def load(self) -> QObject:
+        if self._closed:
+            raise QmlStartupError("a closed QML runtime cannot be loaded again")
         if self._loaded:
             roots = self.engine.rootObjects()
             if len(roots) != 1:
@@ -285,7 +307,8 @@ class QmlApplicationRuntime:
             raise QmlStartupError(f"QML created {len(roots)} root objects; expected exactly one")
         self._connect_qml_facade(roots[0])
         if isinstance(roots[0], QWindow):
-            self._close_guard = QmlWindowCloseGuard(self.controller, self.engine)
+            self._close_guard = QmlWindowCloseGuard(self.engine)
+            self._close_guard.close_requested.connect(self.request_close)
             roots[0].installEventFilter(self._close_guard)
             self._geometry_fit_timer.timeout.connect(
                 lambda window=roots[0]: self._complete_geometry_restoration(window)
@@ -412,21 +435,81 @@ class QmlApplicationRuntime:
                 raise QmlStartupError(f"QML root does not expose {signal_name}")
             signal.connect(callback, Qt.ConnectionType.QueuedConnection)
 
+    def request_close(self) -> None:
+        """Schedule one composition-guarded close outside the native event callback."""
+
+        if self._closed or self._closing or self._close_request_timer.isActive():
+            return
+        self._close_request_timer.start()
+
+    def _process_close_request(self) -> None:
+        guard = self._close_guard
+        if guard is not None:
+            guard.complete_request()
+        if self._closed or self._closing:
+            return
+        if not self.controller.request_shutdown():
+            return
+        roots = self.engine.rootObjects()
+        window = next((root for root in roots if isinstance(root, QWindow)), None)
+        if window is None:
+            self.application.quit()
+            return
+        self._remember_window_state(window)
+        if guard is not None:
+            guard.allow_next_close()
+        if not window.close() and guard is not None:
+            guard.revoke_bypass()
+
+    def _remember_window_state(self, window: QWindow) -> None:
+        settings = self.controller.qml_settings
+        screen = window.screen()
+        settings.remember_normal_screen("" if screen is None else screen.name())
+        settings.set_maximized(window.visibility() == QWindow.Visibility.Maximized)
+        if window.visibility() == QWindow.Visibility.Windowed:
+            geometry = window.geometry()
+            settings.rememberNormalGeometry(
+                geometry.x(),
+                geometry.y(),
+                geometry.width(),
+                geometry.height(),
+            )
+        self.controller.settings.sync()
+
     def close(self) -> bool:
+        if self._closed:
+            return self._close_result
+        if self._closing:
+            return False
+        if not self.controller.shutdown():
+            return False
+        self._closing = True
         self._geometry_fit_timer.stop()
-        for root in self.engine.rootObjects():
+        self._close_request_timer.stop()
+        roots = list(self.engine.rootObjects())
+        guard = self._close_guard
+        if guard is not None:
+            guard.disable()
+            for root in roots:
+                if isinstance(root, QWindow):
+                    root.removeEventFilter(guard)
+            self._close_guard = None
+        for root in roots:
             root.setProperty("visible", False)
             root.deleteLater()
         _drain_deferred_deletes(self.application)
         self.engine.collectGarbage()
         self.engine.deleteLater()
         _drain_deferred_deletes(self.application)
-        closed = self.controller.shutdown()
         removal_results = [
             QFontDatabase.removeApplicationFont(font_id) for font_id in reversed(self._font_ids)
         ]
         self._font_ids.clear()
-        return closed and all(removal_results)
+        self._loaded = False
+        self._close_result = all(removal_results)
+        self._closed = True
+        self._closing = False
+        return self._close_result
 
 
 def _drain_deferred_deletes(application: QApplication) -> None:
@@ -508,19 +591,39 @@ def run_qml_application(
                 )
                 _exercise_installed_qml_smoke(runtime)
                 QTimer.singleShot(0, runtime.application.quit)
-                result = runtime.application.exec()
+                result = _execute_qml_event_loop(runtime)
                 if not runtime.close():
                     raise QmlStartupError(
                         "the QML runtime could not shut down while a request was active"
                     )
                 return result
         runtime = create_qml_runtime(initial_workspace=initial_workspace)
-        result = runtime.application.exec()
+        result = _execute_qml_event_loop(runtime)
         if not runtime.close():
             raise QmlStartupError("the QML runtime could not shut down while a request was active")
         return result
     finally:
         instance_lock.unlock()
+
+
+def _execute_qml_event_loop(runtime: QmlApplicationRuntime) -> int:
+    """Run Qt while routing SIGINT through the same deferred close guard."""
+
+    previous_handler = signal.getsignal(signal.SIGINT)
+    heartbeat = QTimer(runtime.engine)
+    heartbeat.setInterval(100)
+    heartbeat.timeout.connect(lambda: None)
+
+    def request_guarded_close(_signum: int, _frame: FrameType | None) -> None:
+        runtime.request_close()
+
+    signal.signal(signal.SIGINT, request_guarded_close)
+    heartbeat.start()
+    try:
+        return runtime.application.exec()
+    finally:
+        heartbeat.stop()
+        signal.signal(signal.SIGINT, previous_handler)
 
 
 def _exercise_installed_qml_smoke(runtime: QmlApplicationRuntime) -> None:
