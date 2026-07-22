@@ -134,6 +134,7 @@ def capabilities() -> dict[str, Any]:
         "dataset_formats": ["csv", "parquet"],
         "fluids": [
             {"name": "Propane", "aliases": ["R290", "n-Propane"]},
+            {"name": "Isobutane", "aliases": ["R600a"]},
             {"name": "Cyclopentane", "aliases": []},
             {"name": "Isopentane", "aliases": ["IsoPentane"]},
         ],
@@ -770,7 +771,7 @@ def test_model_change_keeps_incompatible_property_visible_and_blocks_save(
     values = editor.form.list_values(editor.form.properties)
     surface_row = values.index("surface_tension")
     item = editor.form.properties.model().index(surface_row, 0)
-    assert item.data(DISPLAY_ROLE) == "Unsupported by pr: surface_tension"
+    assert item.data(DISPLAY_ROLE) == "Unsupported by pr: Surface tension"
     assert not editor._form_valid
     assert not editor.save_button.isEnabled()
     assert "surface_tension" in editor.status.text()

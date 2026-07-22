@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-from typing import cast
 
 import numpy as np
 
@@ -13,9 +12,7 @@ from carnopy.sampling.models import (
     Sampler,
     StepspaceSampler,
 )
-
-STEPSPACE_RTOL = 1e-12
-STEPSPACE_ATOL = 1e-12
+from carnopy.sampling.projection import stepspace_point_count
 
 
 def materialize_sampler(sampler: Sampler) -> list[float]:
@@ -44,14 +41,5 @@ def materialize_sampler(sampler: Sampler) -> list[float]:
 
 
 def _materialize_stepspace(sampler: StepspaceSampler) -> list[float]:
-    raw_steps = (sampler.stop - sampler.start) / sampler.step
-    step_count = round(raw_steps)
-    if step_count < 1 or not math.isclose(
-        raw_steps,
-        step_count,
-        rel_tol=STEPSPACE_RTOL,
-        abs_tol=STEPSPACE_ATOL,
-    ):
-        raise ValueError("stepspace stop is not reachable by an integer number of steps")
-    values = np.linspace(sampler.start, sampler.stop, step_count + 1).tolist()
-    return cast(list[float], values)
+    point_count = stepspace_point_count(sampler)
+    return [float(value) for value in np.linspace(sampler.start, sampler.stop, point_count)]

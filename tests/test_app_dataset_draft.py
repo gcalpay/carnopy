@@ -1,5 +1,8 @@
+# ruff: noqa: RUF001
+
 from __future__ import annotations
 
+import copy
 import os
 import subprocess
 import sys
@@ -7,6 +10,7 @@ from collections.abc import Mapping
 from typing import Any
 
 import pytest
+import yaml
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
@@ -19,10 +23,16 @@ from carnopy.app.draft_models import (
     COMPATIBLE_ROLE,
     DISPLAY_ROLE,
     ISSUE_ROLE,
+    LABEL_ROLE,
     SELECTED_ROLE,
+    SYMBOL_ROLE,
+    UNIT_ROLE,
     VALUE_ROLE,
 )
 from carnopy.app.sampler_draft import SamplerDraft
+from carnopy.config.models import CarnopyConfig
+from carnopy.config.normalize import normalize_config
+from carnopy.templates import template_text
 
 
 @pytest.fixture(scope="module")
@@ -52,11 +62,19 @@ def capabilities() -> dict[str, Any]:
         "dataset_formats": ["csv", "parquet"],
         "fluids": [
             {"name": "Propane", "aliases": ["R290", "n-Propane"]},
+            {"name": "Isobutane", "aliases": ["R600a"]},
             {"name": "Cyclopentane", "aliases": []},
         ],
         "property_catalog": [
             {"name": "mass_density", "supported_models": ["heos", "pr", "srk"]},
             {"name": "specific_enthalpy", "supported_models": ["heos", "pr", "srk"]},
+            {"name": "specific_entropy", "supported_models": ["heos", "pr", "srk"]},
+            {
+                "name": "isobaric_specific_heat_capacity",
+                "supported_models": ["heos", "pr", "srk"],
+            },
+            {"name": "dynamic_viscosity", "supported_models": ["heos"]},
+            {"name": "thermal_conductivity", "supported_models": ["heos"]},
             {"name": "surface_tension", "supported_models": ["heos"]},
         ],
         "reference_dependent_fields": ["specific_enthalpy"],
@@ -276,7 +294,7 @@ def test_model_change_retains_incompatible_property_and_blocks_payload(
     assert not draft.get_locally_valid()
     assert draft.get_dirty()
     index = draft.selected_properties.index(0, 0)
-    assert index.data(DISPLAY_ROLE) == "Unsupported by pr: surface_tension"
+    assert index.data(DISPLAY_ROLE) == "Unsupported by pr: Surface tension"
     assert index.data(COMPATIBLE_ROLE) is False
     assert index.data(SELECTED_ROLE) is True
     assert "Remove this property" in str(index.data(ISSUE_ROLE))
@@ -514,3 +532,204 @@ def test_destructive_dataset_methods_are_not_qml_invokable(
 
     assert "apply_mode_change" not in methods
     assert "set_coordinate" not in methods
+
+
+def test_default_property_table_exposes_approved_projection(
+    application: QCoreApplication,
+) -> None:
+    del application
+    payload = yaml.safe_load(template_text("property_table"))
+    assert isinstance(payload, dict)
+    draft = configured_draft(payload)
+
+    assert draft.get_grid_combinations_per_fluid() == 4_141
+    assert draft.get_projected_rows_per_fluid() == 4_141
+    assert draft.get_projected_rows() == 8_282
+    assert draft.get_projection_available()
+    assert draft.get_projection_issue() == ""
+
+
+def test_projection_preserves_per_fluid_counts_when_no_fluid_is_selected(
+    application: QCoreApplication,
+) -> None:
+    del application
+    draft = configured_draft()
+
+    assert draft.remove_fluid(0)
+
+    assert draft.get_grid_combinations_per_fluid() == 6
+    assert draft.get_projected_rows_per_fluid() == 6
+    assert draft.get_projected_rows() == 0
+    assert not draft.get_projection_available()
+    assert draft.get_projection_issue() == "Add at least one fluid."
+
+
+def test_invalid_sampler_makes_projection_unavailable(
+    application: QCoreApplication,
+) -> None:
+    del application
+    draft = configured_draft()
+    pressure = draft.sampler("pressure")
+    assert pressure is not None
+
+    pressure.set_text("values", "")
+
+    assert draft.get_grid_combinations_per_fluid() == 0
+    assert draft.get_projected_rows_per_fluid() == 0
+    assert draft.get_projected_rows() == 0
+    assert not draft.get_projection_available()
+    assert draft.get_projection_issue() == pressure.get_issue()
+
+
+@pytest.mark.parametrize("failure", ["unknown", "duplicate", "incompatible"])
+def test_capability_refresh_retains_fluid_projection_failures(
+    application: QCoreApplication,
+    failure: str,
+) -> None:
+    del application
+    initial = dataset_payload()
+    initial["fluids"] = ["R290", "Cyclopentane"]
+    draft = configured_draft(initial)
+    revised = copy.deepcopy(capabilities())
+    if failure == "unknown":
+        revised["fluids"] = [{"name": "Cyclopentane", "aliases": []}]
+    elif failure == "duplicate":
+        revised["fluids"] = [{"name": "Propane", "aliases": ["R290", "Cyclopentane"]}]
+    else:
+        revised["fluids"][0]["supported_models"] = ["pr"]
+
+    draft.apply_capabilities(revised)
+
+    assert draft.selected_fluid_values() == ("R290", "Cyclopentane")
+    assert draft.get_grid_combinations_per_fluid() == 6
+    assert draft.get_projected_rows_per_fluid() == 6
+    assert draft.get_projected_rows() == 0
+    assert not draft.get_projection_available()
+    assert draft.get_projection_issue()
+    assert draft.get_first_invalid_field() == "dataset.fluids"
+
+
+def test_over_limit_projection_is_exact_available_and_blocking(
+    application: QCoreApplication,
+) -> None:
+    del application
+    draft = configured_draft()
+    temperature = draft.sampler("temperature")
+    assert temperature is not None
+
+    temperature.set_text("num", "1000000")
+
+    assert draft.get_grid_combinations_per_fluid() == 2_000_000
+    assert draft.get_projected_rows_per_fluid() == 2_000_000
+    assert draft.get_projected_rows() == 2_000_000
+    assert draft.get_projection_available()
+    assert "exceeds limit 1,000,000" in draft.get_projection_issue()
+    assert not draft.get_locally_valid()
+
+
+def test_property_models_expose_locked_scientific_presentation_roles(
+    application: QCoreApplication,
+) -> None:
+    del application
+    expected = {
+        "specific_enthalpy": ("Specific enthalpy", "h", "J·kg⁻¹"),
+        "specific_entropy": ("Specific entropy", "s", "J·kg⁻¹·K⁻¹"),
+        "specific_internal_energy": ("Specific internal energy", "u", "J·kg⁻¹"),
+        "mass_density": ("Mass density", "ρ", "kg·m⁻³"),
+        "isobaric_specific_heat_capacity": (
+            "Isobaric specific heat capacity",
+            "cₚ",
+            "J·kg⁻¹·K⁻¹",
+        ),
+        "isochoric_specific_heat_capacity": (
+            "Isochoric specific heat capacity",
+            "cᵥ",
+            "J·kg⁻¹·K⁻¹",
+        ),
+        "dynamic_viscosity": ("Dynamic viscosity", "μ", "Pa·s"),
+        "kinematic_viscosity": ("Kinematic viscosity", "ν", "m²·s⁻¹"),
+        "thermal_conductivity": ("Thermal conductivity", "k", "W·m⁻¹·K⁻¹"),
+        "prandtl_number": ("Prandtl number", "Pr", "1"),
+        "speed_of_sound": ("Speed of sound", "a", "m·s⁻¹"),
+        "molar_mass": ("Molar mass", "M", "kg·mol⁻¹"),
+        "critical_temperature": ("Critical temperature", "T<sub>c</sub>", "K"),
+        "critical_pressure": ("Critical pressure", "p<sub>c</sub>", "Pa"),
+        "triple_point_temperature": (
+            "Triple-point temperature",
+            "T<sub>tr</sub>",
+            "K",
+        ),
+        "surface_tension": ("Surface tension", "σ", "N·m⁻¹"),
+    }
+    payload = capabilities()
+    payload["property_catalog"] = [
+        {"name": name, "supported_models": ["heos", "pr", "srk"]} for name in expected
+    ]
+    draft = DatasetDraft()
+    draft.apply_capabilities(payload)
+    draft.load_payload(dataset_payload())
+
+    observed: dict[str, tuple[object, object, object]] = {}
+    for row in range(draft.property_choices.rowCount()):
+        index = draft.property_choices.index(row, 0)
+        name = str(index.data(VALUE_ROLE))
+        observed[name] = (
+            index.data(LABEL_ROLE),
+            index.data(SYMBOL_ROLE),
+            index.data(UNIT_ROLE),
+        )
+        assert index.data(CANONICAL_ROLE) == name
+
+    assert observed == expected
+
+
+class ProjectionBackend:
+    name = "coolprop"
+    model = "heos"
+
+    def canonicalize_fluid(self, fluid: str) -> str:
+        assert fluid == "R290"
+        return "Propane"
+
+    def unsupported_properties(self, _properties: list[str]) -> list[str]:
+        return []
+
+
+@pytest.mark.parametrize(
+    "sampler",
+    [
+        {"kind": "explicit", "values": [280.0, 300.0, 320.0], "unit": "K"},
+        {"kind": "linspace", "start": 280.0, "stop": 320.0, "num": 3, "unit": "K"},
+        {"kind": "stepspace", "start": 280.0, "stop": 320.0, "step": 20.0, "unit": "K"},
+        {"kind": "geomspace", "start": 280.0, "stop": 320.0, "num": 3, "unit": "K"},
+        {
+            "kind": "logspace",
+            "start_exp": 2.45,
+            "stop_exp": 2.5,
+            "num": 3,
+            "base": 10.0,
+            "unit": "K",
+        },
+    ],
+)
+@pytest.mark.parametrize(
+    "mode",
+    ["property_table", "saturation_table", "vapor_mass_fraction_table"],
+)
+def test_gui_projection_matches_production_for_every_sampler_kind_and_mode(
+    application: QCoreApplication,
+    sampler: dict[str, object],
+    mode: str,
+) -> None:
+    del application
+    payload = dataset_payload(mode)
+    grid = payload["grid"]
+    assert isinstance(grid, dict)
+    grid["temperature"] = sampler
+    draft = configured_draft(payload)
+    config = CarnopyConfig.model_validate(payload)
+
+    normalized = normalize_config(config, ProjectionBackend())  # type: ignore[arg-type]
+
+    assert draft.get_projection_available()
+    assert draft.get_projected_rows() == normalized.projected_rows

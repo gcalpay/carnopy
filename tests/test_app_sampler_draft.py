@@ -261,6 +261,76 @@ def test_sampler_reports_stable_invalid_field_without_message_parsing(
     assert draft.get_first_invalid_field() == "dataset.grid.pressure.stop"
 
 
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        ({"kind": "explicit", "values": [1.0, 2.0, 3.0], "unit": "bar"}, 3),
+        ({"kind": "linspace", "start": 1.0, "stop": 5.0, "num": 5, "unit": "bar"}, 5),
+        (
+            {"kind": "stepspace", "start": 1.0, "stop": 5.0, "step": 1.0, "unit": "bar"},
+            5,
+        ),
+        ({"kind": "geomspace", "start": 1.0, "stop": 100.0, "num": 7, "unit": "bar"}, 7),
+        (
+            {
+                "kind": "logspace",
+                "start_exp": 0.0,
+                "stop_exp": 2.0,
+                "num": 9,
+                "base": 10.0,
+                "unit": "bar",
+            },
+            9,
+        ),
+    ],
+)
+def test_sampler_exposes_exact_lightweight_point_count(
+    application: QApplication,
+    payload: dict[str, object],
+    expected: int,
+) -> None:
+    del application
+    draft = SamplerDraft("pressure")
+    draft.load_payload(payload, available_units=["Pa", "bar"])
+
+    assert draft.get_valid()
+    assert draft.get_sample_count() == expected
+
+
+def test_unreachable_stepspace_is_locally_invalid_without_materialization(
+    application: QApplication,
+) -> None:
+    del application
+    draft = SamplerDraft("pressure")
+    draft.load_payload(
+        {"kind": "stepspace", "start": 1.0, "stop": 2.0, "step": 0.3, "unit": "bar"},
+        available_units=["Pa", "bar"],
+    )
+
+    assert not draft.get_valid()
+    assert draft.get_sample_count() == 0
+    assert draft.get_first_invalid_field() == "dataset.grid.pressure.step"
+    assert "not reachable" in draft.get_issue()
+
+
+def test_point_count_notifies_when_valid_count_changes(
+    application: QApplication,
+) -> None:
+    del application
+    draft = SamplerDraft("pressure")
+    draft.load_payload(
+        {"kind": "linspace", "start": 1.0, "stop": 5.0, "num": 5, "unit": "bar"},
+        available_units=["Pa", "bar"],
+    )
+    observed: list[int] = []
+    draft.sample_count_changed.connect(lambda: observed.append(draft.get_sample_count()))
+
+    draft.set_text("num", "7")
+
+    assert observed == [7]
+    assert draft.get_valid()
+
+
 def test_sampler_unit_change_import_stays_lightweight() -> None:
     code = """
 import sys
@@ -270,6 +340,7 @@ draft.load_payload(
     {"kind": "explicit", "values": [1.0], "unit": "bar"},
     available_units=["Pa", "bar"],
 )
+assert draft.sampleCount == 1
 assert draft.requestUnitChange("Pa")
 for name in ("CoolProp", "numpy", "pandas", "pyarrow", "matplotlib"):
     if name in sys.modules:

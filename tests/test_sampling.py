@@ -1,15 +1,21 @@
 from __future__ import annotations
 
+import subprocess
+import sys
+
 import pytest
 from pydantic import ValidationError
 
 from carnopy.sampling.generate import materialize_sampler
 from carnopy.sampling.models import (
+    ExplicitSampler,
     GeomspaceSampler,
     LinspaceSampler,
     LogspaceSampler,
+    Sampler,
     StepspaceSampler,
 )
+from carnopy.sampling.projection import projected_row_count, sampler_point_count
 
 
 def test_stepspace_is_inclusive_and_descending() -> None:
@@ -44,3 +50,57 @@ def test_package_materializer_preserves_lazy_compatibility() -> None:
 
     sampler = LinspaceSampler(kind="linspace", start=1, stop=3, num=3, unit="bar")
     assert package_materialize(sampler) == [1.0, 2.0, 3.0]
+
+
+@pytest.mark.parametrize(
+    "sampler",
+    [
+        ExplicitSampler(kind="explicit", values=[1.0, 2.0, 3.0], unit="bar"),
+        LinspaceSampler(kind="linspace", start=1.0, stop=5.0, num=5, unit="bar"),
+        StepspaceSampler(kind="stepspace", start=1.0, stop=5.0, step=1.0, unit="bar"),
+        GeomspaceSampler(kind="geomspace", start=1.0, stop=100.0, num=5, unit="bar"),
+        LogspaceSampler(
+            kind="logspace",
+            start_exp=0.0,
+            stop_exp=2.0,
+            num=5,
+            base=10.0,
+            unit="bar",
+        ),
+    ],
+)
+def test_lightweight_point_count_matches_production_materialization(
+    sampler: Sampler,
+) -> None:
+    assert sampler_point_count(sampler) == len(materialize_sampler(sampler))
+
+
+@pytest.mark.parametrize(
+    ("mode", "fluid_count", "sampler_counts", "expected"),
+    [
+        ("property_table", 2, [101, 41], 8_282),
+        ("saturation_table", 2, [101], 404),
+        ("vapor_mass_fraction_table", 2, [101, 11], 2_222),
+    ],
+)
+def test_projected_row_count_matches_mode_expansion(
+    mode: str,
+    fluid_count: int,
+    sampler_counts: list[int],
+    expected: int,
+) -> None:
+    assert projected_row_count(mode, fluid_count, sampler_counts) == expected
+
+
+def test_lightweight_projection_import_does_not_import_numpy() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; import carnopy.sampling.projection; assert 'numpy' not in sys.modules",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr

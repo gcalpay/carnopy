@@ -13,6 +13,7 @@ from carnopy.domain.units import validate_axis_unit
 from carnopy.sampling.canonical import (
     CanonicalSamplerKey,
     canonical_sampler_key,
+    canonicalize_sampler,
     convert_sampler_unit,
 )
 from carnopy.sampling.models import (
@@ -23,6 +24,7 @@ from carnopy.sampling.models import (
     Sampler,
     StepspaceSampler,
 )
+from carnopy.sampling.projection import sampler_point_count
 
 SAMPLER_FIELDS: dict[str, tuple[str, ...]] = {
     "explicit": ("values",),
@@ -53,6 +55,7 @@ class SamplerDraft(QObject):
     fields_changed = Signal(name="fieldsChanged")
     available_units_changed = Signal(name="availableUnitsChanged")
     validity_changed = Signal(name="validityChanged")
+    sample_count_changed = Signal(name="sampleCountChanged")
     unitChangeRejected = Signal(str, str)
 
     def __init__(self, axis: str, parent: QObject | None = None) -> None:
@@ -66,6 +69,7 @@ class SamplerDraft(QObject):
         self._valid = False
         self._issue = ""
         self._first_invalid_field = ""
+        self._sample_count = 0
         self._anchor_sampler: Sampler | None = None
         self._anchor_key: CanonicalSamplerKey | None = None
         self._refresh_validity()
@@ -131,6 +135,15 @@ class SamplerDraft(QObject):
         notify=validity_changed,
     )
 
+    def get_sample_count(self) -> int:
+        return self._sample_count
+
+    sampleCount = Property(
+        "qlonglong",  # type: ignore[arg-type]
+        get_sample_count,
+        notify=sample_count_changed,
+    )
+
     @Slot(str, result=str)
     def text(self, field: str) -> str:
         return self._texts.get(field, "")
@@ -159,6 +172,7 @@ class SamplerDraft(QObject):
     ) -> None:
         before = self.raw_state()
         previous_validity = (self._valid, self._issue, self._first_invalid_field)
+        previous_sample_count = self._sample_count
         self.clear_anchor()
         self._available_units = tuple(
             dict.fromkeys(str(value) for value in available_units if str(value))
@@ -187,6 +201,8 @@ class SamplerDraft(QObject):
             self.changed.emit()
         if previous_validity != (self._valid, self._issue, self._first_invalid_field):
             self.validity_changed.emit()
+        if previous_sample_count != self._sample_count:
+            self.sample_count_changed.emit()
 
     def payload(self) -> dict[str, Any]:
         issue = self._validation_issue()
@@ -209,7 +225,7 @@ class SamplerDraft(QObject):
         target = target_unit.strip()
         if target == self._unit:
             return True
-        field, issue = self._validation_result()
+        field, issue, _sample_count = self._validation_result()
         if issue:
             self.unitChangeRejected.emit(
                 self._field_id(field),
@@ -271,7 +287,7 @@ class SamplerDraft(QObject):
         self.changed.emit()
 
     def _refresh_validity(self, *, emit: bool = True) -> None:
-        field, issue = self._validation_result()
+        field, issue, sample_count = self._validation_result()
         valid = not issue
         first_invalid_field = self._field_id(field) if issue else ""
         changed = (valid, issue, first_invalid_field) != (
@@ -279,22 +295,26 @@ class SamplerDraft(QObject):
             self._issue,
             self._first_invalid_field,
         )
+        sample_count_changed = sample_count != self._sample_count
         self._valid = valid
         self._issue = issue
         self._first_invalid_field = first_invalid_field
+        self._sample_count = sample_count
         if emit and changed:
             self.validity_changed.emit()
+        if emit and sample_count_changed:
+            self.sample_count_changed.emit()
 
     def _validation_issue(self) -> str:
         return self._validation_result()[1]
 
-    def _validation_result(self) -> tuple[str, str]:
+    def _validation_result(self) -> tuple[str, str, int]:
         if self._kind not in SAMPLER_FIELDS:
-            return "kind", f"{self._axis} uses an unsupported sampler kind"
+            return "kind", f"{self._axis} uses an unsupported sampler kind", 0
         if not self._unit:
-            return "unit", f"{self._axis} requires a unit"
+            return "unit", f"{self._axis} requires a unit", 0
         if self._available_units and self._unit not in self._available_units:
-            return "unit", f"{self._axis} unit {self._unit!r} is not available"
+            return "unit", f"{self._axis} unit {self._unit!r} is not available", 0
         try:
             if self._kind == "explicit":
                 parts = [part.strip() for part in self._texts["values"].split(",")]
@@ -302,6 +322,7 @@ class SamplerDraft(QObject):
                     return (
                         "values",
                         f"{self._axis} explicit sampler requires comma-separated values",
+                        0,
                     )
                 for part in parts:
                     _finite_float(part, self._axis, "value")
@@ -317,18 +338,20 @@ class SamplerDraft(QObject):
                         )
         except ValueError as exc:
             field = "values" if self._kind == "explicit" else name
-            return field, str(exc)
+            return field, str(exc), 0
         try:
             sampler = self._sampler_model()
-            canonical_sampler_key(self._axis, sampler)
+            canonical = canonicalize_sampler(self._axis, sampler)
+            count = sampler_point_count(canonical)
         except ValidationError as exc:
             error = exc.errors(include_url=False)[0]
             location = error.get("loc", ())
             field = str(location[-1]) if location else SAMPLER_FIELDS[self._kind][0]
-            return field, str(error.get("msg", "invalid sampler"))
+            return field, str(error.get("msg", "invalid sampler")), 0
         except (TypeError, ValueError) as exc:
-            return SAMPLER_FIELDS[self._kind][0], str(exc)
-        return "", ""
+            field = "step" if self._kind == "stepspace" else SAMPLER_FIELDS[self._kind][0]
+            return field, str(exc), 0
+        return "", "", count
 
     def _sampler_model(self) -> Sampler:
         payload = self._payload_without_validation()

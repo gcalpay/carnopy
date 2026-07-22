@@ -14,6 +14,7 @@ LineNumberedTextArea 1.0 components/LineNumberedTextArea.qml
 NavRail 1.0 components/NavRail.qml
 OperationFeedback 1.0 components/OperationFeedback.qml
 PlotEditor 1.0 components/PlotEditor.qml
+PropertySymbol 1.0 components/PropertySymbol.qml
 ResponsiveCardGrid 1.0 components/ResponsiveCardGrid.qml
 StatusBadge 1.0 components/StatusBadge.qml
 ToastHost 1.0 components/ToastHost.qml

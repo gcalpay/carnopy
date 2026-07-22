@@ -76,6 +76,17 @@ Card {
                   "Declared values remain in the selected unit. Exact canonical identity is required for a unit-only change.")
     title: String(draft.axis).replace(/_/g, " ")
 
+    Label {
+        Layout.fillWidth: true
+        color: root.draft.valid ? Theme.success : Theme.danger
+        font.family: Theme.sansFamily
+        font.pixelSize: 11
+        font.weight: Font.Medium
+        objectName: "samplerPointCount-" + String(root.draft.axis)
+        text: root.draft.valid ? qsTr("%1 points").arg(root.draft.sampleCount) : qsTr(
+                                     "Point count unavailable")
+    }
+
     Connections {
         function onAvailableUnitsChanged() {
             root.syncFromDraft();

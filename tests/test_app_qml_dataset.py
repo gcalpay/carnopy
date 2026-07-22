@@ -13,6 +13,7 @@ from PySide6.QtQuick import QQuickItem, QQuickWindow
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
+from carnopy.app.draft_models import VALUE_ROLE
 from carnopy.app.qml_runtime import QmlApplicationRuntime, create_qml_runtime
 from carnopy.app.workspace import initialize_workspace
 from carnopy.templates import template_text
@@ -96,7 +97,7 @@ def _click(root: QQuickWindow, item: QQuickItem) -> None:
 def _set_combo_value(combo: QObject, value: str) -> None:
     count = int(combo.property("count"))
     for row in range(count):
-        candidate = combo.property("model").index(row, 0).data()
+        candidate = combo.property("model").index(row, 0).data(VALUE_ROLE)
         if candidate == value:
             combo.setProperty("currentIndex", row)
             return
@@ -106,7 +107,7 @@ def _set_combo_value(combo: QObject, value: str) -> None:
 def _combo_row(combo: QObject, value: str) -> int:
     count = int(combo.property("count"))
     for row in range(count):
-        if combo.property("model").index(row, 0).data() == value:
+        if combo.property("model").index(row, 0).data(VALUE_ROLE) == value:
             return row
     raise AssertionError(f"missing combo value: {value}")
 
@@ -171,6 +172,49 @@ def test_dataset_local_mutations_flow_through_existing_models(
     assert draft.output_selected("csv") is False
     assert pressure.get_unit() == "kPa"
     assert desktop.dataset_config_controller.get_locally_valid()
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_default_dataset_renders_exact_sampler_and_row_projections(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    assert runtime.controller.request_new_dataset("property_table")
+    root.setWidth(1440)
+    root.setHeight(1600)
+    _process_events()
+
+    assert _visual_item(root, "samplerPointCount-temperature").property("text") == "101 points"
+    assert _visual_item(root, "samplerPointCount-pressure").property("text") == "41 points"
+    assert _visual_item(root, "datasetGridCombinationsPerFluid").property("text") == (
+        "4,141 grid combinations per fluid"
+    )
+    assert _visual_item(root, "datasetProjectedRowsPerFluid").property("text") == (
+        "4,141 projected rows per fluid"
+    )
+    assert _visual_item(root, "datasetProjectedRows").property("text") == (
+        "8,282 projected rows across selected fluids"
+    )
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_property_symbols_use_trusted_markup_and_complete_accessible_names(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    assert runtime.controller.request_new_dataset("property_table")
+    draft = runtime.controller.dataset_draft
+    while draft.selected_property_values():
+        assert draft.remove_property(len(draft.selected_property_values()) - 1)
+    assert draft.add_property("critical_temperature")
+    _process_events()
+
+    symbol = _visual_item(root, "propertySymbol-critical_temperature")
+    assert symbol.property("symbolMarkup") == "T<sub>c</sub>"
+    assert symbol.property("text") == "T<sub>c</sub>"
+    assert symbol.property("accessibleName") == "Critical temperature"
     assert runtime.warning_capture.runtime_warnings == ()
 
 

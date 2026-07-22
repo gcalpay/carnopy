@@ -6,8 +6,10 @@ from collections.abc import Callable
 
 import pytest
 
+import carnopy.config.normalize as normalize_module
 from carnopy.config.models import CarnopyConfig
 from carnopy.config.normalize import canonical_json_bytes, normalize_config
+from carnopy.domain.failures import ConfigError
 from carnopy.provenance import build_identity, sha256_bytes
 from carnopy.sampling.canonical import canonical_sampler_key, canonicalize_sampler
 from carnopy.sampling.models import (
@@ -248,6 +250,43 @@ def test_lightweight_sampler_import_does_not_import_numpy() -> None:
         text=True,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_row_limit_is_rejected_before_sampler_materialization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = CarnopyConfig.model_validate(
+        {
+            "schema_version": 2,
+            "document_type": "dataset",
+            "backend": {"name": "coolprop", "model": "heos"},
+            "mode": "property_table",
+            "fluids": ["Propane"],
+            "grid": {
+                "temperature": {
+                    "kind": "linspace",
+                    "start": 280.0,
+                    "stop": 320.0,
+                    "num": 1_000_000,
+                    "unit": "K",
+                },
+                "pressure": {
+                    "kind": "explicit",
+                    "values": [100_000.0, 200_000.0],
+                    "unit": "Pa",
+                },
+            },
+            "properties": ["mass_density"],
+        }
+    )
+
+    def unexpected_materialization(_sampler: Sampler) -> list[float]:
+        raise AssertionError("oversized projections must fail before array allocation")
+
+    monkeypatch.setattr(normalize_module, "materialize_sampler", unexpected_materialization)
+
+    with pytest.raises(ConfigError, match="2,000,000 exceeds limit 1,000,000"):
+        normalize_config(config, NormalizationBackend())  # type: ignore[arg-type]
 
 
 def _property_config(pressure: Sampler) -> CarnopyConfig:

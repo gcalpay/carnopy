@@ -21,7 +21,9 @@ from carnopy.app.field_ids import (
     DATASET_PROPERTIES,
     dataset_grid_field,
 )
+from carnopy.app.property_presentation import property_presentation
 from carnopy.app.sampler_draft import SamplerDraft
+from carnopy.sampling.projection import MAX_PROJECTED_ROWS, projected_row_count
 from carnopy.templates import template_text
 
 DATASET_OWNED_FIELDS = (
@@ -61,6 +63,7 @@ class DatasetDraft(QObject):
     validity_changed = Signal()
     dirty_changed = Signal()
     reference_advisory_changed = Signal()
+    projection_changed = Signal(name="projectionChanged")
     mode_change_requested = Signal(str)
     message = Signal(str)
 
@@ -81,6 +84,7 @@ class DatasetDraft(QObject):
         self._dataset_formats: tuple[str, ...] = ()
         self._units_by_axis: dict[str, tuple[str, ...]] = {}
         self._fluid_aliases: dict[str, str] = {}
+        self._fluid_supported_models: dict[str, frozenset[str]] = {}
         self._fluid_choice_values: tuple[tuple[str, str], ...] = ()
         self._property_catalog: dict[str, dict[str, Any]] = {}
         self._reference_fields: frozenset[str] = frozenset()
@@ -102,6 +106,12 @@ class DatasetDraft(QObject):
         self._first_invalid_row = -1
         self._dirty = False
         self._reference_advisory = ""
+        self._grid_combinations_per_fluid = 0
+        self._projected_rows_per_fluid = 0
+        self._projected_rows = 0
+        self._projection_available = False
+        self._projection_issue = "No dataset configuration is open."
+        self._projection_field = ""
 
     def get_model_name(self) -> str:
         return self._model_name
@@ -177,6 +187,51 @@ class DatasetDraft(QObject):
         notify=reference_advisory_changed,
     )
 
+    def get_grid_combinations_per_fluid(self) -> int:
+        return self._grid_combinations_per_fluid
+
+    gridCombinationsPerFluid = Property(
+        "qlonglong",  # type: ignore[arg-type]
+        get_grid_combinations_per_fluid,
+        notify=projection_changed,
+    )
+
+    def get_projected_rows_per_fluid(self) -> int:
+        return self._projected_rows_per_fluid
+
+    projectedRowsPerFluid = Property(
+        "qlonglong",  # type: ignore[arg-type]
+        get_projected_rows_per_fluid,
+        notify=projection_changed,
+    )
+
+    def get_projected_rows(self) -> int:
+        return self._projected_rows
+
+    projectedRows = Property(
+        "qlonglong",  # type: ignore[arg-type]
+        get_projected_rows,
+        notify=projection_changed,
+    )
+
+    def get_projection_available(self) -> bool:
+        return self._projection_available
+
+    projectionAvailable = Property(
+        bool,
+        get_projection_available,
+        notify=projection_changed,
+    )
+
+    def get_projection_issue(self) -> str:
+        return self._projection_issue
+
+    projectionIssue = Property(
+        str,
+        get_projection_issue,
+        notify=projection_changed,
+    )
+
     def _constant_model(self, model: QObject) -> QObject:
         return model
 
@@ -237,6 +292,7 @@ class DatasetDraft(QObject):
             for axis, values in (units.items() if isinstance(units, Mapping) else ())
         }
         aliases: dict[str, str] = {}
+        supported_models: dict[str, frozenset[str]] = {}
         choices: list[tuple[str, str]] = []
         fluids = payload.get("fluids")
         if isinstance(fluids, list):
@@ -244,6 +300,12 @@ class DatasetDraft(QObject):
                 if not isinstance(entry, Mapping):
                     continue
                 canonical = str(entry.get("name", ""))
+                models = entry.get("supported_models")
+                supported_models[canonical.casefold()] = (
+                    frozenset(_string_tuple(models))
+                    if isinstance(models, (list, tuple))
+                    else frozenset(self._models)
+                )
                 values = (canonical, *_string_tuple(entry.get("aliases")))
                 for value in values:
                     folded = value.casefold()
@@ -251,6 +313,7 @@ class DatasetDraft(QObject):
                         aliases[folded] = canonical
                         choices.append((value, canonical))
         self._fluid_aliases = aliases
+        self._fluid_supported_models = supported_models
         self._fluid_choice_values = tuple(sorted(choices, key=lambda item: item[0].casefold()))
         properties = payload.get("property_catalog")
         self._property_catalog = {
@@ -608,7 +671,13 @@ class DatasetDraft(QObject):
                 value=value,
                 display=value,
                 canonical=canonical,
+                compatible=self._fluid_supported(canonical),
                 selected=canonical.casefold() in selected_canonical,
+                issue=(
+                    ""
+                    if self._fluid_supported(canonical)
+                    else f"{canonical} is not supported by {self._model_name}."
+                ),
             )
             for value, canonical in self._fluid_choice_values
         )
@@ -617,6 +686,10 @@ class DatasetDraft(QObject):
                 value=value,
                 display=value,
                 canonical=self._fluid_aliases.get(value.casefold(), value),
+                compatible=self._fluid_value_supported(value),
+                issue=(
+                    "" if self._fluid_value_supported(value) else self._fluid_value_issue(value)
+                ),
             )
             for value in self._fluids
         )
@@ -648,14 +721,15 @@ class DatasetDraft(QObject):
         selected_row: bool = False,
     ) -> DraftItem:
         compatible = self._property_supported(name)
+        presentation = property_presentation(name)
         issue = "" if compatible else "Remove this property or select a model that supports it."
         display = (
-            name
+            presentation.label
             if compatible
             else (
-                f"Unsupported by {self._model_name}: {name}"
+                f"Unsupported by {self._model_name}: {presentation.label}"
                 if selected_row
-                else f"{name} — unsupported by {self._model_name}"
+                else f"{presentation.label} — unsupported by {self._model_name}"
             )
         )
         return DraftItem(
@@ -665,6 +739,9 @@ class DatasetDraft(QObject):
             compatible=compatible,
             selected=selected,
             issue=issue,
+            label=presentation.label,
+            symbol=presentation.symbol,
+            unit=presentation.unit,
         )
 
     def _property_supported(self, name: str) -> bool:
@@ -672,7 +749,22 @@ class DatasetDraft(QObject):
         models = metadata.get("supported_models", [])
         return isinstance(models, list) and self._model_name in models
 
+    def _fluid_supported(self, canonical: str) -> bool:
+        models = self._fluid_supported_models.get(canonical.casefold())
+        return models is not None and self._model_name in models
+
+    def _fluid_value_supported(self, value: str) -> bool:
+        canonical = self._fluid_aliases.get(value.casefold())
+        return canonical is not None and self._fluid_supported(canonical)
+
+    def _fluid_value_issue(self, value: str) -> str:
+        canonical = self._fluid_aliases.get(value.casefold())
+        if canonical is None:
+            return f"Unknown fluid or alias: {value}"
+        return f"{canonical} is not supported by {self._model_name}."
+
     def _refresh_derived(self) -> None:
+        self._refresh_projection()
         field, row, issue = self._validation_result()
         self._valid = not issue
         self._issue = issue
@@ -715,8 +807,9 @@ class DatasetDraft(QObject):
             return DATASET_MODEL, -1, "Choose a supported thermodynamic model."
         if self._mode_name not in self._modes:
             return DATASET_MODE, -1, "Choose a supported dataset mode."
-        if not self._fluids:
-            return DATASET_FLUIDS, -1, "Add at least one fluid."
+        fluid_row, fluid_issue, _fluid_count = self._fluid_projection_context()
+        if fluid_issue:
+            return DATASET_FLUIDS, fluid_row, fluid_issue
         expected_axes = _expected_axes(self._mode_name, self._coordinate_name)
         actual_axes = set(self._sampler_by_axis)
         if actual_axes != expected_axes:
@@ -733,6 +826,8 @@ class DatasetDraft(QObject):
             sampler = self._sampler_by_axis.get(axis)
             if sampler is not None and not sampler.get_valid():
                 return sampler.get_first_invalid_field(), -1, sampler.get_issue()
+        if self._projection_issue:
+            return self._projection_field or DATASET_MODE, -1, self._projection_issue
         if not self._properties:
             return DATASET_PROPERTIES, -1, "Add at least one property."
         if not self._selected_formats:
@@ -747,6 +842,98 @@ class DatasetDraft(QObject):
             )
         return "", -1, ""
 
+    def _refresh_projection(self) -> None:
+        grid_combinations = 0
+        projected_per_fluid = 0
+        projected_rows = 0
+        available = False
+        issue = ""
+        field = ""
+
+        if not self._loaded:
+            issue = "No dataset configuration is open."
+        elif self._mode_name not in self._modes:
+            issue = "Choose a supported dataset mode."
+            field = DATASET_MODE
+        else:
+            expected_axes = _expected_axes(self._mode_name, self._coordinate_name)
+            actual_axes = set(self._sampler_by_axis)
+            if actual_axes != expected_axes:
+                missing = next(
+                    (axis for axis in GRID_AXIS_ORDER if axis in expected_axes - actual_axes),
+                    self._coordinate_name,
+                )
+                field = dataset_grid_field(missing, "kind")
+                issue = f"{self._mode_name} has an incomplete sampling grid."
+            else:
+                counts: list[int] = []
+                for axis in GRID_AXIS_ORDER:
+                    sampler = self._sampler_by_axis.get(axis)
+                    if sampler is None:
+                        continue
+                    if not sampler.get_valid() or sampler.get_sample_count() <= 0:
+                        field = sampler.get_first_invalid_field()
+                        issue = sampler.get_issue()
+                        break
+                    counts.append(sampler.get_sample_count())
+                if not issue:
+                    grid_combinations = projected_row_count("property_table", 1, counts)
+                    projected_per_fluid = projected_row_count(self._mode_name, 1, counts)
+                    _fluid_row, fluid_issue, fluid_count = self._fluid_projection_context()
+                    if fluid_issue:
+                        field = DATASET_FLUIDS
+                        issue = fluid_issue
+                    else:
+                        projected_rows = projected_row_count(
+                            self._mode_name,
+                            fluid_count,
+                            counts,
+                        )
+                        available = True
+                        if projected_rows > MAX_PROJECTED_ROWS:
+                            field = self._projection_count_field()
+                            issue = (
+                                f"Projected row count {projected_rows:,} exceeds limit "
+                                f"{MAX_PROJECTED_ROWS:,}."
+                            )
+
+        self._grid_combinations_per_fluid = grid_combinations
+        self._projected_rows_per_fluid = projected_per_fluid
+        self._projected_rows = projected_rows
+        self._projection_available = available
+        self._projection_issue = issue
+        self._projection_field = field
+
+    def _fluid_projection_context(self) -> tuple[int, str, int]:
+        if not self._fluids:
+            return -1, "Add at least one fluid.", 0
+        canonical_values: set[str] = set()
+        for row, value in enumerate(self._fluids):
+            canonical = self._fluid_aliases.get(value.casefold())
+            if canonical is None:
+                return row, f"Unknown fluid or alias: {value}", 0
+            folded = canonical.casefold()
+            if folded in canonical_values:
+                return row, f"Fluid aliases resolve to duplicate canonical fluid: {canonical}", 0
+            if not self._fluid_supported(canonical):
+                return row, f"{canonical} is not supported by {self._model_name}.", 0
+            canonical_values.add(folded)
+        return -1, "", len(canonical_values)
+
+    def _projection_count_field(self) -> str:
+        fields = {
+            "explicit": "values",
+            "linspace": "num",
+            "stepspace": "step",
+            "geomspace": "num",
+            "logspace": "num",
+        }
+        for axis in reversed(GRID_AXIS_ORDER):
+            sampler = self._sampler_by_axis.get(axis)
+            if sampler is not None:
+                return dataset_grid_field(axis, fields.get(sampler.get_kind(), "kind"))
+        return DATASET_MODE
+
     def _observable_state(self) -> tuple[object, ...]:
         return (
             self._model_name,
@@ -758,6 +945,14 @@ class DatasetDraft(QObject):
             self._first_invalid_row,
             self._dirty,
             self._reference_advisory,
+            (
+                self._grid_combinations_per_fluid,
+                self._projected_rows_per_fluid,
+                self._projected_rows,
+                self._projection_available,
+                self._projection_issue,
+                self._projection_field,
+            ),
             self.raw_state(),
         )
 
@@ -775,6 +970,8 @@ class DatasetDraft(QObject):
             self.dirty_changed.emit()
         if previous[8] != current[8]:
             self.reference_advisory_changed.emit()
+        if previous[9] != current[9]:
+            self.projection_changed.emit()
 
 
 def dataset_owned_payload(payload: Mapping[str, object]) -> dict[str, Any]:

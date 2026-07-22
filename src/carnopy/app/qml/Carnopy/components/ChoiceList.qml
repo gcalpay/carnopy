@@ -14,6 +14,7 @@ Item {
     property string noun: qsTr("item")
     property bool allowMove: true
     property bool locked: false
+    property bool showPropertyPresentation: false
 
     signal addRequested(string value)
     signal moveRequested(int row, int offset)
@@ -86,12 +87,15 @@ Item {
                 required property string display
                 required property int index
                 required property string issue
+                required property string label
+                required property string symbol
+                required property string unit
                 required property string value
 
                 border.color: issue.length > 0 ? Theme.danger : Theme.border
                 border.width: 1
                 color: Theme.surfaceRaised
-                height: 42
+                height: root.showPropertyPresentation ? 48 : 42
                 radius: Theme.radiusSmall
                 width: ListView.view.width
 
@@ -107,7 +111,27 @@ Item {
                         elide: Text.ElideRight
                         font.family: Theme.sansFamily
                         font.pixelSize: 12
-                        text: selectedRow.display
+                        text: root.showPropertyPresentation && selectedRow.label.length > 0
+                              ? selectedRow.label : selectedRow.display
+                    }
+
+                    PropertySymbol {
+                        Layout.preferredWidth: 34
+                        accessibleName: selectedRow.label
+                        objectName: "propertySymbol-" + selectedRow.value
+                        symbolMarkup: selectedRow.symbol
+                        visible: root.showPropertyPresentation && selectedRow.symbol.length > 0
+                    }
+
+                    Label {
+                        Layout.preferredWidth: 92
+                        color: Theme.textMuted
+                        elide: Text.ElideRight
+                        font.family: Theme.sansFamily
+                        font.pixelSize: 11
+                        horizontalAlignment: Text.AlignRight
+                        text: selectedRow.unit
+                        visible: root.showPropertyPresentation && selectedRow.unit.length > 0
                     }
 
                     AppButton {

@@ -23,6 +23,9 @@ SELECTED_ROLE = VALUE_ROLE + 3
 ISSUE_ROLE = VALUE_ROLE + 4
 AXIS_ROLE = VALUE_ROLE + 5
 DRAFT_ROLE = VALUE_ROLE + 6
+LABEL_ROLE = VALUE_ROLE + 7
+SYMBOL_ROLE = VALUE_ROLE + 8
+UNIT_ROLE = VALUE_ROLE + 9
 INVALID_INDEX = QModelIndex()
 
 
@@ -34,6 +37,9 @@ class DraftItem:
     compatible: bool = True
     selected: bool = False
     issue: str = ""
+    label: str = ""
+    symbol: str = ""
+    unit: str = ""
 
 
 class DraftListModel(QAbstractListModel):
@@ -103,6 +109,9 @@ class DraftListModel(QAbstractListModel):
             COMPATIBLE_ROLE: item.compatible,
             SELECTED_ROLE: item.selected,
             ISSUE_ROLE: item.issue,
+            LABEL_ROLE: item.label,
+            SYMBOL_ROLE: item.symbol,
+            UNIT_ROLE: item.unit,
         }
         return values.get(role)
 
@@ -125,6 +134,9 @@ class DraftListModel(QAbstractListModel):
             COMPATIBLE_ROLE: QByteArray(b"compatible"),
             SELECTED_ROLE: QByteArray(b"selected"),
             ISSUE_ROLE: QByteArray(b"issue"),
+            LABEL_ROLE: QByteArray(b"label"),
+            SYMBOL_ROLE: QByteArray(b"symbol"),
+            UNIT_ROLE: QByteArray(b"unit"),
         }
 
 
@@ -199,4 +211,7 @@ def _item_structure(item: DraftItem) -> tuple[object, ...]:
         item.canonical,
         item.compatible,
         item.issue,
+        item.label,
+        item.symbol,
+        item.unit,
     )

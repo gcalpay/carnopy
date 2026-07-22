@@ -41,6 +41,10 @@ Item {
         return -1;
     }
 
+    function formatCount(value) {
+        return Number(value).toLocaleString(Qt.locale("en_US"), "f", 0);
+    }
+
     function syncChoices() {
         modelChoice.currentIndex = indexForValue(modelChoice, root.datasetDraft.modelName);
         modeChoice.currentIndex = indexForValue(modeChoice, root.datasetDraft.modeName);
@@ -358,6 +362,7 @@ Item {
                         onMoveRequested: (row, offset) => root.propertyMoveRequested(row, offset)
                         onRemoveRequested: row => root.propertyRemoveRequested(row)
                         selectedModel: root.datasetDraft.selectedProperties
+                        showPropertyPresentation: true
                     }
                 }
 
@@ -396,6 +401,59 @@ Item {
                                 text: parent.display
                             }
                         }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 1
+                        color: Theme.border
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        color: Theme.textMuted
+                        font.family: Theme.sansFamily
+                        font.pixelSize: 11
+                        objectName: "datasetGridCombinationsPerFluid"
+                        text: qsTr("%1 grid combinations per fluid").arg(root.formatCount(
+                                                                             root.datasetDraft.gridCombinationsPerFluid))
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        color: Theme.textMuted
+                        font.family: Theme.sansFamily
+                        font.pixelSize: 11
+                        objectName: "datasetProjectedRowsPerFluid"
+                        text: qsTr("%1 projected rows per fluid").arg(root.formatCount(
+                                                                          root.datasetDraft.projectedRowsPerFluid))
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        color: root.datasetDraft.projectionIssue.length > 0 ? Theme.danger :
+                                                                              Theme.success
+                        font.family: Theme.sansFamily
+                        font.pixelSize: 12
+                        font.weight: Font.Medium
+                        objectName: "datasetProjectedRows"
+                        text: root.datasetDraft.projectionAvailable ? qsTr(
+                                                                          "%1 projected rows across selected fluids").arg(
+                                                                          root.formatCount(
+                                                                              root.datasetDraft.projectedRows)) :
+                                                                      qsTr("Projected rows unavailable")
+                        wrapMode: Text.Wrap
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        color: Theme.danger
+                        font.family: Theme.sansFamily
+                        font.pixelSize: 11
+                        objectName: "datasetProjectionIssue"
+                        text: root.datasetDraft.projectionIssue
+                        visible: text.length > 0
+                        wrapMode: Text.Wrap
                     }
 
                     Label {
