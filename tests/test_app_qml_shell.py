@@ -201,6 +201,16 @@ def test_shell_breakpoints_adapt_rail_inspector_and_card_columns_without_mutatin
     overview = root.findChild(QObject, "workspaceOverviewGrid")
     assert overview is not None
     assert overview.property("columnCount") == root.property("cardColumnCount")
+    _set_size(root, 1440, 900)
+    card_heights = {
+        _visible_item(root, object_name).height()
+        for object_name in (
+            "createWorkspaceCard",
+            "initializeWorkspaceCard",
+            "openWorkspaceCard",
+        )
+    }
+    assert len(card_heights) == 1
     assert runtime.warning_capture.runtime_warnings == ()
 
 
@@ -440,6 +450,83 @@ def test_theme_motion_and_local_pages_bind_to_one_settings_controller(
     assert runtime.warning_capture.runtime_warnings == ()
 
 
+def test_header_appearance_controls_follow_docked_and_responsive_layouts(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    settings = runtime.controller.qml_settings
+    settings.set_inspector_collapsed(False)
+    settings.set_theme_mode("system")
+    _set_size(root, 1440, 900)
+
+    docked = root.findChild(QQuickItem, "dockedAppearanceSelector")
+    command = root.findChild(QQuickItem, "commandAppearanceSelector")
+    inspector = root.findChild(QQuickItem, "persistentContextInspector")
+    assert docked is not None
+    assert command is not None
+    assert inspector is not None
+    assert docked.isVisible()
+    assert not command.isVisible()
+    assert docked.mapToScene(QPointF(0, 0)).x() == inspector.mapToScene(QPointF(0, 0)).x()
+    assert _visible_item(root, "appearanceLightButton").isVisible()
+    assert _visible_item(root, "appearanceWarmButton").isVisible()
+    assert _visible_item(root, "appearanceDarkButton").isVisible()
+    assert _visible_item(root, "appearanceAutoMarker").isVisible()
+
+    _mouse_click(root, _visible_item(root, "appearanceWarmButton"))
+    assert settings.get_theme_mode() == "warm"
+    assert settings.get_effective_theme() == "warm"
+    assert not tuple(
+        item for item in _visual_items(root, "appearanceAutoMarker") if item.isVisible()
+    )
+
+    settings.set_inspector_collapsed(True)
+    _process_events()
+    assert not docked.isVisible()
+    assert command.isVisible()
+    _mouse_click(root, _visible_item(root, "appearanceLightButton"))
+    assert settings.get_theme_mode() == "light"
+
+    _set_size(root, 768, 768)
+    assert _visible_item(root, "appearanceMenuButton").isVisible()
+    assert not tuple(
+        item
+        for name in (
+            "appearanceLightButton",
+            "appearanceWarmButton",
+            "appearanceDarkButton",
+        )
+        for item in _visual_items(root, name)
+        if item.isVisible()
+    )
+    _activate(_visible_item(root, "appearanceMenuButton"))
+    _activate(_visible_item(root, "appearanceDarkMenuItem"))
+    assert settings.get_theme_mode() == "dark"
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_settings_exposes_system_light_warm_and_dark_modes(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    assert root.setProperty("currentPage", "settings")
+    _process_events()
+
+    expected = {
+        "systemThemeButton": "System",
+        "lightThemeButton": "Light",
+        "warmThemeButton": "Warm",
+        "darkThemeButton": "Dark",
+    }
+    for object_name, label in expected.items():
+        button = root.findChild(QObject, object_name)
+        assert button is not None
+        assert button.property("text") == label
+
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
 def test_page_scrolling_avoids_layout_animation_and_reports_motion_mode(
     runtime: QmlApplicationRuntime,
 ) -> None:
@@ -490,7 +577,7 @@ def test_dark_theme_basic_control_labels_use_carnopy_palette(
         assert control is not None
         content = control.property("contentItem")
         assert isinstance(content, QObject)
-        assert content.property("color") == QColor("#f0f5f8")
+        assert content.property("color") == QColor("#f1f4f2")
 
     assert runtime.warning_capture.runtime_warnings == ()
 

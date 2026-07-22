@@ -8,12 +8,13 @@ Button {
 
     property string tone: "secondary"
     property string iconName: ""
+    property color iconColor: foregroundColor
     property bool compact: false
     property color foregroundColor: {
         if (!control.enabled)
             return Theme.textSubtle;
         if (control.tone === "primary")
-            return "#ffffff";
+            return Theme.highlightedText;
         if (control.tone === "quiet")
             return Theme.textMuted;
         return Theme.text;
@@ -34,7 +35,7 @@ Button {
 
         AppIcon {
             Layout.alignment: Qt.AlignVCenter
-            iconColor: control.foregroundColor
+            iconColor: control.iconColor
             iconSize: 18
             name: control.iconName
             visible: name.length > 0

@@ -6,6 +6,26 @@
     "packaged_path": "branding/carnopy-mark.png",
     "sha256": "7c01f9c7f8fe12f98acc2063396a9af615a5a6eba30e995e4f86bc4fd8155fcc"
   },
+  "first_party_resources": [
+    {
+      "name": "Carnopy Light appearance icon",
+      "source": "approved GUI-2 Stage 2 appearance reference",
+      "packaged_path": "icons/appearance-light.svg",
+      "sha256": "5ef8e8a2860724e4c8a6c68e623d48c146c1e449438f5c9e93e8fedcb06a891a"
+    },
+    {
+      "name": "Carnopy Warm appearance icon",
+      "source": "approved GUI-2 Stage 2 appearance reference",
+      "packaged_path": "icons/appearance-warm.svg",
+      "sha256": "9dea92a331e6e4b3022498ac2ced90ef95fb1f33483f32f328daa3343f2bd72e"
+    },
+    {
+      "name": "Carnopy Dark appearance icon",
+      "source": "approved GUI-2 Stage 2 appearance reference",
+      "packaged_path": "icons/appearance-dark.svg",
+      "sha256": "a5375b7e996493d8469ebaadcdf97d4221a41f1aa4d0bed34e6da73efd70184b"
+    }
+  ],
   "third_party_projects": [
     {
       "name": "IBM Plex",

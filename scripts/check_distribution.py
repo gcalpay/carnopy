@@ -33,6 +33,7 @@ QML_SHELL_APP_FILES = {
     "qml/Carnopy/Theme.qml",
     "qml/Carnopy/qmldir",
     "qml/Carnopy/components/AppButton.qml",
+    "qml/Carnopy/components/AppearanceSelector.qml",
     "qml/Carnopy/components/AppComboBox.qml",
     "qml/Carnopy/components/AppIcon.qml",
     "qml/Carnopy/components/BlockingBanner.qml",
@@ -61,6 +62,9 @@ QML_SHELL_APP_FILES = {
     "qml/Carnopy/pages/VisualizationPage.qml",
     "qml/Carnopy/pages/YamlPreviewPage.qml",
     "resources/icons/activity.svg",
+    "resources/icons/appearance-dark.svg",
+    "resources/icons/appearance-light.svg",
+    "resources/icons/appearance-warm.svg",
     "resources/icons/box.svg",
     "resources/icons/chart-spline.svg",
     "resources/icons/circle-question-mark.svg",
@@ -399,6 +403,17 @@ def resource_manifest_entries(content: bytes) -> dict[str, str]:
         if not isinstance(branding.get(key), str) or not branding[key]:
             raise ValueError(f"branding.{key} must be a non-empty string")
     add_record(branding, label="branding")
+    first_party = manifest.get("first_party_resources")
+    if not isinstance(first_party, list) or not first_party:
+        raise ValueError("packaged resource manifest must list first-party resources")
+    for resource_index, resource in enumerate(first_party):
+        label = f"first_party_resources[{resource_index}]"
+        if not isinstance(resource, dict):
+            raise ValueError(f"{label} must be an object")
+        for key in ("name", "source"):
+            if not isinstance(resource.get(key), str) or not resource[key]:
+                raise ValueError(f"{label}.{key} must be a non-empty string")
+        add_record(resource, label=label)
     projects = manifest.get("third_party_projects")
     if not isinstance(projects, list) or not projects:
         raise ValueError("packaged resource manifest must list third-party projects")

@@ -20,9 +20,10 @@ from PySide6.QtCore import (
     QRect,
     QSettings,
     QSize,
+    Qt,
     QTimer,
 )
-from PySide6.QtGui import QScreen, QWindow
+from PySide6.QtGui import QColor, QPalette, QScreen, QWindow
 from PySide6.QtQml import QQmlError
 from PySide6.QtWidgets import QApplication
 
@@ -64,7 +65,7 @@ def test_packaged_resource_manifest_matches_every_installed_byte() -> None:
     assert records == manifest_records()
     assert {record.owner for record in records} == {"Carnopy", "IBM Plex", "Lucide"}
     assert len({record.packaged_path for record in records}) == len(records)
-    assert len(records) == 28
+    assert len(records) == 31
 
     manifest = json.loads(packaged_path(MANIFEST_PATH).read_text(encoding="utf-8"))
     assert manifest["schema_version"] == 1
@@ -76,11 +77,19 @@ def test_packaged_resource_manifest_matches_every_installed_byte() -> None:
     assert projects["IBM Plex"]["license_expression"] == "OFL-1.1"
     assert projects["Lucide"]["revision"] == ("1.24.0 (b5b5d95933790a311aa6b7ed232fc8469934acdf)")
     assert projects["Lucide"]["license_expression"] == "ISC AND MIT"
+    first_party_paths = {
+        f"resources/{entry['packaged_path']}" for entry in manifest["first_party_resources"]
+    }
+    assert first_party_paths == {
+        "resources/icons/appearance-dark.svg",
+        "resources/icons/appearance-light.svg",
+        "resources/icons/appearance-warm.svg",
+    }
     assert {
         f"resources/{record.packaged_path}"
         for record in records
         if record.owner == "Lucide" and record.packaged_path.startswith("icons/")
-    } == set(MANDATORY_ICON_FILES)
+    } == set(MANDATORY_ICON_FILES) - first_party_paths
     assert all(packaged_path(path).is_file() for path in MANDATORY_QML_FILES)
 
 
@@ -118,6 +127,45 @@ def test_private_qml_runtime_loads_one_warning_free_root(
         loop.exec()
     assert not runtime.controller.request_coordinator.is_busy
     assert runtime.close()
+    assert runtime._font_ids == []
+    application.processEvents()
+
+
+def test_qml_runtime_applies_each_theme_palette_immediately_and_restores_it(
+    application: QApplication,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    previous = QPalette(application.palette())
+    settings = QSettings(str(tmp_path / "palette.ini"), QSettings.Format.IniFormat)
+    runtime = create_qml_runtime(settings=settings, application_arguments=[])
+    controller = runtime.controller.qml_settings
+    root = runtime.engine.rootObjects()[0]
+
+    assert controller.get_theme_mode() == "dark"
+    assert application.palette().color(QPalette.ColorRole.Window) == QColor("#0f0f0f")
+    assert root.property("color") == QColor("#0f0f0f")
+
+    controller.set_theme_mode("warm")
+    assert application.palette().color(QPalette.ColorRole.Window) == QColor("#f2dfbd")
+    assert application.palette().color(QPalette.ColorRole.Highlight) == QColor("#0b7650")
+    assert application.palette().color(QPalette.ColorRole.HighlightedText) == QColor("#ffffff")
+    assert root.property("color") == QColor("#f2dfbd")
+
+    controller.set_theme_mode("light")
+    assert application.palette().color(QPalette.ColorRole.Window) == QColor("#f3f5f4")
+    assert root.property("color") == QColor("#f3f5f4")
+
+    controller.set_theme_mode("system")
+    replacement = "dark" if controller.get_effective_theme() == "light" else "light"
+    monkeypatch.setattr(controller, "_resolve_effective_theme", lambda: replacement)
+    controller._system_theme_changed(Qt.ColorScheme.Dark)
+    expected_canvas = "#0f0f0f" if replacement == "dark" else "#f3f5f4"
+    assert application.palette().color(QPalette.ColorRole.Window) == QColor(expected_canvas)
+    assert root.property("color") == QColor(expected_canvas)
+
+    assert runtime.close()
+    assert application.palette() == previous
     assert runtime._font_ids == []
     application.processEvents()
 
@@ -432,4 +480,4 @@ def test_qml_sources_pass_non_writing_qt_tooling() -> None:
         timeout=30,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
-    assert completed.stdout == "QML checks passed for 30 file(s).\n"
+    assert completed.stdout == "QML checks passed for 31 file(s).\n"

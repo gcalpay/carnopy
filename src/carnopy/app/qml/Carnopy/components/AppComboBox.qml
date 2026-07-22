@@ -12,7 +12,7 @@ ComboBox {
     palette.button: Theme.surfaceRaised
     palette.buttonText: Theme.text
     palette.highlight: Theme.primary
-    palette.highlightedText: "#ffffff"
+    palette.highlightedText: Theme.highlightedText
     palette.text: Theme.text
     palette.window: Theme.surfaceRaised
 
@@ -38,7 +38,8 @@ ComboBox {
         width: ListView.view.width
 
         contentItem: Label {
-            color: rowDelegate.highlighted || rowDelegate.hovered ? "#ffffff" : Theme.text
+            color: rowDelegate.highlighted || rowDelegate.hovered ? Theme.highlightedText :
+                                                                    Theme.text
             elide: Text.ElideRight
             font.family: Theme.sansFamily
             font.pixelSize: 12

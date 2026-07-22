@@ -14,11 +14,22 @@ for unfinished GUI-2 work and stage acceptance.
 
 - `0.1.0a3` is the published baseline and contains the completed Qt Widgets
   GUI-1 application.
-- GUI-2 targets `0.1.0a4.dev0` during development and `0.1.0a4` for release.
+- The first GUI-2 release line uses `0.1.0a4.dev0` during development and
+  `0.1.0a4` for the post-Stage-3 alpha release.
 - `carnopy-gui` and `carnopy-app` will both launch one QML application in
   `0.1.0a4`.
 - Widgets remain temporarily as a parity oracle, then are removed before the
   release. GUI-2 will not ship a frontend selector or two desktop applications.
+- Stage 2 completion is not the `0.1.0a4` release boundary. Step 19 activates
+  Stage 3 while both public launchers still use Widgets. `0.1.0a4` is planned
+  after Stage 3 reaches tested GUI-1 capability parity, switches both public
+  launchers to QML, removes the obsolete Widgets presentation, and passes the
+  bounded alpha-release gate recorded below. It does not wait for Stages 4
+  through 8. No calendar date is committed.
+- `0.1.0a4` deliberately contains the existing `0.1.0a3` desktop workflows in
+  the modern QML application; it does not promise the later sweep/preparation
+  expansion or native 3D. Stages 4 through 8 belong to later alpha release
+  planning.
 - The `app` extra means the cross-platform QML application. The optional `3d`
   extra adds native VTK rendering to that same application. It is not a second
   GUI.
@@ -81,12 +92,12 @@ promises require maintainer approval.
 | 0 | Complete | Qualify the native Qt Quick and VTK bridge |
 | 1 | Complete | Establish request ownership and dataset desktop controllers |
 | 2 | Active | Add the modern QML workspace and dataset workflow |
-| 3 | Pending | Reach GUI-1 parity and retire Widgets |
+| 3 | Pending | Reach GUI-1 parity, retire Widgets, and qualify `0.1.0a4` |
 | 4 | Pending | Add controlled sweep and preparation worker operations |
 | 5 | Pending | Add structured sweep and preparation QML workflows |
 | 6 | Pending | Build exact emitted-value 3D scenes |
 | 7 | Pending | Add native interactive 3D to the QML application |
-| 8 | Pending | Qualify packaging, platforms, documentation, and release readiness |
+| 8 | Pending | Qualify native 3D packaging, platforms, and a later release |
 
 ## Stage 0: Native feasibility gate
 
@@ -287,10 +298,11 @@ line. Installed app and `all` wheel smokes must exercise both the unchanged
 public Widgets launcher and the private QML entrypoint.
 
 Stage 2 cross-platform coverage is an early source and installed-resource smoke
-gate for this bounded workflow. It does not replace Stage 8's complete release
-qualification across installed distributions, all supported Python and
-operating-system combinations, optional capabilities, native resources,
-security, and publication rehearsal.
+gate for this bounded workflow. It does not by itself qualify `0.1.0a4`; the
+bounded post-Stage-3 gate owns that decision. It also does not replace Stage
+8's later native-3D qualification across installed distributions, applicable
+Python and operating-system combinations, native resources, security, and
+publication rehearsal.
 
 ### Controller ownership and private interfaces
 
@@ -324,7 +336,7 @@ security, and publication rehearsal.
   or scientific identity definitions. The definition-first sampler correction
   below may change normalized bytes for representations that were not previously
   unit-invariant; it must make equivalent canonical sampler keys identical. The
-  only approved additive public configuration change is the Commit 8 sampler
+  only approved additive public configuration change is the Step 8 sampler
   unit and starter-template extension recorded below.
 
 ### Workspace and document workflow
@@ -492,7 +504,7 @@ is authoritative for the remaining Stage 2 visual work. Its SHA-256 is
 It is a documentation reference, not a packaged runtime resource or application
 data source. The following decisions supersede conflicting palette, appearance,
 or completion wording earlier in this Stage 2 record without rewriting the
-implemented history of Commits 1 through 10.
+implemented history of Steps 1 through 10.
 
 #### Palette, motion, and native window
 
@@ -703,40 +715,65 @@ booleans.
 
 ### Stage 2 delivery and acceptance
 
-Use this exact commit sequence. Each implementation commit must be independently
+The delivery hierarchy is `stage → step → commit`. A stage contains multiple
+bounded implementation steps, and a step may require more than one Git commit.
+The conventional-commit text attached to each numbered step below is the
+recommended primary commit message, not the step's identity.
+
+Use this exact step sequence. Each implementation step must be independently
 reviewable and must pass its focused gate before the next begins.
 
 Documentation synchronization is part of every implementation boundary. Before
 each implementation handoff, update this section's current-status record and
 every permanent document made stale by the change. Include those edits in the
-same coherent implementation commit unless this sequence explicitly assigns a
-separate documentation-only boundary. Do not leave status recording until the
-maintainer notices a stale plan. When no permanent document changes, the
-handoff must say which documents were reviewed and why they remain accurate.
-This requirement does not make Graphify refresh mandatory; public graph
-artifacts retain the separate intentional-refresh policy below.
+same coherent implementation step, normally in its final commit, unless this
+sequence explicitly assigns a separate documentation-only boundary. Do not
+leave status recording until the maintainer notices a stale plan. When no
+permanent document changes, the handoff must say which documents were reviewed
+and why they remain accurate. This requirement does not make Graphify refresh
+mandatory; public graph artifacts retain the separate intentional-refresh
+policy below.
 
-After Commit 3 and before Commit 4, complete the ignored design-reference gate.
+Verification is proportional to the boundary. Run focused static and behavioral
+checks while implementing a step, then run the complete repository,
+distribution, and preflight gates once at the stage-acceptance boundary unless a
+failure or cross-cutting change requires an earlier full run. Do not repeatedly
+run `pytest` and then `preflight.py` in one intermediate turn merely to execute
+the same suite twice. When the only remaining work is a long aggregate gate,
+the handoff may give the exact command to the maintainer instead of consuming an
+interactive implementation turn; acceptance still waits for the reported
+result.
+
+Every implementation handoff must also recommend the parent model and reasoning
+effort for the next step from the exact locally approved ladder. The
+recommendation is advisory: the maintainer selects the setting before work
+continues, and the agent must not change it silently. Base the recommendation on
+the next step's actual difficulty, write/read scope, scientific risk, and
+cross-file coupling rather than on the effort used for the completed step.
+Project subagents retain their separately pinned profiles; this handoff rule
+does not override them.
+
+After Step 3 and before Step 4, complete the ignored design-reference gate.
 That gate selected Precision Grid, retained only the numbered next-steps
 progression as a named borrowed element, selected moderately expressive motion,
 and approved `minimal-green-v1.png` unchanged as a provisional packaged mark.
 The generated vector candidates were rejected and final logo refinement was
-  deferred. This completed gate does not reopen the settled layout, scope, Qt,
-  packaging, workflow, or scientific decisions.
+deferred. This completed gate does not reopen the settled layout, scope, Qt,
+packaging, workflow, or scientific decisions.
 
-Current implementation status as of 2026-07-22:
+Current implementation status as of 2026-07-23:
 
-- Commits 1 through 4 are implemented in the Stage 2 branch history. The design
-  and branding gate required between Commits 3 and 4 is complete under the
+- Steps 1 through 4 are implemented in the Stage 2 branch history. The design
+  and branding gate required between Steps 3 and 4 is complete under the
   provisional-logo decision recorded above.
-- The Commit 5 boundary is implemented and its focused verification passes. It
+- The Step 5 boundary is implemented and its focused verification passes. It
   provides the shared-QSettings appearance controller, Precision Grid design
   tokens, the responsive wide/compact/narrow shell, persistent wide-layout rail
   and inspector preferences, clamped window geometry, moderately expressive
   reduced-motion-aware transitions, the exact locked navigation names, disabled
   future-workflow affordances, Settings and Help pages, the used Lucide resource
   inventory, and focused QML/runtime/distribution regressions.
-- The Commit 6 boundary is implemented and its focused and repository-wide
+- The Step 6 boundary is implemented and its focused and repository-wide
   verification passes. It adds the authoritative unavailable/loading/landing/
   editing workspace state, direct recent-workspace model binding, correct
   parent-plus-new-name and expert-path Create flows, existing-folder Initialize
@@ -816,7 +853,7 @@ Current implementation status as of 2026-07-22:
   rejected only because the capability worker is active clears that transient
   message when the worker becomes idle; persistent operation errors remain
   visible.
-- The Commit 7 boundary is implemented and its focused and repository-wide
+- The Step 7 boundary is implemented and its focused and repository-wide
   automated verification passes. The three workspace mode cards now create real
   template-backed documents, worker-authoritative Import opens validated
   configurations, Dataset navigation activates only for an open document, and
@@ -876,14 +913,14 @@ Current implementation status as of 2026-07-22:
   require a compatible recorded backend, model, version, and reference-state
   context. A future backend cannot silently reuse this label without providing
   its own explicit policy metadata.
-- Commit 7 verification includes the 22-file non-writing QML format/lint gate,
+- Step 7 verification includes the 22-file non-writing QML format/lint gate,
   warning-free engine and interaction tests, exact success and rejection
   families for every sampler kind, anchor lifecycle and structured-field
   regressions, unchanged Widgets bindings, full Ruff and mypy gates, 673 passing
   repository tests, `preflight.py`, and environment compatibility checking.
   Native human inspection of the Dataset page and both successful and rejected
   unit toggles remains required before the maintainer accepts this commit.
-- The separately approved Commit 8 boundary is implemented in the Stage 2
+- The separately approved Step 8 boundary is implemented in the Stage 2
   branch history.
   Public input units now additionally accept `hPa` and `atm` through the same
   exact sampler canonicalization boundary. Packaged starters
@@ -891,7 +928,7 @@ Current implementation status as of 2026-07-22:
   and Parquet, the approved 101-by-41 property grid whose pressure axis is
   101325 through 506625 Pa (exactly 1 through 5 atm), 101-point saturation
   coordinate, and 101-by-11 vapor-fraction grid.
-- Commit 8 verification includes exact new-unit canonical-key and production
+- Step 8 verification includes exact new-unit canonical-key and production
   identity regressions, worker/QML capability projection, starter-template and
   safe-toggle tests, all static gates, and 686 passing repository tests,
   `preflight.py`, and environment compatibility checking. Authoritative CLI
@@ -899,7 +936,7 @@ Current implementation status as of 2026-07-22:
   vapor-fraction rows. Non-repository rehearsal generation completed all three
   starters with zero invalid rows; the final atmospheric property starter was
   regenerated separately with all 8,282 rows valid.
-- The Commit 9 boundary is implemented in the Stage 2 branch history. The QML
+- The Step 9 boundary is implemented in the Stage 2 branch history. The QML
   Visualization page binds the authoritative shared format, fluid, filter,
   display-unit, and ordered durable plot models, and presents the single
   workflow-local Add/Edit `PlotDraft` as an inline master-detail editor. It
@@ -918,7 +955,7 @@ Current implementation status as of 2026-07-22:
   locked at both the facade and draft boundaries while one edit is active.
   Widgets retain their modal editor and use the same composition-owned
   lifecycle boundary.
-- Commit 9 verification includes the 25-file non-writing QML
+- Step 9 verification includes the 25-file non-writing QML
   format/lint gate, warning-free QML Add/invalid Commit/valid Commit/Cancel
   interaction tests, structured validation and mapping-row regressions,
   composition lifecycle tests, unchanged manual-plot and Widgets regressions,
@@ -926,7 +963,7 @@ Current implementation status as of 2026-07-22:
   environment compatibility checking. Native human inspection of the
   Visualization page remains required before the maintainer accepts this
   commit.
-- The Commit 10 boundary is implemented in the Stage 2 branch history. The configuration
+- The Step 10 boundary is implemented in the Stage 2 branch history. The configuration
   controller now exposes typed YAML availability and blocking section, field,
   row, and issue projections. Invalid state clears `yamlPreview` instead of
   retaining stale or best-effort YAML. Typed operation-failure, Save-success,
@@ -946,7 +983,7 @@ Current implementation status as of 2026-07-22:
   mutation detection, and baseline refresh only after success. Window close is
   now guarded by the same composition-owned active-edit, busy, and dirty-state
   decisions as other replacement operations.
-- Commit 10 focused verification includes the 29-file non-writing QML gate,
+- Step 10 focused verification includes the 29-file non-writing QML gate,
   warning-free QML YAML/search/blocker/decision interactions, controller and
   unchanged Widgets regressions, source and installed-resource inventory tests,
   workflow-policy tests, the full 705-test repository suite, `preflight.py`,
@@ -957,13 +994,13 @@ Current implementation status as of 2026-07-22:
   YAML-page creation, one settings-controller interaction, and teardown. Those
   remote jobs passed after the human commit and push. Native dialogs remain
   outside headless CI, and this smoke is not Stage 8 platform qualification.
-- Commits 11 through 15 are implemented in the Stage 2 branch history. Commit
+- Steps 11 through 15 are implemented in the Stage 2 branch history. Step
   11 locked the approved scientific-workbench reference and visual contracts;
-  Commit 12 made guarded close and SIGINT handling deferred, idempotent, and
-  free of Python-override teardown tracebacks; and Commit 13 made rail and
+  Step 12 made guarded close and SIGINT handling deferred, idempotent, and
+  free of Python-override teardown tracebacks; and Step 13 made rail and
   inspector actions single-owner, first-click reliable, keyboard operable, and
   deterministic across responsive breakpoints.
-- A focused corrective change after Commit 13 keeps the shell interactive
+- A focused corrective change after Step 13 keeps the shell interactive
   while capabilities load and exposes explicit preparation feedback. Workspace
   creation, initialization, and opening remain filesystem operations. After a
   workspace is activated, `DatasetConfigController` separately asks the local
@@ -974,34 +1011,58 @@ Current implementation status as of 2026-07-22:
   still has one backend, CoolProp; a future approved backend must make
   discovery and caching explicitly backend/model-aware rather than silently
   reusing this single-backend bootstrap.
-- Commit 14 implements revision-bound standalone validation with exact YAML
+- Step 14 implements revision-bound standalone validation with exact YAML
   bytes and SHA-256 binding, the approved typed states, stale-result rejection,
   empty-issue `config`/`invalid_config` handling, and Save independence. A
   standalone result remains informational; every Save and Save As starts a
   fresh authoritative validation.
-- Commit 15 implements shared lightweight sampler counts and Dataset row
+- Step 15 implements shared lightweight sampler counts and Dataset row
   projections, the pre-materialization 1,000,000-row guard, and presentation-
   only property labels, scientific symbols, formatted trusted subscripts, and
   units. The approved Property Table projects 4,141 grid combinations and rows
   per fluid and 8,282 rows across the two canonical-unique default fluids,
   without importing NumPy or materializing a grid in the GUI process.
-- Commit 15 verification covers 30 QML files, the focused scientific and QML
+- Step 15 verification covers 30 QML files, the focused scientific and QML
   regressions, all static gates, 767 passing repository tests, `preflight.py`,
   and environment compatibility. The latest pushed branch passed all PR
   checks, including installed-QML startup smokes on Linux, Windows, and macOS.
   Those checks remain Stage 2 smoke coverage rather than Stage 8 platform
   qualification.
-- Commits 16 through 19 remain. The approved palette, appearance modes,
-  searchable selectors, and final reference-matched styling are not yet
-  implemented. The current disabled navigation tooltips also retain obsolete
-  Stage 4/5 timing for workflows now assigned to Stage 3; Commit 18 must align
-  that presentation copy with this plan before Stage 2 completion.
+- Step 16 is implemented. Python and QML now use the single
+  `system|light|warm|dark` mode contract; a missing QML preference resolves to
+  Dark without mutating shared Widgets settings, corrupt stored values are
+  repaired to Dark, and existing valid choices remain intact. Theme changes
+  update the QML role palette and the runtime-only Qt fallback `QPalette`
+  synchronously, and QML teardown restores the application's prior palette.
+  Warm uses a deliberately amber, sunlit canvas and surface scale rather than
+  a near-Light neutral treatment.
+  The responsive command header exposes the approved first-party sun, sunset,
+  and moon controls, including the System Auto marker and the continuous
+  inspector boundary in the docked wide state. The three icon bytes and hashes
+  are covered by the packaged-resource manifest and distribution inventories.
+  Focused settings, runtime, shell, packaging, and resource tests cover
+  migration, live switching, System resolution, palette restoration,
+  responsive selector placement, and installed-byte provenance.
+  Native uniform-grid sizing keeps responsive card rows equal-height and keeps
+  both shared Visualization columns inside their card instead of allowing an
+  expanding child layout to cover or clip adjacent content.
+- Steps 17 through 19 remain. Searchable selectors and the final
+  reference-matched styling are not yet implemented. The current disabled
+  navigation tooltips also retain obsolete Stage 4/5 timing for workflows now
+  assigned to Stage 3; Step 18 must align that presentation copy with this
+  plan before Stage 2 completion.
+- Recommended parent setting for Step 17 is **GPT-5.6 Sol High**. Searchable
+  fluid and property selection is an intermediate write task spanning QML
+  interaction state, existing draft/list-model roles, keyboard and focus
+  behavior, retained incompatible values, and focused regressions. It does not
+  currently justify Sol XHigh because no new scientific, lifecycle, packaging,
+  or public-schema contract is planned.
 - No generation, inspection, table preview, plot rendering, VTK, or public-
-  launcher parity is inferred from Commits 11 through 15. Configured plot
+  launcher parity is inferred from Steps 11 through 16. Configured plot
   requests remain under Visualization; rendered output discovery and preview
   belong to Stage 3's Inspect workflow. Stage 3 planning must lock the exact
   placement of its session-only manual-plot editor. Both public launchers
-  remain on Widgets, and Stage 2 remains active until Commits 16 through 19,
+  remain on Widgets, and Stage 2 remains active until Steps 17 through 19,
   the complete automated gates, native manual acceptance, and explicit
   maintainer approval are complete.
 - Git staging, commits, synchronization with the remote branch, and publication
@@ -1104,6 +1165,10 @@ Current implementation status as of 2026-07-22:
    - Update this plan and `DESKTOP_ARCHITECTURE.md`, record exact verified
      platforms and limitations, mark Stage 2 complete, and make Stage 3 active
      without claiming Stage 3 parity.
+   - Re-audit the concrete desktop/QML size and coupling watchlist. Record real
+     follow-up work with an acceptance boundary, but do not manufacture a
+     refactor solely from line counts or temporary Widgets/QML overlap that
+     Stage 3 already owns.
 
 When these commits are implemented and committed sequentially, hunk-level
 staging is not required. If work from more than one boundary exists together,
@@ -1171,10 +1236,21 @@ workspace, New/Import, Dataset, safe and refused unit changes, Visualization,
 YAML, validated Save, dirty/external-change decisions, themes, keyboard access,
 and responsive/DPI states. Record exact verified platform behavior only.
 
-Graphify refresh is not a Stage 2 completion requirement. Refresh public graph
-artifacts only through a separately intentional architecture-documentation
-step, and never remove a valid public graph before its replacement is complete
-and verified.
+Graphify refresh is not a Stage 2 completion requirement. The current public
+graph is hard-stale for GUI-2 work: its latest artifact commit is
+`1d819a3dd639958601115758b0c6032b4596ef92`, which was already 34 commits behind
+the Stage 2 branch during the 2026-07-23 audit and predates the packaged QML
+runtime. Do not query it for current Stage 2 navigation. Use repository source,
+tests, and scoped `rg` searches until an intentional refresh is complete.
+
+The durable freshness policy is recorded in
+[`DESKTOP_ARCHITECTURE.md`](DESKTOP_ARCHITECTURE.md). Do not maintain a manual
+per-commit counter. Git computes the distance from the recorded source revision
+or, for legacy artifacts without one, from the latest commit touching the three
+public graph outputs. A future refresh is most useful after Step 18 has settled
+the QML structure; it remains a separately reviewed architecture-documentation
+operation and must never remove the current public graph before a replacement is
+complete and verified.
 
 ## Stage 3: GUI-1 parity and Widgets retirement
 
@@ -1200,6 +1276,45 @@ Rename the final page **Activity and Recovery** and explain its purpose. Switch
 both public launchers to QML only after equivalent tests pass. Then delete the
 Widgets implementation and implementation-specific Widgets tests while keeping
 shared worker, protocol, controller, scientific-boundary, and workflow tests.
+Widgets retirement is a deletion gate, not a compatibility-preservation step:
+do not retain duplicate presentation classes, adapters, or tests for speculative
+future use. Record the removed modules and the resulting source/test line delta
+when Stage 3 completes.
+
+### `0.1.0a4` alpha-release checkpoint
+
+After Stage 3 parity and Widgets retirement, qualify and publish `0.1.0a4`
+without pulling Stage 4–8 features forward. The release gate covers the existing
+base, visualization, ML-export, analysis, and QML application extras; installed
+CLI and QML workflows; source, wheel, and sdist inventories; Linux, Windows,
+and macOS QML startup smokes; the applicable manual native desktop workflow;
+security and dependency checks; and the existing human-controlled PyPI process.
+Native VTK is not part of this release gate.
+
+The release-facing README must lead with the real application and scientific
+value rather than an exhaustive installer catalog. After the actual QML parity
+application exists:
+
+- capture an honest screenshot of the shipped interface; never present a design
+  mockup as implemented behavior;
+- present three primary installation paths: isolated QML desktop through `uv`,
+  QML desktop plus CLI/library through `pip`, and the lightweight CLI/library
+  base install;
+- promote `carnopy-gui` as the normal desktop command while retaining
+  `carnopy-app` as a compatibility alias for the documented deprecation window;
+- retain supported extras in packaging, but summarize advanced `viz`, `ml`,
+  `analysis`, and `all` choices in one compact reference table instead of one
+  prominent command block per combination;
+- lead with deterministic thermophysical datasets, explicit backend/model
+  provenance, retained row diagnostics, reproducible YAML, CLI automation, and
+  the modern local desktop workflow;
+- include a concise contributor invitation and links to focused Issues rather
+  than marketing unimplemented 3D or later-stage workflows.
+
+The exact release commit sequence, version transition from `0.1.0a4.dev0`, and
+publication rehearsal must be approved in the Stage 3 plan. This checkpoint
+does not authorize tags, publication, repository-setting changes, or standalone
+installers.
 
 ## Stage 4: Sweep and preparation worker operations
 
@@ -1270,7 +1385,7 @@ Authoritative image export uses a short-lived worker with explicit scene,
 camera, dimensions, scalar mapping, and rendering settings. It writes a guarded
 no-overwrite PNG and sidecar. Live framebuffer capture is not authoritative.
 
-## Stage 8: Packaging and release qualification
+## Stage 8: Native 3D packaging and later-release qualification
 
 The package has one QML GUI with optional capabilities:
 
@@ -1297,6 +1412,10 @@ publication. Publication order is bridge first and Carnopy second.
 
 Document verified behavior only, including platform status, native dependency
 size, Qt and VTK licensing boundaries, and WSLg guidance.
+
+This is the release gate for the later native-3D-capable alpha line, not for
+`0.1.0a4`. Assign its version only when the preceding stages and packaging
+decisions are ready for review.
 
 ## Completion gate
 

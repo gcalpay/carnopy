@@ -15,7 +15,8 @@ MAXIMIZED_KEY = "qml/window/maximized"
 WINDOW_STATE_VERSION_KEY = "qml/window/state_version"
 WINDOW_STATE_VERSION = 2
 
-THEME_MODES = ("system", "light", "dark")
+THEME_MODES = ("system", "light", "warm", "dark")
+DEFAULT_THEME_MODE = "dark"
 DEFAULT_WINDOW_WIDTH = 1440
 DEFAULT_WINDOW_HEIGHT = 900
 
@@ -111,10 +112,13 @@ class QmlSettingsController(QObject):
         super().__init__(parent)
         self.settings = settings
         _migrate_window_state(settings)
-        raw_theme = settings.value(THEME_MODE_KEY, "system")
-        self._theme_mode = raw_theme if isinstance(raw_theme, str) else "system"
+        theme_is_stored = settings.contains(THEME_MODE_KEY)
+        raw_theme = settings.value(THEME_MODE_KEY) if theme_is_stored else None
+        self._theme_mode = raw_theme if isinstance(raw_theme, str) else DEFAULT_THEME_MODE
         if self._theme_mode not in THEME_MODES:
-            self._theme_mode = "system"
+            self._theme_mode = DEFAULT_THEME_MODE
+        if theme_is_stored and raw_theme != self._theme_mode:
+            settings.setValue(THEME_MODE_KEY, self._theme_mode)
         self._reduced_motion = _bool_setting(settings, REDUCED_MOTION_KEY, False)
         self._rail_collapsed = _bool_setting(settings, RAIL_COLLAPSED_KEY, False)
         self._inspector_collapsed = _bool_setting(settings, INSPECTOR_COLLAPSED_KEY, False)
@@ -159,6 +163,8 @@ class QmlSettingsController(QObject):
             return
         old_effective = self._effective_theme
         if value == self._theme_mode:
+            if not self.settings.contains(THEME_MODE_KEY):
+                self.settings.setValue(THEME_MODE_KEY, value)
             return
         self._theme_mode = value
         self._effective_theme = self._resolve_effective_theme()

@@ -136,15 +136,21 @@ Item {
                 }
 
                 GridLayout {
+                    id: sharedSettingsGrid
+
                     Layout.fillWidth: true
-                    columns: root.width >= 980 ? 2 : 1
                     columnSpacing: Theme.spacingMedium
-                    rowSpacing: Theme.spacingMedium
+                    columns: width >= 760 ? 2 : 1
                     enabled: root.visualizationDraft.enabled &&
                              !root.visualizationDraft.hasActivePlotEdit
+                    objectName: "visualizationSharedSettingsGrid"
+                    rowSpacing: Theme.spacingMedium
+                    uniformCellWidths: true
 
                     ColumnLayout {
                         Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        objectName: "visualizationSharedPrimaryColumn"
                         spacing: Theme.spacingSmall
 
                         Label {
@@ -184,6 +190,8 @@ Item {
 
                     ColumnLayout {
                         Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        objectName: "visualizationSharedMappingsColumn"
                         spacing: Theme.spacingMedium
 
                         MappingEditor {

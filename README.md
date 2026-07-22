@@ -1157,6 +1157,12 @@ The graph is an aid for navigation and review, not a source of scientific
 truth. Verify exact behavior against the source files and tests before making
 changes.
 
+The currently committed graph predates the packaged GUI-2 QML runtime and is
+hard-stale for current desktop work. Do not use it to navigate the active Stage
+2 implementation. The computed freshness policy and current source revision are
+recorded in
+[`DESKTOP_ARCHITECTURE.md`](DESKTOP_ARCHITECTURE.md#maintenance-posture-and-navigation-freshness).
+
 ## Scientific limitations
 
 - CoolProp is the only backend in Milestone 1.
@@ -1291,10 +1297,11 @@ quality. Saturated liquid alone is not a pump cavitation margin; NPSH may be
 reported only when sufficient hydraulic-system and pump data are supplied.
 
 The active `0.1.0a4.dev0` application development line targets a cross-platform
-modern QML presentation layer with optional native VTK exact-grid 3D
-visualization. GUI-2 will use the same worker and core Python boundaries rather
-than duplicate scientific logic. TFC screening, mixtures, additional backends,
-and standalone desktop installers remain deferred.
+modern QML presentation layer with tested GUI-1 capability parity. Optional
+native VTK exact-grid 3D visualization belongs to a later GUI-2 alpha milestone
+and is not required for `0.1.0a4`. GUI-2 uses the same worker and core Python
+boundaries rather than duplicating scientific logic. TFC screening, mixtures,
+additional backends, and standalone desktop installers remain deferred.
 
 Use [GitHub issues](https://github.com/gcalpay/carnopy/issues) for bug reports,
 scientific discrepancies, and focused feature requests. See

@@ -23,5 +23,6 @@ Item {
         columnSpacing: Theme.spacingMedium
         columns: root.columnCount
         rowSpacing: Theme.spacingMedium
+        uniformCellHeights: true
     }
 }

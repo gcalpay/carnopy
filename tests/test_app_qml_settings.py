@@ -108,14 +108,64 @@ def test_theme_mode_is_validated_and_system_mode_has_concrete_effective_theme(
     observed_modes: list[str] = []
     controller.themeModeChanged.connect(lambda: observed_modes.append(controller.get_theme_mode()))
 
+    assert controller.get_theme_mode() == "dark"
+    assert controller.get_effective_theme() == "dark"
     controller.set_theme_mode("dark")
     controller.set_theme_mode("unsupported")
+    controller.set_theme_mode("warm")
+    assert controller.get_effective_theme() == "warm"
     controller.set_theme_mode("light")
     controller.set_theme_mode("system")
 
-    assert observed_modes == ["dark", "light", "system"]
+    assert observed_modes == ["warm", "light", "system"]
     assert controller.get_theme_mode() == "system"
     assert controller.get_effective_theme() in {"light", "dark"}
+
+
+def test_missing_theme_mode_defaults_to_dark_without_mutating_shared_settings(
+    tmp_path: Path,
+    application: QGuiApplication,
+) -> None:
+    del application
+    settings = settings_for(tmp_path / "theme-missing.ini")
+
+    controller = QmlSettingsController(settings)
+
+    assert controller.get_theme_mode() == "dark"
+    assert controller.get_effective_theme() == "dark"
+    assert not settings.contains(THEME_MODE_KEY)
+
+
+@pytest.mark.parametrize("stored", ["unsupported", 42])
+def test_invalid_theme_mode_migrates_to_persisted_dark(
+    tmp_path: Path,
+    application: QGuiApplication,
+    stored: object,
+) -> None:
+    del application
+    settings = settings_for(tmp_path / f"theme-{stored!s}.ini")
+    settings.setValue(THEME_MODE_KEY, stored)
+
+    controller = QmlSettingsController(settings)
+
+    assert controller.get_theme_mode() == "dark"
+    assert controller.get_effective_theme() == "dark"
+    assert settings.value(THEME_MODE_KEY) == "dark"
+
+
+def test_existing_warm_theme_mode_is_preserved(
+    tmp_path: Path,
+    application: QGuiApplication,
+) -> None:
+    del application
+    settings = settings_for(tmp_path / "warm.ini")
+    settings.setValue(THEME_MODE_KEY, "warm")
+
+    controller = QmlSettingsController(settings)
+
+    assert controller.get_theme_mode() == "warm"
+    assert controller.get_effective_theme() == "warm"
+    assert settings.value(THEME_MODE_KEY) == "warm"
 
 
 def test_system_color_scheme_changes_update_only_system_mode(
@@ -125,12 +175,14 @@ def test_system_color_scheme_changes_update_only_system_mode(
 ) -> None:
     del application
     controller = QmlSettingsController(settings_for(tmp_path / "settings.ini"))
-    replacement = "dark" if controller.get_effective_theme() == "light" else "light"
     original_resolver = controller._resolve_effective_theme
     observed: list[str] = []
     controller.effectiveThemeChanged.connect(
         lambda: observed.append(controller.get_effective_theme())
     )
+    controller.set_theme_mode("system")
+    observed.clear()
+    replacement = "dark" if controller.get_effective_theme() == "light" else "light"
     monkeypatch.setattr(controller, "_resolve_effective_theme", lambda: replacement)
 
     controller._system_theme_changed(Qt.ColorScheme.Dark)

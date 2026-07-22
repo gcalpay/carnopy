@@ -6,6 +6,7 @@ import signal
 import sys
 import tempfile
 from collections.abc import Sequence
+from contextlib import suppress
 from pathlib import Path
 from types import FrameType
 
@@ -23,7 +24,15 @@ from PySide6.QtCore import (
     QTimer,
     Signal,
 )
-from PySide6.QtGui import QCloseEvent, QFontDatabase, QGuiApplication, QScreen, QWindow
+from PySide6.QtGui import (
+    QCloseEvent,
+    QColor,
+    QFontDatabase,
+    QGuiApplication,
+    QPalette,
+    QScreen,
+    QWindow,
+)
 from PySide6.QtQml import QQmlApplicationEngine, QQmlError
 from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtWidgets import QApplication
@@ -50,9 +59,96 @@ EXPECTED_FONT_FAMILIES = {
     "resources/fonts/IBMPlexMono-Medium.ttf": "IBM Plex Mono",
 }
 
+QML_PALETTE_COLORS: dict[str, dict[str, str]] = {
+    "light": {
+        "canvas": "#f3f5f4",
+        "surface": "#ffffff",
+        "surface_raised": "#f8faf9",
+        "surface_muted": "#e9efeb",
+        "border": "#d3dcd6",
+        "border_strong": "#abb9b0",
+        "text": "#17211b",
+        "text_muted": "#5c6a61",
+        "text_subtle": "#7b887f",
+        "primary": "#087a50",
+        "information": "#2469c7",
+        "warning": "#9b6508",
+        "danger": "#b33131",
+        "highlighted_text": "#ffffff",
+    },
+    "warm": {
+        "canvas": "#f2dfbd",
+        "surface": "#fff2d9",
+        "surface_raised": "#f9e8ca",
+        "surface_muted": "#ead4ae",
+        "border": "#d6b67e",
+        "border_strong": "#b48d50",
+        "text": "#332518",
+        "text_muted": "#73583c",
+        "text_subtle": "#795a3d",
+        "primary": "#0b7650",
+        "information": "#486f91",
+        "warning": "#ad6500",
+        "danger": "#ad4033",
+        "highlighted_text": "#ffffff",
+    },
+    "dark": {
+        "canvas": "#0f0f0f",
+        "surface": "#141715",
+        "surface_raised": "#191d1a",
+        "surface_muted": "#202620",
+        "border": "#303932",
+        "border_strong": "#47534b",
+        "text": "#f1f4f2",
+        "text_muted": "#aab5ae",
+        "text_subtle": "#7f8b83",
+        "primary": "#159660",
+        "information": "#73a9f5",
+        "warning": "#f2b84b",
+        "danger": "#ff7777",
+        "highlighted_text": "#ffffff",
+    },
+}
+
 
 class QmlStartupError(RuntimeError):
     """Raised when the private QML application cannot start cleanly."""
+
+
+def qml_application_palette(mode: str) -> QPalette:
+    """Build the Qt fallback-control palette for one effective QML theme."""
+
+    colors = QML_PALETTE_COLORS.get(mode, QML_PALETTE_COLORS["dark"])
+    palette = QPalette()
+    roles = {
+        QPalette.ColorRole.Window: "canvas",
+        QPalette.ColorRole.WindowText: "text",
+        QPalette.ColorRole.Base: "surface",
+        QPalette.ColorRole.AlternateBase: "surface_muted",
+        QPalette.ColorRole.ToolTipBase: "surface_raised",
+        QPalette.ColorRole.ToolTipText: "text",
+        QPalette.ColorRole.Text: "text",
+        QPalette.ColorRole.Button: "surface_raised",
+        QPalette.ColorRole.ButtonText: "text",
+        QPalette.ColorRole.BrightText: "highlighted_text",
+        QPalette.ColorRole.Highlight: "primary",
+        QPalette.ColorRole.HighlightedText: "highlighted_text",
+        QPalette.ColorRole.PlaceholderText: "text_subtle",
+        QPalette.ColorRole.Link: "information",
+        QPalette.ColorRole.LinkVisited: "information",
+        QPalette.ColorRole.Light: "border_strong",
+        QPalette.ColorRole.Midlight: "border",
+        QPalette.ColorRole.Mid: "border",
+        QPalette.ColorRole.Dark: "border_strong",
+        QPalette.ColorRole.Shadow: "canvas",
+    }
+    for group in (QPalette.ColorGroup.Active, QPalette.ColorGroup.Inactive):
+        for role, color_name in roles.items():
+            palette.setColor(group, role, QColor(colors[color_name]))
+    for role, color_name in roles.items():
+        disabled_name = "text_subtle" if color_name in {"text", "highlighted_text"} else color_name
+        palette.setColor(QPalette.ColorGroup.Disabled, role, QColor(colors[disabled_name]))
+    return palette
 
 
 def fitted_window_frame(
@@ -212,6 +308,8 @@ class QmlApplicationRuntime:
         self.settings = settings
         self.controller = controller
         self.initial_workspace = initial_workspace
+        self._previous_application_palette = QPalette(application.palette())
+        self._palette_applied = False
         self.engine = QQmlApplicationEngine()
         self.warning_capture = QmlWarningCapture(self.engine)
         self._close_guard: QmlWindowCloseGuard | None = None
@@ -227,6 +325,14 @@ class QmlApplicationRuntime:
         self._closing = False
         self._closed = False
         self._close_result = False
+        self.controller.qml_settings.effectiveThemeChanged.connect(self._apply_application_palette)
+        self._apply_application_palette()
+
+    def _apply_application_palette(self) -> None:
+        self.application.setPalette(
+            qml_application_palette(self.controller.qml_settings.get_effective_theme())
+        )
+        self._palette_applied = True
 
     def _complete_geometry_restoration(self, window: QWindow) -> None:
         _fit_window_to_available_screen(
@@ -509,6 +615,13 @@ class QmlApplicationRuntime:
             QFontDatabase.removeApplicationFont(font_id) for font_id in reversed(self._font_ids)
         ]
         self._font_ids.clear()
+        with suppress(RuntimeError):
+            self.controller.qml_settings.effectiveThemeChanged.disconnect(
+                self._apply_application_palette
+            )
+        if self._palette_applied:
+            self.application.setPalette(self._previous_application_palette)
+            self._palette_applied = False
         self._loaded = False
         self._close_result = all(removal_results)
         self._closed = True

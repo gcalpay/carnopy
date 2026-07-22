@@ -39,7 +39,9 @@ The desktop has two frontend implementations during the GUI-2 migration:
 
 The development version is `0.1.0a4.dev0`. The two public launchers switch to
 QML only after Stage 3 reaches tested GUI-1 parity; Carnopy will not ship two
-normal desktop applications or a frontend selector.
+normal desktop applications or a frontend selector. The resulting QML parity
+application is the planned `0.1.0a4` alpha checkpoint. Later sweep,
+preparation, and native-3D stages are not prerequisites for that release.
 
 ## Authority map
 
@@ -488,6 +490,31 @@ source and installed resources. The manifest-hashed resource tree disables Git
 text conversion so every platform packages the exact committed bytes rather
 than rewriting vendored SVG or license line endings during checkout.
 
+Appearance uses one mode string across Python and QML:
+
+```text
+system
+light
+warm
+dark
+```
+
+Dark is the default for missing or invalid stored state. System resolves live
+to Light or Dark without creating another serialized mode. The running QML
+window and Qt fallback controls change in the same event turn; the QML runtime
+owns that application-palette override and restores the prior `QPalette` during
+teardown, so the still-public Widgets launchers do not inherit QML styling.
+Warm uses an amber canvas and surface scale that remains visibly distinct from
+Light while retaining the same semantic green, warning, and error roles.
+The wide header places the first-party sun, sunset, and moon controls on the
+inspector side of the continuous dock boundary. Compact and narrow layouts use
+the same action contract through the command bar, with a single menu below 800
+logical pixels. The custom appearance icons are first-party manifest records;
+the navigation icon subset remains separately attributed to Lucide.
+Responsive card collections use Qt's native uniform grid sizing. Cards in one
+row share height, and shrinkable equal-width Visualization columns remain
+inside their owning card at supported layouts.
+
 ## Persistence, integrity, and failure behavior
 
 Desktop operations preserve existing filesystem boundaries:
@@ -575,13 +602,13 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | --- | --- | --- |
 | 0 | Qualified a same-repository `QQuickVTKItem` companion bridge on the pinned Linux/Qt/VTK baseline | Complete |
 | 1 | Extracted request ownership, workspace state, dataset/visualization drafts, and complete configuration workflow into QML-ready QtCore controllers | Complete |
-| 2 | Package the Precision Grid QML Workspace, Dataset, Visualization, and YAML/Save workflows | Active; implemented through Commit 15, latest PR checks green, Commits 16–19 and final native acceptance pending |
-| 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, and remove Widgets | Pending |
+| 2 | Package the Precision Grid QML Workspace, Dataset, Visualization, and YAML/Save workflows | Active; implemented through Step 16, Steps 17–19 and final native acceptance pending |
+| 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Pending |
 | 4 | Add controlled sweep and preparation worker operations | Pending |
 | 5 | Add structured sweep and preparation QML workflows | Pending |
 | 6 | Build exact emitted-value 3D scene contracts | Pending |
 | 7 | Integrate native interactive 3D into QML | Pending |
-| 8 | Complete platform, distribution, documentation, and release qualification | Pending |
+| 8 | Complete native-3D platform, distribution, documentation, and later-release qualification | Pending |
 
 Stage 2 has also established definition-first sampler canonicalization, exact
 anchor-based GUI unit changes, Qt 6.11.1 as the QML baseline, packaged QML
@@ -589,10 +616,11 @@ resources, responsive settings, trusted workspace flows, structured Dataset
 and Visualization editing, typed YAML and operation state, worker-validated
 Save flows, practical starter grids, `hPa`/`atm` input units, safe native-window
 teardown, reliable responsive shell actions, revision-bound standalone
-validation, exact Dataset projections, and scientific property presentation.
-These additions do not imply QML parity or public-launcher migration. The
-approved appearance, searchable-selector, and final workbench styling commits
-remain pending.
+validation, exact Dataset projections, scientific property presentation, and
+the Dark-default Light/Warm/Dark/System QML appearance contract with
+runtime-only fallback-control palette synchronization. These additions do not
+imply QML parity or public-launcher migration. The searchable-selector and final
+workbench styling commits remain pending.
 
 ## Known current limitations
 
@@ -610,6 +638,88 @@ remain pending.
   A database would not correct that rendering limitation.
 - The packaged Carnopy mark is provisional and will be refined through an
   explicit branding decision rather than automatic tracing.
+
+## Maintenance posture and navigation freshness
+
+The temporary source growth during GUI-2 is deliberate but not permanent. QML
+views and interaction tests coexist with the Widgets parity oracle until Stage
+3. Stage 3 is therefore a deletion gate: after equivalent QML behavior is
+verified, remove obsolete Widgets presentation modules, adapters, and
+implementation-specific tests rather than preserving two frontends for a
+speculative future need. Record the removed files and source/test line delta at
+that boundary.
+
+Several desktop files are large because they currently concentrate real
+composition, draft, or shell responsibilities. File size alone is not a reason
+to add an interface, factory, event bus, generic draft base class, or another
+dependency. Before adding code, reuse an existing repository helper, then the
+standard library or Qt platform behavior, and otherwise make the smallest
+change that preserves scientific, lifecycle, accessibility, and data-safety
+contracts. Split a module only when a concrete stable responsibility can move
+with focused tests and less coupling. Reassess the QML shell and controller
+hotspots after Stage 2 layout stabilization and again after Stage 3 removes the
+Widgets overlap. A database, web service, or external project-management plugin
+does not solve the current local capability-loading or rendering-performance
+constraints and is not justified by the implemented workflow.
+
+The 2026-07-23 maintenance audit records these concrete watchpoints without
+turning them into automatic refactors:
+
+| File | Lines | Current reason to watch |
+| --- | ---: | --- |
+| `qml/Carnopy/Main.qml` | 1,040 | Shell, breakpoint, focus, and application-lifecycle concerns meet here |
+| `dataset_draft.py` | 1,044 | Dataset validity, capabilities, sampler ownership, and projections meet here |
+| `config_controller.py` | 976 | Document/YAML, worker validation, Save, and replacement orchestration meet here |
+| `visualization_draft.py` | 971 | Shared visualization state, compatibility, dirty state, and plot editing meet here |
+| `plot_draft.py` | 931 | Plot-kind fields, mappings, compatibility, and validation meet here |
+| `desktop_controller.py` | 822 | Cross-controller lifecycle guards and QML facade operations meet here |
+| `qml_runtime.py` | 767 | Application startup, resources, palette, window state, and teardown meet here |
+
+Step 19 rechecks this list after the Dataset layout settles. Stage 3 then
+measures it again after obsolete Widgets presentation code is deleted. A split
+is justified only when it removes a named responsibility from one of these
+files without creating a second state owner or weakening a worker boundary.
+
+Use focused checks while a desktop step is being developed. Run the full source,
+distribution, and preflight gates at stage or release boundaries, or earlier
+when a cross-cutting change warrants them. This keeps verification complete
+without repeatedly executing the same repository suite through both a direct
+test command and the aggregate preflight wrapper.
+
+Graphify is optional generated navigation, never implementation authority. A
+refreshed public graph must record the exact source revision used to build it.
+Determine freshness from Git history, not a manually edited counter:
+
+```bash
+git log -1 --format=%H -- graphify-out/graph.json
+git rev-list --count <graph-source-revision>..HEAD
+```
+
+For legacy artifacts without an embedded source revision, use the latest commit
+that changed the complete public artifact set (`GRAPH_REPORT.md`, `graph.html`,
+and `graph.json`) as a conservative baseline. Apply these rules:
+
+- zero intervening commits: the graph may guide navigation, with source
+  verification for exact behavior;
+- one through nineteen intervening commits: the graph is navigation-only and
+  every conclusion must be checked against current source;
+- twenty or more intervening commits, or any completed architecture stage not
+  represented in the graph: the graph is hard-stale and must not be queried for
+  current architecture or implementation work;
+- a hard-stale graph is either refreshed intentionally and atomically or simply
+  bypassed in favor of source, tests, and scoped text search.
+
+As audited on 2026-07-23, the public graph's latest artifact commit is
+`1d819a3dd639958601115758b0c6032b4596ef92`, 34 commits behind the then-current
+Stage 2 branch and older than the packaged QML runtime. It is therefore disabled
+as a navigation source for the remaining Stage 2 work. Refreshing after the
+Stage 2 QML structure settles is preferable to rebuilding it repeatedly during
+layout churn.
+
+GitHub Issues are enabled for `gcalpay/carnopy`; the repository had no open or
+closed issues in the 2026-07-23 audit. Create an issue only for reproducible,
+durable work with a clear acceptance boundary. Do not convert every lint metric,
+large file, temporary migration overlap, or speculative feature into backlog.
 
 ## Contributor change map
 

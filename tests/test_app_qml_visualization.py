@@ -142,6 +142,32 @@ def test_qml_visualization_uses_authoritative_temporary_plot_lifecycle(
     assert runtime.warning_capture.runtime_warnings == ()
 
 
+def test_shared_visualization_columns_remain_inside_the_page(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    desktop = runtime.controller
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    desktop.qml_settings.set_inspector_collapsed(True)
+    root.setWidth(1440)
+    root.setHeight(1000)
+    assert desktop.request_new_dataset("property_table")
+    assert root.setProperty("currentPage", "visualization")
+    _process_events()
+
+    grid = _item(root, "visualizationSharedSettingsGrid")
+    primary = _item(root, "visualizationSharedPrimaryColumn")
+    mappings = _item(root, "visualizationSharedMappingsColumn")
+    assert grid.property("columns") == 2
+    assert abs(primary.width() - mappings.width()) <= 1
+    for column in (primary, mappings):
+        position = column.mapToItem(grid, QPointF(0, 0))
+        assert position.x() >= 0
+        assert position.x() + column.width() <= grid.width() + 1
+
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
 def test_active_qml_plot_edit_blocks_replacement_and_cancel_is_non_durable(
     runtime: QmlApplicationRuntime,
 ) -> None:

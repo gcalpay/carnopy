@@ -2,6 +2,7 @@ module Carnopy
 singleton Theme 1.0 Theme.qml
 Main 1.0 Main.qml
 AppButton 1.0 components/AppButton.qml
+AppearanceSelector 1.0 components/AppearanceSelector.qml
 AppComboBox 1.0 components/AppComboBox.qml
 AppIcon 1.0 components/AppIcon.qml
 BlockingBanner 1.0 components/BlockingBanner.qml

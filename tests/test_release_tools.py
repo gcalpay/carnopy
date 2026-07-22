@@ -144,6 +144,7 @@ def test_distribution_resource_manifest_rejects_changed_bytes() -> None:
     manifest_bytes = (resource_root / "third-party-resources.json").read_bytes()
     manifest = json.loads(manifest_bytes)
     relative_paths = [manifest["branding"]["packaged_path"]]
+    relative_paths.extend(entry["packaged_path"] for entry in manifest["first_party_resources"])
     relative_paths.extend(
         entry["packaged_path"]
         for project in manifest["third_party_projects"]

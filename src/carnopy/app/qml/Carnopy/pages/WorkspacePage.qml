@@ -206,7 +206,9 @@ Item {
                 objectName: "workspaceOverviewGrid"
 
                 Card {
+                    Layout.fillHeight: true
                     Layout.fillWidth: true
+                    objectName: "createWorkspaceCard"
                     subtitle: qsTr(
                                   "Create a new folder below an existing parent. Existing targets are never reused or overwritten.")
                     title: qsTr("Create Workspace")
@@ -226,7 +228,9 @@ Item {
                 }
 
                 Card {
+                    Layout.fillHeight: true
                     Layout.fillWidth: true
+                    objectName: "initializeWorkspaceCard"
                     subtitle: qsTr(
                                   "Choose an existing ordinary folder that is not yet a Carnopy workspace. After confirmation, Carnopy adds its marker and managed subfolders without deleting unrelated contents.")
                     title: qsTr("Initialize Existing Folder")
@@ -242,7 +246,9 @@ Item {
                 }
 
                 Card {
+                    Layout.fillHeight: true
                     Layout.fillWidth: true
+                    objectName: "openWorkspaceCard"
                     subtitle: qsTr(
                                   "Choose a folder that was already created or initialized by Carnopy. Carnopy validates its marker and managed structure before opening it.")
                     title: qsTr("Open Carnopy Workspace")

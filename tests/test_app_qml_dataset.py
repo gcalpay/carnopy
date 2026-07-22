@@ -407,7 +407,7 @@ def test_dataset_selectors_share_readable_hover_styling() -> None:
         encoding="utf-8"
     )
 
-    assert 'rowDelegate.highlighted || rowDelegate.hovered ? "#ffffff"' in combo_source
+    assert "rowDelegate.highlighted || rowDelegate.hovered ? Theme.highlightedText" in combo_source
     assert "rowDelegate.highlighted || rowDelegate.hovered ? Theme.primary" in combo_source
     assert dataset_source.count("AppComboBox {") == 3
     assert sampler_source.count("AppComboBox {") == 2

@@ -288,7 +288,7 @@ ApplicationWindow {
     palette.button: Theme.surfaceRaised
     palette.buttonText: Theme.text
     palette.highlight: Theme.primary
-    palette.highlightedText: "#ffffff"
+    palette.highlightedText: Theme.highlightedText
     palette.placeholderText: Theme.textSubtle
     palette.text: Theme.text
     palette.window: Theme.canvas
@@ -298,9 +298,9 @@ ApplicationWindow {
     width: 1440
 
     Binding {
-        property: "dark"
+        property: "mode"
         target: Theme
-        value: root.qmlSettings.effectiveTheme === "dark"
+        value: root.qmlSettings.effectiveTheme
     }
 
     Binding {
@@ -398,6 +398,7 @@ ApplicationWindow {
                     id: commandBar
 
                     Layout.fillWidth: true
+                    appearanceExpanded: root.shellMode !== "narrow"
                     breadcrumb: {
                         if (!root.controllerAvailable || !root.desktopController.workspaceAvailable)
                         return qsTr("Local workbench");
@@ -411,8 +412,10 @@ ApplicationWindow {
                     documentDirty: root.configController !== null && root.configController.dirty
                     documentOpen: root.configController !== null
                                   && root.configController.hasDocument
+                    effectiveTheme: root.qmlSettings.effectiveTheme
                     inspectorOpen: root.inspectorWideVisible || inspectorDrawer.visible
                     objectName: "documentCommandBar"
+                    onAppearanceModeRequested: mode => root.qmlSettings.themeMode = mode
                     onCloseConfigurationRequested: root.requestConfigurationClose()
                     onInspectorToggleRequested: root.requestInspectorToggle(
                                                     commandBar.inspectorToggleControl)
@@ -421,6 +424,7 @@ ApplicationWindow {
                     onSaveRequested: root.datasetSaveRequested(false)
                     pageTitle: root.pageTitle(root.currentPage)
                     showInspectorButton: !(root.inspectorWideVisible || inspectorDrawer.visible)
+                    showAppearanceSelector: !root.inspectorWideVisible
                     showRailMenu: root.shellMode === "narrow"
                     statusLabel: {
                         if (root.controllerAvailable && root.desktopController.workspaceState
@@ -444,6 +448,7 @@ ApplicationWindow {
                                                                        root.controllerAvailable
                                                                        && root.desktopController.workspaceAvailable
                                                                        ? "success" : "neutral"))
+                    themeMode: root.qmlSettings.themeMode
                 }
 
                 Rectangle {
@@ -579,47 +584,70 @@ ApplicationWindow {
             }
         }
 
-        ContextInspector {
-            id: persistentInspector
-
-            blockingField: root.configController !== null ? root.configController.blockingField : ""
-            blockingIssue: root.configController !== null ? root.configController.blockingIssue : ""
-            blockingRow: root.configController !== null ? root.configController.blockingRow : -1
-            blockingSection: root.configController !== null ? root.configController.blockingSection :
-                                                              "none"
+        ColumnLayout {
             Layout.fillHeight: true
+            Layout.maximumWidth: root.inspectorWidth
+            Layout.minimumWidth: root.inspectorWidth
             Layout.preferredWidth: root.inspectorWidth
-            closeButtonVisible: true
-            configurationDirty: root.configController !== null && root.configController.dirty
-            configurationFile: root.configController !== null ? root.configController.fileDisplay :
-                                                                ""
-            configurationOpen: root.configController !== null && root.configController.hasDocument
-            canValidate: root.configController !== null && root.configController.canValidate
-            datasetIssue: root.controllerAvailable ? root.desktopController.datasetDraft.issue : ""
-            datasetValid: root.controllerAvailable
-                          && root.desktopController.datasetDraft.locallyValid
-            objectName: "persistentContextInspector"
-            onAttentionRequested: (section, field, row) => root.configurationAttentionRequested(
-                                                               section, field, row)
-            onCloseRequested: root.requestInspectorToggle(persistentInspector.closeControl)
-            onValidateRequested: root.datasetValidateRequested()
-            workspacePath: root.controllerAvailable ? root.desktopController.workspaceRootPath : ""
-            workspaceState: root.controllerAvailable ? root.desktopController.workspaceState :
-                                                       "unavailable"
-            visualizationActiveEdit: root.controllerAvailable
-                                     && root.desktopController.hasActivePlotEdit
-            visualizationIssue: root.controllerAvailable
-                                ? root.desktopController.visualizationDraft.issue : ""
-            visualizationValid: root.controllerAvailable
-                                && root.desktopController.visualizationDraft.locallyValid
+            spacing: 0
             visible: root.inspectorWideVisible
-            workerValidationIssue: root.configController !== null
-                                   ? root.configController.workerValidationIssue : ""
-            workerValidationIssues: root.configController !== null
-                                    ? root.configController.workerValidationIssues : []
-            workerValidationState: root.configController !== null
-                                   ? root.configController.workerValidationState : "unavailable"
-            yamlAvailable: root.configController !== null && root.configController.yamlAvailable
+
+            AppearanceSelector {
+                Layout.fillWidth: true
+                effectiveTheme: root.qmlSettings.effectiveTheme
+                expanded: true
+                objectName: "dockedAppearanceSelector"
+                onModeRequested: mode => root.qmlSettings.themeMode = mode
+                showBoundary: true
+                themeMode: root.qmlSettings.themeMode
+            }
+
+            ContextInspector {
+                id: persistentInspector
+
+                blockingField: root.configController !== null ? root.configController.blockingField :
+                                                                ""
+                blockingIssue: root.configController !== null ? root.configController.blockingIssue :
+                                                                ""
+                blockingRow: root.configController !== null ? root.configController.blockingRow : -1
+                blockingSection: root.configController !== null
+                                 ? root.configController.blockingSection : "none"
+                Layout.fillHeight: true
+                Layout.fillWidth: true
+                closeButtonVisible: true
+                configurationDirty: root.configController !== null && root.configController.dirty
+                configurationFile: root.configController !== null
+                                   ? root.configController.fileDisplay : ""
+                configurationOpen: root.configController !== null
+                                   && root.configController.hasDocument
+                canValidate: root.configController !== null && root.configController.canValidate
+                datasetIssue: root.controllerAvailable ? root.desktopController.datasetDraft.issue :
+                                                         ""
+                datasetValid: root.controllerAvailable
+                              && root.desktopController.datasetDraft.locallyValid
+                objectName: "persistentContextInspector"
+                onAttentionRequested: (section, field, row) => root.configurationAttentionRequested(
+                                                                   section, field, row)
+                onCloseRequested: root.requestInspectorToggle(persistentInspector.closeControl)
+                onValidateRequested: root.datasetValidateRequested()
+                workspacePath: root.controllerAvailable ? root.desktopController.workspaceRootPath :
+                                                          ""
+                workspaceState: root.controllerAvailable ? root.desktopController.workspaceState :
+                                                           "unavailable"
+                visualizationActiveEdit: root.controllerAvailable
+                                         && root.desktopController.hasActivePlotEdit
+                visualizationIssue: root.controllerAvailable
+                                    ? root.desktopController.visualizationDraft.issue : ""
+                visualizationValid: root.controllerAvailable
+                                    && root.desktopController.visualizationDraft.locallyValid
+                workerValidationIssue: root.configController !== null
+                                       ? root.configController.workerValidationIssue : ""
+                workerValidationIssues: root.configController !== null
+                                        ? root.configController.workerValidationIssues : []
+                workerValidationState: root.configController !== null
+                                       ? root.configController.workerValidationState : "unavailable"
+                yamlAvailable: root.configController !== null && root.configController.yamlAvailable
+            }
         }
     }
 

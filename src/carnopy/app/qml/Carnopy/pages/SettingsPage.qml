@@ -82,7 +82,7 @@ Item {
 
                     AppButton {
                         Layout.fillWidth: true
-                        iconName: "sun"
+                        iconName: "appearance-light"
                         objectName: "lightThemeButton"
                         onClicked: {
                             if (root.qmlSettings !== null)
@@ -95,7 +95,21 @@ Item {
 
                     AppButton {
                         Layout.fillWidth: true
-                        iconName: "moon"
+                        iconColor: Theme.warning
+                        iconName: "appearance-warm"
+                        objectName: "warmThemeButton"
+                        onClicked: {
+                            if (root.qmlSettings !== null)
+                                root.qmlSettings.themeMode = "warm";
+                        }
+                        text: qsTr("Warm")
+                        tone: root.qmlSettings !== null && root.qmlSettings.themeMode === "warm"
+                              ? "primary" : "secondary"
+                    }
+
+                    AppButton {
+                        Layout.fillWidth: true
+                        iconName: "appearance-dark"
                         objectName: "darkThemeButton"
                         onClicked: {
                             if (root.qmlSettings !== null)

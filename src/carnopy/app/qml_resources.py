@@ -26,6 +26,7 @@ MANDATORY_QML_FILES = (
     "qml/Carnopy/Main.qml",
     "qml/Carnopy/Theme.qml",
     "qml/Carnopy/components/AppButton.qml",
+    "qml/Carnopy/components/AppearanceSelector.qml",
     "qml/Carnopy/components/AppComboBox.qml",
     "qml/Carnopy/components/AppIcon.qml",
     "qml/Carnopy/components/BlockingBanner.qml",
@@ -55,6 +56,9 @@ MANDATORY_QML_FILES = (
 )
 MANDATORY_ICON_FILES = (
     "resources/icons/activity.svg",
+    "resources/icons/appearance-dark.svg",
+    "resources/icons/appearance-light.svg",
+    "resources/icons/appearance-warm.svg",
     "resources/icons/box.svg",
     "resources/icons/chart-spline.svg",
     "resources/icons/circle-question-mark.svg",
@@ -173,6 +177,20 @@ def manifest_records() -> tuple[ResourceRecord, ...]:
             owner="Carnopy",
         )
     )
+    for index, raw_resource in enumerate(
+        _sequence(manifest.get("first_party_resources"), "resource manifest first_party_resources")
+    ):
+        resource_label = f"resource manifest first_party_resources[{index}]"
+        resource = _mapping(raw_resource, resource_label)
+        _text(resource, "name", resource_label)
+        _text(resource, "source", resource_label)
+        records.append(
+            ResourceRecord(
+                packaged_path=_text(resource, "packaged_path", resource_label),
+                sha256=_text(resource, "sha256", resource_label),
+                owner="Carnopy",
+            )
+        )
     for index, raw_project in enumerate(
         _sequence(manifest.get("third_party_projects"), "resource manifest third_party_projects")
     ):

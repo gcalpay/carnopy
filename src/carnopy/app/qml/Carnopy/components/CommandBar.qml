@@ -9,18 +9,23 @@ Control {
     property string breadcrumb: qsTr("Local workbench")
     property bool canSave: false
     property bool canSaveAs: false
+    property string effectiveTheme: "dark"
     property bool documentOpen: false
     property bool documentDirty: false
+    property bool appearanceExpanded: true
     property string pageTitle: qsTr("Workspace")
     property bool showRailMenu: false
     property bool showInspectorButton: false
     property bool inspectorOpen: false
+    property bool showAppearanceSelector: true
     property string statusLabel: qsTr("Shell ready")
     property string statusTone: "success"
+    property string themeMode: "dark"
     readonly property alias inspectorToggleControl: inspectorToggleButton
     readonly property alias railMenuControl: railMenuButton
 
     signal inspectorToggleRequested
+    signal appearanceModeRequested(string mode)
     signal railMenuRequested
     signal closeConfigurationRequested
     signal saveAsRequested
@@ -102,6 +107,15 @@ Control {
             onClicked: root.closeConfigurationRequested()
             text: qsTr("Close")
             visible: root.documentOpen && root.width >= 620
+        }
+
+        AppearanceSelector {
+            effectiveTheme: root.effectiveTheme
+            expanded: root.appearanceExpanded
+            objectName: "commandAppearanceSelector"
+            onModeRequested: mode => root.appearanceModeRequested(mode)
+            themeMode: root.themeMode
+            visible: root.showAppearanceSelector
         }
 
         AppButton {
