@@ -113,6 +113,7 @@ packages = ["src/carnopy"]
 include = [
   "/AGENTS.md",
   "/DESKTOP_ARCHITECTURE.md",
+  "/docs/agent-guides",
   "/LICENSE",
   "/ML_PREPARATION_ROADMAP.md",
   "/README.md",

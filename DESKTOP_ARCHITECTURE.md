@@ -49,7 +49,7 @@ Use the narrowest applicable authority:
 
 | Source | Authority |
 | --- | --- |
-| `AGENTS.md` | Public scientific, data, architecture, packaging, and contribution contracts |
+| `AGENTS.md` and its routed agent guides | Public scientific, data, architecture, packaging, and contribution contracts |
 | `.agents/local.md` | Checkout-local execution, environment, credential, dependency, and Git restrictions |
 | `GUI2_PLAN.md` | Temporary GUI-2 scope, sequencing, decisions, and acceptance status |
 | `DESKTOP_ARCHITECTURE.md` | Durable implemented desktop structure and evolution |
@@ -57,8 +57,8 @@ Use the narrowest applicable authority:
 | `graphify-out/` | Generated navigation aid; never stronger than source or tracked contracts |
 
 When these disagree, do not silently blend them. Repository source and tests
-establish current behavior, while `AGENTS.md` and an active approved stage plan
-constrain what may change.
+establish current behavior, while `AGENTS.md`, its task-routed authoritative
+guides, and an active approved stage plan constrain what may change.
 
 ## Permanent boundaries
 

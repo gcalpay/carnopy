@@ -1,0 +1,471 @@
+# Public scientific and application contracts
+
+This document is an authoritative routed part of the root
+[contributor and coding-agent guide](../../AGENTS.md). Read it in full before
+changing scientific behavior, configuration, sampling, CLI/API contracts, rows,
+provenance, preparation, visualization, or core architecture. It must be
+combined with the active stage plan and more specific architecture guidance
+when those scopes apply.
+
+## Purpose and scope
+
+Carnopy generates reproducible, backend-derived synthetic thermophysical
+datasets for machine-learning, surrogate-model, and engineering workflows.
+
+Carnopy is not:
+
+- a thermodynamic property model;
+- experimental data or backend-independent ground truth;
+- a process simulator;
+- a machine-learning training framework.
+
+The core workflow is:
+
+```text
+sampling specification
+→ backend calls
+→ validation and stable diagnostics
+→ stable tabular schema
+→ CSV/Parquet
+→ metadata and report
+→ optional visualization of emitted columns
+```
+
+Milestone 1 supports:
+
+- CoolProp only;
+- pure fluids only;
+- YAML schema version 2;
+- explicit CoolProp model selection: `heos`, `pr`, or `srk`;
+- `property_table`;
+- `saturation_table`;
+- `vapor_mass_fraction_table`;
+- deterministic sampling;
+- selectable CSV and/or Parquet dataset output;
+- metadata and report JSON;
+- optional Matplotlib property curves, sampled heatmaps, x-y plots, and p-v/T-s
+  diagrams;
+- configured post-generation visualization;
+- model-sweep bundles comparing emitted values from multiple CoolProp models.
+
+The `0.1.0a3` release line adds a Linux-first PySide6 desktop frontend for
+the existing dataset workflow. The desktop application is a presentation
+frontend, not a new scientific execution layer. GUI-1 includes the worker
+protocol, optional desktop shell, workspace lifecycle, worker-validated dataset
+configuration editor, saved-config execution, workspace-local job diagnostics,
+guarded staging recovery, read-only output/bundle inspection, bounded table
+previews, inspection-driven session plot requests, private worker rendering,
+guarded no-overwrite image/sidecar promotion, desktop Render controls,
+immediate confirmed force-stop, Qt-only PNG/SVG previews, and explicit PDF
+opening.
+
+[GUI2_PLAN.md](GUI2_PLAN.md) is the temporary source of truth for the active
+GUI-2 migration. Read it before changing desktop controllers, QML, native 3D,
+desktop packaging, or Widgets retirement. Delete it only after GUI-2 is complete
+and permanent documentation and Graphify outputs describe the final design.
+[DESKTOP_ARCHITECTURE.md](DESKTOP_ARCHITECTURE.md) is the durable record of the
+implemented desktop structure and evolution; update it when accepted work
+changes a major ownership or process boundary.
+
+Out of scope for now:
+
+- mixtures;
+- ORC generation;
+- additional property backends;
+- random, Sobol, Latin-hypercube, adaptive, or active-learning sampling;
+- ML training or inference;
+- web/API services or databases;
+- ThermoML, OCR, RAG, or literature mining.
+
+Do not broaden scope without maintainer approval.
+
+## Public interfaces
+
+The public CLI is:
+
+```text
+carnopy --version
+carnopy init MODE OUTPUT [--create-parents] [--full]
+carnopy properties
+carnopy fluids [--model heos|pr|srk]
+carnopy validate CONFIG.yaml
+carnopy generate CONFIG.yaml [--out PATH] [--figures-out PATH]
+carnopy sweep SWEEP.yaml [--out PATH]
+carnopy prepare SOURCE --config PREPARATION.yaml [--out PATH]
+carnopy inspect SOURCE
+carnopy plot SOURCE ...
+carnopy-app [--workspace PATH] [--version]
+carnopy-gui [--workspace PATH] [--version]
+```
+
+The documented workflow is:
+
+```text
+init → edit → optional validate → generate/sweep → inspect → optional plot → optional prepare
+```
+
+Commands remain independently scriptable; do not add implicit chaining.
+
+The supported Python API intentionally remains narrow:
+
+- `load_config`;
+- `validate_config`;
+- `generate_dataset`;
+- `generate_model_sweep`;
+- `prepare_dataset`;
+- public configuration and result models;
+- explicit visualization functions.
+
+Keep CLI handlers thin and scientific logic outside `cli.py`.
+
+The desktop frontend follows the same boundary. Qt widgets must communicate
+with one short-lived worker process through the private, versioned JSON Lines
+protocol under `carnopy.app`; they must not invoke or parse the public CLI.
+Only the worker may import CoolProp, generation pipelines, pandas, PyArrow, or
+Matplotlib. Progress and cooperative cancellation use private execution hooks;
+do not add these hooks to the public Python API.
+
+Manual desktop plots must use the inspected dataset source and its integrity
+revision. The GUI supplies a session-only public-shaped request; the worker
+revalidates the source, renders through existing visualization code, and never
+calls a thermodynamic backend. Plot images and sidecars belong under a
+worker-derived direct child of the workspace figure root. Parent-side cleanup
+must trust only verified staging leases, manifests, and inode identities.
+
+## Configuration and sampling contracts
+
+Every configuration contains:
+
+```yaml
+schema_version: 2
+document_type: dataset
+backend:
+  name: coolprop
+  model: heos
+mode: property_table
+fluids: [...]
+grid: ...
+properties: [...]
+```
+
+Schema version 1 inputs fail with migration guidance. Existing generated run
+directories remain readable.
+
+The selected model is part of normalized scientific identity and must appear in
+rows, metadata, and reports. HEOS is not experimental truth. PR and SRK are
+alternative cubic model assumptions and do not provide Carnopy transport
+properties, surface tension, or a usable triple-point temperature. Reject
+globally unsupported properties during configuration validation; preserve
+state-dependent failures as row diagnostics.
+
+Optional `outputs:` and `visualization:` sections are allowed. Dataset format
+selection affects artifact-generation context but not scientific `spec_id`.
+Visualization must not affect scientific or artifact-generation identity.
+
+Model-sweep configurations use:
+
+```yaml
+schema_version: 2
+document_type: model_sweep
+backend:
+  name: coolprop
+  models: [heos, pr, srk]
+  reference_model: heos
+```
+
+Sweeps produce child dataset runs and comparison Parquet files. Comparison
+alignment uses deterministic state keys from normalized sample indices, not
+backend-computed floating-point coordinates. Comparison plots are explicit
+sweep-level `property_comparison` or `property_delta` requests under
+`comparison_plots:`. Do not reuse dataset `visualization:` inside sweep
+configs. The concise packaged `model_sweep` starter must run in the base
+install without Matplotlib; keep active `comparison_plots:` blocks in richer
+examples only and document that they require `carnopy[viz]` or
+`carnopy[all]`.
+
+Preparation configurations use independent schema versioning:
+
+```yaml
+schema_version: 1
+document_type: preparation
+```
+
+Preparation reads existing immutable dataset runs or model-sweep bundles and
+writes Parquet derived-data outputs. It must resolve semantic fields through
+source metadata/schema, preserve source row order, retain row-level source
+identity, and never import or call thermodynamic backends. Preparation
+separates user-facing `data/table.parquet` from `data/provenance.parquet` and
+`data/diagnostics.parquet`, joined by `prepared_row_id`. Preparation may create
+explicit leakage-aware scenarios, including user-binned `stratified_hash`, and
+deterministic numeric transformations (`log10`, `standard`, `minmax`,
+`robust`). Exact thermodynamic-state hashes must not cross automatic
+partitions. Parquet remains canonical. Optional NumPy and
+SafeTensors exports are derived ML-consumption files and must record feature
+and target order, units, shapes, dtype, hashes, and conversion-error summaries.
+Carnopy is not a training framework and does not optimize, depend on PyTorch,
+or export `.pt`/`.pth` files. The optional `analysis` extra may fit disposable
+scikit-learn baseline estimators for train/evaluation diagnostics only. It must
+not persist models or predictions, tune hyperparameters, alter prepared rows,
+or leak validation/test statistics into fitting.
+
+If preparation selects reference-dependent properties (`specific_enthalpy`,
+`specific_entropy`, or `specific_internal_energy`) as features, targets, or
+numeric auxiliary fields, it must record the source reference-state context and
+require one compatible `reference_state_policy`/backend/model context across
+the selected source rows. Mixed incompatible absolute `h`, `s`, or `u` values
+must fail before writing a preparation bundle.
+
+[ML_PREPARATION_ROADMAP.md](ML_PREPARATION_ROADMAP.md) records implemented
+preparation behavior separately from future research directions. Read it before
+proposing preparation-quality, feature-engineering, statistical-diagnostic,
+active-learning, or optimization work. Roadmap entries are not implementation
+authority; public contracts still require a reviewed stage plan.
+
+Dataset formats:
+
+```yaml
+outputs:
+  dataset_formats: [csv, parquet]
+```
+
+Omission defaults to both formats. At least one of `csv` or `parquet` is
+required. Canonical format order is CSV then Parquet.
+
+Public samplers:
+
+```text
+explicit
+linspace
+stepspace
+geomspace
+logspace
+```
+
+`stepspace` is inclusive and requires a reachable endpoint. Public `arange` is
+not supported.
+
+Supported input units:
+
+```text
+temperature: K, degC
+pressure: Pa, hPa, kPa, MPa, bar, atm
+vapor_mass_fraction: "1"
+```
+
+Use `1 hPa = 100 Pa` and `1 atm = 101325 Pa`. These exact decimal scale factors
+pass through the same sampler-canonicalization boundary as every other input
+unit.
+
+Normalization deterministically canonicalizes each valid sampler definition to
+SI before materializing it. Declared-unit definitions with the same exact
+canonical sampler key must produce the same materialized SI grid and `spec_id`.
+All backend calls and generated numeric columns use SI. Preserve original units
+and sampler declarations in metadata.
+
+The row limit is 1,000,000 after sampler materialization, fluid
+canonicalization, Cartesian expansion, and saturation endpoint expansion.
+
+Mode contracts:
+
+- `property_table` requires temperature and pressure;
+- `saturation_table` requires exactly one of temperature or pressure and emits
+  separate liquid and vapor endpoint rows;
+- `vapor_mass_fraction_table` requires vapor mass fraction plus exactly one of
+  temperature or pressure.
+
+Public `vapor_mass_fraction` maps to CoolProp `Q` only inside the adapter.
+Use \(x_{\mathrm{vap}}\) as its scientific symbol in figures and equations;
+do not rename the public schema or dataset field.
+
+## Scientific behavior
+
+Use the official CoolProp documentation as the backend authority:
+
+- https://coolprop.org/coolprop/
+- https://coolprop.org/coolprop/HighLevelAPI.html
+- https://github.com/CoolProp/CoolProp
+
+Reset every requested canonical fluid to CoolProp `DEF` once after validation
+and before row evaluation. Do not change reference state during generation.
+
+Specific enthalpy, entropy, and internal energy are reference-state dependent.
+Absolute values are not directly comparable across different reference
+conventions. Differences or ML datasets using these fields are meaningful only
+within a recorded, compatible reference-state context.
+
+If actual CoolProp behavior contradicts an approved contract:
+
+1. Stop before implementing a workaround.
+2. Preserve fluid, normalized inputs, property, mode, CoolProp version,
+   exception type/message, and observed result.
+3. Explain the contradiction.
+4. Ask the maintainer to decide.
+
+Do not silently change input pairs, phase rules, numerical methods, schemas, or
+backend behavior.
+
+## Rows, validity, and failures
+
+Every row includes:
+
+```text
+run_id
+case_id
+mode
+fluid
+backend
+backend_model
+backend_version
+phase
+backend_phase
+valid
+failure_layer
+failure_code
+failure_message
+failure_property
+backend_error_type
+backend_error_message
+```
+
+`case_id` is zero-based and assigned after deterministic final ordering.
+
+Milestone 1 uses strict row validity. Any required coordinate, phase, or
+requested-property failure invalidates the row. Successfully evaluated values
+may remain populated; failed values remain null.
+
+Do not infer stable failure categories by brittle parsing of backend messages.
+Preserve raw backend diagnostics separately.
+
+## Provenance and immutable artifacts
+
+Identity meanings:
+
+- `spec_id`: canonical executable scientific specification;
+- `generation_context_id`: artifact-generation context;
+- `output_request_id`: canonical CSV/Parquet serialization request;
+- `run_id`: one UUID4 generation attempt;
+- artifact hashes: exact emitted bytes;
+- `visualization_request_id`: normalized visualization request.
+
+Generation writes immutable run directories containing:
+
+```text
+dataset.csv
+dataset.parquet
+config.original.yaml
+config.normalized.json
+config.reference.yaml
+metadata.json
+report.json
+```
+
+`config.reference.yaml` is the mode-specific full commented template produced
+from the same authoritative packaged source as `carnopy init MODE OUTPUT
+--full`. Write it only into the fresh staging directory, include it in artifact
+hashes and metadata, and never retrofit or overwrite it in an existing run.
+
+Human-facing names use:
+
+```text
+<UTC-second>_<mode-slug>_<eight-character-run-prefix>
+```
+
+The directory name is a locator, not dataset identity.
+
+Runs are staged and atomically renamed. Never overwrite an existing final or
+staging directory. Do not add host source-config paths to metadata.
+
+Tests use temporary directories. Do not commit generated datasets or figures.
+
+## Visualization contracts
+
+Visualization is a reproducible view of emitted columns:
+
+- never call a thermodynamic backend;
+- never smooth, interpolate, extrapolate, or invent states;
+- preserve invalid and missing gaps;
+- derive only `specific_volume = 1 / mass_density`;
+- use semantic scientific labels and units;
+- keep visualization identity separate from dataset identity.
+
+Supported kinds:
+
+```text
+property_curves
+property_heatmap
+xy
+pv
+ts
+```
+
+CLI spelling uses `property-curves` and `property-heatmap`.
+
+Manual exports:
+
+- prefer Parquet in run directories;
+- fall back to CSV for CSV-only runs;
+- verify recorded source hashes;
+- write outside immutable source runs;
+- write an image plus `.plot.json`;
+- refuse existing image or sidecar paths;
+- finalize using exclusive same-filesystem hard links;
+- remain no-overwrite-safe but not fully two-file crash-atomic.
+
+Configured visualization:
+
+- validates before thermodynamic generation;
+- executes after dataset finalization;
+- writes under a separate figure root;
+- records one `visualization-report.json`;
+- preserves successful figures after another plot fails;
+- never changes `config.normalized.json`, `spec_id`,
+  `generation_context_id`, or dataset artifact hashes.
+
+`carnopy inspect SOURCE` reports emitted plotting capabilities without backend
+calls. Text and JSON inspection must include source identity, integrity,
+coordinates, levels, properties, ranges, phases, failures, plot capabilities,
+series fields, and supported display units. Inspection may exclusively create
+a visualization-only starter with `--write-visualization`.
+
+Repeatable `--series FIELD=VALUE` selections choose exact emitted curve-family
+levels after unit conversion and combine values for one field with logical OR.
+Repeatable `--display-unit FIELD=UNIT` options affect figure values and labels
+only; immutable datasets remain SI.
+
+`carnopy plot RUN --config FILE.yaml` batch-renders a top-level
+`visualization:` section against an existing immutable run. Batch rendering
+must ignore scientific fields in a full generation config and validate only
+against emitted run columns.
+
+Dataset `run_status` remains solely about row validity.
+
+## Architecture
+
+The high-level pipeline is:
+
+```text
+YAML
+  → validated configuration
+  → canonical SI scientific specification
+  → thin backend adapter
+  → mode-specific rows
+  → stable DataFrame schema
+  → immutable CSV/Parquet + metadata/report
+  → optional emitted-column visualization
+```
+
+The backend boundary contains only capabilities needed by current modes. It is
+not a plugin framework. Add abstractions only when concrete additional backend
+requirements exist.
+
+Keep focused module boundaries:
+
+- configuration parsing and normalization;
+- semantic domain registries;
+- backend adapter;
+- mode generators;
+- output/provenance writers;
+- visualization requests, selection, rendering, and automation;
+- desktop presentation, worker protocol, process control, workspace-local job
+  records, safe source descriptors, and bounded table preview.
+

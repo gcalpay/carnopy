@@ -70,7 +70,11 @@ def test_project_agent_nickname_pools_are_distinct_and_well_formed() -> None:
 
 
 def test_delegation_policy_distinguishes_roles_tasks_and_lifecycle() -> None:
-    policy = " ".join((REPOSITORY_ROOT / "AGENTS.md").read_text(encoding="utf-8").split())
+    root_policy = (REPOSITORY_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    assert "docs/agent-guides/DELEGATION.md" in root_policy
+    policy = " ".join(
+        (REPOSITORY_ROOT / "docs/agent-guides/DELEGATION.md").read_text(encoding="utf-8").split()
+    )
 
     assert "`agent_type`" in policy
     assert "`task_name` is only a canonical thread-path label" in policy
