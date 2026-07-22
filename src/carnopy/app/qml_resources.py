@@ -32,6 +32,7 @@ MANDATORY_QML_FILES = (
     "qml/Carnopy/components/BlockingBanner.qml",
     "qml/Carnopy/components/Card.qml",
     "qml/Carnopy/components/ChoiceList.qml",
+    "qml/Carnopy/components/SearchableChoiceList.qml",
     "qml/Carnopy/components/CommandBar.qml",
     "qml/Carnopy/components/ContextInspector.qml",
     "qml/Carnopy/components/DecisionDialog.qml",

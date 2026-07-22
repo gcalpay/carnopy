@@ -4,12 +4,16 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from PySide6.QtCore import (
+    Property,
     QAbstractListModel,
     QByteArray,
     QModelIndex,
     QObject,
     QPersistentModelIndex,
+    QSortFilterProxyModel,
     Qt,
+    Signal,
+    Slot,
 )
 
 from carnopy.app.sampler_draft import SamplerDraft
@@ -138,6 +142,57 @@ class DraftListModel(QAbstractListModel):
             SYMBOL_ROLE: QByteArray(b"symbol"),
             UNIT_ROLE: QByteArray(b"unit"),
         }
+
+
+class ChoiceFilterProxyModel(QSortFilterProxyModel):
+    """Filter one draft choice model without copying or reordering its rows."""
+
+    filter_text_changed = Signal()
+
+    def __init__(self, source: DraftListModel, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self._filter_text = ""
+        self.setDynamicSortFilter(True)
+        self.setSourceModel(source)
+
+    def get_filter_text(self) -> str:
+        return self._filter_text
+
+    @Slot(str)
+    def set_filter_text(self, value: str) -> None:
+        normalized = value.strip().casefold()
+        if normalized == self._filter_text:
+            return
+        self.beginFilterChange()
+        self._filter_text = normalized
+        self.endFilterChange(QSortFilterProxyModel.Direction.Rows)
+        self.filter_text_changed.emit()
+
+    filterText = Property(
+        str,
+        get_filter_text,
+        set_filter_text,
+        notify=filter_text_changed,
+    )
+
+    def filterAcceptsRow(
+        self,
+        source_row: int,
+        source_parent: QModelIndex | QPersistentModelIndex,
+    ) -> bool:
+        if not self._filter_text:
+            return True
+        source = self.sourceModel()
+        if source is None:
+            return False
+        index = source.index(source_row, 0, source_parent)
+        values = (
+            source.data(index, DISPLAY_ROLE),
+            source.data(index, VALUE_ROLE),
+            source.data(index, CANONICAL_ROLE),
+            source.data(index, LABEL_ROLE),
+        )
+        return any(self._filter_text in str(value or "").casefold() for value in values)
 
 
 class SamplerDraftModel(QAbstractListModel):

@@ -21,6 +21,7 @@ StatusBadge 1.0 components/StatusBadge.qml
 ToastHost 1.0 components/ToastHost.qml
 WorkspaceOperationDialog 1.0 components/WorkspaceOperationDialog.qml
 ChoiceList 1.0 components/ChoiceList.qml
+SearchableChoiceList 1.0 components/SearchableChoiceList.qml
 SamplerEditor 1.0 components/SamplerEditor.qml
 ValidationIssue 1.0 components/ValidationIssue.qml
 EmptyStatePage 1.0 pages/EmptyStatePage.qml

@@ -20,13 +20,13 @@ Item {
     property int samplerAttentionSerial: 0
 
     signal coordinateChangeRequested(string axis)
-    signal fluidAddRequested(string value)
+    signal fluidSelectionRequested(string value, bool selected)
     signal fluidMoveRequested(int row, int offset)
     signal fluidRemoveRequested(int row)
     signal modelChangeRequested(string model)
     signal modeChangeRequested(string mode)
     signal outputSelectionRequested(string format, bool selected)
-    signal propertyAddRequested(string value)
+    signal propertySelectionRequested(string value, bool selected)
     signal propertyMoveRequested(int row, int offset)
     signal propertyRemoveRequested(int row)
     signal samplerKindChangeRequested(var draft, string kind)
@@ -285,18 +285,22 @@ Item {
                               "Aliases remain visible while canonical fluid identity is checked by the draft.")
                 title: qsTr("Fluids")
 
-                ChoiceList {
+                SearchableChoiceList {
                     id: fluidChoices
 
                     Layout.fillWidth: true
-                    choiceModel: root.datasetDraft.fluidChoices
+                    choiceModel: root.datasetDraft.fluidSelectorChoices
                     emptyText: qsTr("Add at least one fluid")
                     noun: qsTr("fluid")
                     objectName: "datasetFluids"
-                    onAddRequested: value => root.fluidAddRequested(value)
                     onMoveRequested: (row, offset) => root.fluidMoveRequested(row, offset)
                     onRemoveRequested: row => root.fluidRemoveRequested(row)
+                    onSelectionRequested: (value, selected) => root.fluidSelectionRequested(value,
+                                                                                            selected)
+                    selectorText: qsTr("Add fluid")
                     selectedModel: root.datasetDraft.selectedFluids
+                    showCanonicalIdentities: true
+                    summaryLimit: 4
                 }
             }
 
@@ -350,19 +354,22 @@ Item {
                                   "Property order is preserved in deterministic YAML and generated columns.")
                     title: qsTr("Properties")
 
-                    ChoiceList {
+                    SearchableChoiceList {
                         id: propertyChoices
 
                         Layout.fillWidth: true
-                        choiceModel: root.datasetDraft.propertyChoices
+                        choiceModel: root.datasetDraft.propertySelectorChoices
                         emptyText: qsTr("Add at least one property")
                         noun: qsTr("property")
                         objectName: "datasetProperties"
-                        onAddRequested: value => root.propertyAddRequested(value)
                         onMoveRequested: (row, offset) => root.propertyMoveRequested(row, offset)
                         onRemoveRequested: row => root.propertyRemoveRequested(row)
+                        onSelectionRequested: (value, selected) => root.propertySelectionRequested(
+                                                                       value, selected)
+                        selectorText: qsTr("Edit properties")
                         selectedModel: root.datasetDraft.selectedProperties
                         showPropertyPresentation: true
+                        summaryLimit: 6
                     }
                 }
 

@@ -13,7 +13,7 @@ from PySide6.QtQuick import QQuickItem, QQuickWindow
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-from carnopy.app.draft_models import VALUE_ROLE
+from carnopy.app.draft_models import CANONICAL_ROLE
 from carnopy.app.qml_runtime import QmlApplicationRuntime, create_qml_runtime
 from carnopy.app.workspace import initialize_workspace
 from carnopy.templates import template_text
@@ -94,22 +94,9 @@ def _click(root: QQuickWindow, item: QQuickItem) -> None:
     QTest.qWait(150)
 
 
-def _set_combo_value(combo: QObject, value: str) -> None:
-    count = int(combo.property("count"))
-    for row in range(count):
-        candidate = combo.property("model").index(row, 0).data(VALUE_ROLE)
-        if candidate == value:
-            combo.setProperty("currentIndex", row)
-            return
-    raise AssertionError(f"missing combo value: {value}")
-
-
-def _combo_row(combo: QObject, value: str) -> int:
-    count = int(combo.property("count"))
-    for row in range(count):
-        if combo.property("model").index(row, 0).data(VALUE_ROLE) == value:
-            return row
-    raise AssertionError(f"missing combo value: {value}")
+def _set_text(field: QObject, value: str) -> None:
+    field.setProperty("text", value)
+    _process_events()
 
 
 def test_new_mode_card_opens_real_dataset_page_bound_to_authoritative_draft(
@@ -141,8 +128,7 @@ def test_new_mode_card_opens_real_dataset_page_bound_to_authoritative_draft(
     assert fluids_list is not None
     assert properties_list is not None
     assert fluids_list.property("interactive") is False
-    assert properties_list.property("interactive") is True
-    assert properties_list.property("contentHeight") > properties_list.property("height")
+    assert properties_list.property("interactive") is False
     names = _visual_object_names(root)
     assert "samplerEditor-temperature" in names
     assert "samplerEditor-pressure" in names
@@ -182,7 +168,7 @@ def test_default_dataset_renders_exact_sampler_and_row_projections(
     assert isinstance(root, QQuickWindow)
     assert runtime.controller.request_new_dataset("property_table")
     root.setWidth(1440)
-    root.setHeight(1600)
+    root.setHeight(2200)
     _process_events()
 
     assert _visual_item(root, "samplerPointCount-temperature").property("text") == "101 points"
@@ -218,7 +204,7 @@ def test_property_symbols_use_trusted_markup_and_complete_accessible_names(
     assert runtime.warning_capture.runtime_warnings == ()
 
 
-def test_dataset_choice_buttons_mutate_through_actual_qml_clicks(
+def test_searchable_dataset_selectors_apply_changes_immediately(
     runtime: QmlApplicationRuntime,
 ) -> None:
     root = runtime.engine.rootObjects()[0]
@@ -228,28 +214,141 @@ def test_dataset_choice_buttons_mutate_through_actual_qml_clicks(
     root.setHeight(1600)
     _process_events()
 
-    fluid_choice = root.findChild(QObject, "datasetFluidsChoiceBox")
-    fluid_add = _visual_item(root, "datasetFluidsAddButton")
-    assert fluid_choice is not None
-    _set_combo_value(fluid_choice, "Cyclopentane")
-    _click(root, fluid_add)
+    _click(root, _visual_item(root, "datasetFluidsOpenButton"))
+    fluid_popup = root.findChild(QObject, "datasetFluidsPopover")
+    fluid_search = root.findChild(QObject, "datasetFluidsSearchField")
+    fluid_list = root.findChild(QObject, "datasetFluidsChoiceList")
+    assert fluid_popup is not None
+    assert fluid_search is not None
+    assert fluid_list is not None
+    assert fluid_popup.property("opened") is True
+    _set_text(fluid_search, "CYCLOPENTANE")
+    assert fluid_list.property("count") >= 1
+    _click(root, _visual_item(root, "datasetFluidsChoiceItem-0"))
     _process_events()
 
-    property_choice = root.findChild(QObject, "datasetPropertiesChoiceBox")
-    property_add = _visual_item(root, "datasetPropertiesAddButton")
-    assert property_choice is not None
-    property_row = _combo_row(property_choice, "prandtl_number")
-    _click(root, property_choice)
-    _process_events()
-    _click(root, _visual_item(root, f"datasetPropertiesChoiceItem-{property_row}"))
-    _process_events()
-    assert property_choice.property("currentValue") == "prandtl_number"
-    _click(root, property_add)
+    _click(root, _visual_item(root, "datasetFluidsDoneButton"))
+    _click(root, _visual_item(root, "datasetPropertiesOpenButton"))
+    property_popup = root.findChild(QObject, "datasetPropertiesPopover")
+    property_search = root.findChild(QObject, "datasetPropertiesSearchField")
+    property_list = root.findChild(QObject, "datasetPropertiesChoiceList")
+    assert property_popup is not None
+    assert property_search is not None
+    assert property_list is not None
+    _set_text(property_search, "PRANDTL")
+    assert property_list.property("count") == 1
+    _click(root, _visual_item(root, "datasetPropertiesChoiceItem-0"))
     _process_events()
 
     draft = runtime.controller.dataset_draft
-    assert "Cyclopentane" in draft.selected_fluid_values()
+    assert any(
+        draft.selected_fluids.index(row, 0).data(CANONICAL_ROLE) == "Cyclopentane"
+        for row in range(draft.selected_fluids.rowCount())
+    )
     assert "prandtl_number" in draft.selected_property_values()
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_selector_closure_paths_restore_focus_and_keep_immediate_changes(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    assert runtime.controller.request_new_dataset("property_table")
+    root.setWidth(1440)
+    root.setHeight(1600)
+    _process_events()
+    opener = _visual_item(root, "datasetFluidsOpenButton")
+    popup = root.findChild(QObject, "datasetFluidsPopover")
+    assert popup is not None
+
+    _click(root, opener)
+    assert popup.property("opened") is True
+    _click(root, _visual_item(root, "datasetFluidsDoneButton"))
+    assert popup.property("opened") is False
+    assert opener.property("activeFocus") is True
+
+    _click(root, opener)
+    QTest.keyClick(root, Qt.Key.Key_Escape)
+    _process_events()
+    assert popup.property("opened") is False
+    assert opener.property("activeFocus") is True
+
+    _click(root, opener)
+    QTest.mouseClick(root, Qt.MouseButton.LeftButton, pos=QPointF(8, 8).toPoint())
+    _process_events()
+    assert popup.property("opened") is False
+    assert opener.property("activeFocus") is True
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_selector_keyboard_selection_and_incompatible_recovery(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    assert runtime.controller.request_new_dataset("property_table")
+    root.setWidth(1440)
+    root.setHeight(1600)
+    _process_events()
+    draft = runtime.controller.dataset_draft
+
+    _click(root, _visual_item(root, "datasetPropertiesOpenButton"))
+    search = root.findChild(QObject, "datasetPropertiesSearchField")
+    assert search is not None
+    _set_text(search, "prandtl")
+    QTest.keyClick(root, Qt.Key.Key_Down)
+    QTest.keyClick(root, Qt.Key.Key_Space)
+    _process_events()
+    assert "prandtl_number" in draft.selected_property_values()
+
+    QTest.keyClick(root, Qt.Key.Key_Escape)
+    assert draft.add_property("surface_tension")
+    draft.set_model_name("pr")
+    _process_events()
+    _click(root, _visual_item(root, "datasetPropertiesOpenButton"))
+    _set_text(search, "surface tension")
+    incompatible = _visual_item(root, "datasetPropertiesChoiceItem-0")
+    assert incompatible.property("enabled") is True
+    _click(root, incompatible)
+    _process_events()
+    assert "surface_tension" not in draft.selected_property_values()
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_selector_summaries_are_bounded_and_overflow_preserves_order(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    assert runtime.controller.request_new_dataset("property_table")
+    root.setWidth(1440)
+    root.setHeight(2200)
+    _process_events()
+    draft = runtime.controller.dataset_draft
+
+    assert draft.add_property("prandtl_number")
+    _process_events()
+    more = _visual_item(root, "datasetPropertiesMoreButton")
+    assert more.property("visible") is True
+    assert more.property("text") == "+1 more"
+    _click(root, more)
+    popup = root.findChild(QObject, "datasetPropertiesPopover")
+    assert popup is not None
+    assert popup.property("opened") is True
+    _click(root, _visual_item(root, "datasetPropertiesDoneButton"))
+
+    before = draft.selected_property_values()
+    actions = _visual_item(root, "datasetPropertiesSelectedActions-1")
+    _click(root, actions)
+    _click(root, _visual_item(root, "datasetPropertiesMoveUp-1"))
+    _process_events()
+    assert draft.selected_property_values() == (before[1], before[0], *before[2:])
+
+    _click(root, _visual_item(root, "datasetPropertiesSelectedActions-0"))
+    _click(root, _visual_item(root, "datasetPropertiesRemove-0"))
+    _process_events()
+    assert before[1] not in draft.selected_property_values()
     assert runtime.warning_capture.runtime_warnings == ()
 
 
@@ -381,6 +480,8 @@ def test_qml_uses_child_drafts_only_for_local_edits() -> None:
     assert "datasetConfigController.importDataset" not in workspace_source
     assert "datasetDraft.addFluid" not in dataset_source
     assert "datasetDraft.addProperty" not in dataset_source
+    assert "datasetDraft.removeFluid" not in dataset_source
+    assert "datasetDraft.removeProperty" not in dataset_source
     assert "datasetDraft.setModelName" not in dataset_source
     assert "datasetDraft.setOutputSelected" not in dataset_source
     assert "signal modeChangeRequested" in dataset_source
@@ -391,6 +492,23 @@ def test_qml_uses_child_drafts_only_for_local_edits() -> None:
     assert "draft.unit =" not in sampler_source
     assert "draft.kind =" not in sampler_source
     assert "draft.setText" not in sampler_source
+
+
+def test_searchable_selectors_use_bounded_non_nested_lists() -> None:
+    dataset_source = (ROOT / "src/carnopy/app/qml/Carnopy/pages/DatasetPage.qml").read_text(
+        encoding="utf-8"
+    )
+    selector_source = (
+        ROOT / "src/carnopy/app/qml/Carnopy/components/SearchableChoiceList.qml"
+    ).read_text(encoding="utf-8")
+
+    assert dataset_source.count("SearchableChoiceList {") == 2
+    assert "summaryLimit: 4" in dataset_source
+    assert "summaryLimit: 6" in dataset_source
+    assert "ScrollView" not in selector_source
+    assert "interactive: false" in selector_source
+    assert "Popup.CloseOnEscape | Popup.CloseOnPressOutside" in selector_source
+    assert "Math.min(320, Math.max(88, contentHeight))" in selector_source
 
 
 def test_dataset_selectors_share_readable_hover_styling() -> None:

@@ -9,6 +9,7 @@ from PySide6.QtCore import Property, QObject, Signal, Slot
 
 from carnopy.app.config_document import GRID_AXIS_ORDER, serialize_dataset_config
 from carnopy.app.draft_models import (
+    ChoiceFilterProxyModel,
     DraftItem,
     DraftListModel,
     SamplerDraftModel,
@@ -76,6 +77,8 @@ class DatasetDraft(QObject):
         self.selected_fluids = DraftListModel(self)
         self.property_choices = DraftListModel(self, disable_incompatible=True)
         self.selected_properties = DraftListModel(self)
+        self.fluid_selector_choices = ChoiceFilterProxyModel(self.fluid_choices, self)
+        self.property_selector_choices = ChoiceFilterProxyModel(self.property_choices, self)
         self.output_formats = DraftListModel(self)
         self.samplers = SamplerDraftModel(self)
         self._capabilities: dict[str, Any] | None = None
@@ -268,6 +271,16 @@ class DatasetDraft(QObject):
     selectedProperties = Property(
         QObject,
         lambda self: self._constant_model(self.selected_properties),
+        constant=True,
+    )
+    fluidSelectorChoices = Property(
+        QObject,
+        lambda self: self._constant_model(self.fluid_selector_choices),
+        constant=True,
+    )
+    propertySelectorChoices = Property(
+        QObject,
+        lambda self: self._constant_model(self.property_selector_choices),
         constant=True,
     )
     outputFormats = Property(
@@ -516,6 +529,17 @@ class DatasetDraft(QObject):
         self._state_changed()
         return True
 
+    def remove_fluid_value(self, value: str) -> bool:
+        canonical = self._fluid_aliases.get(value.casefold())
+        for row, selected in enumerate(self._fluids):
+            selected_canonical = self._fluid_aliases.get(selected.casefold())
+            if canonical is not None and selected_canonical is not None:
+                if selected_canonical.casefold() == canonical.casefold():
+                    return self.remove_fluid(row)
+            elif selected.casefold() == value.casefold():
+                return self.remove_fluid(row)
+        return False
+
     @Slot(int, int, result=bool, name="moveFluid")
     def move_fluid(self, row: int, offset: int) -> bool:
         if not self._loaded:
@@ -554,6 +578,13 @@ class DatasetDraft(QObject):
         self._properties = updated
         self._state_changed()
         return True
+
+    def remove_property_value(self, value: str) -> bool:
+        try:
+            row = self._properties.index(value)
+        except ValueError:
+            return False
+        return self.remove_property(row)
 
     @Slot(int, int, result=bool, name="moveProperty")
     def move_property(self, row: int, offset: int) -> bool:

@@ -22,7 +22,7 @@ ApplicationWindow {
     signal workspaceOpenRequested(string path)
     signal datasetDecisionCommitRequested(bool confirmed)
     signal datasetDecisionCancelRequested
-    signal datasetFluidAddRequested(string value)
+    signal datasetFluidSelectionRequested(string value, bool selected)
     signal datasetFluidMoveRequested(int row, int offset)
     signal datasetFluidRemoveRequested(int row)
     signal configurationAttentionRequested(string section, string field, int row)
@@ -34,7 +34,7 @@ ApplicationWindow {
     signal datasetCoordinateChangeRequested(string axis)
     signal datasetNewRequested(string mode, bool discardConfirmed)
     signal datasetOutputSelectionRequested(string format, bool selected)
-    signal datasetPropertyAddRequested(string value)
+    signal datasetPropertySelectionRequested(string value, bool selected)
     signal datasetPropertyMoveRequested(int row, int offset)
     signal datasetPropertyRemoveRequested(int row)
     signal datasetSamplerKindChangeRequested(var draft, string kind)
@@ -753,14 +753,16 @@ ApplicationWindow {
             expectedColumns: root.cardColumnCount
             objectName: "datasetPage"
             onCoordinateChangeRequested: axis => root.datasetCoordinateChangeRequested(axis)
-            onFluidAddRequested: value => root.datasetFluidAddRequested(value)
+            onFluidSelectionRequested: (value, selected) => root.datasetFluidSelectionRequested(
+                                                                value, selected)
             onFluidMoveRequested: (row, offset) => root.datasetFluidMoveRequested(row, offset)
             onFluidRemoveRequested: row => root.datasetFluidRemoveRequested(row)
             onModelChangeRequested: model => root.datasetModelChangeRequested(model)
             onModeChangeRequested: mode => root.datasetModeChangeRequested(mode)
             onOutputSelectionRequested: (format, selected) => root.datasetOutputSelectionRequested(
                                                                   format, selected)
-            onPropertyAddRequested: value => root.datasetPropertyAddRequested(value)
+            onPropertySelectionRequested: (value, selected)
+                                          => root.datasetPropertySelectionRequested(value, selected)
             onPropertyMoveRequested: (row, offset) => root.datasetPropertyMoveRequested(row, offset)
             onPropertyRemoveRequested: row => root.datasetPropertyRemoveRequested(row)
             onSamplerKindChangeRequested: (draft, kind) => root.datasetSamplerKindChangeRequested(

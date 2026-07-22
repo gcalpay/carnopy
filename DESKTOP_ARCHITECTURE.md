@@ -289,6 +289,14 @@ output formats, sampler drafts, compatibility, local validity, structured
 first-invalid projection, and its dirty baseline. Its list models are the
 single source used by both frontends.
 
+Dataset-only searchable fluid and property views are source-ordered Qt proxy
+models over those authoritative choice models. They filter existing display,
+schema-value, canonical, and label roles without copying or reordering state.
+QML applies selection through the desktop facade, while ordered selected-value
+models continue to own presentation order, incompatibility issues, and move or
+remove operations. The popup is window-overlay content rather than another
+scroll container inside the Dataset page.
+
 `SamplerDraft` owns raw declared sampler values and units. Unit changes use one
 private valid-definition anchor and the lightweight canonical sampler identity:
 
@@ -602,7 +610,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | --- | --- | --- |
 | 0 | Qualified a same-repository `QQuickVTKItem` companion bridge on the pinned Linux/Qt/VTK baseline | Complete |
 | 1 | Extracted request ownership, workspace state, dataset/visualization drafts, and complete configuration workflow into QML-ready QtCore controllers | Complete |
-| 2 | Package the Precision Grid QML Workspace, Dataset, Visualization, and YAML/Save workflows | Active; implemented through Step 16, Steps 17–19 and final native acceptance pending |
+| 2 | Package the Precision Grid QML Workspace, Dataset, Visualization, and YAML/Save workflows | Active; implemented through Step 17, Steps 18–19 and final native acceptance pending |
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Pending |
 | 4 | Add controlled sweep and preparation worker operations | Pending |
 | 5 | Add structured sweep and preparation QML workflows | Pending |
@@ -618,9 +626,12 @@ Save flows, practical starter grids, `hPa`/`atm` input units, safe native-window
 teardown, reliable responsive shell actions, revision-bound standalone
 validation, exact Dataset projections, scientific property presentation, and
 the Dark-default Light/Warm/Dark/System QML appearance contract with
-runtime-only fallback-control palette synchronization. These additions do not
-imply QML parity or public-launcher migration. The searchable-selector and final
-workbench styling commits remain pending.
+runtime-only fallback-control palette synchronization. Dataset fluid and
+property selection now uses searchable proxy views over the existing draft
+models, bounded ordered summaries, retained incompatible values, and
+keyboard-accessible immediate selection without nested scrolling. These
+additions do not imply QML parity or public-launcher migration. The final
+workbench styling and Stage 2 acceptance records remain pending.
 
 ## Known current limitations
 

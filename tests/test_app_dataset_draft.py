@@ -282,6 +282,66 @@ def test_alias_identity_order_and_roles_are_stable(
     assert first.data(CANONICAL_ROLE) == "Propane"
 
 
+def test_selector_proxies_search_choice_roles_without_copying_state(
+    application: QCoreApplication,
+) -> None:
+    del application
+    draft = configured_draft()
+
+    draft.fluid_selector_choices.set_filter_text("PROPANE")
+    assert {
+        draft.fluid_selector_choices.index(row, 0).data(VALUE_ROLE)
+        for row in range(draft.fluid_selector_choices.rowCount())
+    } == {"Propane", "R290", "n-Propane"}
+
+    draft.fluid_selector_choices.set_filter_text("r290")
+    assert draft.fluid_selector_choices.rowCount() == 1
+    assert draft.fluid_selector_choices.index(0, 0).data(CANONICAL_ROLE) == "Propane"
+
+    draft.property_selector_choices.set_filter_text("DENSITY")
+    assert draft.property_selector_choices.rowCount() == 1
+    assert draft.property_selector_choices.index(0, 0).data(VALUE_ROLE) == "mass_density"
+
+    draft.property_selector_choices.set_filter_text("mass_density")
+    assert draft.property_selector_choices.rowCount() == 1
+    assert draft.property_selector_choices.index(0, 0).data(LABEL_ROLE) == "Mass density"
+
+
+def test_selection_by_value_removes_alias_identity_and_property(
+    application: QCoreApplication,
+) -> None:
+    del application
+    draft = configured_draft()
+
+    assert draft.remove_fluid_value("Propane")
+    assert draft.selected_fluid_values() == ()
+    assert not draft.remove_fluid_value("R290")
+
+    assert draft.remove_property_value("mass_density")
+    assert draft.selected_property_values() == ()
+    assert not draft.remove_property_value("mass_density")
+
+
+def test_selector_retains_selected_incompatible_property_for_removal(
+    application: QCoreApplication,
+) -> None:
+    del application
+    draft = configured_draft(dataset_payload(properties=["surface_tension"]))
+
+    draft.set_model_name("pr")
+    draft.property_selector_choices.set_filter_text("surface")
+
+    assert draft.property_selector_choices.rowCount() == 1
+    index = draft.property_selector_choices.index(0, 0)
+    assert index.data(VALUE_ROLE) == "surface_tension"
+    assert index.data(SELECTED_ROLE) is True
+    assert index.data(COMPATIBLE_ROLE) is False
+    assert index.data(ISSUE_ROLE)
+    assert draft.remove_property_value("surface_tension")
+    assert draft.add_property("mass_density")
+    assert draft.get_locally_valid()
+
+
 def test_model_change_retains_incompatible_property_and_blocks_payload(
     application: QCoreApplication,
 ) -> None:

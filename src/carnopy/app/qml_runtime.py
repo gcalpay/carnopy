@@ -452,10 +452,16 @@ class QmlApplicationRuntime:
                 self.controller.request_configuration_attention,
             ),
             ("datasetModelChangeRequested", self.controller.request_dataset_model_change),
-            ("datasetFluidAddRequested", self.controller.request_dataset_fluid_add),
+            (
+                "datasetFluidSelectionRequested",
+                self.controller.request_dataset_fluid_selection,
+            ),
             ("datasetFluidMoveRequested", self.controller.request_dataset_fluid_move),
             ("datasetFluidRemoveRequested", self.controller.request_dataset_fluid_remove),
-            ("datasetPropertyAddRequested", self.controller.request_dataset_property_add),
+            (
+                "datasetPropertySelectionRequested",
+                self.controller.request_dataset_property_selection,
+            ),
             ("datasetPropertyMoveRequested", self.controller.request_dataset_property_move),
             ("datasetPropertyRemoveRequested", self.controller.request_dataset_property_remove),
             (

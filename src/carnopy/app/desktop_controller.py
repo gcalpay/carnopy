@@ -413,9 +413,12 @@ class DesktopController(QObject):
     def request_dataset_model_change(self, model: str) -> None:
         self.dataset_draft.set_model_name(model)
 
-    @Slot(str, name="requestDatasetFluidAdd")
-    def request_dataset_fluid_add(self, value: str) -> None:
-        self.dataset_draft.add_fluid(value)
+    @Slot(str, bool, name="requestDatasetFluidSelection")
+    def request_dataset_fluid_selection(self, value: str, selected: bool) -> None:
+        if selected:
+            self.dataset_draft.add_fluid(value)
+        else:
+            self.dataset_draft.remove_fluid_value(value)
 
     @Slot(int, int, name="requestDatasetFluidMove")
     def request_dataset_fluid_move(self, row: int, offset: int) -> None:
@@ -425,9 +428,12 @@ class DesktopController(QObject):
     def request_dataset_fluid_remove(self, row: int) -> None:
         self.dataset_draft.remove_fluid(row)
 
-    @Slot(str, name="requestDatasetPropertyAdd")
-    def request_dataset_property_add(self, value: str) -> None:
-        self.dataset_draft.add_property(value)
+    @Slot(str, bool, name="requestDatasetPropertySelection")
+    def request_dataset_property_selection(self, value: str, selected: bool) -> None:
+        if selected:
+            self.dataset_draft.add_property(value)
+        else:
+            self.dataset_draft.remove_property_value(value)
 
     @Slot(int, int, name="requestDatasetPropertyMove")
     def request_dataset_property_move(self, row: int, offset: int) -> None:

@@ -994,7 +994,7 @@ Current implementation status as of 2026-07-23:
   YAML-page creation, one settings-controller interaction, and teardown. Those
   remote jobs passed after the human commit and push. Native dialogs remain
   outside headless CI, and this smoke is not Stage 8 platform qualification.
-- Steps 11 through 15 are implemented in the Stage 2 branch history. Step
+- Steps 11 through 17 are implemented in the Stage 2 branch history. Step
   11 locked the approved scientific-workbench reference and visual contracts;
   Step 12 made guarded close and SIGINT handling deferred, idempotent, and
   free of Python-override teardown tracebacks; and Step 13 made rail and
@@ -1046,23 +1046,34 @@ Current implementation status as of 2026-07-23:
   Native uniform-grid sizing keeps responsive card rows equal-height and keeps
   both shared Visualization columns inside their card instead of allowing an
   expanding child layout to cover or clip adjacent content.
-- Steps 17 through 19 remain. Searchable selectors and the final
-  reference-matched styling are not yet implemented. The current disabled
+- Step 17 is implemented. Dataset fluid and property choices now use
+  source-ordered Qt proxy models over the authoritative draft models, so
+  case-insensitive search across labels, schema values, and canonical backend
+  identities does not copy choice state into QML. Selection changes apply
+  immediately through the desktop facade; selected incompatible values remain
+  available for removal with their issue. The page shows bounded ordered
+  summaries, `+N more` access, and per-item move/remove actions. Done, Escape,
+  outside click, pointer activation, and keyboard activation retain changes and
+  restore focus. The one bounded popup list lives on the window overlay while
+  summary lists are noninteractive, avoiding nested page scrolling.
+- Steps 18 and 19 remain. The final reference-matched styling is not yet
+  implemented. The current disabled
   navigation tooltips also retain obsolete Stage 4/5 timing for workflows now
   assigned to Stage 3; Step 18 must align that presentation copy with this
   plan before Stage 2 completion.
-- Recommended parent setting for Step 17 is **GPT-5.6 Sol High**. Searchable
-  fluid and property selection is an intermediate write task spanning QML
-  interaction state, existing draft/list-model roles, keyboard and focus
-  behavior, retained incompatible values, and focused regressions. It does not
-  currently justify Sol XHigh because no new scientific, lifecycle, packaging,
-  or public-schema contract is planned.
+- Recommended parent setting for Step 18 is **GPT-5.6 Sol XHigh**. The final
+  visual pass is a hard cross-page QML task spanning the approved reference,
+  responsive two/three-column layout, theme roles, native fallback-dialog
+  readability, hover and focus behavior, packaged-resource smoke coverage, and
+  regression avoidance across every implemented QML page. It does not require
+  Sol Max because the scientific, lifecycle, process, and public-schema
+  contracts are already fixed.
 - No generation, inspection, table preview, plot rendering, VTK, or public-
-  launcher parity is inferred from Steps 11 through 16. Configured plot
+  launcher parity is inferred from Steps 11 through 17. Configured plot
   requests remain under Visualization; rendered output discovery and preview
   belong to Stage 3's Inspect workflow. Stage 3 planning must lock the exact
   placement of its session-only manual-plot editor. Both public launchers
-  remain on Widgets, and Stage 2 remains active until Steps 17 through 19,
+  remain on Widgets, and Stage 2 remains active until Steps 18 and 19,
   the complete automated gates, native manual acceptance, and explicit
   maintainer approval are complete.
 - Git staging, commits, synchronization with the remote branch, and publication
