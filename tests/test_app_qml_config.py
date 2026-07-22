@@ -99,7 +99,59 @@ def test_inspector_distinguishes_workspace_readiness_from_document_state(
     assert desktop.request_new_dataset("property_table")
     _process_events()
     assert configuration_state.property("text") == "Unsaved"
-    assert validation_state.property("text") == "Validated on Save"
+    assert validation_state.property("text") == "Not run"
+
+
+def test_inspector_runs_one_revision_bound_standalone_validation(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    desktop = runtime.controller
+    controller = desktop.dataset_config_controller
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    assert desktop.request_new_dataset("property_table")
+    assert root.setProperty("width", 1440)
+    assert root.setProperty("height", 900)
+    _process_events()
+
+    buttons = root.findChildren(QObject, "inspectorValidateButton")
+    visible_buttons = [button for button in buttons if button.property("visible")]
+    state = root.findChild(QObject, "inspectorWorkerValidationState")
+    assert len(visible_buttons) == 1
+    assert state is not None
+    button = visible_buttons[0]
+    assert button.property("enabled") is True
+
+    button.clicked.emit()
+    _process_events()
+    assert controller.get_worker_validation_state() == "running"
+    assert state.property("text") == "Running"
+    assert button.property("enabled") is False
+
+    _wait_for_idle(runtime)
+    assert controller.get_worker_validation_state() == "valid"
+    assert state.property("text") == "Valid"
+    assert button.property("enabled") is True
+
+
+def test_inspector_validation_is_blocked_by_local_invalidity(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    desktop = runtime.controller
+    controller = desktop.dataset_config_controller
+    root = runtime.engine.rootObjects()[0]
+    assert desktop.request_new_dataset("property_table")
+    controller.dataset_draft.set_output_selected("csv", False)
+    controller.dataset_draft.set_output_selected("parquet", False)
+    _process_events()
+
+    button = root.findChild(QObject, "inspectorValidateButton")
+    state = root.findChild(QObject, "inspectorWorkerValidationState")
+    assert button is not None
+    assert state is not None
+    assert controller.get_worker_validation_state() == "blocked"
+    assert state.property("text") == "Blocked"
+    assert button.property("enabled") is False
 
 
 def test_invalid_yaml_state_is_empty_and_routes_by_structured_field(

@@ -16,6 +16,7 @@ from carnopy.app.config_document import (
     document_from_worker_payload,
     new_document,
     replace_config_atomic,
+    sha256_bytes,
     source_matches,
     write_new_config,
 )
@@ -78,6 +79,12 @@ class DatasetConfigController(QObject):
         self._locally_valid = False
         self._syncing_document = False
         self._yaml_preview = ""
+        self._worker_validation_state = "unavailable"
+        self._worker_validation_issue = ""
+        self._worker_validation_issues: list[dict[str, str]] = []
+        self._validation_attempted = False
+        self._validation_content: bytes | None = None
+        self._validation_sha256: str | None = None
         self._file_display = "No dataset configuration is open."
         self._status_message = "Open a workspace to create or import a dataset configuration."
         self._lifecycle_guard: Callable[[str], bool] | None = None
@@ -87,7 +94,7 @@ class DatasetConfigController(QObject):
         self.dataset_draft.mode_change_requested.connect(self.mode_change_requested)
         self.dataset_draft.message.connect(self._set_status)
         self.visualization_draft.message.connect(self._set_status)
-        self.visualization_draft.active_plot_draft_changed.connect(self.state_changed)
+        self.visualization_draft.active_plot_draft_changed.connect(self._active_plot_edit_changed)
         self.coordinator.busy_changed.connect(self._worker_busy_changed)
 
     def set_lifecycle_guard(self, guard: Callable[[str], bool]) -> None:
@@ -129,6 +136,44 @@ class DatasetConfigController(QObject):
         return self.document is not None and self._locally_valid and bool(self._yaml_preview)
 
     yamlAvailable = Property(bool, get_yaml_available, notify=state_changed)
+
+    def get_can_validate(self) -> bool:
+        return (
+            self.document is not None
+            and self._locally_valid
+            and not self.visualization_draft.get_has_active_plot_edit()
+            and self._pending_action is None
+            and not self.coordinator.is_busy
+        )
+
+    canValidate = Property(bool, get_can_validate, notify=state_changed)
+
+    def get_worker_validation_state(self) -> str:
+        return self._worker_validation_state
+
+    workerValidationState = Property(
+        str,
+        get_worker_validation_state,
+        notify=state_changed,
+    )
+
+    def get_worker_validation_issue(self) -> str:
+        return self._worker_validation_issue
+
+    workerValidationIssue = Property(
+        str,
+        get_worker_validation_issue,
+        notify=state_changed,
+    )
+
+    def get_worker_validation_issues(self) -> list[dict[str, str]]:
+        return [dict(issue) for issue in self._worker_validation_issues]
+
+    workerValidationIssues = Property(
+        list,
+        get_worker_validation_issues,
+        notify=state_changed,
+    )
 
     def get_blocking_section(self) -> str:
         if self.document is None or self._locally_valid:
@@ -231,12 +276,30 @@ class DatasetConfigController(QObject):
         return (
             self.document is not None
             and self._locally_valid
+            and self._pending_action is None
             and not self.coordinator.is_busy
             and not self.visualization_draft.get_has_active_plot_edit()
         )
 
     canSave = Property(bool, get_can_save, notify=state_changed)
     canSaveAs = Property(bool, get_can_save, notify=state_changed)
+
+    def request_validation(self) -> bool:
+        """Run informational worker validation for the exact current YAML revision."""
+
+        if not self._lifecycle_allowed("Validation") or not self.get_can_validate():
+            return False
+        document = self.document
+        if document is None:
+            return False
+        content = document.yaml_bytes
+        source_name = str(document.source_path) if document.source_path is not None else "<gui>"
+        self._begin_worker_validation("validate", content)
+        self._set_status("Validating the current exact YAML…")
+        return self._start_worker(
+            "validate_dataset_config",
+            {"yaml_text": content.decode("utf-8"), "source_name": source_name},
+        )
 
     def get_dataset_draft(self) -> QObject:
         return self.dataset_draft
@@ -410,6 +473,7 @@ class DatasetConfigController(QObject):
         if not self._lifecycle_allowed("document replacement"):
             return False
         self.document = document
+        self._reset_worker_validation("not_run")
         self._syncing_document = True
         try:
             payload = document.payload
@@ -469,7 +533,8 @@ class DatasetConfigController(QObject):
         if document is None:
             return
         content = document.yaml_bytes
-        self._pending_action = "save_replace" if replace else "save_new"
+        action = "save_replace" if replace else "save_new"
+        self._begin_worker_validation(action, content)
         self._pending_path = path
         self._pending_content = content
         self._set_status("Validating exact YAML before Save…")
@@ -491,6 +556,13 @@ class DatasetConfigController(QObject):
             )
         except (RuntimeError, ValueError) as exc:
             action = self._pending_action or request_type
+            if action in {"validate", "save_new", "save_replace"}:
+                self._set_worker_validation(
+                    "failed",
+                    str(exc),
+                    [],
+                )
+                self._clear_validation_request()
             self._clear_pending()
             self._set_status(str(exc))
             self._emit_operation_failed(action, _failure_title(action), str(exc), [])
@@ -518,6 +590,7 @@ class DatasetConfigController(QObject):
         action = self._pending_action
         if action is None:
             return
+        validation_current = self._validation_response_is_current()
         self._clear_pending(keep_paths=action in {"save_new", "save_replace"})
         if action == "capabilities":
             model = result.get("model")
@@ -526,19 +599,47 @@ class DatasetConfigController(QObject):
             self._apply_capabilities(result)
         elif action in {"import", "reload"}:
             self._finish_import(result, operation=action)
+        elif action == "validate":
+            self._clear_validation_request()
+            if validation_current:
+                self._set_worker_validation("valid", "", [])
+                self._set_status("Worker validation passed for the current exact YAML.")
         elif action in {"save_new", "save_replace"}:
-            self._finish_save(replace=action == "save_replace")
+            self._clear_validation_request()
+            if validation_current:
+                self._set_worker_validation("valid", "", [])
+            self._finish_save(
+                replace=action == "save_replace",
+                validation_current=validation_current,
+            )
 
     def _worker_failed(self, payload: object) -> None:
         failure = cast(dict[str, Any], payload)
         action = self._pending_action
         if action is None:
             return
+        validation_action = action in {"validate", "save_new", "save_replace"}
+        validation_current = self._validation_response_is_current()
         self._clear_pending()
         message = str(failure.get("message", "worker request failed"))
         details = failure.get("details")
         raw_issues = details.get("issues") if isinstance(details, dict) else None
         issues = _structured_issues(raw_issues)
+        if validation_action:
+            self._clear_validation_request()
+            if not validation_current:
+                if action in {"save_new", "save_replace"}:
+                    self._cancel_stale_save(replace=action == "save_replace")
+                return
+            state = (
+                "invalid"
+                if failure.get("category") == "config" and failure.get("code") == "invalid_config"
+                else "failed"
+            )
+            self._set_worker_validation(state, message, issues)
+            if action == "validate":
+                self._set_status(message)
+                return
         if issues:
             issue_lines = [
                 f"{item.get('path', '$')}: {item.get('message', 'invalid value')}"
@@ -558,6 +659,10 @@ class DatasetConfigController(QObject):
         self.state_changed.emit()
 
     def _worker_busy_changed(self, _busy: bool) -> None:
+        self.state_changed.emit()
+
+    def _active_plot_edit_changed(self) -> None:
+        self._update_worker_validation(validation_revision_changed=True)
         self.state_changed.emit()
 
     def _apply_capabilities(self, payload: dict[str, Any]) -> None:
@@ -580,6 +685,7 @@ class DatasetConfigController(QObject):
             self._syncing_document = False
         self._locally_valid = False
         self._yaml_preview = ""
+        self._reset_worker_validation("unavailable")
         self._file_display = "No dataset configuration is open."
         self._awaiting_save_path = False
         self._clear_pending()
@@ -602,7 +708,7 @@ class DatasetConfigController(QObject):
         if operation == "import" and document.source_path is not None:
             self.importSucceeded.emit(str(document.source_path), not document.workspace_owned)
 
-    def _finish_save(self, *, replace: bool) -> None:
+    def _finish_save(self, *, replace: bool, validation_current: bool) -> None:
         if not self._lifecycle_allowed("Save"):
             self._pending_path = None
             self._pending_content = None
@@ -623,19 +729,8 @@ class DatasetConfigController(QObject):
                 [],
             )
             return
-        if document.yaml_bytes != content:
-            message = (
-                "The configuration changed while its YAML was being validated. "
-                "No file was written; save again."
-            )
-            self._set_status(message)
-            self.warning_requested.emit("Save Cancelled", message)
-            self._emit_operation_failed(
-                "save" if replace else "save_as",
-                "Save Cancelled",
-                message,
-                [],
-            )
+        if not validation_current or document.yaml_bytes != content:
+            self._cancel_stale_save(replace=replace)
             return
         try:
             if replace:
@@ -667,17 +762,32 @@ class DatasetConfigController(QObject):
         self.dataset_draft.mark_baseline()
         self.visualization_draft.mark_baseline()
         self._file_display = str(destination)
-        self._refresh_document()
+        self._refresh_document(validation_revision_changed=False)
         self._set_status(f"Saved valid configuration: {destination}")
         self.saveSucceeded.emit(str(destination))
 
-    def _refresh_document(self) -> None:
+    def _cancel_stale_save(self, *, replace: bool) -> None:
+        message = (
+            "The configuration changed while its YAML was being validated. "
+            "No file was written; save again."
+        )
+        self._set_status(message)
+        self.warning_requested.emit("Save Cancelled", message)
+        self._emit_operation_failed(
+            "save" if replace else "save_as",
+            "Save Cancelled",
+            message,
+            [],
+        )
+
+    def _refresh_document(self, *, validation_revision_changed: bool = True) -> None:
         if self._syncing_document:
             return
         document = self.document
         if document is None:
             self._locally_valid = False
             self._yaml_preview = ""
+            self._update_worker_validation(validation_revision_changed)
             self._emit_document_state()
             return
         try:
@@ -700,6 +810,7 @@ class DatasetConfigController(QObject):
             self._locally_valid = True
             self._yaml_preview = document.yaml_text
             self._set_status("Ready to save. Full validation runs before writing.")
+        self._update_worker_validation(validation_revision_changed)
         self._emit_document_state()
 
     def _handle_external_change(self) -> None:
@@ -715,6 +826,85 @@ class DatasetConfigController(QObject):
         if not keep_paths:
             self._pending_path = None
             self._pending_content = None
+
+    def _begin_worker_validation(self, action: str, content: bytes) -> None:
+        self._pending_action = action
+        self._validation_attempted = True
+        self._validation_content = content
+        self._validation_sha256 = sha256_bytes(content)
+        self._set_worker_validation("running", "", [])
+
+    def _clear_validation_request(self) -> None:
+        self._validation_content = None
+        self._validation_sha256 = None
+
+    def _reset_worker_validation(self, state: str) -> None:
+        self._validation_attempted = False
+        self._clear_validation_request()
+        self._set_worker_validation(state, "", [])
+
+    def _validation_response_is_current(self) -> bool:
+        document = self.document
+        content = self._validation_content
+        digest = self._validation_sha256
+        if (
+            self._worker_validation_state != "running"
+            or document is None
+            or content is None
+            or digest is None
+            or not self._locally_valid
+            or self.visualization_draft.get_has_active_plot_edit()
+        ):
+            return False
+        current = document.yaml_bytes
+        return current == content and sha256_bytes(current) == digest
+
+    def _update_worker_validation(self, validation_revision_changed: bool) -> None:
+        if self.document is None:
+            self._set_worker_validation("unavailable", "", [])
+            return
+        active_edit = self.visualization_draft.get_has_active_plot_edit()
+        if not self._locally_valid or active_edit:
+            issue = (
+                "Commit or cancel the active plot edit before validation."
+                if active_edit
+                else self.get_blocking_issue()
+            )
+            self._set_worker_validation("blocked", issue, [])
+            return
+        if validation_revision_changed and self._validation_attempted:
+            self._set_worker_validation(
+                "stale",
+                "The configuration changed since the last worker validation attempt.",
+                [],
+            )
+            return
+        if self._worker_validation_state in {"unavailable", "blocked"}:
+            state = "stale" if self._validation_attempted else "not_run"
+            issue = (
+                "The configuration changed since the last worker validation attempt."
+                if state == "stale"
+                else ""
+            )
+            self._set_worker_validation(state, issue, [])
+
+    def _set_worker_validation(
+        self,
+        state: str,
+        issue: str,
+        issues: list[dict[str, str]],
+    ) -> None:
+        normalized_issues = [dict(item) for item in issues]
+        if (
+            state == self._worker_validation_state
+            and issue == self._worker_validation_issue
+            and normalized_issues == self._worker_validation_issues
+        ):
+            return
+        self._worker_validation_state = state
+        self._worker_validation_issue = issue
+        self._worker_validation_issues = normalized_issues
+        self.state_changed.emit()
 
     def _set_status(self, message: str) -> None:
         if message == self._status_message:
@@ -763,6 +953,7 @@ def _failure_title(action: str) -> str:
         "capabilities": "Capability Loading Failed",
         "import": "Import Failed",
         "reload": "Reload Failed",
+        "validate": "Validation Failed",
         "save": "Validation Failed",
         "save_as": "Validation Failed",
     }.get(operation, "Operation Failed")

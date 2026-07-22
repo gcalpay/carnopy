@@ -391,6 +391,7 @@ def test_active_plot_edit_blocks_all_composition_lifecycle_paths(
         "import_dataset",
         "request_save",
         "request_save_as",
+        "request_validation",
         "reload_source",
         "apply_mode_change",
         "apply_coordinate_change",
@@ -405,6 +406,7 @@ def test_active_plot_edit_blocks_all_composition_lifecycle_paths(
     assert not desktop.request_import_dataset("input.yaml")
     assert not desktop.request_save()
     assert not desktop.request_save_as()
+    assert not desktop.request_validate_configuration()
     assert not desktop.request_reload_source()
     assert not desktop.request_close_configuration()
     assert not desktop.request_dataset_mode_change("saturation_table")

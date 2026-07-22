@@ -44,6 +44,7 @@ ApplicationWindow {
     signal datasetSavePathCancelled
     signal datasetSavePathSelected(string path)
     signal datasetSaveRequested(bool allowReformat)
+    signal datasetValidateRequested
     signal datasetReloadRequested(bool discardConfirmed)
     signal plotFieldChangeRequested(var draft, string field, string value)
     signal plotFluidSelectionRequested(var draft, string value, bool selected)
@@ -527,6 +528,7 @@ ApplicationWindow {
             configurationFile: root.configController !== null ? root.configController.fileDisplay :
                                                                 ""
             configurationOpen: root.configController !== null && root.configController.hasDocument
+            canValidate: root.configController !== null && root.configController.canValidate
             datasetIssue: root.controllerAvailable ? root.desktopController.datasetDraft.issue : ""
             datasetValid: root.controllerAvailable
                           && root.desktopController.datasetDraft.locallyValid
@@ -534,6 +536,7 @@ ApplicationWindow {
             onAttentionRequested: (section, field, row) => root.configurationAttentionRequested(
                                                                section, field, row)
             onCloseRequested: root.requestInspectorToggle(persistentInspector.closeControl)
+            onValidateRequested: root.datasetValidateRequested()
             workspacePath: root.controllerAvailable ? root.desktopController.workspaceRootPath : ""
             workspaceState: root.controllerAvailable ? root.desktopController.workspaceState :
                                                        "unavailable"
@@ -544,6 +547,12 @@ ApplicationWindow {
             visualizationValid: root.controllerAvailable
                                 && root.desktopController.visualizationDraft.locallyValid
             visible: root.inspectorWideVisible
+            workerValidationIssue: root.configController !== null
+                                   ? root.configController.workerValidationIssue : ""
+            workerValidationIssues: root.configController !== null
+                                    ? root.configController.workerValidationIssues : []
+            workerValidationState: root.configController !== null
+                                   ? root.configController.workerValidationState : "unavailable"
             yamlAvailable: root.configController !== null && root.configController.yamlAvailable
         }
     }
@@ -591,6 +600,7 @@ ApplicationWindow {
             configurationFile: root.configController !== null ? root.configController.fileDisplay :
                                                                 ""
             configurationOpen: root.configController !== null && root.configController.hasDocument
+            canValidate: root.configController !== null && root.configController.canValidate
             datasetIssue: root.controllerAvailable ? root.desktopController.datasetDraft.issue : ""
             datasetValid: root.controllerAvailable
                           && root.desktopController.datasetDraft.locallyValid
@@ -598,6 +608,7 @@ ApplicationWindow {
             onAttentionRequested: (section, field, row) => root.configurationAttentionRequested(
                                                                section, field, row)
             onCloseRequested: root.requestInspectorToggle(null)
+            onValidateRequested: root.datasetValidateRequested()
             workspacePath: root.controllerAvailable ? root.desktopController.workspaceRootPath : ""
             workspaceState: root.controllerAvailable ? root.desktopController.workspaceState :
                                                        "unavailable"
@@ -607,6 +618,12 @@ ApplicationWindow {
                                 ? root.desktopController.visualizationDraft.issue : ""
             visualizationValid: root.controllerAvailable
                                 && root.desktopController.visualizationDraft.locallyValid
+            workerValidationIssue: root.configController !== null
+                                   ? root.configController.workerValidationIssue : ""
+            workerValidationIssues: root.configController !== null
+                                    ? root.configController.workerValidationIssues : []
+            workerValidationState: root.configController !== null
+                                   ? root.configController.workerValidationState : "unavailable"
             yamlAvailable: root.configController !== null && root.configController.yamlAvailable
         }
     }

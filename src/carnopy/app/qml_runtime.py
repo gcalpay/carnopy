@@ -329,6 +329,10 @@ class QmlApplicationRuntime:
             ("datasetImportRequested", self.controller.request_import_dataset),
             ("datasetSaveRequested", self.controller.request_save),
             ("datasetSaveAsRequested", self.controller.request_save_as),
+            (
+                "datasetValidateRequested",
+                self.controller.request_validate_configuration,
+            ),
             ("datasetSavePathSelected", self.controller.request_save_path_selected),
             ("datasetSavePathCancelled", self.controller.request_cancel_save_path),
             (

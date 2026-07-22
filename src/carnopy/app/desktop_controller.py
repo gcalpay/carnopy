@@ -318,6 +318,12 @@ class DesktopController(QObject):
             return False
         return self.dataset_config_controller.request_save_as(allow_reformat)
 
+    @Slot(result=bool, name="requestValidateConfiguration")
+    def request_validate_configuration(self) -> bool:
+        if not self._guard_active_plot_edit("Validation"):
+            return False
+        return self.dataset_config_controller.request_validation()
+
     @Slot(str, result=bool, name="requestSavePathSelected")
     def request_save_path_selected(self, path: str) -> bool:
         if not self._guard_active_plot_edit("Save As"):

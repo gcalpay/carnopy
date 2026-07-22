@@ -11,6 +11,7 @@ Control {
     property string blockingIssue: ""
     property int blockingRow: -1
     property string blockingSection: "none"
+    property bool canValidate: false
     property bool configurationDirty: false
     property string configurationFile: ""
     property bool configurationOpen: false
@@ -19,6 +20,9 @@ Control {
     property bool visualizationActiveEdit: false
     property string visualizationIssue: ""
     property bool visualizationValid: false
+    property string workerValidationIssue: ""
+    property var workerValidationIssues: []
+    property string workerValidationState: "unavailable"
     property string workspacePath: ""
     property string workspaceState: "unavailable"
     property bool yamlAvailable: false
@@ -26,6 +30,21 @@ Control {
 
     signal closeRequested
     signal attentionRequested(string section, string field, int row)
+    signal validateRequested
+
+    function validationLabel(state) {
+        const labels = {
+            "unavailable": qsTr("Not available"),
+            "blocked": qsTr("Blocked"),
+            "not_run": qsTr("Not run"),
+            "running": qsTr("Running"),
+            "valid": qsTr("Valid"),
+            "invalid": qsTr("Invalid"),
+            "failed": qsTr("Failed"),
+            "stale": qsTr("Stale")
+        };
+        return labels[state] || qsTr("Not available");
+    }
 
     implicitWidth: 304
     leftPadding: 16
@@ -149,11 +168,19 @@ Control {
                             font.pixelSize: 12
                             font.weight: Font.Medium
                             objectName: "inspectorWorkerValidationState"
-                            text: !root.configurationOpen ? qsTr("Not available") : (
-                                                                root.yamlAvailable ? qsTr(
-                                                                                         "Validated on Save") :
-                                                                                     qsTr("Blocked locally"))
+                            text: root.validationLabel(root.workerValidationState)
                         }
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        color: Theme.textMuted
+                        font.family: Theme.sansFamily
+                        font.pixelSize: 11
+                        objectName: "inspectorWorkerValidationIssue"
+                        text: root.workerValidationIssue
+                        visible: text.length > 0
+                        wrapMode: Text.Wrap
                     }
 
                     Label {
@@ -230,6 +257,17 @@ Control {
                 Item {
                     Layout.fillHeight: true
                     Layout.minimumHeight: 1
+                }
+
+                AppButton {
+                    Layout.fillWidth: true
+                    enabled: root.canValidate
+                    objectName: "inspectorValidateButton"
+                    onClicked: root.validateRequested()
+                    text: root.workerValidationState === "running" ? qsTr("Validating…") : qsTr(
+                                                                         "Run validation")
+                    tone: "primary"
+                    visible: root.configurationOpen
                 }
             }
         }
