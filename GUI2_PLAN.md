@@ -180,12 +180,15 @@ workflows.
   responsive card grid, and an adaptive right inspector. The inspector shows
   page-specific issues and help above stable document validity, file state, and
   next actions.
-- Use a native operating-system title bar. Follow the operating-system theme on
-  first launch and persist explicit System, Light, and Dark choices.
+- Use a native operating-system title bar. New or migrated profiles without a
+  valid stored choice start in Dark. Persist explicit System, Light, Warm, and
+  Dark choices.
 - Use moderately expressive functional motion with a reduced-motion setting.
   Motion must remain fast, interruptible, and never delay an available control.
-- Use a navy navigation surface, restrained emerald primary actions, and blue
-  informational accents. Status must never rely on color alone.
+- Use the approved Stage 2 Dataset reference as the visual authority. Its dark
+  canvas is `#0F0F0F`; restrained emerald indicates selected, valid, confirmed,
+  or calculated state, amber indicates unsaved or attention state, and red
+  indicates error. Status must never rely on color alone.
 - Keep the full navigation structure visible. Unavailable entries are muted,
   explained, non-interactive, and excluded from keyboard focus. Use this order:
   Workspace, Dataset, Visualization, YAML Preview, Run, Inspect, Activity and
@@ -205,8 +208,10 @@ workflows.
   Light, and Dark themes, 1024 by 768, 1920 by
   1080, narrow layout, collapsed rail, and inspector drawer states. Store
   working references only in ignored `prerelease/gui2-stage2-design/`; do not
-  package or commit them. The clickable QML shell becomes authoritative
-  immediately after visual approval.
+  package or commit them. This restriction applies to exploratory working
+  files; the later explicitly approved Dataset reference is committed as
+  documentation. The clickable QML shell becomes authoritative immediately
+  after visual approval.
 - Use the maintainer-provided untracked
   `logo-ideas/minimal-green-v1.png` unchanged as the explicitly approved
   provisional Stage 2 application mark. Copy the exact PNG bytes into the
@@ -479,6 +484,223 @@ a stop condition.
   reset; Help explains shortcuts, workflow, local versus worker validation,
   scientific isolation, and verified platform status.
 
+### Approved scientific-workbench refinement
+
+The [approved dark Dataset workbench reference](docs/assets/gui2-stage2-dataset-dark.png)
+is authoritative for the remaining Stage 2 visual work. Its SHA-256 is
+`d6b0ed719218be659ad5d2b940f1f11eab61802d641b4896dee9b96084ad8d48`.
+It is a documentation reference, not a packaged runtime resource or application
+data source. The following decisions supersede conflicting palette, appearance,
+or completion wording earlier in this Stage 2 record without rewriting the
+implemented history of Commits 1 through 10.
+
+#### Palette, motion, and native window
+
+- Reproduce the reference rather than interpreting it into another dark
+  palette. Dark canvas is `#0F0F0F`. Define only the roles needed by the
+  reference: canvas, surface, raised surface, divider, primary text, muted
+  text, hover, focus/green, amber, and red. Light and Warm use the same minimal
+  role set. Do not add gradients, glass, blur, decorative shadows, or another
+  palette exploration.
+- Green means selected, valid, confirmed, or calculated. Amber means unsaved or
+  attention. Red means error. Hover is a soft full-target surface lift without
+  movement.
+- Local transitions last 120 through 160 ms. Drawers and toasts last 180
+  through 220 ms. Reduce Motion makes them immediate. Widths never animate.
+- The reference's window controls are illustrative. Carnopy retains the native
+  operating-system title bar and its minimize, maximize, close, move, and
+  resize behavior.
+- The 1920 by 1080 reference depicts the three-column wide Dataset state.
+  1440 by 900 remains required and may use two Dataset columns while the rail
+  and inspector are visible. Columns derive from remaining central width with
+  a 300-logical-pixel minimum and a maximum of three; card heights are not
+  hardcoded from the image.
+
+#### Header and responsive shell
+
+- Wide mode shows labeled New, Import, Save, and Save As actions. Compact mode
+  shows the corresponding icon buttons with tooltips. In narrow mode Save
+  remains visible while New, Import, Save As, and guarded Close Configuration
+  move into overflow.
+- Appearance controls use a first-party Carnopy trio reconstructed from the
+  approved reference: a white full sun for Light; an amber half-sun with three
+  outward rays, one horizon, and two reflection lines for Warm; and a white
+  crescent moon for Dark. The pinned Lucide sunset asset is not used because it
+  does not match the approved geometry. The active theme receives an emerald
+  frame.
+- System remains available in Settings. While System is active, the effective
+  sun or moon is framed and gains a small Auto/monitor marker. Selecting a
+  header icon exits System. Show all three icons at logical widths of 800 and
+  above and use one appearance menu below 800.
+- With the inspector docked, its left boundary continues through the header
+  immediately before the appearance icons. With the inspector collapsed or
+  overlaid, remove the stale divider and keep the icons right-aligned.
+- Wide mode at 1280 and above uses a collapsible persistent rail and docked
+  inspector. Compact mode from 800 through 1279 uses an icons-only rail and an
+  overlay inspector drawer. Narrow mode below 800 uses an overlay navigation
+  drawer and near-full-width inspector sheet.
+- Crossing a breakpoint closes transient navigation and inspector drawers and
+  restores focus to the appropriate opener. Entering wide mode restores the
+  persisted wide rail and inspector preferences. Leaving wide mode never
+  overwrites those preferences.
+- One shared action owns each rail or inspector toggle. Exactly one activation
+  causes exactly one state change.
+
+#### Dataset presentation
+
+Number Dataset sections dynamically in this order:
+
+1. Backend and mode.
+2. Fluids.
+3. Properties.
+4. One section for each sampler in canonical grid order.
+5. Dataset outputs as the final section.
+
+Use **Sampling grid** in user-facing grouping; stable internal field
+identifiers may retain axis terminology. Present models as Helmholtz Equation
+of State (HEOS), Peng–Robinson (PR), and Soave–Redlich–Kwong (SRK).
+
+- Selected fluids appear as requested-alias chips. Show `Canonical backend
+  identities:` beneath them using the existing `canonical` model role.
+- Add Fluid and Edit Properties open the same style of bounded, searchable,
+  compatibility-aware popover. Changes apply immediately and remain applied
+  when the popover closes through Done, Escape, or outside click. Focus returns
+  to the invoking control.
+- Selected-item overflow provides Move up, Move down, and Remove. Retained
+  incompatible values remain visible with their issue.
+- Show at most four fluid chips and then `+N more`; show at most six property
+  rows and then `+N more`. The summary opens the corresponding popover.
+  Preserve selected order. Use one bounded popover `ListView`; do not nest a
+  popover scroll area inside the page scroll area.
+- Search is case-insensitive across label, value, and canonical text. Keyboard
+  navigation and selection, outside-click closure, Escape, Done, immediate
+  add/remove, retained incompatibility, ordering, `+N more`, and focus
+  restoration require behavioral tests.
+
+Add private `label`, `symbol`, and `unit` roles while reusing `canonical`.
+Symbols and units are presentation only and do not change serialized units,
+schema tokens, metadata, or worker behavior.
+
+| Property | Label | Trusted symbol markup | Presentation unit |
+| --- | --- | --- | --- |
+| `specific_enthalpy` | Specific enthalpy | `h` | `J·kg⁻¹` |
+| `specific_entropy` | Specific entropy | `s` | `J·kg⁻¹·K⁻¹` |
+| `specific_internal_energy` | Specific internal energy | `u` | `J·kg⁻¹` |
+| `mass_density` | Mass density | `ρ` | `kg·m⁻³` |
+| `isobaric_specific_heat_capacity` | Isobaric specific heat capacity | `cₚ` | `J·kg⁻¹·K⁻¹` |
+| `isochoric_specific_heat_capacity` | Isochoric specific heat capacity | `cᵥ` | `J·kg⁻¹·K⁻¹` |
+| `dynamic_viscosity` | Dynamic viscosity | `μ` | `Pa·s` |
+| `kinematic_viscosity` | Kinematic viscosity | `ν` | `m²·s⁻¹` |
+| `thermal_conductivity` | Thermal conductivity | `k` | `W·m⁻¹·K⁻¹` |
+| `prandtl_number` | Prandtl number | `Pr` | `1` |
+| `speed_of_sound` | Speed of sound | `a` | `m·s⁻¹` |
+| `molar_mass` | Molar mass | `M` | `kg·mol⁻¹` |
+| `critical_temperature` | Critical temperature | `T<sub>c</sub>` | `K` |
+| `critical_pressure` | Critical pressure | `p<sub>c</sub>` | `Pa` |
+| `triple_point_temperature` | Triple-point temperature | `T<sub>tr</sub>` | `K` |
+| `surface_tension` | Surface tension | `σ` | `N·m⁻¹` |
+
+The property-symbol component deliberately renders only these trusted static
+symbols using Qt rich or styled text. It never renders user-provided text as
+markup. Accessible names use the complete property labels, including
+`critical temperature`, `critical pressure`, and `triple-point temperature`.
+
+#### Lightweight Dataset projection
+
+Add private, lightweight `sampler_point_count(sampler)` and
+`projected_row_count(mode, fluid_count, sampler_counts)` helpers. Share
+stepspace reachability behavior and the 1,000,000-row limit with production
+normalization. The GUI does not import NumPy or materialize grids for these
+projections.
+
+Expose `SamplerDraft.sampleCount` and the following `DatasetDraft` projections:
+`gridCombinationsPerFluid`, `projectedRowsPerFluid`, `projectedRows`,
+`projectionAvailable`, and `projectionIssue`.
+
+- `gridCombinationsPerFluid` is the product of required sampler counts before
+  mode-specific expansion.
+- `projectedRowsPerFluid` doubles grid combinations only for
+  `saturation_table`; otherwise it equals grid combinations.
+- `projectedRows` multiplies the per-fluid projection by the
+  canonical-unique selected-fluid count.
+- A valid complete sampler exposes its exact count. An incomplete or invalid
+  sampler returns zero from the first unavailable count stage and exposes the
+  structured sampler issue. An unreachable stepspace is not estimated or
+  materialized and retains its reachability issue.
+- With zero selected fluids, per-fluid counts remain available but total is
+  zero and unavailable with a request for at least one fluid. Duplicate,
+  unavailable, or incompatible fluids prevent a total claim and preserve the
+  first fluid issue.
+- A total above 1,000,000 remains exactly visible and `projectionAvailable`
+  remains true, but `projectionIssue` is blocking and the Dataset draft is
+  locally invalid.
+
+The approved Property Table defaults project 4,141 grid combinations per
+fluid, 4,141 rows per fluid, and 8,282 total rows. Permanent tests compare GUI
+projection with production normalization for every sampler kind and mode.
+
+#### Revision-bound worker validation
+
+Reuse `validate_dataset_config`; do not add a protocol type. Privately expose
+`canValidate`, `workerValidationState`, `workerValidationIssue`, and
+`workerValidationIssues`.
+
+| State | Exact meaning |
+| --- | --- |
+| `unavailable` | No document exists, so no exact YAML can be submitted. |
+| `blocked` | A document exists, but local invalidity or an active plot edit prevents exact YAML submission. |
+| `not_run` | Current YAML is locally valid and has never received a validation attempt. |
+| `running` | A request is active for the captured current YAML bytes and SHA-256. |
+| `valid` | The worker accepted bytes exactly matching the current document. |
+| `invalid` | The worker rejected bytes exactly matching the current document as an invalid Carnopy configuration, identified by `category="config"` and `code="invalid_config"`; detailed validation issues may be empty. |
+| `failed` | Another worker, transport, protocol, or operational failure occurred; no validity conclusion was reached. |
+| `stale` | A prior result or in-flight request belongs to different document bytes. |
+
+Transitions are exact:
+
+- No document is `unavailable`. A new, imported, or replaced locally valid
+  document is `not_run`; import loading is not validation unless the exact
+  current preview bytes were validated.
+- Local invalidity or an active plot edit is `blocked`. Starting standalone or
+  Save validation captures exact bytes and hash and becomes `running`.
+- A matching accepted result is `valid`. A matching
+  `config`/`invalid_config` rejection is `invalid`, even when
+  `details.issues` is missing or empty. Any other matching failure is `failed`.
+- Editing after `valid`, `invalid`, or `failed` becomes `stale` when locally
+  valid and `blocked` otherwise. Editing while running becomes `stale` and the
+  late result is ignored. Reverting text does not resurrect an older result.
+  When a blocked draft becomes valid, use `stale` if an earlier attempt exists
+  and `not_run` otherwise.
+
+`canValidate` requires an open document, both drafts locally valid, no active
+plot edit, and an idle coordinator. Only the bottom inspector action invokes
+standalone validation. It is informational and never enables, disables, gates,
+or authorizes Save. `canSave` retains its existing local, lifecycle, and
+coordinator rules. Every Save and Save As performs a fresh authoritative
+worker validation of the exact bytes immediately before writing and never
+consumes a cached standalone result. A matching Save result may update the
+displayed state. Validation state is transient, nonserialized, excluded from
+dirty state, and excluded from scientific identity.
+
+#### Theme state and migration
+
+Use one mode string throughout Python and QML: `system`, `light`, `warm`, or
+`dark`. Replace `Theme.qml`'s Boolean with that mode; do not add per-theme
+booleans.
+
+- A missing stored value defaults to Dark. Preserve an existing valid mode.
+  Replace an unknown or corrupt mode with Dark and persist the correction.
+- System resolves live to Light or Dark only. System color-scheme changes and
+  explicit mode changes update QML and the QML runtime's `QPalette` in the same
+  event turn.
+- Layout reset preserves theme and reduced motion. Existing geometry, screen,
+  rail, and inspector setting namespaces remain unchanged.
+- Apply the palette only to the QML runtime and restore the previous
+  application palette during teardown. Qt fallback dialogs require readable
+  Highlight and HighlightedText roles; true native dialogs remain OS-themed.
+- Record the custom sun, sunset, and moon icons as first-party resources with
+  hashes. Existing Lucide navigation assets retain their provenance.
+
 ### Stage 2 delivery and acceptance
 
 Use this exact commit sequence. Each implementation commit must be independently
@@ -489,10 +711,10 @@ That gate selected Precision Grid, retained only the numbered next-steps
 progression as a named borrowed element, selected moderately expressive motion,
 and approved `minimal-green-v1.png` unchanged as a provisional packaged mark.
 The generated vector candidates were rejected and final logo refinement was
-deferred. This completed gate does not reopen the settled layout, scope, Qt,
-packaging, workflow, or scientific decisions.
+  deferred. This completed gate does not reopen the settled layout, scope, Qt,
+  packaging, workflow, or scientific decisions.
 
-Current implementation status as of 2026-07-19:
+Current implementation status as of 2026-07-22:
 
 - Commits 1 through 4 are implemented in the Stage 2 branch history. The design
   and branding gate required between Commits 3 and 4 is complete under the
@@ -694,7 +916,7 @@ Current implementation status as of 2026-07-19:
   environment compatibility checking. Native human inspection of the
   Visualization page remains required before the maintainer accepts this
   commit.
-- The Commit 10 boundary is implemented in the working tree. The configuration
+- The Commit 10 boundary is implemented in the Stage 2 branch history. The configuration
   controller now exposes typed YAML availability and blocking section, field,
   row, and issue projections. Invalid state clears `yamlPreview` instead of
   retaining stale or best-effort YAML. Typed operation-failure, Save-success,
@@ -723,14 +945,15 @@ Current implementation status as of 2026-07-19:
   The CI and release workflows include a Python 3.12 installed-wheel QML smoke
   on Linux, Windows, and macOS covering warning-free startup, responsive state,
   YAML-page creation, one settings-controller interaction, and teardown. Those
-  remote jobs remain to be observed after the human commit and push. Native
-  dialogs remain outside headless CI, and this smoke is not Stage 8 platform
-  qualification.
-- Commit 11 has not started. No generation, inspection, plotting, VTK, or
-  public-launcher parity is inferred from Commit 10. Both public launchers
-  remain on Widgets, and Stage 2 remains active until the complete automated
-  gates, three-platform PR checks, native manual acceptance, and explicit
-  maintainer approval are complete.
+  remote jobs passed after the human commit and push. Native dialogs remain
+  outside headless CI, and this smoke is not Stage 8 platform qualification.
+- This revision defines the Commit 11 documentation boundary and the remaining
+  Commits 12 through 19. Runtime implementation of the approved refinement has
+  not started. No generation, inspection, plotting, VTK, or public-launcher
+  parity is inferred from Commit 10. Both public launchers remain on Widgets,
+  and Stage 2 remains active until the complete automated gates,
+  three-platform PR checks, native manual acceptance, and explicit maintainer
+  approval are complete.
 - Git staging, commits, synchronization with the remote branch, and publication
   remain human-owned and are not implied by this implementation-status record.
 
@@ -787,11 +1010,55 @@ Current implementation status as of 2026-07-19:
      typed operation feedback, worker-validated Save and Save As, reformat,
      external-change, dirty-close, QML integration tests, three-platform smoke,
      and installed-wheel verification.
-11. `docs(app): complete GUI-2 Stage 2`
-   - Create this documentation-only status commit only after explicit
-     maintainer acceptance of the automated and native results.
-   - Record the exact verified platforms and gates, mark Stage 2 complete, and
-     make Stage 3 active without claiming Stage 3 parity.
+11. `docs(app): lock Stage 2 visual polish contracts`
+   - Commit this complete refinement contract and the approved Dataset
+     reference with its SHA-256. The image remains documentation only.
+12. `fix(app): defer guarded QML shutdown`
+   - Own only deferred close processing, idempotent teardown, event-filter
+     removal and a one-use bypass, guarded SIGINT, and dirty, busy, and
+     active-edit shutdown regressions.
+   - Prove stderr remains free of Python-override tracebacks during normal,
+     guarded, repeated, and interrupted close paths.
+13. `fix(app): make QML shell actions reliable`
+   - Route rail and inspector changes through shared actions, keep one visible
+     control per state, implement deterministic breakpoint transitions and
+     focus restoration, synchronize preferences, and cover keyboard and
+     first-click behavior.
+14. `feat(app): add revision-bound configuration validation`
+   - Add typed validation state, exact-byte and hash binding, standalone
+     validation through the desktop facade, the single inspector Validate
+     control, empty-issue `config`/`invalid_config` classification, stale-result
+     rejection, and Save independence with fresh-validation tests.
+15. `feat(app): expose accurate Dataset projections`
+   - Add lightweight sampler counts, shared projection formulas and row limit,
+     Dataset projection properties and issues, private property presentation
+     roles, trusted formatted subscripts, accessibility coverage, production
+     parity, and heavy-import isolation.
+16. `feat(app): add QML appearance modes and palette`
+   - Replace the QML theme Boolean with one mode string; add Dark-default
+     migration, Light/Warm/Dark/System settings, live QML-runtime `QPalette`
+     synchronization and restoration, first-party appearance icons with
+     resource hashes, and the responsive header selector.
+17. `feat(app): add searchable Dataset selectors`
+   - Add fluid and property popovers, immediate selection, retained
+     incompatibility, bounded summaries, ordering/removal overflow, keyboard
+     behavior, and focus restoration without nested scroll areas.
+18. `style(app): apply the approved scientific workbench`
+   - Apply the reference-matched minimal tokens, flat hierarchy, Dataset
+     information architecture, hover treatment, readable fallback dialogs,
+     responsive two/three-column behavior, and consistent styling across the
+     current QML pages. Update packaged-resource and smoke coverage as needed.
+19. `docs(app): complete GUI-2 Stage 2`
+   - Create this documentation-only status commit only after all automated and
+     remote gates, explicit native acceptance, and maintainer approval.
+   - Update this plan and `DESKTOP_ARCHITECTURE.md`, record exact verified
+     platforms and limitations, mark Stage 2 complete, and make Stage 3 active
+     without claiming Stage 3 parity.
+
+When these commits are implemented and committed sequentially, hunk-level
+staging is not required. If work from more than one boundary exists together,
+shared runtime, settings, QML, test, resource-inventory, and plan files require
+hunk-level staging so every commit remains independently reviewable.
 
 Focused automated coverage must include:
 
@@ -811,6 +1078,23 @@ Focused automated coverage must include:
   lifecycle rejection, stable invalid-field focus, empty invalid YAML, exact
   worker-validated writes, external-change and reformat decisions, baseline
   refresh, and unchanged Widgets behavior;
+- deferred guarded close, idempotent teardown, SIGINT, event-filter removal,
+  and stderr free of Python-override tracebacks; one-event rail and inspector
+  actions, deterministic live breakpoint transitions, and first-click keyboard
+  behavior;
+- every revision-bound validation state and transition; exact-byte/hash
+  matching; late-result rejection; empty-issue `config`/`invalid_config`
+  handling; standalone validation that never authorizes Save; and fresh
+  validation for every Save and Save As;
+- sampler and Dataset projections for every sampler and mode, invalid and
+  unreachable samplers, zero/duplicate/incompatible fluids, exact over-limit
+  counts, production parity, formatted subscripts, and complete accessible
+  property names;
+- Dark-default theme migration, corrupt-setting repair, all four Settings
+  modes, live System updates, runtime-palette restoration, custom appearance
+  resource hashes, readable fallback dialogs, bounded searchable selectors,
+  immediate selection, retained incompatibility, ordering, closure paths, and
+  focus restoration;
 - exact QML/font/icon/license/provenance inventories and source, wheel, sdist,
   and installed-byte agreement.
 
