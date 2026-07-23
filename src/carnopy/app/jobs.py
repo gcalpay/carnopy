@@ -74,6 +74,9 @@ class JobStore:
         terminal = envelope.get("terminal_event")
         terminal_type = terminal.get("type") if isinstance(terminal, dict) else None
         payload = terminal.get("payload") if isinstance(terminal, dict) else None
+        client_failure = envelope.get("client_failure")
+        if not isinstance(payload, dict) and isinstance(client_failure, dict):
+            payload = client_failure
         if envelope.get("force_stopped"):
             status = "force_stopped"
         elif terminal_type == "result":
@@ -89,6 +92,36 @@ class JobStore:
         record["summary"] = payload if isinstance(payload, dict) else {}
         record["terminal_envelope"] = envelope
         self.write(record)
+
+    def finish_start_failure(
+        self,
+        record: dict[str, Any],
+        *,
+        request_type: str,
+        category: str,
+        code: str,
+        message: str,
+    ) -> None:
+        """Record a failure that occurred before the worker transport started."""
+
+        self.finish(
+            record,
+            {
+                "request_id": str(record["request_id"]),
+                "request_type": request_type,
+                "terminal_event": None,
+                "client_failure": {
+                    "category": category,
+                    "code": code,
+                    "message": message,
+                },
+                "stderr": "",
+                "exit_code": None,
+                "exit_status": "not_started",
+                "force_stopped": False,
+                "cleanup_error": None,
+            },
+        )
 
     def write(self, record: dict[str, Any]) -> Path:
         request_id = str(record["request_id"])

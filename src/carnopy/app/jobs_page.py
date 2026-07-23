@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -18,10 +18,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from carnopy.app.config_document import SavedConfigSnapshot
-from carnopy.app.execution_page import DatasetExecutionPage
+from carnopy.app.execution_controller import DatasetExecutionController
 from carnopy.app.jobs import JobStore, LoadedJob
-from carnopy.app.protocol import WorkerEvent
 from carnopy.app.recovery import (
     StagingCandidate,
     remove_staging_candidate,
@@ -38,14 +36,13 @@ class JobsDiagnosticsPage(QWidget):
 
     def __init__(
         self,
-        execution_page: DatasetExecutionPage,
+        execution_controller: DatasetExecutionController,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self.execution_page = execution_page
+        self.execution_controller = execution_controller
         self.workspace: Workspace | None = None
         self.store: JobStore | None = None
-        self._active_record: dict[str, Any] | None = None
 
         root = QVBoxLayout(self)
         heading = QLabel("Jobs and Diagnostics")
@@ -56,9 +53,7 @@ class JobsDiagnosticsPage(QWidget):
         self.tabs.addTab(self._build_recovery_tab(), "Staging Recovery")
         root.addWidget(self.tabs, 1)
 
-        execution_page.request_started.connect(self._request_started)
-        execution_page.request_event.connect(self._event_received)
-        execution_page.request_terminal.connect(self._request_terminal)
+        execution_controller.activity_record_changed.connect(self.refresh_jobs)
 
     def _build_jobs_tab(self) -> QWidget:
         page = QWidget()
@@ -109,7 +104,6 @@ class JobsDiagnosticsPage(QWidget):
     def set_workspace(self, workspace: Workspace | None) -> None:
         self.workspace = workspace
         self.store = None if workspace is None else JobStore(workspace.private_directory)
-        self._active_record = None
         self.refresh_jobs()
         self.refresh_recovery()
 
@@ -210,47 +204,6 @@ class JobsDiagnosticsPage(QWidget):
         self.refresh_recovery()
         if errors:
             self.recovery_status.setText("; ".join(errors))
-
-    def _request_started(self, value: object) -> None:
-        store = self.store
-        workspace = self.workspace
-        payload = cast(dict[str, Any], value)
-        snapshot = payload.get("snapshot")
-        if store is None or workspace is None or not isinstance(snapshot, SavedConfigSnapshot):
-            return
-        try:
-            relative = snapshot.path.relative_to(workspace.root).as_posix()
-        except ValueError:
-            return
-        self._active_record = store.start(
-            request_id=str(payload["request_id"]),
-            operation=str(payload["operation"]),
-            config_relative_path=relative,
-            yaml_snapshot=snapshot.yaml_bytes.decode("utf-8"),
-            config_sha256=snapshot.sha256,
-        )
-        self.refresh_jobs()
-
-    def _event_received(self, value: object) -> None:
-        record = self._active_record
-        store = self.store
-        event = cast(WorkerEvent, value)
-        if record is None or store is None or str(event.request_id) != record["request_id"]:
-            return
-        if event.type in {"phase", "progress"}:
-            store.update_event(record, event.type, event.payload)
-
-    def _request_terminal(self, value: object) -> None:
-        record = self._active_record
-        store = self.store
-        envelope = cast(dict[str, Any], value)
-        if record is None or store is None or envelope.get("request_id") != record["request_id"]:
-            return
-        store.finish(record, envelope)
-        self._active_record = None
-        self.refresh_jobs()
-        if envelope.get("force_stopped"):
-            self.refresh_recovery()
 
 
 def _job_label(loaded: LoadedJob) -> str:

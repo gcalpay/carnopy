@@ -23,7 +23,6 @@ from PySide6.QtWidgets import (
 )
 
 from carnopy.app.application_identity import apply_application_identity
-from carnopy.app.config_document import ConfigDocumentError
 from carnopy.app.config_editor import DatasetConfigEditor
 from carnopy.app.desktop_controller import DesktopController
 from carnopy.app.execution_page import DatasetExecutionPage
@@ -64,6 +63,7 @@ class MainWindow(QMainWindow):
         self.coordinator = self.desktop_controller.request_coordinator
         self.workspace_controller = self.desktop_controller.workspace_controller
         self.dataset_config_controller = self.desktop_controller.dataset_config_controller
+        self.execution_controller = self.desktop_controller.execution_controller
         self._close_when_idle = False
         self._close_after_plot_stop = False
         self.setWindowTitle("Carnopy")
@@ -75,10 +75,10 @@ class MainWindow(QMainWindow):
         self.configure_page = DatasetConfigEditor(
             desktop_controller=self.desktop_controller,
         )
-        self.execution_page = DatasetExecutionPage(self.coordinator)
+        self.execution_page = DatasetExecutionPage(self.execution_controller)
         self.inspection_page = InspectionPage(self.coordinator)
         self.plot_page = PlotPage(self.coordinator)
-        self.jobs_page = JobsDiagnosticsPage(self.execution_page)
+        self.jobs_page = JobsDiagnosticsPage(self.execution_controller)
         for index, title in enumerate(PAGE_TITLES):
             self.navigation.addItem(title)
             if index == 0:
@@ -105,7 +105,6 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.pages, 1)
         self.setCentralWidget(central)
         self._set_workspace_pages_enabled(self.workspace_controller.get_available())
-        self.dataset_config_controller.document_state_changed.connect(self._sync_execution_config)
         self.coordinator.busy_changed.connect(self._worker_busy_changed)
         self.workspace_controller.workspace_changed.connect(self._workspace_activated)
         self.workspace_controller.available_changed.connect(
@@ -255,12 +254,10 @@ class MainWindow(QMainWindow):
             return
         workspace = value
         self.workspace_path.setText(str(workspace.root))
-        self.execution_page.set_workspace(workspace)
         self.inspection_page.set_workspace(workspace)
         self.plot_page.set_workspace(workspace)
         self.jobs_page.set_workspace(workspace)
         self.sources_panel.set_workspace(workspace)
-        self._sync_execution_config()
 
     def _update_workspace_status(self) -> None:
         message = self.workspace_controller.get_error_message()
@@ -292,7 +289,7 @@ class MainWindow(QMainWindow):
         if self.coordinator.is_busy:
             if self.coordinator.active_owner == "execution":
                 self._close_when_idle = True
-                self.execution_page.cancel()
+                self.execution_controller.cancel()
                 event.ignore()
                 return
             if self.coordinator.active_owner == "plot":
@@ -320,14 +317,6 @@ class MainWindow(QMainWindow):
             event.ignore()
             return
         super().closeEvent(event)
-
-    def _sync_execution_config(self) -> None:
-        try:
-            snapshot = self.dataset_config_controller.execution_snapshot()
-        except ConfigDocumentError as exc:
-            self.execution_page.set_snapshot(None, str(exc))
-        else:
-            self.execution_page.set_snapshot(snapshot)
 
     def _worker_busy_changed(self, busy: bool) -> None:
         if not busy and self._close_when_idle:

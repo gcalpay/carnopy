@@ -180,6 +180,7 @@ def test_coordinator_routes_events_only_to_the_owner_and_preserves_envelope(
         "request_id",
         "request_type",
         "terminal_event",
+        "client_failure",
         "stderr",
         "exit_code",
         "exit_status",
@@ -188,6 +189,55 @@ def test_coordinator_routes_events_only_to_the_owner_and_preserves_envelope(
     }
     assert not session.cancel()
     assert not session.force_stop()
+
+
+def test_reservation_is_nonbusy_blocks_reentry_and_preserves_uuid(
+    application: QCoreApplication,
+) -> None:
+    del application
+    transport = StubTransport()
+    coordinator = coordinator_for(transport)
+    busy: list[bool] = []
+    coordinator.busy_changed.connect(busy.append)
+
+    reservation = coordinator.reserve_request("execution", "generate_dataset")
+
+    assert not coordinator.is_busy
+    assert coordinator.active_owner is None
+    assert busy == []
+    with pytest.raises(RuntimeError, match="already active"):
+        coordinator.reserve_request("execution", "validate_config")
+    with pytest.raises(RuntimeError, match="already active"):
+        coordinator.start_request("inspection", "inspect_source", {})
+
+    session = coordinator.start_reserved_request(reservation, {"value": 1})
+
+    assert session.request_id == reservation.request_id
+    assert transport.started == [(reservation.request_id, "generate_dataset", {"value": 1})]
+    assert coordinator.is_busy
+    assert busy == [True]
+    transport.finish(payload={})
+
+
+def test_abandoned_and_foreign_reservations_never_start_transport(
+    application: QCoreApplication,
+) -> None:
+    del application
+    transport = StubTransport()
+    coordinator = coordinator_for(transport)
+    reservation = coordinator.reserve_request("execution", "validate_config")
+    coordinator.abandon_reserved_request(reservation)
+
+    assert not coordinator.is_busy
+    assert transport.started == []
+    with pytest.raises(RuntimeError, match="stale or foreign"):
+        coordinator.start_reserved_request(reservation, {})
+
+    replacement = coordinator.reserve_request("execution", "validate_config")
+    coordinator.abandon_reserved_request(reservation)
+    session = coordinator.start_reserved_request(replacement, {})
+    transport.finish(payload={})
+    assert session.request_id == replacement.request_id
 
 
 def test_execution_cancel_policy_rejects_foreign_and_stale_sessions(

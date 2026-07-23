@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import shlex
-from pathlib import Path
-from typing import Any, cast
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
@@ -15,41 +13,28 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from carnopy.app.config_document import SavedConfigSnapshot
-from carnopy.app.protocol import RequestType, WorkerEvent
-from carnopy.app.request_coordinator import (
-    DesktopRequestCoordinator,
-    RequestOutcome,
-    RequestSession,
-)
-from carnopy.app.workspace import Workspace
+from carnopy.app.execution_controller import DatasetExecutionController
 
 
 class DatasetExecutionPage(QWidget):
-    """Validate and generate one saved workspace dataset configuration."""
+    """Temporary Widgets view over the authoritative execution controller."""
 
     run_finalized = Signal(object)
-    request_started = Signal(object)
-    request_event = Signal(object)
-    request_terminal = Signal(object)
 
     def __init__(
         self,
-        coordinator: DesktopRequestCoordinator,
+        controller: DatasetExecutionController,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self.coordinator = coordinator
-        self.workspace: Workspace | None = None
-        self.snapshot: SavedConfigSnapshot | None = None
-        self._session: RequestSession | None = None
-        self._operation: str | None = None
+        self.controller = controller
+        self.coordinator = controller.coordinator
 
         root = QVBoxLayout(self)
         heading = QLabel("Validate and Generate")
         heading.setStyleSheet("font-size: 18px; font-weight: bold;")
         root.addWidget(heading)
-        self.config_label = QLabel("Open and save a dataset configuration first.")
+        self.config_label = QLabel()
         self.config_label.setWordWrap(True)
         root.addWidget(self.config_label)
 
@@ -58,12 +43,10 @@ class DatasetExecutionPage(QWidget):
         self.generate_button = QPushButton("Generate")
         self.cancel_button = QPushButton("Cancel")
         self.force_stop_button = QPushButton("Force Stop")
-        self.cancel_button.setEnabled(False)
-        self.force_stop_button.setVisible(False)
-        self.validate_button.clicked.connect(self.validate)
-        self.generate_button.clicked.connect(self.generate)
-        self.cancel_button.clicked.connect(self.cancel)
-        self.force_stop_button.clicked.connect(self.force_stop)
+        self.validate_button.clicked.connect(controller.validate)
+        self.generate_button.clicked.connect(controller.generate)
+        self.cancel_button.clicked.connect(controller.cancel)
+        self.force_stop_button.clicked.connect(controller.force_stop)
         for button in (
             self.validate_button,
             self.generate_button,
@@ -74,218 +57,83 @@ class DatasetExecutionPage(QWidget):
         actions.addStretch(1)
         root.addLayout(actions)
 
-        self.phase_label = QLabel("Idle")
+        self.phase_label = QLabel()
         self.phase_label.setAccessibleName("Execution phase")
         root.addWidget(self.phase_label)
         self.progress = QProgressBar()
-        self.progress.setRange(0, 1)
-        self.progress.setValue(0)
-        self.progress.setFormat("0 / 0 rows")
         root.addWidget(self.progress)
         root.addWidget(QLabel("Equivalent CLI command (informational only)"))
         self.command = QPlainTextEdit()
         self.command.setReadOnly(True)
         self.command.setMaximumHeight(75)
         root.addWidget(self.command)
-        self.result = QLabel("No validation or generation result yet.")
+        self.result = QLabel()
         self.result.setWordWrap(True)
         self.result.setAccessibleName("Execution result")
         root.addWidget(self.result)
         self.inspect_button = QPushButton("Inspect Run")
-        self.inspect_button.setEnabled(False)
-        self.inspect_button.setVisible(False)
         root.addWidget(self.inspect_button)
         root.addStretch(1)
 
-        self.coordinator.busy_changed.connect(self._busy_changed)
-        self._update_actions()
+        controller.state_changed.connect(self._refresh)
+        controller.run_finalized.connect(self.run_finalized)
+        self._refresh()
 
     @property
     def owns_active_request(self) -> bool:
-        return self._session is not None
+        return self.controller.owns_active_request
 
-    def set_workspace(self, workspace: Workspace | None) -> None:
-        self.workspace = workspace
-        if workspace is None:
-            self.set_snapshot(None, "Open a workspace first.")
+    def validate(self) -> bool:
+        return self.controller.validate()
 
-    def set_snapshot(
-        self,
-        snapshot: SavedConfigSnapshot | None,
-        issue: str | None = None,
-    ) -> None:
-        self.snapshot = snapshot
-        if snapshot is None:
-            self.config_label.setText(issue or "No executable configuration is open.")
-            self.command.clear()
-        else:
-            self.config_label.setText(f"{snapshot.path}\nSHA-256: {snapshot.sha256}")
-            self._update_command("generate")
-        self._update_actions()
-
-    def validate(self) -> None:
-        self._start("validate")
-
-    def generate(self) -> None:
-        self._start("generate")
-
-    def _start(self, operation: str) -> None:
-        snapshot = self.snapshot
-        workspace = self.workspace
-        if snapshot is None or workspace is None or self.coordinator.is_busy:
-            return
-        self._operation = operation
-        self.result.setText("Request accepted; waiting for worker progress.")
-        self.phase_label.setText("Starting worker…")
-        self.progress.setRange(0, 0)
-        self.inspect_button.setVisible(False)
-        self.inspect_button.setEnabled(False)
-        self._update_command(operation)
-        common: dict[str, object] = {
-            "config_path": str(snapshot.path),
-            "expected_config_sha256": snapshot.sha256,
-        }
-        if operation == "validate":
-            request_type: RequestType = "validate_config"
-            payload = common
-        else:
-            request_type = "generate_dataset"
-            payload = {
-                **common,
-                "output_root": str(workspace.outputs),
-                "figures_root": str(workspace.figures),
-            }
-        session = self.coordinator.start_request("execution", request_type, payload)
-        self._session = session
-        session.event_received.connect(self._event_received)
-        session.completed.connect(self._request_completed)
-        session.policy_changed.connect(self._session_policy_changed)
-        self.request_started.emit(
-            {
-                "request_id": str(session.request_id),
-                "operation": operation,
-                "snapshot": snapshot,
-            }
-        )
-        self._update_actions()
+    def generate(self) -> bool:
+        return self.controller.generate()
 
     def cancel(self) -> bool:
-        session = self._session
-        if session is None:
-            return False
-        if not session.cancel():
-            return False
-        self.phase_label.setText("Cancellation requested; waiting for a safe checkpoint…")
-        self._update_actions()
-        return True
+        return self.controller.cancel()
 
     def force_stop(self) -> bool:
-        session = self._session
-        stopped = session is not None and session.force_stop()
-        if stopped:
-            self.force_stop_button.setEnabled(False)
-            self.phase_label.setText("Force-stopping worker…")
-        return stopped
+        return self.controller.force_stop()
 
-    def _event_received(self, value: object) -> None:
-        event = cast(WorkerEvent, value)
-        self.request_event.emit(event)
-        if event.type == "phase":
-            phase = str(event.payload.get("name", "unknown"))
-            self.phase_label.setText(f"Phase: {phase}")
-        elif event.type == "progress":
-            completed = int(event.payload.get("completed", 0))
-            total = int(event.payload.get("total", 0))
-            self.progress.setRange(0, max(total, 1))
-            self.progress.setValue(min(completed, max(total, 1)))
-            self.progress.setFormat(f"{completed} / {total} rows")
-        elif event.type in {"result", "error", "cancelled"}:
-            self.cancel_button.setEnabled(False)
-            self.force_stop_button.setVisible(False)
-
-    def _request_completed(self, value: object) -> None:
-        outcome = cast(RequestOutcome, value)
-        session = self._session
-        if session is None or outcome.request_id != session.request_id:
-            return
-        self.request_terminal.emit(outcome.terminal_envelope)
-        result = outcome.result_payload
-        if result is not None:
-            self._request_succeeded(result)
-            return
-        self._request_failed(outcome.failure_payload or {})
-
-    def _request_succeeded(self, value: object) -> None:
-        if self._session is None:
-            return
-        payload = cast(dict[str, Any], value)
-        operation = self._operation
-        if operation == "validate":
-            self.result.setText(
-                "Validation completed. "
-                f"Mode: {payload.get('mode')}; projected rows: {payload.get('projected_rows')}; "
-                f"model: {payload.get('backend_model')}."
+    def _refresh(self) -> None:
+        controller = self.controller
+        if controller.get_snapshot_available():
+            self.config_label.setText(
+                f"{controller.get_snapshot_path()}\nSHA-256: {controller.get_snapshot_sha256()}"
             )
         else:
-            output_directory = payload.get("output_directory")
-            visualization = payload.get("visualization")
-            visualization_text = "not configured"
-            if isinstance(visualization, dict):
-                visualization_text = str(visualization.get("status", "unknown"))
-            self.result.setText(
-                f"Generation {payload.get('run_status')}. "
-                f"Rows: {payload.get('row_count')} total, {payload.get('valid_row_count')} valid, "
-                f"{payload.get('invalid_row_count')} invalid.\n"
-                f"Run: {output_directory}\nConfigured visualization: {visualization_text}."
+            self.config_label.setText(
+                controller.get_snapshot_issue() or "No executable configuration is open."
             )
-            if isinstance(output_directory, str):
-                self.inspect_button.setProperty("source_path", output_directory)
-                self.inspect_button.setVisible(True)
-                self.inspect_button.setEnabled(True)
-                self.run_finalized.emit(Path(output_directory))
-        self.phase_label.setText("Completed")
-        self._finish_local_request()
+        self._update_command()
+        self._update_progress()
+        self._update_result()
+        self.validate_button.setEnabled(controller.get_can_validate())
+        self.generate_button.setEnabled(controller.get_can_generate())
+        self.cancel_button.setEnabled(controller.get_can_cancel())
+        self.force_stop_button.setVisible(controller.get_can_force_stop())
+        self.force_stop_button.setEnabled(controller.get_can_force_stop())
+        output_directory = controller.get_result_output_directory()
+        self.inspect_button.setProperty("source_path", output_directory)
+        inspectable = controller.get_state() == "succeeded" and bool(output_directory)
+        self.inspect_button.setVisible(inspectable)
+        self.inspect_button.setEnabled(inspectable)
 
-    def _request_failed(self, value: object) -> None:
-        if self._session is None:
-            return
-        payload = cast(dict[str, Any], value)
-        code = str(payload.get("code", "execution_failed"))
-        message = str(payload.get("message", "worker request failed"))
-        if code == "cancelled":
-            self.phase_label.setText("Cancelled")
-        elif code == "force_stopped":
-            self.phase_label.setText("Force-stopped")
-        else:
-            self.phase_label.setText("Failed")
-        self.result.setText(f"{code}: {message}")
-        self._finish_local_request()
-
-    def _finish_local_request(self) -> None:
-        self.force_stop_button.setVisible(False)
-        self._session = None
-        self._operation = None
-        self._update_actions()
-
-    def _session_policy_changed(self) -> None:
-        self._update_actions()
-
-    def _busy_changed(self, _busy: bool) -> None:
-        self._update_actions()
-
-    def _update_command(self, operation: str) -> None:
-        snapshot = self.snapshot
-        workspace = self.workspace
-        if snapshot is None:
+    def _update_command(self) -> None:
+        controller = self.controller
+        path = controller.get_snapshot_path()
+        workspace = controller.workspace
+        if not path:
             self.command.clear()
             return
+        operation = controller.get_operation() or "generate"
         if operation == "validate":
-            parts = ["carnopy", "validate", str(snapshot.path)]
+            parts = ["carnopy", "validate", path]
         elif workspace is not None:
             parts = [
                 "carnopy",
                 "generate",
-                str(snapshot.path),
+                path,
                 "--out",
                 str(workspace.outputs),
                 "--figures-out",
@@ -295,13 +143,65 @@ class DatasetExecutionPage(QWidget):
             parts = []
         self.command.setPlainText(shlex.join(parts))
 
-    def _update_actions(self) -> None:
-        ready = self.snapshot is not None and self.workspace is not None
-        available = ready and not self.coordinator.is_busy
-        self.validate_button.setEnabled(available)
-        self.generate_button.setEnabled(available)
-        session = self._session
-        self.cancel_button.setEnabled(session is not None and session.cooperative_cancel_available)
-        force_available = session is not None and session.force_stop_available
-        self.force_stop_button.setVisible(force_available)
-        self.force_stop_button.setEnabled(force_available)
+    def _update_progress(self) -> None:
+        state = self.controller.get_state()
+        completed = self.controller.get_completed_rows()
+        total = self.controller.get_total_rows()
+        if state == "starting":
+            self.progress.setRange(0, 0)
+            self.progress.setFormat("Starting worker…")
+        else:
+            self.progress.setRange(0, max(total, 1))
+            self.progress.setValue(min(completed, max(total, 1)))
+            self.progress.setFormat(f"{completed} / {total} rows")
+        phase = self.controller.get_phase()
+        self.phase_label.setText(f"Phase: {phase}" if phase else _state_label(state))
+
+    def _update_result(self) -> None:
+        controller = self.controller
+        state = controller.get_state()
+        if state == "succeeded" and controller.get_operation() == "validate":
+            self.result.setText(
+                "Validation completed. "
+                f"Mode: {controller.get_result_mode()}; "
+                f"projected rows: {controller.get_result_projected_rows()}; "
+                f"model: {controller.get_result_backend_model()}."
+            )
+        elif state == "succeeded":
+            visualization = controller.get_result_visualization_status() or "not configured"
+            self.result.setText(
+                f"Generation {controller.get_result_run_status()}. "
+                f"Rows: {controller.get_result_row_count()} total, "
+                f"{controller.get_result_valid_row_count()} valid, "
+                f"{controller.get_result_invalid_row_count()} invalid.\n"
+                f"Run: {controller.get_result_output_directory()}\n"
+                f"Configured visualization: {visualization}."
+            )
+        elif state in {"invalid", "failed", "cancelled", "force_stopped"}:
+            self.result.setText(
+                f"{controller.get_failure_code()}: {controller.get_failure_message()}"
+            )
+        elif state in {
+            "starting",
+            "running",
+            "cancellation_requested",
+            "force_stopping",
+        }:
+            self.result.setText("Request accepted; waiting for worker progress.")
+        else:
+            self.result.setText("No validation or generation result yet.")
+
+
+def _state_label(state: str) -> str:
+    return {
+        "unavailable": "Unavailable",
+        "ready": "Idle",
+        "running": "Running",
+        "cancellation_requested": "Cancellation requested",
+        "force_stopping": "Force-stopping worker…",
+        "succeeded": "Completed",
+        "invalid": "Invalid",
+        "failed": "Failed",
+        "cancelled": "Cancelled",
+        "force_stopped": "Force-stopped",
+    }.get(state, state.replace("_", " ").title())

@@ -34,8 +34,11 @@ The desktop has two frontend implementations during the GUI-2 migration:
   feedback, exact Dataset row projections, and composition-owned document and
   shutdown decisions are shared with the authoritative controllers rather than
   reimplemented in QML;
-- generation, inspection, table preview, plotting, jobs, recovery, and Widgets
-  retirement belong to later GUI-2 stages.
+- saved-config validation and generation state are now owned by one
+  `DatasetExecutionController`, with the public Widgets Run page acting as a
+  temporary view adapter;
+- QML Run, inspection, table preview, plotting, Activity and Recovery, and
+  Widgets retirement belong to the remaining Stage 3 steps.
 
 The development version is `0.1.0a4.dev0`. The two public launchers switch to
 QML only after Stage 3 reaches tested GUI-1 parity; Carnopy will not ship two
@@ -107,6 +110,8 @@ MainWindow + page adapters            QQmlApplicationEngine + QML views
           |                  |
           |          DatasetDraft + VisualizationDraft
           |                  |
+          +------- DatasetExecutionController
+          |                  |
           +---------- DesktopRequestCoordinator
                              |
                          WorkerClient
@@ -138,7 +143,8 @@ cross-controller facade. One instance owns:
 - `WorkspaceController`;
 - `DatasetDraft`;
 - `VisualizationDraft`; and
-- `DatasetConfigController`.
+- `DatasetConfigController`; and
+- `DatasetExecutionController`.
 
 It binds workspace activation to configuration context exactly once. QML may
 edit a child draft through explicit local-edit requests, but workspace changes,
@@ -163,6 +169,48 @@ cancellation becomes available only when the worker reports a cancellable
 phase. Force stop is explicit and remains distinguishable in the terminal
 envelope.
 
+Execution startup has an additional private reservation boundary. Reserving a
+UUID prevents another request from starting but does not advertise global busy
+state. `DatasetExecutionController` atomically writes the initial Run-activity
+record, then promotes that exact UUID into an active worker session in the same
+Qt call stack. Failure before promotion abandons the reservation and starts no
+worker. Other workflows continue to use the coordinator's ordinary
+`start_request()` convenience path.
+
+### `DatasetExecutionController`
+
+`DatasetExecutionController` is the authoritative saved-configuration
+execution workflow. It owns:
+
+- the exact clean `SavedConfigSnapshot` submitted to the worker;
+- validation-only and dataset-generation request startup;
+- phase, progress, cooperative cancellation, and explicit force-stop state;
+- typed terminal result and failure projections;
+- the relationship between a result and the current saved configuration
+  baseline; and
+- schema-version-1-compatible Run-activity record creation and updates.
+
+Request startup is one synchronous transaction:
+
+```text
+reserve request UUID
+→ atomically persist initial activity record
+→ start the worker with that UUID
+```
+
+The initial write completes before worker startup. Progress is reflected live
+but persisted no more than four times per second; phase and terminal changes
+are written immediately. A later activity-write failure is exposed separately
+through `activityPersistenceIssue` and never changes the scientific worker
+outcome. Existing schema-version-1 records remain readable because new
+projections are additive.
+
+Result identity is compared with the saved baseline path and SHA-256, the
+active workspace, and the current on-disk file. Unsaved draft edits do not make
+a result historical; a later Save, file replacement, document replacement, or
+workspace change can. This distinction prevents mutable editor state from
+rewriting the identity of an already executed scientific configuration.
+
 ### `WorkerClient`
 
 `WorkerClient` is transport, not workflow logic. It starts one `QProcess`,
@@ -179,9 +227,11 @@ from treating arbitrary worker output as a successful operation.
 The normal lifecycle is:
 
 1. A controller asks `DesktopRequestCoordinator` to start a supported request
-   under its fixed owner.
-2. The coordinator rejects the request if another one is active, creates an
-   owner-scoped session, and delegates transport to `WorkerClient`.
+   under its fixed owner. Execution may first reserve a UUID and persist its
+   initial activity record; other workflows start directly.
+2. The coordinator rejects the request if another request or reservation is
+   active, creates an owner-scoped session, and delegates transport to
+   `WorkerClient`.
 3. The worker validates the protocol envelope, emits `accepted`, and reports
    phase/progress events where supported.
 4. The coordinator routes events only to the matching session.
@@ -374,11 +424,15 @@ underlying workflow.
 
 ### Public Qt Widgets frontend
 
-`carnopy.app.window.MainWindow` remains the public frontend during Stage 2.
+`carnopy.app.window.MainWindow` remains the public frontend during the Stage 3
+parity migration.
 Widgets pages are adapters over shared controllers for workspace,
 configuration, execution, sources, jobs, recovery, plot requests, and image
-preview. Widgets retain native file dialogs and existing manual workflows as a
-parity oracle until Stage 3.
+preview. The Run page now consumes `DatasetExecutionController`; it no longer
+starts workers or emits persistence events. The Jobs page temporarily retains
+only record loading, display, removal, and recovery until the Stage 3 Activity
+controller is extracted. Widgets retain native file dialogs and existing
+manual workflows as a parity oracle until Stage 3.
 
 Widgets must not regain shadow draft state while QML is added. A behavior fix
 at a shared boundary must be reflected in both frontends, as with safe sampler
@@ -658,10 +712,10 @@ workaround.
 
 - The public desktop experience is still Widgets; the modern QML launcher is a
   private development entry point.
-- The QML application can configure and save YAML but cannot yet execute or
-  render its configured visualization; rendering remains worker-owned
-  later-stage functionality.
-- QML generation, inspection, tables, plotting, jobs, recovery, sweep,
+- The QML application can configure and save YAML but does not yet expose the
+  authoritative execution controller or render configured visualization;
+  rendering remains worker-owned later-stage functionality.
+- QML Run, inspection, tables, plotting, Activity and Recovery, sweep,
   preparation, and 3D are not implemented.
 - Native folder dialogs and compositor behavior require human acceptance;
   headless tests do not automate them.

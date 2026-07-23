@@ -93,6 +93,9 @@ def test_desktop_controller_owns_one_composition_and_preserves_settings_identity
     assert desktop.dataset_config_controller.coordinator is desktop.request_coordinator
     assert desktop.dataset_config_controller.dataset_draft is desktop.dataset_draft
     assert desktop.dataset_config_controller.visualization_draft is desktop.visualization_draft
+    assert desktop.execution_controller.parent() is desktop
+    assert desktop.execution_controller.coordinator is desktop.request_coordinator
+    assert desktop.execution_controller.config_controller is desktop.dataset_config_controller
     assert desktop.workspace_controller.coordinator is desktop.request_coordinator
     assert desktop.client.parent() is desktop
     assert desktop.request_coordinator.parent() is desktop
@@ -102,6 +105,7 @@ def test_desktop_controller_owns_one_composition_and_preserves_settings_identity
     assert desktop.property("datasetDraft") is desktop.dataset_draft
     assert desktop.property("visualizationDraft") is desktop.visualization_draft
     assert desktop.property("datasetConfigController") is desktop.dataset_config_controller
+    assert desktop.property("executionController") is desktop.execution_controller
     assert (
         desktop.workspace_controller.property("recentWorkspaces")
         is desktop.workspace_controller.recent_model

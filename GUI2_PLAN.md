@@ -1338,6 +1338,24 @@ a separate `0.1.0a4` release branch and pull request after Stage 3 merges.
 `carnopy-gui` becomes the canonical desktop command. `carnopy-app` remains a
 thin QML compatibility alias for the documented `0.1.0a4` deprecation window.
 
+Current implementation status as of 2026-07-23:
+
+- Step 1 is complete and this tracked Stage 3 contract is the implementation
+  authority.
+- Step 2 is implemented. One composition-owned
+  `DatasetExecutionController` now owns saved-configuration validation,
+  generation, progress, cancellation, typed results, saved-baseline relation
+  state, and the write side of Run activity. Request UUID reservation, initial
+  schema-version-1 record persistence, and worker start occur synchronously
+  without an event-loop handoff. Progress persistence is coalesced to at most
+  four writes per second while phase and terminal changes persist immediately.
+- The temporary Widgets Run page is now a view adapter over that controller,
+  and the Jobs page no longer creates or updates execution records. Activity
+  loading, projection, removal, and recovery remain there temporarily until
+  Step 6 extracts their read side.
+- Step 3 is the next active implementation boundary. QML still has no Run
+  workflow and neither public launcher has migrated.
+
 ### Permanent scientific and process boundaries
 
 - Run only exact saved configuration bytes. Generation performs fresh worker
@@ -2024,6 +2042,14 @@ temporary Widgets adapter.
 
 Stop if this requires changing the worker protocol, generation semantics, or
 backward-readable job schema.
+
+Implemented on 2026-07-23 without a worker-protocol, generation-contract, or
+job-schema change. The controller persists the initial activity record before
+starting the worker with the same reserved UUID, exposes persistence
+degradation independently from the scientific outcome, and retains exact
+saved-baseline identity across later unsaved draft edits. Existing schema-
+version-1 records remain readable, and the temporary Widgets pages consume the
+new ownership boundary without receiving QML-only presentation behavior.
 
 #### Step 3 — Add the QML Run workflow
 

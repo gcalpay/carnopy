@@ -7,6 +7,7 @@ from PySide6.QtCore import Property, QObject, QSettings, QTimer, QUrl, Signal, S
 from carnopy.app.client import WorkerClient
 from carnopy.app.config_controller import DatasetConfigController
 from carnopy.app.dataset_draft import DatasetDraft
+from carnopy.app.execution_controller import DatasetExecutionController
 from carnopy.app.field_ids import VISUALIZATION_PLOTS
 from carnopy.app.mapping_draft import MappingDraftModel
 from carnopy.app.plot_draft import PlotDraft
@@ -14,6 +15,7 @@ from carnopy.app.qml_settings import QmlSettingsController
 from carnopy.app.request_coordinator import DesktopRequestCoordinator
 from carnopy.app.sampler_draft import SamplerDraft
 from carnopy.app.visualization_draft import VisualizationDraft
+from carnopy.app.workspace import Workspace
 from carnopy.app.workspace_controller import WorkspaceController
 
 
@@ -48,6 +50,11 @@ class DesktopController(QObject):
             self.request_coordinator,
             self.dataset_draft,
             self.visualization_draft,
+            self,
+        )
+        self.execution_controller = DatasetExecutionController(
+            self.request_coordinator,
+            self.dataset_config_controller,
             self,
         )
         self.dataset_config_controller.set_lifecycle_guard(self._guard_active_plot_edit)
@@ -255,6 +262,15 @@ class DesktopController(QObject):
     datasetConfigController = Property(
         QObject,
         get_dataset_config_controller,
+        constant=True,
+    )
+
+    def get_execution_controller(self) -> QObject:
+        return self.execution_controller
+
+    executionController = Property(
+        QObject,
+        get_execution_controller,
         constant=True,
     )
 
@@ -738,6 +754,7 @@ class DesktopController(QObject):
 
     def _workspace_activated(self, value: object) -> None:
         self.dataset_config_controller.set_workspace(value)
+        self.execution_controller.set_workspace(value if isinstance(value, Workspace) else None)
         self.workspace_state_changed.emit()
         self.workspace_confirmation_changed.emit()
 
