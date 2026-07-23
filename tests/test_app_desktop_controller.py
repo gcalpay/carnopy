@@ -228,6 +228,43 @@ def test_configuration_attention_facade_accepts_only_stable_sections(
     assert desktop.shutdown()
 
 
+def test_execution_facade_routes_qml_intent_to_the_authoritative_controller(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    calls: list[str] = []
+    monkeypatch.setattr(
+        desktop.execution_controller,
+        "validate",
+        lambda: calls.append("validate") or True,
+    )
+    monkeypatch.setattr(
+        desktop.execution_controller,
+        "generate",
+        lambda: calls.append("generate") or True,
+    )
+    monkeypatch.setattr(
+        desktop.execution_controller,
+        "cancel",
+        lambda: calls.append("cancel") or True,
+    )
+    monkeypatch.setattr(
+        desktop.execution_controller,
+        "force_stop",
+        lambda: calls.append("force_stop") or True,
+    )
+
+    assert desktop.request_execution_validation()
+    assert desktop.request_dataset_generation()
+    assert desktop.request_execution_cancel()
+    assert desktop.request_execution_force_stop()
+    assert calls == ["validate", "generate", "cancel", "force_stop"]
+    assert desktop.shutdown()
+
+
 def test_save_as_facade_converts_qml_file_urls_at_the_composition_boundary(
     tmp_path: Path,
     application: QCoreApplication,

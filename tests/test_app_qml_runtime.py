@@ -480,4 +480,4 @@ def test_qml_sources_pass_non_writing_qt_tooling() -> None:
         timeout=30,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
-    assert completed.stdout == "QML checks passed for 32 file(s).\n"
+    assert completed.stdout == "QML checks passed for 34 file(s).\n"

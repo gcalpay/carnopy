@@ -28,17 +28,19 @@ The desktop has two frontend implementations during the GUI-2 migration:
 - both frontends reuse the same authoritative QtCore controllers and private
   worker boundary;
 - the QML application currently implements the responsive shell, Workspace,
-  Dataset, Visualization, YAML Preview, Settings, and Help surfaces, including
-  worker-validated Save and Save As;
+  Dataset, Visualization, YAML Preview, Run, Settings, and Help surfaces,
+  including worker-validated Save and Save As plus exact-saved-configuration
+  validation and generation;
 - typed blocking state, revision-bound standalone validation, operation
   feedback, exact Dataset row projections, and composition-owned document and
   shutdown decisions are shared with the authoritative controllers rather than
   reimplemented in QML;
-- saved-config validation and generation state are now owned by one
-  `DatasetExecutionController`, with the public Widgets Run page acting as a
-  temporary view adapter;
-- QML Run, inspection, table preview, plotting, Activity and Recovery, and
-  Widgets retirement belong to the remaining Stage 3 steps.
+- saved-config validation and generation state are owned by one
+  `DatasetExecutionController`; both the private QML Run workflow and the
+  public Widgets Run page are view adapters over it;
+- QML inspection, table preview, plot-result viewing and exploration, Activity
+  and Recovery, launcher migration, and Widgets retirement belong to the
+  remaining Stage 3 steps.
 
 The development version is `0.1.0a4.dev0`. The two public launchers switch to
 QML only after Stage 3 reaches tested GUI-1 parity; Carnopy will not ship two
@@ -467,6 +469,15 @@ event loop advances. Save-file selection follows the same deferred boundary.
 Window close is routed through the composition-owned active-edit, worker-busy,
 and dirty-document guards before runtime teardown.
 
+The QML Run page follows that same queued root-signal boundary for Validate,
+Generate, Cancel, and Force Stop. It projects the authoritative execution
+controller's exact saved snapshot, progress, terminal result, activity
+persistence, and saved-baseline relation without parsing worker envelopes.
+Successful generation stays on Run. Its future `Inspect Run` and `View Plots`
+actions remain visibly unavailable until the corresponding authoritative
+inspection and configured-result controllers are introduced; QML does not
+simulate those workflows.
+
 Close processing is deferred out of the native event-filter callback. Teardown
 is idempotent, removes the close filter before object destruction, and uses a
 one-use bypass only after the composition guard accepts the close. SIGINT enters
@@ -712,11 +723,13 @@ workaround.
 
 - The public desktop experience is still Widgets; the modern QML launcher is a
   private development entry point.
-- The QML application can configure and save YAML but does not yet expose the
-  authoritative execution controller or render configured visualization;
-  rendering remains worker-owned later-stage functionality.
-- QML Run, inspection, tables, plotting, Activity and Recovery, sweep,
-  preparation, and 3D are not implemented.
+- The QML application can configure and save YAML and can validate or generate
+  from the exact saved configuration through the authoritative execution
+  controller. It does not yet expose inspection, table preview, configured
+  plot results, or session rendering; those remain worker-owned later Stage 3
+  workflows.
+- QML inspection, tables, plotting, Activity and Recovery, sweep, preparation,
+  and 3D are not implemented.
 - Native folder dialogs and compositor behavior require human acceptance;
   headless tests do not automate them.
 - The current WSLg development host can use CPU rendering through Mesa

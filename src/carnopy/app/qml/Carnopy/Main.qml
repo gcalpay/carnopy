@@ -46,6 +46,10 @@ ApplicationWindow {
     signal datasetSaveRequested(bool allowReformat)
     signal datasetValidateRequested
     signal datasetReloadRequested(bool discardConfirmed)
+    signal runCancelRequested
+    signal runForceStopRequested
+    signal runGenerateRequested
+    signal runValidateRequested
     signal plotFieldChangeRequested(var draft, string field, string value)
     signal plotFluidSelectionRequested(var draft, string value, bool selected)
     signal visualizationAddPlotRequested
@@ -86,6 +90,8 @@ ApplicationWindow {
     readonly property bool controllerAvailable: desktopController !== null
     readonly property var configController: controllerAvailable
                                             ? desktopController.datasetConfigController : null
+    readonly property var executionController: controllerAvailable
+                                               ? desktopController.executionController : null
     readonly property bool hasFake3dViewport: false
     readonly property string effectiveTheme: qmlSettings.effectiveTheme
     readonly property int motionDuration: Theme.durationStandard
@@ -118,6 +124,8 @@ ApplicationWindow {
             return qsTr("Visualization");
         if (pageKey === "yaml")
             return qsTr("YAML Preview");
+        if (pageKey === "run")
+            return qsTr("Run");
         return qsTr("Workspace");
     }
 
@@ -385,6 +393,7 @@ ApplicationWindow {
             currentPage: root.currentPage
             datasetAvailable: root.controllerAvailable && root.desktopController.workspaceState
                               === "editing"
+            runAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
             visualizationAvailable: datasetAvailable
             yamlAvailable: datasetAvailable
             objectName: "persistentNavigationRail"
@@ -440,6 +449,14 @@ ApplicationWindow {
                     showAppearanceSelector: !root.inspectorWideVisible
                     showRailMenu: root.shellMode === "narrow"
                     statusLabel: {
+                        if (root.currentPage === "run" && root.executionController !== null)
+                        return root.executionController.state === "running" ? qsTr("Running") : (
+                                                                                  root.executionController.state
+                                                                                  === "succeeded"
+                                                                                  ? qsTr("Run complete") :
+                                                                                    root.executionController.snapshotAvailable
+                                                                                    ? qsTr("Ready to run") :
+                                                                                      qsTr("Saved configuration required"));
                         if (root.controllerAvailable && root.desktopController.workspaceState
                             === "loading")
                         return qsTr("Loading");
@@ -453,14 +470,32 @@ ApplicationWindow {
                         return qsTr("No workspace");
                     }
                     statusTone: root.controllerAvailable && root.desktopController.workspaceState
-                                === "loading" ? "information" : (root.controllerAvailable
-                                                                 && root.desktopController.workspaceState
-                                                                 === "editing" &&
-                                                                 !root.desktopController.datasetDraft.locallyValid
-                                                                 ? "danger" : (
-                                                                       root.controllerAvailable
-                                                                       && root.desktopController.workspaceAvailable
-                                                                       ? "success" : "neutral"))
+                                === "loading" ? "information" : (root.currentPage === "run"
+                                                                 && root.executionController
+                                                                 !== null ? (
+                                                                                root.executionController.state
+                                                                                === "succeeded"
+                                                                                ? "success" : (
+                                                                                      root.executionController.state
+                                                                                      === "invalid"
+                                                                                      || root.executionController.state
+                                                                                      === "failed"
+                                                                                      ? "danger" : (
+                                                                                            root.executionController.state
+                                                                                            === "running"
+                                                                                            || root.executionController.state
+                                                                                            === "starting"
+                                                                                            ? "information" :
+                                                                                              "neutral"))) :
+                                                                            (root.controllerAvailable
+                                                                             && root.desktopController.workspaceState
+                                                                             === "editing" &&
+                                                                             !root.desktopController.datasetDraft.locallyValid
+                                                                             ? "danger" : (
+                                                                                   root.controllerAvailable
+                                                                                   && root.desktopController.workspaceAvailable
+                                                                                   ? "success" :
+                                                                                     "neutral")))
                     themeMode: root.qmlSettings.themeMode
                 }
 
@@ -553,6 +588,8 @@ ApplicationWindow {
                         return visualizationPage;
                         if (root.currentPage === "yaml")
                         return yamlPage;
+                        if (root.currentPage === "run")
+                        return runPage;
                         return workspacePage;
                     }
                 }
@@ -638,11 +675,13 @@ ApplicationWindow {
                                                          ""
                 datasetValid: root.controllerAvailable
                               && root.desktopController.datasetDraft.locallyValid
+                executionController: root.executionController
                 objectName: "persistentContextInspector"
                 onAttentionRequested: (section, field, row) => root.configurationAttentionRequested(
                                                                    section, field, row)
                 onCloseRequested: root.requestInspectorToggle(persistentInspector.closeControl)
                 onValidateRequested: root.datasetValidateRequested()
+                pageKey: root.currentPage
                 workspacePath: root.controllerAvailable ? root.desktopController.workspaceRootPath :
                                                           ""
                 workspaceState: root.controllerAvailable ? root.desktopController.workspaceState :
@@ -680,6 +719,7 @@ ApplicationWindow {
             currentPage: root.currentPage
             datasetAvailable: root.controllerAvailable && root.desktopController.workspaceState
                               === "editing"
+            runAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
             visualizationAvailable: datasetAvailable
             yamlAvailable: datasetAvailable
             onPageRequested: pageKey => root.routeTo(pageKey)
@@ -711,11 +751,13 @@ ApplicationWindow {
             datasetIssue: root.controllerAvailable ? root.desktopController.datasetDraft.issue : ""
             datasetValid: root.controllerAvailable
                           && root.desktopController.datasetDraft.locallyValid
+            executionController: root.executionController
             objectName: "drawerContextInspector"
             onAttentionRequested: (section, field, row) => root.configurationAttentionRequested(
                                                                section, field, row)
             onCloseRequested: root.requestInspectorToggle(null)
             onValidateRequested: root.datasetValidateRequested()
+            pageKey: root.currentPage
             workspacePath: root.controllerAvailable ? root.desktopController.workspaceRootPath : ""
             workspaceState: root.controllerAvailable ? root.desktopController.workspaceState :
                                                        "unavailable"
@@ -839,6 +881,22 @@ ApplicationWindow {
     }
 
     Component {
+        id: runPage
+
+        RunPage {
+            configuredPlotsAvailable: false
+            executionController: root.executionController
+            expectedColumns: root.shellMode === "narrow" ? 1 : root.cardColumnCount
+            inspectRunAvailable: false
+            objectName: "runPage"
+            onCancelRequested: root.runCancelRequested()
+            onForceStopRequested: root.runForceStopRequested()
+            onGenerateRequested: root.runGenerateRequested()
+            onValidateRequested: root.runValidateRequested()
+        }
+    }
+
+    Component {
         id: settingsPage
 
         SettingsPage {
@@ -892,6 +950,8 @@ ApplicationWindow {
             if ((root.currentPage === "dataset" || root.currentPage === "visualization"
                  || root.currentPage === "yaml") && root.desktopController.workspaceState
                     !== "editing")
+                root.routeTo("workspace");
+            if (root.currentPage === "run" && !root.desktopController.workspaceAvailable)
                 root.routeTo("workspace");
         }
 

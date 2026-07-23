@@ -487,6 +487,10 @@ class QmlApplicationRuntime:
             ),
             ("datasetDecisionCommitRequested", self.controller.commit_dataset_decision),
             ("datasetDecisionCancelRequested", self.controller.cancel_dataset_decision),
+            ("runValidateRequested", self.controller.request_execution_validation),
+            ("runGenerateRequested", self.controller.request_dataset_generation),
+            ("runCancelRequested", self.controller.request_execution_cancel),
+            ("runForceStopRequested", self.controller.request_execution_force_stop),
             ("visualizationEnabledRequested", self.controller.request_visualization_enabled),
             ("visualizationFormatRequested", self.controller.request_visualization_format),
             (

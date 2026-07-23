@@ -61,6 +61,7 @@ def test_qml_runtime_is_private_and_resources_live_in_the_app_package() -> None:
     for relative_path in (
         "qml/Carnopy/Main.qml",
         "qml/Carnopy/pages/DatasetPage.qml",
+        "qml/Carnopy/pages/RunPage.qml",
         "qml/Carnopy/pages/VisualizationPage.qml",
         "qml/Carnopy/pages/YamlPreviewPage.qml",
         "qml/Carnopy/components/BlockingBanner.qml",
@@ -68,6 +69,7 @@ def test_qml_runtime_is_private_and_resources_live_in_the_app_package() -> None:
         "qml/Carnopy/components/MappingEditor.qml",
         "qml/Carnopy/components/OperationFeedback.qml",
         "qml/Carnopy/components/PlotEditor.qml",
+        "qml/Carnopy/components/RunContextInspector.qml",
         "qml/Carnopy/qmldir",
         "resources/third-party-resources.json",
         "resources/branding/carnopy-mark.png",

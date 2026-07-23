@@ -12,6 +12,7 @@ Control {
     property bool allowCollapse: true
     property string currentPage: "workspace"
     property bool datasetAvailable: false
+    property bool runAvailable: false
     property bool visualizationAvailable: false
     property bool yamlAvailable: false
     readonly property alias collapseControl: railCollapseButton
@@ -62,13 +63,6 @@ Control {
             unavailableReason: qsTr("Create or import a dataset configuration first.")
         }
         ListElement {
-            pageKey: "visualization"
-            title: qsTr("Visualization")
-            iconName: "chart-spline"
-            available: true
-            unavailableReason: qsTr("Create or import a dataset configuration first.")
-        }
-        ListElement {
             pageKey: "yaml"
             title: qsTr("YAML Preview")
             iconName: "file-code"
@@ -79,15 +73,22 @@ Control {
             pageKey: "run"
             title: qsTr("Run")
             iconName: "play"
-            available: false
-            unavailableReason: qsTr("Generation is the next GUI-2 workflow in Stage 3.")
+            available: true
+            unavailableReason: qsTr("Open a workspace before running a saved configuration.")
         }
         ListElement {
             pageKey: "inspect"
             title: qsTr("Inspect")
             iconName: "search"
             available: false
-            unavailableReason: qsTr("Inspection follows generation in Stage 4.")
+            unavailableReason: qsTr("Inspection is the next Stage 3 workflow.")
+        }
+        ListElement {
+            pageKey: "visualization"
+            title: qsTr("Visualization")
+            iconName: "chart-spline"
+            available: true
+            unavailableReason: qsTr("Create or import a dataset configuration first.")
         }
         ListElement {
             pageKey: "activity"
@@ -199,7 +200,9 @@ Control {
                                                              && (pageKey !== "visualization"
                                                                  || root.visualizationAvailable) && (
                                                                  pageKey !== "yaml"
-                                                                 || root.yamlAvailable)
+                                                                 || root.yamlAvailable) && (pageKey
+                                                                                            !== "run"
+                                                                                            || root.runAvailable)
 
                 Accessible.description: effectivelyAvailable ? "" : unavailableReason
                 Accessible.name: title

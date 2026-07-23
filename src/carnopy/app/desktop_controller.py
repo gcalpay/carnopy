@@ -340,6 +340,22 @@ class DesktopController(QObject):
             return False
         return self.dataset_config_controller.request_validation()
 
+    @Slot(result=bool, name="requestExecutionValidation")
+    def request_execution_validation(self) -> bool:
+        return self.execution_controller.validate()
+
+    @Slot(result=bool, name="requestDatasetGeneration")
+    def request_dataset_generation(self) -> bool:
+        return self.execution_controller.generate()
+
+    @Slot(result=bool, name="requestExecutionCancel")
+    def request_execution_cancel(self) -> bool:
+        return self.execution_controller.cancel()
+
+    @Slot(result=bool, name="requestExecutionForceStop")
+    def request_execution_force_stop(self) -> bool:
+        return self.execution_controller.force_stop()
+
     @Slot(str, result=bool, name="requestSavePathSelected")
     def request_save_path_selected(self, path: str) -> bool:
         if not self._guard_active_plot_edit("Save As"):

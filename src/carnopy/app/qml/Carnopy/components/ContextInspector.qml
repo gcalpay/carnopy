@@ -17,6 +17,8 @@ Control {
     property bool configurationOpen: false
     property bool datasetValid: false
     property string datasetIssue: ""
+    property var executionController: null
+    property string pageKey: "workspace"
     property bool visualizationActiveEdit: false
     property string visualizationIssue: ""
     property bool visualizationValid: false
@@ -94,6 +96,7 @@ Control {
             contentWidth: width
             flickableDirection: Flickable.VerticalFlick
             pixelAligned: true
+            visible: root.pageKey !== "run"
 
             ScrollBar.vertical: ScrollBar {
                 policy: ScrollBar.AsNeeded
@@ -292,6 +295,13 @@ Control {
                     visible: root.configurationOpen
                 }
             }
+        }
+
+        RunContextInspector {
+            Layout.fillHeight: true
+            Layout.fillWidth: true
+            executionController: root.executionController
+            visible: root.pageKey === "run" && root.executionController !== null
         }
     }
 }

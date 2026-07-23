@@ -1353,8 +1353,23 @@ Current implementation status as of 2026-07-23:
   and the Jobs page no longer creates or updates execution records. Activity
   loading, projection, removal, and recovery remain there temporarily until
   Step 6 extracts their read side.
-- Step 3 is the next active implementation boundary. QML still has no Run
-  workflow and neither public launcher has migrated.
+- Step 3 is implemented. The private QML frontend exposes the authoritative
+  saved-configuration Run workflow through a numbered responsive page and a
+  Run-specific inspector. Validate, Generate, cooperative Cancel, and delayed
+  Force Stop cross the root runtime bridge through queued composition-facade
+  signals; QML does not call the execution controller re-entrantly.
+- Exact saved path and SHA-256 state, typed phase/progress, terminal results,
+  saved-baseline relation, and independent activity-persistence degradation
+  are projections of the existing `DatasetExecutionController`. Real-worker
+  regressions prove validation and generation remain on Run, persist their
+  schema-version-1 activity records, and retain current-saved-baseline identity
+  across later unsaved draft edits.
+- `Inspect Run` and `View Plots` are visible after successful generation but
+  remain disabled with explicit accessible explanations until Steps 4 and 7
+  add their authoritative target controllers. Step 3 does not fake navigation,
+  inspect automatically, scan artifacts, or pull downstream ownership forward.
+- Step 4 is the next active implementation boundary. Neither public launcher
+  has migrated.
 
 ### Permanent scientific and process boundaries
 
@@ -2062,6 +2077,15 @@ feat(app): add the QML dataset execution workflow
 Add the numbered flow, typed progress and results, Validate, Generate, Cancel,
 delayed explicit Force Stop, Inspect Run, View Plots, responsive/keyboard
 behavior, and Run-specific inspector. Do not navigate automatically.
+
+Implemented on 2026-07-23 without a protocol, schema, dependency, or scientific
+change. The page binds the Step 2 execution controller and uses queued
+root-level signals for every worker action. `Inspect Run` and `View Plots` are
+present as honest downstream actions but are not enabled before their
+authoritative inspection and configured-result controllers exist. Focused
+tests exercise responsive layout, the dedicated inspector, real worker
+validation and generation, activity persistence, no automatic navigation, and
+saved-baseline versus dirty-draft semantics.
 
 #### Step 4 — Extract inspection state and models
 
