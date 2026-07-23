@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import re
 import tarfile
 import zipfile
@@ -25,11 +27,71 @@ PROJECT_KEYWORDS = {
     "thermophysical properties",
 }
 SOURCE_VERSION_PATTERN = re.compile(r'^__version__\s*=\s*"([^"]+)"\s*$')
+QML_SHELL_APP_FILES = {
+    "qml_settings.py",
+    "qml/Carnopy/Main.qml",
+    "qml/Carnopy/Theme.qml",
+    "qml/Carnopy/qmldir",
+    "qml/Carnopy/components/AppButton.qml",
+    "qml/Carnopy/components/AppearanceSelector.qml",
+    "qml/Carnopy/components/AppComboBox.qml",
+    "qml/Carnopy/components/AppIcon.qml",
+    "qml/Carnopy/components/BlockingBanner.qml",
+    "qml/Carnopy/components/Card.qml",
+    "qml/Carnopy/components/ChoiceList.qml",
+    "qml/Carnopy/components/SearchableChoiceList.qml",
+    "qml/Carnopy/components/CommandBar.qml",
+    "qml/Carnopy/components/ContextInspector.qml",
+    "qml/Carnopy/components/DecisionDialog.qml",
+    "qml/Carnopy/components/LineNumberedTextArea.qml",
+    "qml/Carnopy/components/MappingEditor.qml",
+    "qml/Carnopy/components/NavRail.qml",
+    "qml/Carnopy/components/OperationFeedback.qml",
+    "qml/Carnopy/components/PlotEditor.qml",
+    "qml/Carnopy/components/PropertySymbol.qml",
+    "qml/Carnopy/components/ResponsiveCardGrid.qml",
+    "qml/Carnopy/components/SamplerEditor.qml",
+    "qml/Carnopy/components/StatusBadge.qml",
+    "qml/Carnopy/components/ToastHost.qml",
+    "qml/Carnopy/components/ValidationIssue.qml",
+    "qml/Carnopy/components/WorkspaceOperationDialog.qml",
+    "qml/Carnopy/pages/EmptyStatePage.qml",
+    "qml/Carnopy/pages/DatasetPage.qml",
+    "qml/Carnopy/pages/HelpPage.qml",
+    "qml/Carnopy/pages/SettingsPage.qml",
+    "qml/Carnopy/pages/WorkspacePage.qml",
+    "qml/Carnopy/pages/VisualizationPage.qml",
+    "qml/Carnopy/pages/YamlPreviewPage.qml",
+    "resources/icons/activity.svg",
+    "resources/icons/appearance-dark.svg",
+    "resources/icons/appearance-light.svg",
+    "resources/icons/appearance-warm.svg",
+    "resources/icons/box.svg",
+    "resources/icons/chart-spline.svg",
+    "resources/icons/circle-question-mark.svg",
+    "resources/icons/database.svg",
+    "resources/icons/file-code.svg",
+    "resources/icons/flask-conical.svg",
+    "resources/icons/git-compare-arrows.svg",
+    "resources/icons/layout-dashboard.svg",
+    "resources/icons/monitor.svg",
+    "resources/icons/moon.svg",
+    "resources/icons/panel-left-close.svg",
+    "resources/icons/panel-left-open.svg",
+    "resources/icons/panel-right-close.svg",
+    "resources/icons/panel-right-open.svg",
+    "resources/icons/play.svg",
+    "resources/icons/rotate-ccw.svg",
+    "resources/icons/search.svg",
+    "resources/icons/settings.svg",
+    "resources/icons/sun.svg",
+}
 WHEEL_REQUIRED = {
     "carnopy/__init__.py",
     "carnopy/__main__.py",
     "carnopy/_execution.py",
     "carnopy/app/__init__.py",
+    "carnopy/app/application_identity.py",
     "carnopy/app/capabilities.py",
     "carnopy/app/client.py",
     "carnopy/app/config_controller.py",
@@ -42,6 +104,7 @@ WHEEL_REQUIRED = {
     "carnopy/app/draft_models.py",
     "carnopy/app/execution_page.py",
     "carnopy/app/export_cleanup.py",
+    "carnopy/app/field_ids.py",
     "carnopy/app/inspection_page.py",
     "carnopy/app/jobs.py",
     "carnopy/app/jobs_page.py",
@@ -53,6 +116,12 @@ WHEEL_REQUIRED = {
     "carnopy/app/plot_rendering.py",
     "carnopy/app/plot_request_dialog.py",
     "carnopy/app/plot_staging.py",
+    "carnopy/app/property_presentation.py",
+    "carnopy/app/qml/Carnopy/Main.qml",
+    "carnopy/app/qml/Carnopy/qmldir",
+    "carnopy/app/qml_launcher.py",
+    "carnopy/app/qml_resources.py",
+    "carnopy/app/qml_runtime.py",
     "carnopy/app/visualization_editor.py",
     "carnopy/app/visualization_draft.py",
     "carnopy/app/visualization_widgets.py",
@@ -60,7 +129,18 @@ WHEEL_REQUIRED = {
     "carnopy/app/protocol.py",
     "carnopy/app/recovery.py",
     "carnopy/app/request_coordinator.py",
+    "carnopy/app/resources/branding/carnopy-mark.png",
+    "carnopy/app/resources/fonts/IBMPlexMono-Medium.ttf",
+    "carnopy/app/resources/fonts/IBMPlexMono-Regular.ttf",
+    "carnopy/app/resources/fonts/IBMPlexSans-Medium.ttf",
+    "carnopy/app/resources/fonts/IBMPlexSans-Regular.ttf",
+    "carnopy/app/resources/fonts/IBMPlexSans-SemiBold.ttf",
+    "carnopy/app/resources/icons/flask-conical.svg",
+    "carnopy/app/resources/licenses/IBM-Plex-OFL-1.1.txt",
+    "carnopy/app/resources/licenses/Lucide-LICENSE.txt",
+    "carnopy/app/resources/third-party-resources.json",
     "carnopy/app/sampler_draft.py",
+    "carnopy/sampling/projection.py",
     "carnopy/app/source_inspection.py",
     "carnopy/app/sources_page.py",
     "carnopy/app/table_model.py",
@@ -70,6 +150,7 @@ WHEEL_REQUIRED = {
     "carnopy/app/workspace.py",
     "carnopy/app/workspace_controller.py",
     "carnopy/cli.py",
+    "carnopy/domain/numbers.py",
     "carnopy/inspection.py",
     "carnopy/config/sweep.py",
     "carnopy/py.typed",
@@ -90,6 +171,7 @@ WHEEL_REQUIRED = {
     "carnopy/preparation/scenarios.py",
     "carnopy/preparation/stratification.py",
     "carnopy/preparation/source.py",
+    "carnopy/sampling/canonical.py",
     "carnopy/sweeps/__init__.py",
     "carnopy/sweeps/comparison.py",
     "carnopy/sweeps/layout.py",
@@ -106,6 +188,11 @@ WHEEL_REQUIRED = {
 }
 SDIST_REQUIRED = {
     "AGENTS.md",
+    "DESKTOP_ARCHITECTURE.md",
+    "docs/agent-guides/DELEGATION.md",
+    "docs/agent-guides/DEVELOPMENT.md",
+    "docs/agent-guides/RELEASE.md",
+    "docs/agent-guides/SCIENTIFIC_CONTRACTS.md",
     "LICENSE",
     "ML_PREPARATION_ROADMAP.md",
     "README.md",
@@ -115,12 +202,14 @@ SDIST_REQUIRED = {
     "configs/vapor_mass_fraction_table_example.yaml",
     "pyproject.toml",
     "scripts/check_distribution.py",
+    "scripts/check_qml.py",
     "scripts/hash_distributions.py",
     "scripts/smoke_installed.py",
     "scripts/verify_index_release.py",
     "src/carnopy/__init__.py",
     "src/carnopy/_execution.py",
     "src/carnopy/app/__init__.py",
+    "src/carnopy/app/application_identity.py",
     "src/carnopy/app/capabilities.py",
     "src/carnopy/app/client.py",
     "src/carnopy/app/config_controller.py",
@@ -133,6 +222,7 @@ SDIST_REQUIRED = {
     "src/carnopy/app/draft_models.py",
     "src/carnopy/app/execution_page.py",
     "src/carnopy/app/export_cleanup.py",
+    "src/carnopy/app/field_ids.py",
     "src/carnopy/app/inspection_page.py",
     "src/carnopy/app/jobs.py",
     "src/carnopy/app/jobs_page.py",
@@ -144,6 +234,12 @@ SDIST_REQUIRED = {
     "src/carnopy/app/plot_rendering.py",
     "src/carnopy/app/plot_request_dialog.py",
     "src/carnopy/app/plot_staging.py",
+    "src/carnopy/app/property_presentation.py",
+    "src/carnopy/app/qml/Carnopy/Main.qml",
+    "src/carnopy/app/qml/Carnopy/qmldir",
+    "src/carnopy/app/qml_launcher.py",
+    "src/carnopy/app/qml_resources.py",
+    "src/carnopy/app/qml_runtime.py",
     "src/carnopy/app/visualization_editor.py",
     "src/carnopy/app/visualization_draft.py",
     "src/carnopy/app/visualization_widgets.py",
@@ -151,7 +247,18 @@ SDIST_REQUIRED = {
     "src/carnopy/app/protocol.py",
     "src/carnopy/app/recovery.py",
     "src/carnopy/app/request_coordinator.py",
+    "src/carnopy/app/resources/branding/carnopy-mark.png",
+    "src/carnopy/app/resources/fonts/IBMPlexMono-Medium.ttf",
+    "src/carnopy/app/resources/fonts/IBMPlexMono-Regular.ttf",
+    "src/carnopy/app/resources/fonts/IBMPlexSans-Medium.ttf",
+    "src/carnopy/app/resources/fonts/IBMPlexSans-Regular.ttf",
+    "src/carnopy/app/resources/fonts/IBMPlexSans-SemiBold.ttf",
+    "src/carnopy/app/resources/icons/flask-conical.svg",
+    "src/carnopy/app/resources/licenses/IBM-Plex-OFL-1.1.txt",
+    "src/carnopy/app/resources/licenses/Lucide-LICENSE.txt",
+    "src/carnopy/app/resources/third-party-resources.json",
     "src/carnopy/app/sampler_draft.py",
+    "src/carnopy/sampling/projection.py",
     "src/carnopy/app/source_inspection.py",
     "src/carnopy/app/sources_page.py",
     "src/carnopy/app/table_model.py",
@@ -161,6 +268,7 @@ SDIST_REQUIRED = {
     "src/carnopy/app/workspace.py",
     "src/carnopy/app/workspace_controller.py",
     "src/carnopy/config/sweep.py",
+    "src/carnopy/domain/numbers.py",
     "src/carnopy/inspection.py",
     "src/carnopy/py.typed",
     "src/carnopy/preparation/__init__.py",
@@ -180,6 +288,7 @@ SDIST_REQUIRED = {
     "src/carnopy/preparation/scenarios.py",
     "src/carnopy/preparation/stratification.py",
     "src/carnopy/preparation/source.py",
+    "src/carnopy/sampling/canonical.py",
     "src/carnopy/sweeps/__init__.py",
     "src/carnopy/sweeps/comparison.py",
     "src/carnopy/sweeps/layout.py",
@@ -193,8 +302,15 @@ SDIST_REQUIRED = {
     "tests/test_cli.py",
     "uv.lock",
 }
+WHEEL_REQUIRED.update(f"carnopy/app/{path}" for path in QML_SHELL_APP_FILES)
+SDIST_REQUIRED.update(f"src/carnopy/app/{path}" for path in QML_SHELL_APP_FILES)
 SDIST_MARKDOWN = {
     "AGENTS.md",
+    "DESKTOP_ARCHITECTURE.md",
+    "docs/agent-guides/DELEGATION.md",
+    "docs/agent-guides/DEVELOPMENT.md",
+    "docs/agent-guides/RELEASE.md",
+    "docs/agent-guides/SCIENTIFIC_CONTRACTS.md",
     "ML_PREPARATION_ROADMAP.md",
     "README.md",
 }
@@ -263,6 +379,90 @@ class SdistReader:
             raise ValueError(f"could not read archive member {name}")
         with stream:
             return stream.read()
+
+
+def resource_manifest_entries(content: bytes) -> dict[str, str]:
+    try:
+        manifest = json.loads(content.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"invalid packaged resource manifest: {exc}") from exc
+    if not isinstance(manifest, dict) or manifest.get("schema_version") != 1:
+        raise ValueError("packaged resource manifest must use schema version 1")
+    records: dict[str, str] = {}
+
+    def add_record(entry: object, *, label: str) -> None:
+        if not isinstance(entry, dict):
+            raise ValueError(f"{label} must be an object")
+        path = entry.get("packaged_path")
+        digest = entry.get("sha256")
+        if not isinstance(path, str) or not path or PurePosixPath(path).is_absolute():
+            raise ValueError(f"{label} has an invalid packaged path")
+        if ".." in PurePosixPath(path).parts:
+            raise ValueError(f"{label} packaged path escapes the resource directory")
+        if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+            raise ValueError(f"{label} has an invalid SHA-256")
+        if path in records:
+            raise ValueError(f"duplicate packaged resource manifest path: {path}")
+        records[path] = digest
+
+    branding = manifest.get("branding")
+    if not isinstance(branding, dict):
+        raise ValueError("branding must be an object")
+    for key in ("name", "source"):
+        if not isinstance(branding.get(key), str) or not branding[key]:
+            raise ValueError(f"branding.{key} must be a non-empty string")
+    add_record(branding, label="branding")
+    first_party = manifest.get("first_party_resources")
+    if not isinstance(first_party, list) or not first_party:
+        raise ValueError("packaged resource manifest must list first-party resources")
+    for resource_index, resource in enumerate(first_party):
+        label = f"first_party_resources[{resource_index}]"
+        if not isinstance(resource, dict):
+            raise ValueError(f"{label} must be an object")
+        for key in ("name", "source"):
+            if not isinstance(resource.get(key), str) or not resource[key]:
+                raise ValueError(f"{label}.{key} must be a non-empty string")
+        add_record(resource, label=label)
+    projects = manifest.get("third_party_projects")
+    if not isinstance(projects, list) or not projects:
+        raise ValueError("packaged resource manifest must list third-party projects")
+    for project_index, project in enumerate(projects):
+        label = f"third_party_projects[{project_index}]"
+        if not isinstance(project, dict):
+            raise ValueError(f"{label} must be an object")
+        for key in ("name", "revision", "source_url", "license_expression", "license_path"):
+            if not isinstance(project.get(key), str) or not project[key]:
+                raise ValueError(f"{label}.{key} must be a non-empty string")
+        files = project.get("files")
+        if not isinstance(files, list) or not files:
+            raise ValueError(f"{label}.files must be a non-empty array")
+        project_paths: set[str] = set()
+        for file_index, entry in enumerate(files):
+            file_label = f"{label}.files[{file_index}]"
+            if not isinstance(entry, dict) or not isinstance(entry.get("source_path"), str):
+                raise ValueError(f"{file_label}.source_path must be a string")
+            add_record(entry, label=file_label)
+            project_paths.add(str(entry["packaged_path"]))
+        if project["license_path"] not in project_paths:
+            raise ValueError(f"{label}.license_path is not listed as a file")
+    return records
+
+
+def validate_packaged_resource_bytes(
+    reader: DistributionReader,
+    *,
+    manifest_name: str,
+    resource_prefix: str,
+) -> None:
+    records = resource_manifest_entries(reader.read(manifest_name))
+    names = reader.names()
+    for relative_path, expected in records.items():
+        archive_name = f"{resource_prefix}{relative_path}"
+        if archive_name not in names:
+            raise ValueError(f"distribution is missing manifested resource: {archive_name}")
+        actual = hashlib.sha256(reader.read(archive_name)).hexdigest()
+        if actual != expected:
+            raise ValueError(f"distribution resource hash mismatch: {archive_name}")
 
 
 def source_version(path: Path) -> str:
@@ -378,9 +578,12 @@ def validate_metadata(metadata: Message, expected_version: str, *, artifact: str
         if requirement.casefold().startswith("pyside6-essentials")
     ]
     if len(pyside_requirements) != 2 or any(
-        "extra ==" not in requirement for requirement in pyside_requirements
+        ">=6.11.1" not in requirement or "<6.12" not in requirement or "extra ==" not in requirement
+        for requirement in pyside_requirements
     ):
-        raise ValueError(f"{artifact} must declare PySide6 only through all and app extras")
+        raise ValueError(
+            f"{artifact} must declare PySide6 >=6.11.1,<6.12 only through all and app extras"
+        )
     sklearn_requirements = [
         requirement
         for requirement in metadata.get_all("Requires-Dist", [])
@@ -421,6 +624,11 @@ def inspect_wheel(path: Path, expected_version: str) -> None:
             raise ValueError(f"wheel contains forbidden files: {', '.join(invalid)}")
         if any(name.startswith("tests/") for name in names):
             raise ValueError("wheel must not contain tests")
+        validate_packaged_resource_bytes(
+            reader,
+            manifest_name="carnopy/app/resources/third-party-resources.json",
+            resource_prefix="carnopy/app/resources/",
+        )
 
         metadata_names = [name for name in names if name.endswith(".dist-info/METADATA")]
         entry_point_names = [name for name in names if name.endswith(".dist-info/entry_points.txt")]
@@ -465,6 +673,11 @@ def inspect_sdist(path: Path, expected_version: str) -> None:
         invalid = forbidden_paths(names, strip_root=True)
         if invalid:
             raise ValueError(f"sdist contains forbidden files: {', '.join(invalid)}")
+        validate_packaged_resource_bytes(
+            reader,
+            manifest_name=f"{root}/src/carnopy/app/resources/third-party-resources.json",
+            resource_prefix=f"{root}/src/carnopy/app/resources/",
+        )
 
         metadata_name = f"{root}/PKG-INFO"
         if metadata_name not in names:

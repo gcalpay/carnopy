@@ -4,12 +4,16 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from PySide6.QtCore import (
+    Property,
     QAbstractListModel,
     QByteArray,
     QModelIndex,
     QObject,
     QPersistentModelIndex,
+    QSortFilterProxyModel,
     Qt,
+    Signal,
+    Slot,
 )
 
 from carnopy.app.sampler_draft import SamplerDraft
@@ -23,6 +27,9 @@ SELECTED_ROLE = VALUE_ROLE + 3
 ISSUE_ROLE = VALUE_ROLE + 4
 AXIS_ROLE = VALUE_ROLE + 5
 DRAFT_ROLE = VALUE_ROLE + 6
+LABEL_ROLE = VALUE_ROLE + 7
+SYMBOL_ROLE = VALUE_ROLE + 8
+UNIT_ROLE = VALUE_ROLE + 9
 INVALID_INDEX = QModelIndex()
 
 
@@ -34,6 +41,9 @@ class DraftItem:
     compatible: bool = True
     selected: bool = False
     issue: str = ""
+    label: str = ""
+    symbol: str = ""
+    unit: str = ""
 
 
 class DraftListModel(QAbstractListModel):
@@ -103,6 +113,9 @@ class DraftListModel(QAbstractListModel):
             COMPATIBLE_ROLE: item.compatible,
             SELECTED_ROLE: item.selected,
             ISSUE_ROLE: item.issue,
+            LABEL_ROLE: item.label,
+            SYMBOL_ROLE: item.symbol,
+            UNIT_ROLE: item.unit,
         }
         return values.get(role)
 
@@ -125,7 +138,61 @@ class DraftListModel(QAbstractListModel):
             COMPATIBLE_ROLE: QByteArray(b"compatible"),
             SELECTED_ROLE: QByteArray(b"selected"),
             ISSUE_ROLE: QByteArray(b"issue"),
+            LABEL_ROLE: QByteArray(b"label"),
+            SYMBOL_ROLE: QByteArray(b"symbol"),
+            UNIT_ROLE: QByteArray(b"unit"),
         }
+
+
+class ChoiceFilterProxyModel(QSortFilterProxyModel):
+    """Filter one draft choice model without copying or reordering its rows."""
+
+    filter_text_changed = Signal()
+
+    def __init__(self, source: DraftListModel, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self._filter_text = ""
+        self.setDynamicSortFilter(True)
+        self.setSourceModel(source)
+
+    def get_filter_text(self) -> str:
+        return self._filter_text
+
+    @Slot(str)
+    def set_filter_text(self, value: str) -> None:
+        normalized = value.strip().casefold()
+        if normalized == self._filter_text:
+            return
+        self.beginFilterChange()
+        self._filter_text = normalized
+        self.endFilterChange(QSortFilterProxyModel.Direction.Rows)
+        self.filter_text_changed.emit()
+
+    filterText = Property(
+        str,
+        get_filter_text,
+        set_filter_text,
+        notify=filter_text_changed,
+    )
+
+    def filterAcceptsRow(
+        self,
+        source_row: int,
+        source_parent: QModelIndex | QPersistentModelIndex,
+    ) -> bool:
+        if not self._filter_text:
+            return True
+        source = self.sourceModel()
+        if source is None:
+            return False
+        index = source.index(source_row, 0, source_parent)
+        values = (
+            source.data(index, DISPLAY_ROLE),
+            source.data(index, VALUE_ROLE),
+            source.data(index, CANONICAL_ROLE),
+            source.data(index, LABEL_ROLE),
+        )
+        return any(self._filter_text in str(value or "").casefold() for value in values)
 
 
 class SamplerDraftModel(QAbstractListModel):
@@ -199,4 +266,7 @@ def _item_structure(item: DraftItem) -> tuple[object, ...]:
         item.canonical,
         item.compatible,
         item.issue,
+        item.label,
+        item.symbol,
+        item.unit,
     )

@@ -218,6 +218,54 @@ properties: [mass_density]
     )
 
 
+def test_equivalent_declared_units_generate_identical_scientific_identity(
+    tmp_path: Path,
+) -> None:
+    template = """schema_version: 2
+document_type: dataset
+backend:
+  name: coolprop
+  model: heos
+mode: property_table
+fluids: [Propane]
+grid:
+  temperature: {kind: linspace, start: 273.15, stop: 373.15, num: 3, unit: K}
+  pressure: PRESSURE
+properties: [mass_density]
+outputs:
+  dataset_formats: [csv]
+"""
+    pascal_config = tmp_path / "pascal.yaml"
+    pascal_config.write_text(
+        template.replace(
+            "PRESSURE",
+            "{kind: geomspace, start: 100000, stop: 10000000, num: 3, unit: Pa}",
+        ),
+        encoding="utf-8",
+    )
+    bar_config = tmp_path / "bar.yaml"
+    bar_config.write_text(
+        template.replace(
+            "PRESSURE",
+            "{kind: geomspace, start: 1, stop: 100, num: 3, unit: bar}",
+        ),
+        encoding="utf-8",
+    )
+
+    pascal_run = generate_dataset(pascal_config, output_root=tmp_path / "pascal-runs")
+    bar_run = generate_dataset(bar_config, output_root=tmp_path / "bar-runs")
+
+    assert pascal_run.spec_id == bar_run.spec_id
+    assert pascal_run.generation_context_id == bar_run.generation_context_id
+    assert (
+        pascal_run.output_directory.joinpath("config.normalized.json").read_bytes()
+        == bar_run.output_directory.joinpath("config.normalized.json").read_bytes()
+    )
+    pascal_frame = pd.read_csv(pascal_run.output_directory / "dataset.csv")
+    bar_frame = pd.read_csv(bar_run.output_directory / "dataset.csv")
+    assert pascal_frame.drop(columns=["run_id"]).equals(bar_frame.drop(columns=["run_id"]))
+
+
 def test_artifact_hashing_does_not_require_read_bytes(
     tmp_path: Path,
     monkeypatch: object,

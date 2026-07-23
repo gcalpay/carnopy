@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 from carnopy.app.config_document import ConfigDocumentError, new_document
 from carnopy.app.config_editor import DatasetConfigEditor
 from carnopy.app.config_widgets import SamplerEditor
-from carnopy.app.draft_models import DISPLAY_ROLE
+from carnopy.app.draft_models import DISPLAY_ROLE, VALUE_ROLE
 from carnopy.app.plot_draft import PlotDraft
 from carnopy.app.sampler_draft import SamplerDraft
 from carnopy.app.visualization_editor import PlotRequestDialog, VisualizationEditor
@@ -134,6 +134,7 @@ def capabilities() -> dict[str, Any]:
         "dataset_formats": ["csv", "parquet"],
         "fluids": [
             {"name": "Propane", "aliases": ["R290", "n-Propane"]},
+            {"name": "Isobutane", "aliases": ["R600a"]},
             {"name": "Cyclopentane", "aliases": []},
             {"name": "Isopentane", "aliases": ["IsoPentane"]},
         ],
@@ -234,6 +235,32 @@ def configured_editor(tmp_path: Path) -> DatasetConfigEditor:
     return editor
 
 
+def activate_combo_value(combo: QComboBox, value: str) -> None:
+    index = combo.findData(value, role=VALUE_ROLE)
+    assert index >= 0
+    combo.setCurrentIndex(index)
+    combo.activated.emit(index)
+
+
+def test_capability_model_resets_do_not_request_destructive_widget_changes(
+    application: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    questions: list[str] = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda *_args, **_kwargs: questions.append("asked") or QMessageBox.StandardButton.No,
+    )
+    editor = DatasetConfigEditor()
+
+    editor._apply_capabilities(capabilities())
+
+    assert questions == []
+    editor.shutdown()
+
+
 @pytest.mark.parametrize(
     "sampler",
     [
@@ -261,6 +288,43 @@ def test_sampler_editor_round_trips_every_public_sampler(
     editor = SamplerEditor(draft)
 
     assert editor.sampler_payload() == sampler
+
+
+def test_sampler_editor_routes_unit_changes_through_exact_anchor_operation(
+    application: QApplication,
+) -> None:
+    draft = SamplerDraft("pressure")
+    draft.load_payload(
+        {"kind": "explicit", "values": [1.0, 2.0], "unit": "bar"},
+        available_units=["Pa", "bar"],
+    )
+    editor = SamplerEditor(draft)
+
+    editor.unit.setCurrentText("Pa")
+    application.processEvents()
+
+    assert draft.get_unit() == "Pa"
+    assert draft.text("values") == "100000, 200000"
+    assert editor.unit.currentText() == "Pa"
+
+
+def test_sampler_editor_restores_unit_after_exact_representation_rejection(
+    application: QApplication,
+) -> None:
+    draft = SamplerDraft("temperature")
+    draft.load_payload(
+        {"kind": "explicit", "values": [0.0072992700729927], "unit": "K"},
+        available_units=["K", "degC"],
+    )
+    editor = SamplerEditor(draft)
+    before = draft.raw_state()
+
+    editor.unit.setCurrentText("degC")
+    application.processEvents()
+
+    assert draft.raw_state() == before
+    assert editor.unit.currentText() == "K"
+    assert "canonical identity" in editor.unit.toolTip()
 
 
 @pytest.mark.parametrize(
@@ -360,7 +424,9 @@ def test_incomplete_saved_dataset_draft_is_dirty_and_requires_discard(
     assert editor.dataset_draft.get_dirty()
     assert not editor._form_valid
     assert not editor.save_button.isEnabled()
-    assert "unavailable" in editor.preview.toPlainText()
+    assert editor.preview.toPlainText() == ""
+    assert not editor.controller.get_yaml_available()
+    assert editor.controller.get_blocking_section() == "dataset"
     assert not editor.confirm_discard()
     assert questions == ["asked"]
     editor.shutdown()
@@ -381,10 +447,11 @@ def test_cancelled_mode_change_restores_display_without_mutating_draft(
         lambda *_args, **_kwargs: QMessageBox.StandardButton.No,
     )
 
-    editor.form.mode.setCurrentText("saturation_table")
+    activate_combo_value(editor.form.mode, "saturation_table")
 
     assert editor.dataset_draft.get_mode_name() == "property_table"
-    assert editor.form.mode.currentText() == "property_table"
+    assert editor.form.mode.currentData(VALUE_ROLE) == "property_table"
+    assert editor.form.mode.currentText() == "Property table"
     assert editor.document is not None
     assert editor.document.payload == original
     editor.shutdown()
@@ -699,12 +766,12 @@ def test_model_change_keeps_incompatible_property_visible_and_blocks_save(
     payload = yaml.safe_load(template_text("saturation_table"))
     editor._open_document(new_document(payload))
 
-    editor.form.model.setCurrentText("pr")
+    activate_combo_value(editor.form.model, "pr")
 
     values = editor.form.list_values(editor.form.properties)
     surface_row = values.index("surface_tension")
     item = editor.form.properties.model().index(surface_row, 0)
-    assert item.data(DISPLAY_ROLE) == "Unsupported by pr: surface_tension"
+    assert item.data(DISPLAY_ROLE) == "Unsupported by pr: Surface tension"
     assert not editor._form_valid
     assert not editor.save_button.isEnabled()
     assert "surface_tension" in editor.status.text()
@@ -803,7 +870,7 @@ def test_confirmed_mode_change_preserves_shared_fields_and_resets_mode_state(
         lambda *_args, **_kwargs: QMessageBox.StandardButton.Yes,
     )
 
-    editor.form.mode.setCurrentText("saturation_table")
+    activate_combo_value(editor.form.mode, "saturation_table")
 
     assert editor.document is not None
     changed = editor.document.payload

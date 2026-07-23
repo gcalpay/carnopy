@@ -15,6 +15,7 @@ from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import QApplication, QListView, QMessageBox
 
 from carnopy.app.desktop_controller import DesktopController
+from carnopy.app.qml_settings import WINDOW_STATE_VERSION_KEY
 from carnopy.app.window import PAGE_TITLES, MainWindow
 from carnopy.app.workspace import initialize_workspace
 from carnopy.app.workspace_controller import PATH_ROLE
@@ -100,7 +101,7 @@ def test_recents_are_isolated_in_supplied_settings(
 
     settings = settings_for(settings_path)
     assert settings.value("recent_workspaces", [], type=list) == [str(workspace.root)]
-    assert set(settings.allKeys()) == {"recent_workspaces"}
+    assert set(settings.allKeys()) == {"recent_workspaces", WINDOW_STATE_VERSION_KEY}
 
 
 def test_stale_window_geometry_is_ignored(
@@ -148,6 +149,7 @@ def test_window_uses_one_shared_request_coordinator(
     assert window.dataset_config_controller is window.desktop_controller.dataset_config_controller
     assert window.coordinator.client is window.client
     assert window.configure_page.controller is window.dataset_config_controller
+    assert window.configure_page.desktop_controller is window.desktop_controller
     assert window.configure_page.coordinator is window.coordinator
     assert window.configure_page.dataset_draft is window.desktop_controller.dataset_draft
     assert (

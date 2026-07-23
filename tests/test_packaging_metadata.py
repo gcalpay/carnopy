@@ -32,14 +32,62 @@ def test_coolprop_major_version_is_bounded() -> None:
 def test_desktop_extra_and_launcher_are_declared() -> None:
     root = Path(__file__).resolve().parents[1]
     pyproject: dict[str, Any] = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    readme = (root / "README.md").read_text(encoding="utf-8")
 
     assert pyproject["project"]["optional-dependencies"]["app"] == [
-        "PySide6-Essentials>=6.8.3,<7",
+        "PySide6-Essentials>=6.11.1,<6.12",
         "matplotlib>=3.8",
         "Pillow>=12.3.0",
     ]
+    assert (
+        "PySide6-Essentials>=6.11.1,<6.12" in pyproject["project"]["optional-dependencies"]["all"]
+    )
     assert pyproject["project"]["scripts"]["carnopy-app"] == "carnopy.app.launcher:main"
     assert pyproject["project"]["scripts"]["carnopy-gui"] == "carnopy.app.launcher:main_gui"
+    assert "PySide6 Essentials 6.11.1 or later within the 6.11 release line" in readme
+    assert "native bridge remains qualified against exactly Qt 6.11.1" in readme
+
+
+def test_qml_runtime_is_private_and_resources_live_in_the_app_package() -> None:
+    root = Path(__file__).resolve().parents[1]
+    pyproject: dict[str, Any] = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    scripts = pyproject["project"]["scripts"]
+    assert scripts == {
+        "carnopy": "carnopy.__main__:main",
+        "carnopy-app": "carnopy.app.launcher:main",
+        "carnopy-gui": "carnopy.app.launcher:main_gui",
+    }
+    app_root = root / "src" / "carnopy" / "app"
+    for relative_path in (
+        "qml/Carnopy/Main.qml",
+        "qml/Carnopy/pages/DatasetPage.qml",
+        "qml/Carnopy/pages/VisualizationPage.qml",
+        "qml/Carnopy/pages/YamlPreviewPage.qml",
+        "qml/Carnopy/components/BlockingBanner.qml",
+        "qml/Carnopy/components/LineNumberedTextArea.qml",
+        "qml/Carnopy/components/MappingEditor.qml",
+        "qml/Carnopy/components/OperationFeedback.qml",
+        "qml/Carnopy/components/PlotEditor.qml",
+        "qml/Carnopy/qmldir",
+        "resources/third-party-resources.json",
+        "resources/branding/carnopy-mark.png",
+        "resources/fonts/IBMPlexSans-Regular.ttf",
+        "resources/fonts/IBMPlexMono-Regular.ttf",
+        "resources/icons/appearance-dark.svg",
+        "resources/icons/appearance-light.svg",
+        "resources/icons/appearance-warm.svg",
+        "resources/icons/flask-conical.svg",
+        "resources/licenses/IBM-Plex-OFL-1.1.txt",
+        "resources/licenses/Lucide-LICENSE.txt",
+    ):
+        assert (app_root / relative_path).is_file()
+
+
+def test_manifest_hashed_resources_disable_checkout_byte_rewriting() -> None:
+    root = Path(__file__).resolve().parents[1]
+    attributes = (root / ".gitattributes").read_text(encoding="utf-8").splitlines()
+
+    assert "src/carnopy/app/resources/** -text" in attributes
 
 
 def test_analysis_extra_is_optional_and_scoped() -> None:
@@ -132,7 +180,15 @@ def test_public_and_community_markdown_have_intentional_distribution_boundaries(
     root = Path(__file__).resolve().parents[1]
     assert (root / "README.md").is_file()
     assert (root / "AGENTS.md").is_file()
+    assert (root / "DESKTOP_ARCHITECTURE.md").is_file()
     assert (root / "ML_PREPARATION_ROADMAP.md").is_file()
+    agent_guides = root / "docs" / "agent-guides"
+    assert {path.name for path in agent_guides.glob("*.md")} == {
+        "DELEGATION.md",
+        "DEVELOPMENT.md",
+        "RELEASE.md",
+        "SCIENTIFIC_CONTRACTS.md",
+    }
     community = root / ".github"
     for name in ("CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "SECURITY.md"):
         assert (community / name).is_file()
@@ -142,7 +198,9 @@ def test_public_and_community_markdown_have_intentional_distribution_boundaries(
     sdist_includes = set(pyproject["tool"]["hatch"]["build"]["targets"]["sdist"]["include"])
     assert "/README.md" in sdist_includes
     assert "/AGENTS.md" in sdist_includes
+    assert "/DESKTOP_ARCHITECTURE.md" in sdist_includes
     assert "/ML_PREPARATION_ROADMAP.md" in sdist_includes
+    assert "/docs/agent-guides" in sdist_includes
     assert not any(path.startswith("/.github") for path in sdist_includes)
     assert "/docs" not in sdist_includes
 
@@ -229,4 +287,11 @@ def test_public_agents_bootstraps_ignored_local_policy() -> None:
     gitignore = (root / ".gitignore").read_text(encoding="utf-8")
     assert "<repository-root>/.agents/local.md" in agents
     assert "highest-priority repository instruction" in agents
+    for guide in (
+        "DELEGATION.md",
+        "DEVELOPMENT.md",
+        "RELEASE.md",
+        "SCIENTIFIC_CONTRACTS.md",
+    ):
+        assert f"docs/agent-guides/{guide}" in agents
     assert ".agents/local.md" in gitignore

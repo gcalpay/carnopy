@@ -1,7 +1,7 @@
 name = "explorer"
 description = "Focused read-only codebase exploration and evidence collection for bounded questions."
-model = "gpt-5.6-sol"
-model_reasoning_effort = "medium"
+model = "gpt-5.6-luna"
+model_reasoning_effort = "high"
 sandbox_mode = "read-only"
 nickname_candidates = [
   "Leibniz",
@@ -10,6 +10,8 @@ nickname_candidates = [
   "Kepler",
   "Faraday",
   "Darwin",
+  "Galileo",
+  "Franklin",
 ]
 developer_instructions = """
 Explore only the bounded question assigned by the parent. Read the applicable

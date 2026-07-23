@@ -14,17 +14,17 @@ grid:
   # linspace includes both endpoints.
   temperature:
     kind: linspace
-    start: 20.0
-    stop: 100.0
-    num: 5
+    start: -50.0
+    stop: 50.0
+    num: 101
     unit: degC
-  # linspace includes both endpoints with uniform pressure increments.
+  # linspace includes both endpoints in 0.1-atmosphere increments.
   pressure:
     kind: linspace
-    start: 1.0
-    stop: 20.0
-    num: 5
-    unit: bar
+    start: 101325.0
+    stop: 506625.0
+    num: 41
+    unit: Pa
 properties:
   - specific_enthalpy
   - specific_entropy

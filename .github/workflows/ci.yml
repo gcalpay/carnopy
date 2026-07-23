@@ -122,6 +122,16 @@ jobs:
         run: >-
           uv sync --locked --python 3.12
           --extra app --no-default-groups --group test --group type
+      - name: Verify Qt runtime baseline
+        run: >-
+          uv run --locked --extra app --no-default-groups
+          python -c "from PySide6.QtCore import qVersion;
+          version = tuple(map(int, qVersion().split('.')));
+          assert (6, 11, 1) <= version < (6, 12), qVersion()"
+      - name: Check QML sources
+        run: >-
+          uv run --locked --extra app --no-default-groups
+          python scripts/check_qml.py
       - name: Run strict desktop mypy
         run: >-
           uv run --locked --extra app --no-default-groups --group type
@@ -133,12 +143,62 @@ jobs:
       - name: Check environment dependencies
         run: uv pip check --python .venv/bin/python
 
+  qml-smoke:
+    name: Installed QML smoke (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Install Linux Qt runtime dependency
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends libegl1
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          version: "0.11.23"
+          enable-cache: true
+      - name: Build installed QML smoke wheel
+        run: uv build --wheel --out-dir qml-smoke-dist
+      - name: Run installed QML startup and interaction smoke
+        shell: bash
+        run: |
+          python -m venv "$RUNNER_TEMP/carnopy-qml-smoke"
+          SMOKE_PYTHON="$RUNNER_TEMP/carnopy-qml-smoke/bin/python"
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            SMOKE_PYTHON="$RUNNER_TEMP/carnopy-qml-smoke/Scripts/python.exe"
+          fi
+          WHEEL_URI="$("$SMOKE_PYTHON" -c \
+            'from pathlib import Path; import sys; wheels = list(Path(sys.argv[1]).glob("*.whl")); assert len(wheels) == 1, wheels; print(wheels[0].resolve().as_uri())' \
+            "$PWD/qml-smoke-dist")"
+          "$SMOKE_PYTHON" -m pip install \
+            --index-url https://pypi.org/simple/ \
+            "carnopy[app] @ ${WHEEL_URI}"
+          "$SMOKE_PYTHON" -m pip check
+          QT_QPA_PLATFORM=offscreen \
+          "$SMOKE_PYTHON" -m carnopy.app.qml_launcher --smoke-test
+
   distribution:
     name: Distribution verification
     needs:
       - quality
       - tests
       - app
+      - qml-smoke
     runs-on: ubuntu-latest
     steps:
       - name: Check out source

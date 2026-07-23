@@ -1,0 +1,184 @@
+{
+  "schema_version": 1,
+  "branding": {
+    "name": "Carnopy provisional Stage 2 application mark",
+    "source": "maintainer-provided logo-ideas/minimal-green-v1.png",
+    "packaged_path": "branding/carnopy-mark.png",
+    "sha256": "7c01f9c7f8fe12f98acc2063396a9af615a5a6eba30e995e4f86bc4fd8155fcc"
+  },
+  "first_party_resources": [
+    {
+      "name": "Carnopy Light appearance icon",
+      "source": "approved GUI-2 Stage 2 appearance reference",
+      "packaged_path": "icons/appearance-light.svg",
+      "sha256": "5ef8e8a2860724e4c8a6c68e623d48c146c1e449438f5c9e93e8fedcb06a891a"
+    },
+    {
+      "name": "Carnopy Warm appearance icon",
+      "source": "approved GUI-2 Stage 2 appearance reference",
+      "packaged_path": "icons/appearance-warm.svg",
+      "sha256": "9dea92a331e6e4b3022498ac2ced90ef95fb1f33483f32f328daa3343f2bd72e"
+    },
+    {
+      "name": "Carnopy Dark appearance icon",
+      "source": "approved GUI-2 Stage 2 appearance reference",
+      "packaged_path": "icons/appearance-dark.svg",
+      "sha256": "a5375b7e996493d8469ebaadcdf97d4221a41f1aa4d0bed34e6da73efd70184b"
+    }
+  ],
+  "third_party_projects": [
+    {
+      "name": "IBM Plex",
+      "revision": "2f9ba1b25957d958db71a849e85d72e3ecfb845a",
+      "source_url": "https://github.com/IBM/plex/tree/2f9ba1b25957d958db71a849e85d72e3ecfb845a",
+      "license_expression": "OFL-1.1",
+      "license_path": "licenses/IBM-Plex-OFL-1.1.txt",
+      "files": [
+        {
+          "packaged_path": "fonts/IBMPlexSans-Regular.ttf",
+          "source_path": "packages/plex-sans/fonts/complete/ttf/IBMPlexSans-Regular.ttf",
+          "sha256": "975dcda37d80f038dcd143c22e33ca2d97a0cc5a929aace1c749153b0fe1afa5"
+        },
+        {
+          "packaged_path": "fonts/IBMPlexSans-Medium.ttf",
+          "source_path": "packages/plex-sans/fonts/complete/ttf/IBMPlexSans-Medium.ttf",
+          "sha256": "331c8639d7598b2cde62a911a71db195e30cb655cd6bdf2e324a7e984955f907"
+        },
+        {
+          "packaged_path": "fonts/IBMPlexSans-SemiBold.ttf",
+          "source_path": "packages/plex-sans/fonts/complete/ttf/IBMPlexSans-SemiBold.ttf",
+          "sha256": "a20caf8286023a6a7a85e40b1d2a4ae9fc3e3b1f9eda8f4c542dd4986af67bb1"
+        },
+        {
+          "packaged_path": "fonts/IBMPlexMono-Regular.ttf",
+          "source_path": "packages/plex-mono/fonts/complete/ttf/IBMPlexMono-Regular.ttf",
+          "sha256": "7c6fbddca4b700be918f5f6183d9bd4464fa427fe435f0b480d77fe2bb8c5a43"
+        },
+        {
+          "packaged_path": "fonts/IBMPlexMono-Medium.ttf",
+          "source_path": "packages/plex-mono/fonts/complete/ttf/IBMPlexMono-Medium.ttf",
+          "sha256": "98fbd727aae340b236955879dabed4d991aac9e8e90b3b2a67ce4a59221cc97c"
+        },
+        {
+          "packaged_path": "licenses/IBM-Plex-OFL-1.1.txt",
+          "source_path": "LICENSE.txt",
+          "sha256": "7e6b2818edbd8f6a01ae80641cc8f16a51080d08fb4e532be3a0b6f74adb07da"
+        }
+      ]
+    },
+    {
+      "name": "Lucide",
+      "revision": "1.24.0 (b5b5d95933790a311aa6b7ed232fc8469934acdf)",
+      "source_url": "https://github.com/lucide-icons/lucide/tree/1.24.0",
+      "license_expression": "ISC AND MIT",
+      "license_path": "licenses/Lucide-LICENSE.txt",
+      "files": [
+        {
+          "packaged_path": "icons/activity.svg",
+          "source_path": "icons/activity.svg",
+          "sha256": "050fbcda05e13c2051cf857683645e19c6b180861ef4d0cc28a6f09ba1ea1666"
+        },
+        {
+          "packaged_path": "icons/box.svg",
+          "source_path": "icons/box.svg",
+          "sha256": "511862693d914d2bf1947c9ccc513595f2a256541f5dd4f6f9ac8383cd41ac4f"
+        },
+        {
+          "packaged_path": "icons/chart-spline.svg",
+          "source_path": "icons/chart-spline.svg",
+          "sha256": "52b232c9e69dee2b11392f66c5db332e2dce307f489ee435150c91bf202bf481"
+        },
+        {
+          "packaged_path": "icons/circle-question-mark.svg",
+          "source_path": "icons/circle-question-mark.svg",
+          "sha256": "975db087da041530dbf59ba1e61a7b99c3519fad43dae6375e42ccc74ba63924"
+        },
+        {
+          "packaged_path": "icons/database.svg",
+          "source_path": "icons/database.svg",
+          "sha256": "471eb14bc8d144896a82dfc4aa9daf350f769f0896f4bef33e50aabdbb51130d"
+        },
+        {
+          "packaged_path": "icons/file-code.svg",
+          "source_path": "icons/file-code.svg",
+          "sha256": "8ac619671f53653a483c2d5e2e6afe6d009c3198918cf76632e2cb4abf0d6721"
+        },
+        {
+          "packaged_path": "icons/flask-conical.svg",
+          "source_path": "icons/flask-conical.svg",
+          "sha256": "a2ce857c159bef4c128a6d9f0b6dcbd6504ecf1a2a670ee220efd14fd032b561"
+        },
+        {
+          "packaged_path": "icons/git-compare-arrows.svg",
+          "source_path": "icons/git-compare-arrows.svg",
+          "sha256": "312a5913462dd0bd33bb3dae8e136ee2a4396e0906b917be4a2c1dd3c2d2a2a2"
+        },
+        {
+          "packaged_path": "icons/layout-dashboard.svg",
+          "source_path": "icons/layout-dashboard.svg",
+          "sha256": "281ab865b4c04dab32a04023473e448f58be6a7ad90769450ac3349d79dc4aed"
+        },
+        {
+          "packaged_path": "icons/monitor.svg",
+          "source_path": "icons/monitor.svg",
+          "sha256": "d1a443233345724859de8e4fb48968ba91e885e12ddbd710701548bd91b39428"
+        },
+        {
+          "packaged_path": "icons/moon.svg",
+          "source_path": "icons/moon.svg",
+          "sha256": "205b959e940d5841f0ce1d09c933153da9d9c94130a54d5cc0c68c2af1d403da"
+        },
+        {
+          "packaged_path": "icons/panel-left-close.svg",
+          "source_path": "icons/panel-left-close.svg",
+          "sha256": "8f5b1fc9255e60f212379e8e315087a2f0a595a639ad2fb25c255dc3295c4e7d"
+        },
+        {
+          "packaged_path": "icons/panel-left-open.svg",
+          "source_path": "icons/panel-left-open.svg",
+          "sha256": "4529f625891390e8c6f106b9603984bc9ec5b03e35a13af7e7a6d50df965183b"
+        },
+        {
+          "packaged_path": "icons/panel-right-close.svg",
+          "source_path": "icons/panel-right-close.svg",
+          "sha256": "48b9f4f84d55f99d6e4b7dc9e31937f687bc6aca223c003d7f3bd8bab6526c0b"
+        },
+        {
+          "packaged_path": "icons/panel-right-open.svg",
+          "source_path": "icons/panel-right-open.svg",
+          "sha256": "7cea098473914c767e3a17561626df816a886de878cc943da79ae95bf726c9f0"
+        },
+        {
+          "packaged_path": "icons/play.svg",
+          "source_path": "icons/play.svg",
+          "sha256": "d7c34786135922a92b6896f6c2384ceeb0346afbf6041dc79982011411409833"
+        },
+        {
+          "packaged_path": "icons/rotate-ccw.svg",
+          "source_path": "icons/rotate-ccw.svg",
+          "sha256": "622685386ab4017eabfde01cd74550a20b1924df233b353f73b6b155371f2afd"
+        },
+        {
+          "packaged_path": "icons/search.svg",
+          "source_path": "icons/search.svg",
+          "sha256": "283d371c2e433817bb9c0c8310caa6c77fa4177c0f4f1168d9c83b97af7389dc"
+        },
+        {
+          "packaged_path": "icons/settings.svg",
+          "source_path": "icons/settings.svg",
+          "sha256": "0ae27fd0f81999229e3127ac96c5b32edfea448e291d509e76212b917551d66b"
+        },
+        {
+          "packaged_path": "icons/sun.svg",
+          "source_path": "icons/sun.svg",
+          "sha256": "a3955c8b0425fcc5c9ba12d2bdd77fe53b2cd5dd05e7742a56f342e996fb2ef8"
+        },
+        {
+          "packaged_path": "licenses/Lucide-LICENSE.txt",
+          "source_path": "LICENSE",
+          "sha256": "b495047bd93a9b06913511076f504daba17d5bbeb3e0650f3bb53a4220329c57"
+        }
+      ]
+    }
+  ]
+}

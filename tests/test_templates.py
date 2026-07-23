@@ -37,8 +37,41 @@ def test_packaged_dataset_templates_match_repository_examples_and_validate() -> 
         assert load_config_file(root / "configs" / example_names[mode]).model.mode == mode
 
     property_model = load_config_file(root / "configs" / "property_table_example.yaml").model
+    assert property_model.backend.model == "heos"
+    assert property_model.fluids == ["Propane", "Isobutane"]
+    assert property_model.outputs.dataset_formats == ("csv", "parquet")
+    temperature = materialize_sampler(property_model.grid["temperature"])
     pressure = materialize_sampler(property_model.grid["pressure"])
-    assert pressure == [1.0, 5.75, 10.5, 15.25, 20.0]
+    assert len(temperature) == 101
+    assert temperature[0] == -50.0
+    assert temperature[-1] == 50.0
+    assert len(pressure) == 41
+    assert pressure[0] == 101325.0
+    assert pressure[-1] == 506625.0
+
+    saturation_model = load_config_file(root / "configs" / "saturation_table_example.yaml").model
+    assert saturation_model.backend.model == "heos"
+    assert saturation_model.fluids == ["Propane", "Isobutane"]
+    assert saturation_model.outputs.dataset_formats == ("csv", "parquet")
+    saturation_temperature = materialize_sampler(saturation_model.grid["temperature"])
+    assert len(saturation_temperature) == 101
+    assert saturation_temperature[0] == -50.0
+    assert saturation_temperature[-1] == 50.0
+
+    vapor_model = load_config_file(
+        root / "configs" / "vapor_mass_fraction_table_example.yaml"
+    ).model
+    assert vapor_model.backend.model == "heos"
+    assert vapor_model.fluids == ["Propane", "Isobutane"]
+    assert vapor_model.outputs.dataset_formats == ("csv", "parquet")
+    vapor_temperature = materialize_sampler(vapor_model.grid["temperature"])
+    vapor_fraction = materialize_sampler(vapor_model.grid["vapor_mass_fraction"])
+    assert len(vapor_temperature) == 101
+    assert vapor_temperature[0] == -50.0
+    assert vapor_temperature[-1] == 50.0
+    assert len(vapor_fraction) == 11
+    assert vapor_fraction[0] == 0.0
+    assert vapor_fraction[-1] == 1.0
 
 
 def test_model_sweep_template_is_concise_base_runnable_and_example_is_richer(

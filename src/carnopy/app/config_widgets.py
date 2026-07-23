@@ -51,7 +51,7 @@ class SamplerEditor(QGroupBox):
         self.form.addRow("Unit", self.unit)
 
         self.kind.currentTextChanged.connect(draft.set_kind)
-        self.unit.currentTextChanged.connect(draft.set_unit)
+        self.unit.currentTextChanged.connect(self._unit_requested)
         self.values.textChanged.connect(lambda value: draft.set_text("values", value))
         for field in ("start", "stop", "step", "start_exp", "stop_exp", "base"):
             widget = getattr(self, field)
@@ -59,10 +59,20 @@ class SamplerEditor(QGroupBox):
         self.num.valueChanged.connect(lambda value: draft.set_text("num", str(value)))
         draft.changed.connect(self.sync_from_draft)
         draft.available_units_changed.connect(self.sync_from_draft)
+        draft.unitChangeRejected.connect(self._unit_change_rejected)
         self.sync_from_draft()
 
     def sampler_payload(self) -> dict[str, object]:
         return self.draft.payload()
+
+    def _unit_requested(self, value: str) -> None:
+        if value and not self.draft.requestUnitChange(value):
+            self.sync_from_draft()
+
+    def _unit_change_rejected(self, _field: str, message: str) -> None:
+        self.unit.setToolTip(message)
+        self.unit.setAccessibleDescription(message)
+        self.unit.setFocus()
 
     def sync_from_draft(self) -> None:
         blockers = [

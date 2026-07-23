@@ -107,8 +107,11 @@ development `viz` and `app` extras declare a Pillow security floor for
 Matplotlib's transitive image dependency; Pillow is not a separate Carnopy
 feature. The active GUI-2 source line reports `0.1.0a4.dev0`, while the
 published install commands above remain pinned to `0.1.0a3`. Stage 1
-controller extraction is complete; during Stage 2 QML workflow development, both desktop launchers
-continue to use the released Widgets frontend as the parity baseline.
+controller extraction is complete. The active GUI-2 `app` extra requires
+PySide6 Essentials 6.11.1 or later within the 6.11 release line; the private
+native bridge remains qualified against exactly Qt 6.11.1. During Stage 2 QML
+workflow development, both desktop launchers continue to use the released
+Widgets frontend as the parity baseline.
 
 ## Quick start
 
@@ -148,16 +151,19 @@ To preselect a workspace without initializing it silently:
 uv run --locked carnopy-gui --workspace /path/to/workspace
 ```
 
-Qt normally selects its platform integration automatically. If WSLg leaves
-drop-down popups visible after they close, and the system Qt XCB runtime is
-available, start the application explicitly with XCB:
+Qt normally selects its platform integration automatically. On WSLg, Carnopy's
+`auto` mode prefers XCB when both WSLg display transports are available because
+native Wayland dialogs can remain detached after selection. To select XCB
+explicitly:
 
 ```bash
 uv run --locked carnopy-gui --qt-platform xcb --workspace /path/to/workspace
 ```
 
 The corresponding explicit Wayland selection is `--qt-platform wayland`;
-omit the option or use `auto` for normal Qt platform detection.
+omit the option or use `auto` for native platform detection outside WSLg and
+the guarded XCB selection on WSLg. An existing `QT_QPA_PLATFORM` environment
+override remains authoritative.
 
 GUI-1 currently provides workspace lifecycle, a worker-validated editor for all
 three dataset configuration modes, dataset validation and generation, output
@@ -322,21 +328,21 @@ backend:
   name: coolprop
   model: heos
 mode: property_table
-fluids: [Propane]
+fluids: [Propane, Isobutane]
 
 grid:
   temperature:
     kind: linspace
-    start: 20
-    stop: 100
-    num: 5
+    start: -50
+    stop: 50
+    num: 101
     unit: degC
   pressure:
     kind: linspace
-    start: 1
-    stop: 20
-    num: 5
-    unit: bar
+    start: 101325
+    stop: 506625
+    num: 41
+    unit: Pa
 
 properties:
   - specific_enthalpy
@@ -661,12 +667,19 @@ Supported input units:
 
 ```text
 temperature: K, degC
-pressure: Pa, kPa, MPa, bar
+pressure: Pa, hPa, kPa, MPa, bar, atm
 vapor_mass_fraction: "1"
 ```
 
-All backend calls and generated numeric columns use SI. Original units and
-sampler definitions remain recorded in metadata.
+YAML uses `degC` as the stable token for degrees Celsius. One hectopascal is
+exactly `100 Pa`, and one standard atmosphere is exactly `101325 Pa`. All valid
+declared units are canonicalized to SI before sampling.
+
+Carnopy deterministically canonicalizes each sampler definition to SI before it
+materializes the grid. Engineering-unit declarations with the same exact
+canonical sampler key therefore produce the same materialized SI grid and
+scientific `spec_id`. All backend calls and generated numeric columns use SI,
+while original units and sampler definitions remain recorded in metadata.
 
 Validation rejects non-finite values, non-positive pressure, temperatures at or
 below absolute zero, vapor mass fractions outside `[0, 1]`, incompatible units,
@@ -1066,6 +1079,10 @@ over the same Carnopy Python pipelines used by the CLI. Widgets do not parse or
 invoke CLI output. Scientific validation and execution run in a short-lived
 worker process through a private, versioned JSON Lines protocol.
 
+See [Desktop architecture and evolution](DESKTOP_ARCHITECTURE.md) for the
+implemented controller ownership, process boundary, frontend migration status,
+verification layers, and GUI-1/GUI-2 evolution record.
+
 The prepared `0.1.0a3` source implementation includes:
 
 - explicit workspace creation, initialization, and reopening;
@@ -1139,6 +1156,12 @@ Open `graphify-out/graph.html` locally after cloning for an interactive view.
 The graph is an aid for navigation and review, not a source of scientific
 truth. Verify exact behavior against the source files and tests before making
 changes.
+
+The currently committed graph predates the packaged GUI-2 QML runtime and is
+hard-stale for current desktop work. Do not use it to navigate the active Stage
+2 implementation. The computed freshness policy and current source revision are
+recorded in
+[`DESKTOP_ARCHITECTURE.md`](DESKTOP_ARCHITECTURE.md#maintenance-posture-and-navigation-freshness).
 
 ## Scientific limitations
 
@@ -1274,10 +1297,11 @@ quality. Saturated liquid alone is not a pump cavitation margin; NPSH may be
 reported only when sufficient hydraulic-system and pump data are supplied.
 
 The active `0.1.0a4.dev0` application development line targets a cross-platform
-modern QML presentation layer with optional native VTK exact-grid 3D
-visualization. GUI-2 will use the same worker and core Python boundaries rather
-than duplicate scientific logic. TFC screening, mixtures, additional backends,
-and standalone desktop installers remain deferred.
+modern QML presentation layer with tested GUI-1 capability parity. Optional
+native VTK exact-grid 3D visualization belongs to a later GUI-2 alpha milestone
+and is not required for `0.1.0a4`. GUI-2 uses the same worker and core Python
+boundaries rather than duplicating scientific logic. TFC screening, mixtures,
+additional backends, and standalone desktop installers remain deferred.
 
 Use [GitHub issues](https://github.com/gcalpay/carnopy/issues) for bug reports,
 scientific discrepancies, and focused feature requests. See

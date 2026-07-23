@@ -13,8 +13,8 @@ from PySide6.QtCore import (
     QPersistentModelIndex,
     QSettings,
     Qt,
+    QTimer,
     Signal,
-    Slot,
 )
 
 from carnopy.app.request_coordinator import DesktopRequestCoordinator
@@ -113,6 +113,10 @@ class WorkspaceController(QObject):
         raw_paths = [str(value) for value in restored]
         recent_paths = _normalize_recent_paths(raw_paths)
         self.recent_model = RecentWorkspaceModel(recent_paths, self)
+        self._pending_recent_paths: tuple[str, ...] | None = None
+        self._recent_model_update_timer = QTimer(self)
+        self._recent_model_update_timer.setSingleShot(True)
+        self._recent_model_update_timer.timeout.connect(self._flush_recent_model_update)
         if raw_paths != list(recent_paths):
             settings.setValue(RECENT_WORKSPACES_KEY, list(recent_paths))
         coordinator.busy_changed.connect(self._busy_changed)
@@ -195,19 +199,15 @@ class WorkspaceController(QObject):
 
     recentWorkspaces = Property(QObject, get_recent_workspaces, constant=True)
 
-    @Slot(str, result=bool)
     def prepare_create(self, path: str | Path) -> bool:
         return self._prepare(path, "create")
 
-    @Slot(str, result=bool)
     def prepare_initialize_existing(self, path: str | Path) -> bool:
         return self._prepare(path, "initialize_existing")
 
-    @Slot(str, result=bool)
     def prepare_open(self, path: str | Path) -> bool:
         return self._prepare(path, "open")
 
-    @Slot(result=bool)
     def commit_pending(self) -> bool:
         plan = self._pending_plan
         self._set_pending_plan(None)
@@ -226,7 +226,6 @@ class WorkspaceController(QObject):
         self._activate(workspace)
         return True
 
-    @Slot()
     def cancel_pending(self) -> None:
         self._set_pending_plan(None)
 
@@ -267,12 +266,19 @@ class WorkspaceController(QObject):
         self.workspace_changed.emit(workspace)
 
     def _remember_workspace(self, path: Path) -> None:
-        current = self.recent_model.paths
+        current = self._pending_recent_paths or self.recent_model.paths
         value = str(path.expanduser().resolve())
         updated = _normalize_recent_paths((value, *current))
-        if not self.recent_model.replace(updated):
+        if updated == current:
             return
+        self._pending_recent_paths = updated
         self._settings.setValue(RECENT_WORKSPACES_KEY, list(updated))
+        self._recent_model_update_timer.start(0)
+
+    def _flush_recent_model_update(self) -> None:
+        updated, self._pending_recent_paths = self._pending_recent_paths, None
+        if updated is not None:
+            self.recent_model.replace(updated)
 
     def _active_path(self, attribute: str) -> str:
         workspace = self._workspace
@@ -281,6 +287,8 @@ class WorkspaceController(QObject):
         return str(getattr(workspace, attribute))
 
     def _busy_changed(self, busy: bool) -> None:
+        if not busy and self._error_message == _BUSY_MESSAGE:
+            self._set_error("")
         updated = not busy
         if updated == self._can_change_workspace:
             return

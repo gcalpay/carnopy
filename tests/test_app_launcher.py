@@ -139,3 +139,46 @@ def test_launcher_applies_explicit_platform_before_importing_pyside(
 
     assert launcher.main(["--qt-platform", argument]) == 0
     assert observed == [expected]
+
+
+def test_auto_platform_prefers_xcb_for_wslg_native_dialogs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("QT_QPA_PLATFORM", raising=False)
+    monkeypatch.setenv("WSL_INTEROP", "/run/WSL/test_interop")
+    monkeypatch.setenv("WSL2_GUI_APPS_ENABLED", "1")
+    monkeypatch.setenv("DISPLAY", ":0")
+    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
+
+    launcher.configure_qt_platform("auto")
+
+    assert os.environ["QT_QPA_PLATFORM"] == "xcb"
+
+
+def test_auto_platform_preserves_explicit_environment_on_wslg(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("QT_QPA_PLATFORM", "wayland")
+    monkeypatch.setenv("WSL_INTEROP", "/run/WSL/test_interop")
+    monkeypatch.setenv("WSL2_GUI_APPS_ENABLED", "1")
+    monkeypatch.setenv("DISPLAY", ":0")
+    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
+
+    launcher.configure_qt_platform("auto")
+
+    assert os.environ["QT_QPA_PLATFORM"] == "wayland"
+
+
+def test_auto_platform_leaves_native_linux_selection_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("QT_QPA_PLATFORM", raising=False)
+    monkeypatch.delenv("WSL_INTEROP", raising=False)
+    monkeypatch.delenv("WSL_DISTRO_NAME", raising=False)
+    monkeypatch.setenv("WSL2_GUI_APPS_ENABLED", "1")
+    monkeypatch.setenv("DISPLAY", ":0")
+    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
+
+    launcher.configure_qt_platform("auto")
+
+    assert "QT_QPA_PLATFORM" not in os.environ

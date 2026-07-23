@@ -29,9 +29,11 @@ UNITS: Final[dict[str, UnitDefinition]] = {
     "K": UnitDefinition("temperature", "K"),
     "degC": UnitDefinition("temperature", "K", offset=273.15),
     "Pa": UnitDefinition("pressure", "Pa"),
+    "hPa": UnitDefinition("pressure", "Pa", scale=100.0),
     "kPa": UnitDefinition("pressure", "Pa", scale=1_000.0),
     "MPa": UnitDefinition("pressure", "Pa", scale=1_000_000.0),
     "bar": UnitDefinition("pressure", "Pa", scale=100_000.0),
+    "atm": UnitDefinition("pressure", "Pa", scale=101_325.0),
     "1": UnitDefinition("dimensionless", "1"),
 }
 

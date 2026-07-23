@@ -3,6 +3,9 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import io
+import json
+import subprocess
+import sys
 import tomllib
 import urllib.request
 from pathlib import Path
@@ -44,7 +47,16 @@ def test_gui2_development_version_surfaces_are_aligned() -> None:
     assert __version__ == GUI2_DEVELOPMENT_VERSION
     assert root_metadata["project"]["dynamic"] == ["version"]
     assert root_metadata["tool"]["hatch"]["version"]["path"] == "src/carnopy/_version.py"
+    assert (
+        "PySide6-Essentials>=6.11.1,<6.12"
+        in root_metadata["project"]["optional-dependencies"]["app"]
+    )
+    assert (
+        "PySide6-Essentials>=6.11.1,<6.12"
+        in root_metadata["project"]["optional-dependencies"]["all"]
+    )
     assert bridge_metadata["project"]["version"] == GUI2_DEVELOPMENT_VERSION
+    assert bridge_metadata["project"]["dependencies"] == ["PySide6-Essentials==6.11.1"]
     assert f'__version__ = "{GUI2_DEVELOPMENT_VERSION}"' in bridge_init
     assert f'VERSION = "{GUI2_DEVELOPMENT_VERSION}"' in qualification
     assert "project(carnopy_vtk_bridge VERSION 0.1.0 LANGUAGES CXX)" in cmake
@@ -127,9 +139,48 @@ def test_distribution_path_filters_and_source_version() -> None:
     ]
 
 
+def test_distribution_resource_manifest_rejects_changed_bytes() -> None:
+    resource_root = ROOT / "src" / "carnopy" / "app" / "resources"
+    manifest_bytes = (resource_root / "third-party-resources.json").read_bytes()
+    manifest = json.loads(manifest_bytes)
+    relative_paths = [manifest["branding"]["packaged_path"]]
+    relative_paths.extend(entry["packaged_path"] for entry in manifest["first_party_resources"])
+    relative_paths.extend(
+        entry["packaged_path"]
+        for project in manifest["third_party_projects"]
+        for entry in project["files"]
+    )
+    archive = {"manifest.json": manifest_bytes}
+    archive.update({path: (resource_root / path).read_bytes() for path in relative_paths})
+
+    class Reader:
+        def __init__(self, content: dict[str, bytes]) -> None:
+            self.content = content
+
+        def names(self) -> set[str]:
+            return set(self.content)
+
+        def read(self, name: str) -> bytes:
+            return self.content[name]
+
+    check_distribution.validate_packaged_resource_bytes(
+        Reader(archive),
+        manifest_name="manifest.json",
+        resource_prefix="",
+    )
+    archive[relative_paths[0]] += b"changed"
+    with pytest.raises(ValueError, match="resource hash mismatch"):
+        check_distribution.validate_packaged_resource_bytes(
+            Reader(archive),
+            manifest_name="manifest.json",
+            resource_prefix="",
+        )
+
+
 def test_distribution_checker_requires_model_sweep_artifacts() -> None:
     assert {
         "carnopy/_execution.py",
+        "carnopy/app/application_identity.py",
         "carnopy/app/capabilities.py",
         "carnopy/app/launcher.py",
         "carnopy/app/client.py",
@@ -143,6 +194,7 @@ def test_distribution_checker_requires_model_sweep_artifacts() -> None:
         "carnopy/app/draft_models.py",
         "carnopy/app/execution_page.py",
         "carnopy/app/export_cleanup.py",
+        "carnopy/app/field_ids.py",
         "carnopy/app/inspection_page.py",
         "carnopy/app/jobs.py",
         "carnopy/app/jobs_page.py",
@@ -154,6 +206,18 @@ def test_distribution_checker_requires_model_sweep_artifacts() -> None:
         "carnopy/app/plot_rendering.py",
         "carnopy/app/plot_request_dialog.py",
         "carnopy/app/plot_staging.py",
+        "carnopy/app/property_presentation.py",
+        "carnopy/app/qml/Carnopy/Main.qml",
+        "carnopy/app/qml/Carnopy/qmldir",
+        "carnopy/app/qml_launcher.py",
+        "carnopy/app/qml_resources.py",
+        "carnopy/app/qml_runtime.py",
+        "carnopy/app/resources/branding/carnopy-mark.png",
+        "carnopy/app/resources/fonts/IBMPlexSans-Regular.ttf",
+        "carnopy/app/resources/icons/flask-conical.svg",
+        "carnopy/app/resources/licenses/IBM-Plex-OFL-1.1.txt",
+        "carnopy/app/resources/licenses/Lucide-LICENSE.txt",
+        "carnopy/app/resources/third-party-resources.json",
         "carnopy/app/visualization_editor.py",
         "carnopy/app/visualization_draft.py",
         "carnopy/app/visualization_widgets.py",
@@ -161,6 +225,7 @@ def test_distribution_checker_requires_model_sweep_artifacts() -> None:
         "carnopy/app/recovery.py",
         "carnopy/app/request_coordinator.py",
         "carnopy/app/sampler_draft.py",
+        "carnopy/sampling/projection.py",
         "carnopy/app/source_inspection.py",
         "carnopy/app/sources_page.py",
         "carnopy/app/table_model.py",
@@ -170,6 +235,7 @@ def test_distribution_checker_requires_model_sweep_artifacts() -> None:
         "carnopy/app/workspace.py",
         "carnopy/app/workspace_controller.py",
         "carnopy/config/sweep.py",
+        "carnopy/domain/numbers.py",
         "carnopy/inspection.py",
         "carnopy/preparation/arrays.py",
         "carnopy/preparation/baselines.py",
@@ -185,15 +251,19 @@ def test_distribution_checker_requires_model_sweep_artifacts() -> None:
         "carnopy/preparation/rows.py",
         "carnopy/preparation/scenarios.py",
         "carnopy/preparation/stratification.py",
+        "carnopy/sampling/canonical.py",
         "carnopy/sweeps/pipeline.py",
         "carnopy/sweeps/comparison.py",
         "carnopy/templates/model_sweep.yaml",
         "carnopy/templates/preparation.yaml",
     }.issubset(check_distribution.WHEEL_REQUIRED)
     assert {
+        "DESKTOP_ARCHITECTURE.md",
         "ML_PREPARATION_ROADMAP.md",
         "configs/model_sweep_example.yaml",
+        "scripts/check_qml.py",
         "src/carnopy/_execution.py",
+        "src/carnopy/app/application_identity.py",
         "src/carnopy/app/capabilities.py",
         "src/carnopy/app/launcher.py",
         "src/carnopy/app/client.py",
@@ -207,6 +277,7 @@ def test_distribution_checker_requires_model_sweep_artifacts() -> None:
         "src/carnopy/app/draft_models.py",
         "src/carnopy/app/execution_page.py",
         "src/carnopy/app/export_cleanup.py",
+        "src/carnopy/app/field_ids.py",
         "src/carnopy/app/inspection_page.py",
         "src/carnopy/app/jobs.py",
         "src/carnopy/app/jobs_page.py",
@@ -218,6 +289,18 @@ def test_distribution_checker_requires_model_sweep_artifacts() -> None:
         "src/carnopy/app/plot_rendering.py",
         "src/carnopy/app/plot_request_dialog.py",
         "src/carnopy/app/plot_staging.py",
+        "src/carnopy/app/property_presentation.py",
+        "src/carnopy/app/qml/Carnopy/Main.qml",
+        "src/carnopy/app/qml/Carnopy/qmldir",
+        "src/carnopy/app/qml_launcher.py",
+        "src/carnopy/app/qml_resources.py",
+        "src/carnopy/app/qml_runtime.py",
+        "src/carnopy/app/resources/branding/carnopy-mark.png",
+        "src/carnopy/app/resources/fonts/IBMPlexSans-Regular.ttf",
+        "src/carnopy/app/resources/icons/flask-conical.svg",
+        "src/carnopy/app/resources/licenses/IBM-Plex-OFL-1.1.txt",
+        "src/carnopy/app/resources/licenses/Lucide-LICENSE.txt",
+        "src/carnopy/app/resources/third-party-resources.json",
         "src/carnopy/app/visualization_editor.py",
         "src/carnopy/app/visualization_draft.py",
         "src/carnopy/app/visualization_widgets.py",
@@ -234,6 +317,7 @@ def test_distribution_checker_requires_model_sweep_artifacts() -> None:
         "src/carnopy/app/workspace.py",
         "src/carnopy/app/workspace_controller.py",
         "src/carnopy/config/sweep.py",
+        "src/carnopy/domain/numbers.py",
         "src/carnopy/inspection.py",
         "src/carnopy/preparation/arrays.py",
         "src/carnopy/preparation/baselines.py",
@@ -249,10 +333,49 @@ def test_distribution_checker_requires_model_sweep_artifacts() -> None:
         "src/carnopy/preparation/rows.py",
         "src/carnopy/preparation/scenarios.py",
         "src/carnopy/preparation/stratification.py",
+        "src/carnopy/sampling/canonical.py",
+        "src/carnopy/sampling/projection.py",
         "src/carnopy/sweeps/pipeline.py",
         "src/carnopy/templates/model_sweep.yaml",
         "src/carnopy/templates/preparation.yaml",
     }.issubset(check_distribution.SDIST_REQUIRED)
+    assert {f"carnopy/app/{path}" for path in check_distribution.QML_SHELL_APP_FILES}.issubset(
+        check_distribution.WHEEL_REQUIRED
+    )
+    assert {f"src/carnopy/app/{path}" for path in check_distribution.QML_SHELL_APP_FILES}.issubset(
+        check_distribution.SDIST_REQUIRED
+    )
+
+
+def test_installed_smoke_invokes_the_private_qml_entrypoint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed: list[tuple[list[str], Path, dict[str, str], int]] = []
+
+    def fake_run(
+        arguments: list[str],
+        *,
+        cwd: Path,
+        env: dict[str, str],
+        capture_output: bool,
+        text: bool,
+        check: bool,
+        timeout: int,
+    ) -> subprocess.CompletedProcess[str]:
+        assert capture_output and text and not check
+        observed.append((arguments, cwd, env, timeout))
+        return subprocess.CompletedProcess(arguments, 0, "", "")
+
+    monkeypatch.setattr(smoke_installed.subprocess, "run", fake_run)
+    smoke_installed.smoke_qml_app(tmp_path)
+
+    assert len(observed) == 1
+    arguments, cwd, environment, timeout = observed[0]
+    assert arguments == [sys.executable, "-m", "carnopy.app.qml_launcher", "--smoke-test"]
+    assert cwd == tmp_path
+    assert environment["QT_QPA_PLATFORM"] == "offscreen"
+    assert timeout == 30
 
 
 def test_installed_smoke_plot_arguments_use_current_cli_contract(tmp_path: Path) -> None:
@@ -266,6 +389,8 @@ def test_installed_smoke_plot_arguments_use_current_cli_contract(tmp_path: Path)
         "property-curves",
         "--property",
         "mass_density",
+        "--fluid",
+        "IsoButane",
         "--output",
         str(figure),
     ]

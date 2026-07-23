@@ -19,6 +19,16 @@ from PySide6.QtCore import (
 
 from carnopy.app.config_document import serialize_dataset_config
 from carnopy.app.draft_models import DraftItem, DraftListModel
+from carnopy.app.field_ids import (
+    PLOT_FILTERS,
+    PLOT_NAME,
+    VISUALIZATION_DISPLAY_UNITS,
+    VISUALIZATION_ENABLED,
+    VISUALIZATION_FILTERS,
+    VISUALIZATION_FLUIDS,
+    VISUALIZATION_FORMAT,
+    VISUALIZATION_PLOTS,
+)
 from carnopy.app.mapping_draft import MappingDraftModel
 from carnopy.app.plot_draft import PlotDraft
 
@@ -34,6 +44,13 @@ INVALID_INDEX = QModelIndex()
 class VisualizationPlotItem:
     payload: dict[str, Any]
     issue: str = ""
+
+
+@dataclass(frozen=True)
+class _VisualizationIssue:
+    field: str
+    row: int
+    message: str
 
 
 class VisualizationPlotModel(QAbstractListModel):
@@ -112,6 +129,7 @@ class VisualizationDraft(QObject):
     validity_changed = Signal()
     dirty_changed = Signal()
     active_plot_draft_changed = Signal()
+    plot_commit_rejected = Signal(str, int, str)
     message = Signal(str)
 
     def __init__(self, parent: QObject | None = None) -> None:
@@ -119,8 +137,12 @@ class VisualizationDraft(QObject):
         self.format_choices = DraftListModel(self)
         self.fluid_choices = DraftListModel(self)
         self.selected_fluids = DraftListModel(self)
-        self.filters = MappingDraftModel(self)
-        self.display_units = MappingDraftModel(self, numeric_values=False)
+        self.filters = MappingDraftModel(self, mutation_guard=self._shared_mutation_allowed)
+        self.display_units = MappingDraftModel(
+            self,
+            numeric_values=False,
+            mutation_guard=self._shared_mutation_allowed,
+        )
         self.plot_model = VisualizationPlotModel(self)
         self._capabilities: dict[str, Any] | None = None
         self._dataset_payload: dict[str, Any] = {}
@@ -133,6 +155,8 @@ class VisualizationDraft(QObject):
         self._baseline_raw: tuple[object, ...] | None = None
         self._valid = False
         self._issue = "No dataset configuration is open."
+        self._first_invalid_field = VISUALIZATION_ENABLED
+        self._first_invalid_row = -1
         self._dirty = False
         self._active_plot_draft: PlotDraft | None = None
         self._active_plot_row: int | None = None
@@ -148,6 +172,8 @@ class VisualizationDraft(QObject):
         enabled = bool(value)
         if self._loading or not self._loaded or enabled == self._enabled:
             return
+        if not self._shared_mutation_allowed():
+            return
         previous = self._observable_state()
         self._enabled = enabled
         self._state_changed(previous=previous)
@@ -160,6 +186,8 @@ class VisualizationDraft(QObject):
     @Slot(str)
     def set_format(self, value: str) -> None:
         if self._loading or not self._loaded or value == self._format:
+            return
+        if not self._shared_mutation_allowed():
             return
         previous = self._observable_state()
         self._format = value
@@ -190,6 +218,25 @@ class VisualizationDraft(QObject):
         get_active_plot_draft,
         notify=active_plot_draft_changed,
     )
+
+    def get_has_active_plot_edit(self) -> bool:
+        return self._active_plot_draft is not None
+
+    hasActivePlotEdit = Property(
+        bool,
+        get_has_active_plot_edit,
+        notify=active_plot_draft_changed,
+    )
+
+    def get_first_invalid_field(self) -> str:
+        return self._first_invalid_field
+
+    firstInvalidField = Property(str, get_first_invalid_field, notify=validity_changed)
+
+    def get_first_invalid_row(self) -> int:
+        return self._first_invalid_row
+
+    firstInvalidRow = Property(int, get_first_invalid_row, notify=validity_changed)
 
     def _constant_model(self, model: QObject) -> QObject:
         return model
@@ -387,6 +434,8 @@ class VisualizationDraft(QObject):
             )
             if updated == self._fluids:
                 return False
+        if not self._shared_mutation_allowed():
+            return False
         self._fluids = updated
         self._state_changed()
         return True
@@ -434,6 +483,11 @@ class VisualizationDraft(QObject):
         try:
             payload = draft.payload()
         except ValueError as exc:
+            self.plot_commit_rejected.emit(
+                draft.get_first_invalid_field(),
+                draft.get_first_invalid_row(),
+                str(exc),
+            )
             self.message.emit(str(exc))
             return False
         updated = list(self._plots)
@@ -443,9 +497,10 @@ class VisualizationDraft(QObject):
         else:
             updated[self._active_plot_row] = payload
             candidate_row = self._active_plot_row
-        issue = self._plot_issues(tuple(updated))[candidate_row]
-        if issue:
-            self.message.emit(issue)
+        problem = self._plot_problems(tuple(updated))[candidate_row]
+        if problem is not None:
+            self.plot_commit_rejected.emit(problem.field, problem.row, problem.message)
+            self.message.emit(problem.message)
             return False
         previous = self._observable_state()
         self._plots = tuple(updated)
@@ -498,6 +553,12 @@ class VisualizationDraft(QObject):
 
     def _ordinary_plot_mutation_allowed(self) -> bool:
         if self._active_plot_draft is None:
+            return True
+        self.message.emit("Finish or cancel the active plot edit first.")
+        return False
+
+    def _shared_mutation_allowed(self) -> bool:
+        if self._loading or self._active_plot_draft is None:
             return True
         self.message.emit("Finish or cancel the active plot edit first.")
         return False
@@ -612,9 +673,11 @@ class VisualizationDraft(QObject):
         )
 
     def _refresh_derived(self) -> None:
-        issue = self._validation_issue()
-        self._valid = not issue
-        self._issue = issue
+        problem = self._validation_problem()
+        self._valid = problem is None
+        self._issue = "" if problem is None else problem.message
+        self._first_invalid_field = "" if problem is None else problem.field
+        self._first_invalid_row = -1 if problem is None else problem.row
         if self._baseline_yaml is None or self._baseline_raw is None:
             self._dirty = False
         elif self._valid:
@@ -623,58 +686,124 @@ class VisualizationDraft(QObject):
             self._dirty = self.raw_state() != self._baseline_raw
 
     def _validation_issue(self) -> str:
-        return self._validation_issue_for(self._plots, enabled=self._enabled)
+        problem = self._validation_problem()
+        return "" if problem is None else problem.message
 
-    def _validation_issue_for(
+    def _validation_problem(self) -> _VisualizationIssue | None:
+        return self._validation_problem_for(self._plots, enabled=self._enabled)
+
+    def _validation_problem_for(
         self,
         plots: tuple[dict[str, Any], ...],
         *,
         enabled: bool,
-    ) -> str:
+    ) -> _VisualizationIssue | None:
         if not self._loaded:
-            return "No dataset configuration is open."
+            return _VisualizationIssue(
+                VISUALIZATION_ENABLED,
+                -1,
+                "No dataset configuration is open.",
+            )
         if not enabled:
-            return ""
+            return None
         if self._capabilities is None:
-            return "Visualization capabilities are not loaded."
+            return _VisualizationIssue(
+                VISUALIZATION_PLOTS,
+                -1,
+                "Visualization capabilities are not loaded.",
+            )
         if not self._dataset_payload:
-            return "Dataset context is not loaded."
+            return _VisualizationIssue(
+                VISUALIZATION_PLOTS,
+                -1,
+                "Dataset context is not loaded.",
+            )
         if self._format not in self._formats():
-            return f"visualization format {self._format!r} is unavailable"
+            return _VisualizationIssue(
+                VISUALIZATION_FORMAT,
+                -1,
+                f"visualization format {self._format!r} is unavailable",
+            )
         fluid_issue = self._fluid_issue()
         if fluid_issue:
-            return fluid_issue
+            return _VisualizationIssue(VISUALIZATION_FLUIDS, -1, fluid_issue)
         if not self.filters.get_valid():
-            return self.filters.get_issue()
+            return _VisualizationIssue(
+                VISUALIZATION_FILTERS,
+                self.filters.get_first_invalid_row(),
+                self.filters.get_issue(),
+            )
         if not self.display_units.get_valid():
-            return self.display_units.get_issue()
+            return _VisualizationIssue(
+                VISUALIZATION_DISPLAY_UNITS,
+                self.display_units.get_first_invalid_row(),
+                self.display_units.get_issue(),
+            )
         if not plots:
-            return "configured visualization requires at least one plot"
+            return _VisualizationIssue(
+                VISUALIZATION_PLOTS,
+                -1,
+                "configured visualization requires at least one plot",
+            )
         names = [str(plot.get("name", "")) for plot in plots]
         if len(set(names)) != len(names):
-            return "configured visualization plot names must be unique"
-        for issue in self._plot_issues(plots):
-            if issue:
-                return issue
-        return ""
+            duplicated = next(row for row, name in enumerate(names) if names.count(name) > 1)
+            return _VisualizationIssue(
+                VISUALIZATION_PLOTS,
+                duplicated,
+                "configured visualization plot names must be unique",
+            )
+        for row, problem in enumerate(self._plot_problems(plots)):
+            if problem is not None:
+                return _VisualizationIssue(VISUALIZATION_PLOTS, row, problem.message)
+        return None
 
     def _plot_issues(self, plots: tuple[dict[str, Any], ...]) -> tuple[str, ...]:
+        return tuple(
+            "" if problem is None else problem.message for problem in self._plot_problems(plots)
+        )
+
+    def _plot_problems(
+        self,
+        plots: tuple[dict[str, Any], ...],
+    ) -> tuple[_VisualizationIssue | None, ...]:
         names = [str(plot.get("name", "")) for plot in plots]
-        issues: list[str] = []
+        issues: list[_VisualizationIssue | None] = []
         for plot, name in zip(plots, names, strict=True):
             if name and names.count(name) > 1:
-                issues.append(f"configured visualization plot name {name!r} is duplicated")
+                issues.append(
+                    _VisualizationIssue(
+                        PLOT_NAME,
+                        -1,
+                        f"configured visualization plot name {name!r} is duplicated",
+                    )
+                )
                 continue
             try:
                 effective = self._effective_plot(plot)
             except ValueError as exc:
-                issues.append(str(exc))
+                issues.append(_VisualizationIssue(PLOT_FILTERS, -1, str(exc)))
                 continue
             if self._capabilities is None or not self._dataset_payload:
-                issues.append("Visualization capabilities and dataset context are required.")
+                issues.append(
+                    _VisualizationIssue(
+                        VISUALIZATION_PLOTS,
+                        -1,
+                        "Visualization capabilities and dataset context are required.",
+                    )
+                )
                 continue
             probe = PlotDraft(self._capabilities, self._dataset_payload, effective)
-            issues.append(probe.get_issue())
+            if probe.get_locally_valid():
+                issues.append(None)
+            else:
+                issues.append(
+                    _VisualizationIssue(
+                        probe.get_first_invalid_field(),
+                        probe.get_first_invalid_row(),
+                        probe.get_issue(),
+                    )
+                )
         return tuple(issues)
 
     def _effective_plot(self, plot: Mapping[str, object]) -> dict[str, Any]:
@@ -774,6 +903,8 @@ class VisualizationDraft(QObject):
             self._format,
             self._valid,
             self._issue,
+            self._first_invalid_field,
+            self._first_invalid_row,
             self._dirty,
             self.raw_state(),
         )
@@ -784,9 +915,9 @@ class VisualizationDraft(QObject):
             self.enabled_changed.emit()
         if previous[1] != current[1]:
             self.format_changed.emit()
-        if previous[2:4] != current[2:4]:
+        if previous[2:6] != current[2:6]:
             self.validity_changed.emit()
-        if previous[4] != current[4]:
+        if previous[6] != current[6]:
             self.dirty_changed.emit()
 
 

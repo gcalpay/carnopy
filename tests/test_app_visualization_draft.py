@@ -13,6 +13,11 @@ pytest.importorskip("PySide6")
 from PySide6.QtCore import QCoreApplication, QEvent
 
 from carnopy.app.draft_models import COMPATIBLE_ROLE as DRAFT_COMPATIBLE_ROLE
+from carnopy.app.field_ids import (
+    PLOT_NAME,
+    VISUALIZATION_FILTERS,
+    VISUALIZATION_PLOTS,
+)
 from carnopy.app.visualization_draft import (
     COMPATIBLE_ROLE,
     ISSUE_ROLE,
@@ -284,6 +289,82 @@ def test_temporary_plot_lifecycle_is_single_owner_and_transactional(
     assert [plot["name"] for plot in draft.plot_payloads()] == ["second", "edited"]
     assert draft.remove_plot(1)
     assert [plot["name"] for plot in draft.plot_payloads()] == ["second"]
+
+
+def test_active_plot_edit_locks_every_shared_visualization_mutation(
+    application: QCoreApplication,
+) -> None:
+    del application
+    draft = configured_draft(
+        {
+            "format": "png",
+            "fluids": ["Propane"],
+            "filters": {"pressure": 100000.0},
+            "display_units": {"pressure": "bar"},
+            "plots": [curves()],
+        }
+    )
+    before = draft.raw_state()
+    messages: list[str] = []
+    draft.message.connect(messages.append)
+    assert draft.begin_edit_plot(0) is not None
+    assert draft.get_has_active_plot_edit()
+
+    draft.set_enabled(False)
+    draft.set_format("svg")
+    assert not draft.set_fluid_selected("Cyclopentane", True)
+    assert not draft.filters.set_raw_value(0, "200000")
+    assert not draft.display_units.remove_row(0)
+    assert not draft.remove_plot(0)
+    assert not draft.move_plot(0, 1)
+
+    assert draft.raw_state() == before
+    assert messages
+    assert all("active plot edit" in message for message in messages)
+    assert draft.cancel_plot()
+    assert not draft.get_has_active_plot_edit()
+
+
+def test_structured_visualization_issue_identifies_shared_and_plot_rows(
+    application: QCoreApplication,
+) -> None:
+    del application
+    draft = configured_draft(
+        {
+            "filters": {"pressure": 100000.0},
+            "plots": [curves()],
+        }
+    )
+    draft.filters.set_raw_value(0, "bad")
+
+    assert draft.get_first_invalid_field() == VISUALIZATION_FILTERS
+    assert draft.get_first_invalid_row() == 0
+
+    draft.filters.set_raw_value(0, "100000")
+    draft.set_dataset_context(dataset(properties=["specific_entropy"]))
+
+    assert draft.get_first_invalid_field() == VISUALIZATION_PLOTS
+    assert draft.get_first_invalid_row() == 0
+
+
+def test_invalid_plot_commit_emits_structured_attention_without_closing_editor(
+    application: QCoreApplication,
+) -> None:
+    del application
+    draft = configured_draft({"plots": [curves()]})
+    rejected: list[tuple[str, int, str]] = []
+    draft.plot_commit_rejected.connect(
+        lambda field, row, message: rejected.append((field, row, message))
+    )
+    active = draft.begin_add_plot()
+    assert active is not None
+    active.set_name("density-curves")
+
+    assert not draft.commit_plot()
+    assert draft.get_active_plot_draft() is active
+    assert rejected
+    assert rejected[-1][0] == PLOT_NAME
+    assert rejected[-1][1] == -1
 
 
 def test_context_refresh_preserves_active_raw_values_and_lifecycle_replaces_it(

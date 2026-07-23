@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -25,6 +25,9 @@ from carnopy.app.visualization_draft import VisualizationDraft
 from carnopy.app.visualization_editor import VisualizationEditor
 from carnopy.app.workspace import Workspace
 
+if TYPE_CHECKING:
+    from carnopy.app.desktop_controller import DesktopController
+
 MODE_LABELS = {
     "property_table": "Property table",
     "saturation_table": "Saturation table",
@@ -46,8 +49,16 @@ class DatasetConfigEditor(QWidget):
         coordinator: DesktopRequestCoordinator | None = None,
         dataset_draft: DatasetDraft | None = None,
         visualization_draft: VisualizationDraft | None = None,
+        desktop_controller: DesktopController | None = None,
     ) -> None:
         super().__init__(parent)
+        if desktop_controller is not None:
+            if (
+                controller is not None
+                and controller is not desktop_controller.dataset_config_controller
+            ):
+                raise ValueError("desktop_controller and controller must share one composition")
+            controller = desktop_controller.dataset_config_controller
         if controller is not None and any(
             value is not None for value in (coordinator, dataset_draft, visualization_draft)
         ):
@@ -60,6 +71,7 @@ class DatasetConfigEditor(QWidget):
                 self,
             )
         self.controller = controller
+        self.desktop_controller = desktop_controller
         self.coordinator = controller.coordinator
         self.dataset_draft = controller.dataset_draft
         self.visualization_draft = controller.visualization_draft
@@ -90,9 +102,12 @@ class DatasetConfigEditor(QWidget):
         self.controller.document_opened.connect(lambda: self.tabs.setCurrentIndex(0))
         self.controller.warning_requested.connect(self._show_warning)
         self.controller.mode_change_requested.connect(self._mode_changed)
+        self.form.coordinate_change_requested.connect(self._coordinate_changed)
         self.controller.save_path_requested.connect(self._choose_save_path)
         self.controller.reformat_confirmation_requested.connect(self._confirm_import_reformat)
         self.controller.external_change_requested.connect(self._handle_external_change)
+        if self.desktop_controller is not None:
+            self.desktop_controller.attentionRequested.connect(self._attention_requested)
         self._sync_view()
 
     @property
@@ -186,7 +201,10 @@ class DatasetConfigEditor(QWidget):
         if not accepted:
             return
         mode = next(name for name, label in MODE_LABELS.items() if label == selected)
-        self.controller.new_dataset(mode, discard_confirmed=True)
+        if self.desktop_controller is None:
+            self.controller.new_dataset(mode, discard_confirmed=True)
+        else:
+            self.desktop_controller.request_new_dataset(mode, discard_confirmed=True)
 
     def import_dataset(self) -> None:
         workspace = self.workspace
@@ -199,13 +217,25 @@ class DatasetConfigEditor(QWidget):
             "YAML configurations (*.yaml *.yml)",
         )
         if selected:
-            self.controller.import_dataset(selected, discard_confirmed=True)
+            if self.desktop_controller is None:
+                self.controller.import_dataset(selected, discard_confirmed=True)
+            else:
+                self.desktop_controller.request_import_dataset(
+                    selected,
+                    discard_confirmed=True,
+                )
 
     def save(self) -> None:
-        self.controller.request_save()
+        if self.desktop_controller is None:
+            self.controller.request_save()
+        else:
+            self.desktop_controller.request_save()
 
     def save_as(self) -> None:
-        self.controller.request_save_as()
+        if self.desktop_controller is None:
+            self.controller.request_save_as()
+        else:
+            self.desktop_controller.request_save_as()
 
     def _apply_capabilities(self, payload: dict[str, Any]) -> None:
         self.controller._apply_capabilities(payload)
@@ -228,9 +258,28 @@ class DatasetConfigEditor(QWidget):
             QMessageBox.StandardButton.No,
         )
         if answer == QMessageBox.StandardButton.Yes:
-            self.controller.apply_mode_change(selected)
+            if self.desktop_controller is None:
+                self.controller.apply_mode_change(selected)
+            elif self.desktop_controller.request_dataset_mode_change(selected):
+                self.desktop_controller.commit_dataset_decision(True)
         else:
             self.form.sync_from_draft()
+
+    def _coordinate_changed(self, selected: str) -> None:
+        answer = QMessageBox.question(
+            self,
+            "Change Sampling Coordinate?",
+            "Changing the independent coordinate replaces that coordinate's sampler. "
+            "Other compatible dataset selections are retained.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            if self.desktop_controller is None:
+                self.controller.apply_coordinate_change(selected)
+            elif self.desktop_controller.request_dataset_coordinate_change(selected):
+                self.desktop_controller.commit_dataset_decision(True)
+        self.form.sync_from_draft()
 
     def _choose_save_path(self, suggested: str) -> None:
         selected, _filter = QFileDialog.getSaveFileName(
@@ -240,9 +289,15 @@ class DatasetConfigEditor(QWidget):
             "YAML configurations (*.yaml *.yml)",
         )
         if selected:
-            self.controller.save_path_selected(selected)
+            if self.desktop_controller is None:
+                self.controller.save_path_selected(selected)
+            else:
+                self.desktop_controller.request_save_path_selected(selected)
         else:
-            self.controller.cancel_save_path()
+            if self.desktop_controller is None:
+                self.controller.cancel_save_path()
+            else:
+                self.desktop_controller.request_cancel_save_path()
 
     def _confirm_import_reformat(self, action: str) -> None:
         answer = QMessageBox.question(
@@ -254,7 +309,10 @@ class DatasetConfigEditor(QWidget):
             QMessageBox.StandardButton.No,
         )
         if answer == QMessageBox.StandardButton.Yes:
-            self.controller.confirm_reformat(action)
+            if self.desktop_controller is None:
+                self.controller.confirm_reformat(action)
+            else:
+                self.desktop_controller.request_confirm_reformat(action)
 
     def _handle_external_change(self) -> None:
         message = QMessageBox(self)
@@ -269,9 +327,16 @@ class DatasetConfigEditor(QWidget):
         message.exec()
         clicked = message.clickedButton()
         if clicked is reload_button:
-            self.controller.reload_source(discard_confirmed=True)
+            if self.desktop_controller is None:
+                self.controller.reload_source(discard_confirmed=True)
+            else:
+                self.desktop_controller.request_reload_source(discard_confirmed=True)
         elif clicked is save_as_button:
-            self.controller.request_save_as()
+            self.save_as()
+
+    def _attention_requested(self, section: str, _field: str, _row: int) -> None:
+        if section == "visualization":
+            self.tabs.setCurrentIndex(1)
 
     def _show_warning(self, title: str, message: str) -> None:
         QMessageBox.warning(self, title, message)

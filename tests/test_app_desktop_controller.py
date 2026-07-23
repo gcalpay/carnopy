@@ -18,10 +18,12 @@ from PySide6.QtCore import (
     QObject,
     QSettings,
     Qt,
+    QUrl,
     Signal,
 )
 
 from carnopy.app.desktop_controller import DesktopController
+from carnopy.app.draft_models import DraftItem
 from carnopy.app.request_coordinator import DesktopRequestCoordinator
 from carnopy.app.workspace import initialize_workspace
 from carnopy.app.workspace_controller import (
@@ -82,6 +84,8 @@ def test_desktop_controller_owns_one_composition_and_preserves_settings_identity
     desktop = DesktopController(settings=settings)
 
     assert desktop.settings is settings
+    assert desktop.qml_settings.settings is settings
+    assert desktop.qml_settings.parent() is desktop
     assert desktop.request_coordinator.client is desktop.client
     assert desktop.dataset_draft.parent() is desktop
     assert desktop.visualization_draft.parent() is desktop
@@ -94,6 +98,7 @@ def test_desktop_controller_owns_one_composition_and_preserves_settings_identity
     assert desktop.request_coordinator.parent() is desktop
     assert desktop.workspace_controller.parent() is desktop
     assert desktop.property("workspaceController") is desktop.workspace_controller
+    assert desktop.property("qmlSettings") is desktop.qml_settings
     assert desktop.property("datasetDraft") is desktop.dataset_draft
     assert desktop.property("visualizationDraft") is desktop.visualization_draft
     assert desktop.property("datasetConfigController") is desktop.dataset_config_controller
@@ -143,9 +148,387 @@ def test_desktop_shutdown_is_idle_only_and_idempotent(
             "is_busy",
             property(lambda _self: True),
         )
-        assert not desktop.shutdown()
+        assert desktop.shutdown()
     assert shutdown_calls == ["shutdown"]
     assert sync_calls == ["sync"]
+
+
+def test_qml_shutdown_requires_explicit_dirty_discard_confirmation(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    confirmations: list[str] = []
+    close_requests: list[str] = []
+    desktop.shutdownConfirmationRequested.connect(lambda: confirmations.append("confirm"))
+    desktop.closeWindowRequested.connect(lambda: close_requests.append("close"))
+    monkeypatch.setattr(
+        desktop.dataset_config_controller,
+        "needs_discard_confirmation",
+        lambda: True,
+    )
+
+    assert not desktop.request_shutdown()
+    assert confirmations == ["confirm"]
+    assert not desktop.confirm_shutdown(False)
+    assert close_requests == []
+    assert desktop.confirm_shutdown(True)
+    assert close_requests == ["close"]
+    assert desktop.request_shutdown()
+
+
+def test_qml_shutdown_refuses_an_active_worker_without_closing(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    close_requests: list[str] = []
+    desktop.closeWindowRequested.connect(lambda: close_requests.append("close"))
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(
+            type(desktop.request_coordinator),
+            "is_busy",
+            property(lambda _self: True),
+        )
+        assert not desktop.request_shutdown()
+
+    assert close_requests == []
+    assert "active worker request" in desktop.get_workspace_error_message()
+    assert desktop.shutdown()
+
+
+def test_configuration_attention_facade_accepts_only_stable_sections(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    attention: list[tuple[str, str, int]] = []
+    desktop.attentionRequested.connect(
+        lambda section, field, row: attention.append((section, field, row))
+    )
+
+    assert desktop.request_configuration_attention("dataset", "dataset.properties", 2)
+    assert desktop.request_configuration_attention("visualization", "plot.name", -1)
+    assert not desktop.request_configuration_attention("workspace", "dataset.mode", -1)
+    assert not desktop.request_configuration_attention("dataset", "plot.name", -1)
+    assert attention == [
+        ("dataset", "dataset.properties", 2),
+        ("visualization", "plot.name", -1),
+    ]
+    assert desktop.shutdown()
+
+
+def test_save_as_facade_converts_qml_file_urls_at_the_composition_boundary(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    destination = tmp_path / "workspace" / "configs" / "dataset.yaml"
+    observed: list[str] = []
+    monkeypatch.setattr(
+        desktop.dataset_config_controller,
+        "save_path_selected",
+        lambda path: observed.append(path) or True,
+    )
+
+    assert desktop.request_save_path_selected(QUrl.fromLocalFile(str(destination)).toString())
+    assert observed == [str(destination)]
+    assert desktop.shutdown()
+
+
+def test_desktop_workspace_facade_validates_create_name_and_binds_configuration_once(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    activated: list[object] = []
+    monkeypatch.setattr(
+        desktop.dataset_config_controller,
+        "set_workspace",
+        activated.append,
+    )
+    parent = tmp_path / "parent"
+    parent.mkdir()
+
+    for invalid in ("", ".", "..", "nested/name", "nested\\name"):
+        assert not desktop.prepare_create_workspace(str(parent), invalid)
+        assert desktop.workspace_controller.get_pending_operation() == ""
+
+    target = parent / "new-workspace"
+    assert desktop.prepare_create_workspace(str(parent), target.name)
+    assert desktop.get_pending_workspace_path() == str(target.resolve())
+    assert not desktop.get_workspace_confirmation_required()
+    assert desktop.commit_workspace_operation()
+
+    assert desktop.workspace_controller.workspace is not None
+    assert desktop.workspace_controller.workspace.root == target.resolve()
+    assert activated == [desktop.workspace_controller.workspace]
+    assert desktop.get_workspace_state() == "landing"
+    assert desktop.shutdown()
+
+
+def test_desktop_workspace_facade_requires_initialization_confirmation(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    monkeypatch.setattr(desktop.dataset_config_controller, "set_workspace", lambda _value: None)
+    target = tmp_path / "existing"
+    target.mkdir()
+
+    assert desktop.prepare_initialize_workspace(str(target))
+    assert desktop.get_workspace_confirmation_required()
+    assert desktop.get_workspace_confirmation_title() == "Initialize Existing Folder"
+    assert not desktop.commit_workspace_operation()
+    assert not (target / ".carnopy-gui").exists()
+    assert desktop.get_pending_workspace_operation() == "initialize_existing"
+
+    assert desktop.commit_workspace_operation(confirmed=True)
+    assert (target / ".carnopy-gui" / "workspace.json").is_file()
+    assert desktop.shutdown()
+
+
+def test_desktop_workspace_facade_rechecks_dirty_confirmation_before_commit(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    monkeypatch.setattr(desktop.dataset_config_controller, "set_workspace", lambda _value: None)
+    monkeypatch.setattr(
+        desktop.dataset_config_controller,
+        "needs_discard_confirmation",
+        lambda: True,
+    )
+    target = tmp_path / "replacement"
+
+    assert desktop.prepare_create_workspace_path(str(target))
+    assert desktop.get_workspace_confirmation_required()
+    assert "unsaved changes" in desktop.get_workspace_confirmation_message()
+    assert not desktop.commit_workspace_operation()
+    assert desktop.get_pending_workspace_operation() == "create"
+    assert not target.exists()
+
+    assert desktop.commit_workspace_operation(confirmed=True)
+    assert target.is_dir()
+    assert desktop.shutdown()
+
+
+def test_active_plot_edit_blocks_workspace_preflight_commit_and_shutdown(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    target = tmp_path / "workspace"
+    active = QObject()
+    preflight_calls: list[object] = []
+    with monkeypatch.context() as scoped:
+        scoped.setattr(
+            desktop.workspace_controller,
+            "prepare_create",
+            lambda _path: preflight_calls.append(object()) or True,
+        )
+        scoped.setattr(
+            desktop.visualization_draft,
+            "get_active_plot_draft",
+            lambda: active,
+        )
+
+        assert not desktop.prepare_create_workspace_path(str(target))
+        assert preflight_calls == []
+        assert not desktop.get_can_change_workspace()
+        assert "Commit or cancel" in desktop.get_workspace_error_message()
+        assert not desktop.shutdown()
+
+    assert desktop.prepare_create_workspace_path(str(target))
+    with monkeypatch.context() as scoped:
+        scoped.setattr(
+            desktop.visualization_draft,
+            "get_active_plot_draft",
+            lambda: active,
+        )
+        assert not desktop.commit_workspace_operation()
+    assert desktop.get_pending_workspace_operation() == ""
+    assert not target.exists()
+    assert desktop.shutdown()
+
+
+def test_active_plot_edit_blocks_all_composition_lifecycle_paths(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    active = QObject()
+    calls: list[str] = []
+    attention: list[tuple[str, str, int]] = []
+    desktop.attentionRequested.connect(
+        lambda section, field, row: attention.append((section, field, row))
+    )
+    monkeypatch.setattr(
+        desktop.visualization_draft,
+        "get_active_plot_draft",
+        lambda: active,
+    )
+    for name in (
+        "new_dataset",
+        "import_dataset",
+        "request_save",
+        "request_save_as",
+        "request_validation",
+        "reload_source",
+        "apply_mode_change",
+        "apply_coordinate_change",
+    ):
+        monkeypatch.setattr(
+            desktop.dataset_config_controller,
+            name,
+            lambda *_args, operation=name: calls.append(operation) or True,
+        )
+
+    assert not desktop.request_new_dataset("property_table")
+    assert not desktop.request_import_dataset("input.yaml")
+    assert not desktop.request_save()
+    assert not desktop.request_save_as()
+    assert not desktop.request_validate_configuration()
+    assert not desktop.request_reload_source()
+    assert not desktop.request_close_configuration()
+    assert not desktop.request_dataset_mode_change("saturation_table")
+    assert not desktop.request_dataset_coordinate_change("pressure")
+    assert not desktop.request_visualization_add_plot()
+    assert not desktop.request_visualization_edit_plot(0)
+    assert not desktop.request_visualization_remove_plot(0)
+    assert not desktop.request_visualization_move_plot(0, 1)
+    assert not desktop.dataset_config_controller.clear_document(discard_confirmed=True)
+    assert not desktop.shutdown()
+
+    assert calls == []
+    assert attention
+    assert all(item == ("visualization", "visualization.plots", -1) for item in attention)
+
+
+def test_visualization_facade_accepts_only_the_owned_active_plot_and_mappings(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    draft = desktop.visualization_draft
+    draft.apply_capabilities(
+        {
+            "fluids": [{"name": "Propane", "aliases": []}],
+            "visualization": {
+                "plot_kinds": ["property_curves"],
+                "formats": ["png"],
+                "scales": ["linear", "log"],
+                "kind_contracts": {
+                    "property_curves": {
+                        "required": ["property"],
+                        "applicable": ["property", "x", "filters", "format"],
+                    }
+                },
+                "fields": [
+                    {
+                        "name": "temperature",
+                        "kind": "numeric",
+                        "axis_allowed": True,
+                        "filter_allowed": True,
+                    },
+                    {
+                        "name": "mass_density",
+                        "kind": "numeric",
+                        "axis_allowed": True,
+                        "filter_allowed": False,
+                    },
+                ],
+                "display_units": {},
+            },
+        }
+    )
+    draft.set_dataset_context(
+        {
+            "mode": "property_table",
+            "fluids": ["Propane"],
+            "grid": {"temperature": {}, "pressure": {}},
+            "properties": ["mass_density"],
+        }
+    )
+    draft.load_visualization(None)
+    draft.set_enabled(True)
+    assert desktop.request_visualization_add_plot()
+    active = draft.get_active_plot_draft()
+    assert active is not None
+
+    desktop.request_plot_field_change(active, "name", "density")
+    desktop.request_visualization_mapping_add(active.filters)
+    desktop.request_visualization_mapping_value_change(active.filters, 0, "300")
+    outsider = QObject()
+    desktop.request_plot_field_change(outsider, "name", "ignored")
+    desktop.request_visualization_mapping_add(outsider)
+
+    assert active.get_name() == "density"
+    assert active.filters.raw_rows() == (("temperature", "300"),)
+    assert desktop.request_visualization_cancel_plot()
+    assert desktop.shutdown()
+
+
+def test_dataset_replacement_decisions_are_owned_by_desktop_facade(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    desktop.dataset_draft.mode_choices.replace(
+        DraftItem(value=value, display=value, canonical=value)
+        for value in ("property_table", "saturation_table")
+    )
+    desktop.dataset_draft.coordinate_choices.replace(
+        DraftItem(value=value, display=value, canonical=value)
+        for value in ("temperature", "pressure")
+    )
+    monkeypatch.setattr(desktop.dataset_draft, "get_mode_name", lambda: "property_table")
+    monkeypatch.setattr(desktop.dataset_draft, "get_coordinate_name", lambda: "temperature")
+    applied: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        desktop.dataset_config_controller,
+        "apply_mode_change",
+        lambda value: applied.append(("mode", value)) or True,
+    )
+    monkeypatch.setattr(
+        desktop.dataset_config_controller,
+        "apply_coordinate_change",
+        lambda value: applied.append(("coordinate", value)) or True,
+    )
+    decisions: list[object] = []
+    desktop.datasetDecisionRequested.connect(lambda: decisions.append(object()))
+
+    assert desktop.request_dataset_mode_change("saturation_table")
+    assert desktop.get_dataset_decision_title() == "Change Dataset Mode"
+    assert desktop.commit_dataset_decision(True)
+    assert desktop.request_dataset_coordinate_change("pressure")
+    assert desktop.get_dataset_decision_title() == "Change Sampling Coordinate"
+    assert desktop.commit_dataset_decision(True)
+
+    assert len(decisions) == 2
+    assert applied == [("mode", "saturation_table"), ("coordinate", "pressure")]
+    assert desktop.shutdown()
 
 
 def test_prepare_cancel_replace_and_commit_pending_lifecycle(
@@ -195,6 +578,25 @@ def test_busy_rejection_calls_no_workspace_service(
     assert calls == []
     assert not controller.get_can_change_workspace()
     assert "worker request is active" in controller.get_error_message()
+
+    coordinator.set_busy(False)
+
+    assert controller.get_can_change_workspace()
+    assert controller.get_error_message() == ""
+
+
+def test_worker_idle_does_not_clear_persistent_workspace_error(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    controller, coordinator = controller_for(settings_for(tmp_path / "settings.ini"))
+    controller.report_error("Persistent workspace failure")
+
+    coordinator.set_busy(True)
+    coordinator.set_busy(False)
+
+    assert controller.get_error_message() == "Persistent workspace failure"
 
 
 def test_commit_rejects_new_busy_state_and_clears_pending_without_mutation(

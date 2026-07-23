@@ -37,10 +37,27 @@ def build_parser(program: str = "carnopy-app") -> argparse.ArgumentParser:
     return parser
 
 
+def configure_qt_platform(requested: str) -> None:
+    """Select the requested Qt platform before importing PySide6."""
+    if requested != "auto":
+        os.environ["QT_QPA_PLATFORM"] = requested
+        return
+    if "QT_QPA_PLATFORM" not in os.environ and _wslg_available():
+        os.environ["QT_QPA_PLATFORM"] = "xcb"
+
+
+def _wslg_available() -> bool:
+    return bool(
+        (os.environ.get("WSL_INTEROP") or os.environ.get("WSL_DISTRO_NAME"))
+        and os.environ.get("WSL2_GUI_APPS_ENABLED") == "1"
+        and os.environ.get("DISPLAY")
+        and os.environ.get("WAYLAND_DISPLAY")
+    )
+
+
 def main(argv: Sequence[str] | None = None, *, program: str = "carnopy-app") -> int:
     arguments = build_parser(program).parse_args(argv)
-    if arguments.qt_platform != "auto":
-        os.environ["QT_QPA_PLATFORM"] = arguments.qt_platform
+    configure_qt_platform(arguments.qt_platform)
     try:
         from carnopy.app.window import run_application
     except ModuleNotFoundError as exc:

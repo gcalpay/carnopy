@@ -74,8 +74,10 @@ def test_initialize_rejects_required_file_conflict(tmp_path: Path) -> None:
 def test_initialize_refuses_existing_marker(tmp_path: Path) -> None:
     workspace = initialize_workspace(tmp_path / "workspace")
 
-    with pytest.raises(WorkspaceError, match="already initialized"):
+    with pytest.raises(WorkspaceError, match="already initialized") as error:
         initialize_workspace(workspace.root)
+
+    assert "use Open Workspace" in str(error.value)
 
 
 @pytest.mark.parametrize(

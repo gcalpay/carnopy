@@ -98,6 +98,7 @@ class VisualizationEditor(QWidget):
         self.draft.changed.connect(self._draft_changed)
         self.draft.enabled_changed.connect(self._sync_from_draft)
         self.draft.format_changed.connect(self._sync_from_draft)
+        self.draft.active_plot_draft_changed.connect(self._sync_from_draft)
         self.draft.message.connect(self._draft_message)
         for model in (
             self.draft.format_choices,
@@ -211,6 +212,8 @@ class VisualizationEditor(QWidget):
             self._syncing = False
 
     def _set_controls_enabled(self, enabled: bool) -> None:
+        shared_enabled = enabled and not self.draft.get_has_active_plot_edit()
+        self.enabled.setEnabled(not self.draft.get_has_active_plot_edit())
         for widget in (
             self.format,
             self.fluids,
@@ -219,4 +222,4 @@ class VisualizationEditor(QWidget):
             self.plots,
             *self.action_buttons,
         ):
-            widget.setEnabled(enabled)
+            widget.setEnabled(shared_enabled)

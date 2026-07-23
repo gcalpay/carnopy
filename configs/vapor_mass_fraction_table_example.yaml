@@ -12,18 +12,21 @@ backend:
 mode: vapor_mass_fraction_table
 fluids:
   - Propane
+  - Isobutane
 grid:
-  # linspace includes both endpoints.
+  # linspace includes both endpoints at one-degree-Celsius intervals.
   temperature:
     kind: linspace
-    start: -20.0
+    start: -50.0
     stop: 50.0
-    num: 4
+    num: 101
     unit: degC
-  # explicit preserves order; duplicate values are rejected.
+  # stepspace includes both endpoints; stop must be exactly reachable.
   vapor_mass_fraction:
-    kind: explicit
-    values: [0.0, 0.25, 0.5, 0.75, 1.0]
+    kind: stepspace
+    start: 0.0
+    stop: 1.0
+    step: 0.1
     unit: "1"
 properties:
   - specific_enthalpy

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 
 from PySide6.QtCore import (
@@ -49,11 +49,13 @@ class MappingDraftModel(QAbstractListModel):
         multiple: bool = False,
         numeric_values: bool = True,
         allow_text_numeric: bool = False,
+        mutation_guard: Callable[[], bool] | None = None,
     ) -> None:
         super().__init__(parent)
         self.multiple = multiple
         self.numeric_values = numeric_values
         self.allow_text_numeric = allow_text_numeric
+        self._mutation_guard = mutation_guard
         self._rows: tuple[MappingDraftRow, ...] = ()
         self._fields: tuple[str, ...] = ()
         self._field_kinds: dict[str, str] = {}
@@ -63,6 +65,11 @@ class MappingDraftModel(QAbstractListModel):
     @property
     def field_choices(self) -> tuple[str, ...]:
         return self._fields
+
+    def get_field_choices(self) -> list[str]:
+        return list(self._fields)
+
+    fieldChoices = Property(list, get_field_choices, notify=changed)
 
     @property
     def field_kinds(self) -> dict[str, str]:
@@ -126,6 +133,11 @@ class MappingDraftModel(QAbstractListModel):
         updated = tuple(MappingDraftRow(str(field), str(value)) for field, value in rows)
         if updated == self._rows:
             return False
+        if not self._mutation_allowed():
+            return False
+        return self._replace_raw_rows(updated)
+
+    def _replace_raw_rows(self, updated: tuple[MappingDraftRow, ...]) -> bool:
         before = self._validation_state()
         self.beginResetModel()
         self._rows = updated
@@ -142,10 +154,14 @@ class MappingDraftModel(QAbstractListModel):
             else:
                 raw = _scalar_text(item)
             rows.append((str(field), raw))
-        self.replace_raw_rows(rows)
+        updated = tuple(MappingDraftRow(field, raw) for field, raw in rows)
+        if updated != self._rows:
+            self._replace_raw_rows(updated)
 
     @Slot(str, str, result=int)
     def add_row(self, field: str = "", raw_value: str = "") -> int:
+        if not self._mutation_allowed():
+            return -1
         selected = field or (self._fields[0] if self._fields else "")
         row = len(self._rows)
         before = self._validation_state()
@@ -160,6 +176,8 @@ class MappingDraftModel(QAbstractListModel):
     def remove_row(self, row: int) -> bool:
         if not 0 <= row < len(self._rows):
             return False
+        if not self._mutation_allowed():
+            return False
         before = self._validation_state()
         self.beginRemoveRows(INVALID_INDEX, row, row)
         self._rows = (*self._rows[:row], *self._rows[row + 1 :])
@@ -172,11 +190,15 @@ class MappingDraftModel(QAbstractListModel):
     def set_field(self, row: int, field: str) -> bool:
         if not 0 <= row < len(self._rows) or self._rows[row].field == field:
             return False
+        if not self._mutation_allowed():
+            return False
         return self._replace_row(row, MappingDraftRow(field, ""))
 
     @Slot(int, str, result=bool)
     def set_raw_value(self, row: int, raw_value: str) -> bool:
         if not 0 <= row < len(self._rows) or self._rows[row].raw_value == raw_value:
+            return False
+        if not self._mutation_allowed():
             return False
         return self._replace_row(row, MappingDraftRow(self._rows[row].field, raw_value))
 
@@ -212,6 +234,14 @@ class MappingDraftModel(QAbstractListModel):
         return ""
 
     issue = Property(str, get_issue, notify=validity_changed)
+
+    def get_first_invalid_row(self) -> int:
+        return next(
+            (row for row in range(len(self._rows)) if self._row_issue(row)),
+            -1,
+        )
+
+    firstInvalidRow = Property(int, get_first_invalid_row, notify=validity_changed)
 
     def rowCount(
         self,
@@ -318,6 +348,9 @@ class MappingDraftModel(QAbstractListModel):
     def _validation_state(self) -> tuple[bool, str]:
         issue = self.get_issue()
         return (not issue, issue)
+
+    def _mutation_allowed(self) -> bool:
+        return self._mutation_guard is None or self._mutation_guard()
 
     def _emit_validity_if_changed(self, before: tuple[bool, str]) -> None:
         if self._validation_state() != before:

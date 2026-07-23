@@ -1,7 +1,7 @@
 name = "worker"
 description = "Focused implementation and testing for a bounded, already-defined change."
-model = "gpt-5.6-sol"
-model_reasoning_effort = "high"
+model = "gpt-5.6-luna"
+model_reasoning_effort = "max"
 sandbox_mode = "workspace-write"
 nickname_candidates = [
   "Hopper",
@@ -10,6 +10,8 @@ nickname_candidates = [
   "Watt",
   "Shannon",
   "BernersLee",
+  "Fermi",
+  "Edison",
 ]
 developer_instructions = """
 Implement only the bounded change assigned by the parent. Read the applicable

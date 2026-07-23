@@ -104,9 +104,18 @@ def test_worker_describes_model_capabilities() -> None:
         "vapor_mass_fraction_table",
     ]
     assert payload["dataset_formats"] == ["csv", "parquet"]
+    assert payload["reference_state"] == {
+        "policy": "coolprop_DEF",
+        "display": "CoolProp DEF",
+        "description": (
+            "CoolProp's factory reference state is reset before generation and is not changed "
+            "while rows are evaluated."
+        ),
+        "user_selectable": False,
+    }
     assert payload["units_by_axis"] == {
         "temperature": ["K", "degC"],
-        "pressure": ["Pa", "kPa", "MPa", "bar"],
+        "pressure": ["Pa", "hPa", "kPa", "MPa", "bar", "atm"],
         "vapor_mass_fraction": ["1"],
     }
     assert {item["kind"] for item in payload["samplers"]} == {

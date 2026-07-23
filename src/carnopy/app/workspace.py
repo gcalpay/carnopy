@@ -70,7 +70,9 @@ def initialize_workspace(path: Path) -> Workspace:
             json.dump(MARKER_CONTENT, stream, sort_keys=True, separators=(",", ":"))
             stream.write("\n")
     except FileExistsError as exc:
-        raise WorkspaceError(f"workspace is already initialized: {workspace.root}") from exc
+        raise WorkspaceError(
+            f"workspace is already initialized; use Open Workspace: {workspace.root}"
+        ) from exc
     return workspace
 
 
@@ -186,7 +188,9 @@ def _validate_initialization_target(workspace: Workspace) -> None:
         if directory.exists() and not directory.is_dir():
             raise WorkspaceError(f"required workspace path conflicts with a file: {directory}")
     if workspace.marker.exists():
-        raise WorkspaceError(f"workspace is already initialized: {workspace.root}")
+        raise WorkspaceError(
+            f"workspace is already initialized; use Open Workspace: {workspace.root}"
+        )
 
 
 def _root_identity(path: Path) -> tuple[int, int]:
