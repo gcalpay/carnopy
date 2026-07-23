@@ -8,6 +8,7 @@ import Carnopy
 Item {
     id: root
 
+    required property var configController
     required property var datasetDraft
     required property var desktopController
     property string attentionField: ""
@@ -43,6 +44,26 @@ Item {
 
     function formatCount(value) {
         return Number(value).toLocaleString(Qt.locale("en_US"), "f", 0);
+    }
+
+    function modelLabel(value) {
+        if (value === "heos")
+            return qsTr("Helmholtz Equation of State (HEOS)");
+        if (value === "pr")
+            return qsTr("Peng–Robinson (PR)");
+        if (value === "srk")
+            return qsTr("Soave–Redlich–Kwong (SRK)");
+        return value;
+    }
+
+    function modeLabel(value) {
+        if (value === "property_table")
+            return qsTr("Property table");
+        if (value === "saturation_table")
+            return qsTr("Saturation table");
+        if (value === "vapor_mass_fraction_table")
+            return qsTr("Vapor-mass-fraction table");
+        return value;
     }
 
     function syncChoices() {
@@ -81,7 +102,7 @@ Item {
             root.samplerAttentionAxis = parts.length > 2 ? parts[2] : "";
             root.samplerAttentionField = parts.length > 3 ? parts[3] : "unit";
             root.samplerAttentionSerial += 1;
-            root.reveal(samplerGrid);
+            root.reveal(workbenchGrid);
             return;
         }
         if (target === null) {
@@ -145,8 +166,8 @@ Item {
             anchors.right: parent.right
             anchors.rightMargin: 24
             anchors.top: parent.top
-            anchors.topMargin: 24
-            spacing: Theme.spacingLarge
+            anchors.topMargin: 22
+            spacing: Theme.spacingMedium
 
             RowLayout {
                 Layout.fillWidth: true
@@ -171,7 +192,7 @@ Item {
                         font.family: Theme.sansFamily
                         font.pixelSize: 12
                         text: qsTr(
-                                  "Declared units and raw sampler values remain authoritative in YAML.")
+                                  "Define reproducible thermophysical sampling and emitted columns.")
                         wrapMode: Text.Wrap
                     }
                 }
@@ -191,19 +212,44 @@ Item {
             }
 
             ResponsiveCardGrid {
-                id: samplerGrid
+                id: workbenchGrid
 
                 Layout.fillWidth: true
                 Layout.preferredHeight: implicitHeight
                 maximumColumns: Math.min(3, root.expectedColumns)
                 minimumCardWidth: 300
-                objectName: "datasetPrimaryGrid"
+                objectName: "datasetSamplerGrid"
 
                 Card {
+                    Layout.fillHeight: true
                     Layout.fillWidth: true
+                    objectName: "datasetBackendModeCard"
+                    sectionNumber: "1"
                     subtitle: qsTr(
-                                  "Model changes retain incompatible properties and report them explicitly.")
-                    title: qsTr("Scientific model")
+                                  "Backend capabilities define the available models and properties.")
+                    title: qsTr("Backend and mode")
+
+                    Label {
+                        color: Theme.textMuted
+                        font.family: Theme.sansFamily
+                        font.pixelSize: 11
+                        text: qsTr("Backend")
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        color: Theme.text
+                        font.family: Theme.sansFamily
+                        font.pixelSize: 12
+                        text: qsTr("CoolProp")
+                    }
+
+                    Label {
+                        color: Theme.textMuted
+                        font.family: Theme.sansFamily
+                        font.pixelSize: 11
+                        text: qsTr("Model")
+                    }
 
                     AppComboBox {
                         id: modelChoice
@@ -216,13 +262,13 @@ Item {
                         textRole: "display"
                         valueRole: "value"
                     }
-                }
 
-                Card {
-                    Layout.fillWidth: true
-                    subtitle: qsTr(
-                                  "Property tables sample T-p states; saturation tables emit liquid and vapor boundaries; vapor-mass-fraction tables sample equilibrium quality from 0 to 1.")
-                    title: qsTr("Dataset mode")
+                    Label {
+                        color: Theme.textMuted
+                        font.family: Theme.sansFamily
+                        font.pixelSize: 11
+                        text: qsTr("Mode")
+                    }
 
                     AppComboBox {
                         id: modeChoice
@@ -251,107 +297,42 @@ Item {
                 }
 
                 Card {
+                    Layout.fillHeight: true
                     Layout.fillWidth: true
+                    meta: qsTr("%1 selected").arg(fluidChoices.selectedCount)
+                    objectName: "datasetFluidsCard"
+                    sectionNumber: "2"
                     subtitle: qsTr(
-                                  "Local checks are immediate; worker validation remains authoritative before Save.")
-                    title: qsTr("Configuration state")
+                                  "Requested aliases stay visible; canonical identities remain explicit.")
+                    title: qsTr("Fluids")
 
-                    Label {
-                        Layout.fillWidth: true
-                        color: root.datasetDraft.locallyValid ? Theme.success : Theme.danger
-                        font.family: Theme.sansFamily
-                        font.pixelSize: 13
-                        font.weight: Font.Medium
-                        text: root.datasetDraft.locallyValid ? qsTr(
-                                                                   "All Dataset fields are locally valid") :
-                                                               root.datasetDraft.issue
-                        wrapMode: Text.Wrap
-                    }
+                    SearchableChoiceList {
+                        id: fluidChoices
 
-                    Label {
                         Layout.fillWidth: true
-                        color: Theme.textMuted
-                        font.family: Theme.sansFamily
-                        font.pixelSize: 11
-                        text: root.datasetDraft.dirty ? qsTr("Unsaved Dataset changes") : qsTr(
-                                                            "Dataset matches its saved baseline")
+                        choiceModel: root.datasetDraft.fluidSelectorChoices
+                        emptyText: qsTr("Add at least one fluid")
+                        noun: qsTr("fluid")
+                        objectName: "datasetFluids"
+                        onMoveRequested: (row, offset) => root.fluidMoveRequested(row, offset)
+                        onRemoveRequested: row => root.fluidRemoveRequested(row)
+                        onSelectionRequested: (value, selected) => root.fluidSelectionRequested(
+                                                                       value, selected)
+                        selectorText: qsTr("Add fluid")
+                        selectedModel: root.datasetDraft.selectedFluids
+                        showCanonicalIdentities: true
+                        summaryLimit: 4
                     }
                 }
-            }
-
-            Card {
-                Layout.fillWidth: true
-                subtitle: qsTr(
-                              "Aliases remain visible while canonical fluid identity is checked by the draft.")
-                title: qsTr("Fluids")
-
-                SearchableChoiceList {
-                    id: fluidChoices
-
-                    Layout.fillWidth: true
-                    choiceModel: root.datasetDraft.fluidSelectorChoices
-                    emptyText: qsTr("Add at least one fluid")
-                    noun: qsTr("fluid")
-                    objectName: "datasetFluids"
-                    onMoveRequested: (row, offset) => root.fluidMoveRequested(row, offset)
-                    onRemoveRequested: row => root.fluidRemoveRequested(row)
-                    onSelectionRequested: (value, selected) => root.fluidSelectionRequested(value,
-                                                                                            selected)
-                    selectorText: qsTr("Add fluid")
-                    selectedModel: root.datasetDraft.selectedFluids
-                    showCanonicalIdentities: true
-                    summaryLimit: 4
-                }
-            }
-
-            Label {
-                Layout.fillWidth: true
-                color: Theme.text
-                font.family: Theme.sansFamily
-                font.pixelSize: 17
-                font.weight: Font.DemiBold
-                text: qsTr("Sampling grid")
-            }
-
-            ResponsiveCardGrid {
-                Layout.fillWidth: true
-                Layout.preferredHeight: implicitHeight
-                maximumColumns: Math.min(2, root.expectedColumns)
-                minimumCardWidth: 360
-                objectName: "datasetSamplerGrid"
-
-                Repeater {
-                    id: samplerRepeater
-
-                    model: root.datasetDraft.samplerDrafts
-
-                    delegate: SamplerEditor {
-                        attentionField: root.samplerAttentionAxis === String(draft.axis)
-                                        ? root.samplerAttentionField : ""
-                        attentionSerial: root.samplerAttentionAxis === String(draft.axis)
-                                         ? root.samplerAttentionSerial : 0
-                        Layout.fillWidth: true
-                        onKindChangeRequested: (draft, kind) => root.samplerKindChangeRequested(
-                                                                    draft, kind)
-                        onTextChangeRequested: (draft, field, text)
-                                               => root.samplerTextChangeRequested(draft, field,
-                                                                                  text)
-                        onUnitChangeRequested: (draft, unit) => root.samplerUnitChangeRequested(
-                                                                    draft, unit)
-                    }
-                }
-            }
-
-            ResponsiveCardGrid {
-                Layout.fillWidth: true
-                Layout.preferredHeight: implicitHeight
-                maximumColumns: Math.min(2, root.expectedColumns)
-                minimumCardWidth: 360
 
                 Card {
+                    Layout.fillHeight: true
                     Layout.fillWidth: true
+                    meta: qsTr("%1 selected").arg(propertyChoices.selectedCount)
+                    objectName: "datasetPropertiesCard"
+                    sectionNumber: "3"
                     subtitle: qsTr(
-                                  "Property order is preserved in deterministic YAML and generated columns.")
+                                  "Order is preserved in deterministic YAML and generated columns.")
                     title: qsTr("Properties")
 
                     SearchableChoiceList {
@@ -373,8 +354,34 @@ Item {
                     }
                 }
 
+                Repeater {
+                    id: samplerRepeater
+
+                    model: root.datasetDraft.samplerDrafts
+
+                    delegate: SamplerEditor {
+                        attentionField: root.samplerAttentionAxis === String(draft.axis)
+                                        ? root.samplerAttentionField : ""
+                        attentionSerial: root.samplerAttentionAxis === String(draft.axis)
+                                         ? root.samplerAttentionSerial : 0
+                        Layout.fillHeight: true
+                        Layout.fillWidth: true
+                        sectionNumber: String(4 + index)
+                        onKindChangeRequested: (draft, kind) => root.samplerKindChangeRequested(
+                                                                    draft, kind)
+                        onTextChangeRequested: (draft, field, text)
+                                               => root.samplerTextChangeRequested(draft, field,
+                                                                                  text)
+                        onUnitChangeRequested: (draft, unit) => root.samplerUnitChangeRequested(
+                                                                    draft, unit)
+                    }
+                }
+
                 Card {
+                    Layout.fillHeight: true
                     Layout.fillWidth: true
+                    objectName: "datasetOutputsCard"
+                    sectionNumber: String(4 + samplerRepeater.count)
                     subtitle: qsTr("At least one immutable dataset format is required.")
                     title: qsTr("Dataset outputs")
 
@@ -413,7 +420,7 @@ Item {
                     Rectangle {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 1
-                        color: Theme.border
+                        color: Theme.divider
                     }
 
                     Label {
@@ -438,7 +445,7 @@ Item {
 
                     Label {
                         Layout.fillWidth: true
-                        color: root.datasetDraft.projectionIssue.length > 0 ? Theme.danger :
+                        color: root.datasetDraft.projectionIssue.length > 0 ? Theme.red :
                                                                               Theme.success
                         font.family: Theme.sansFamily
                         font.pixelSize: 12
@@ -454,7 +461,7 @@ Item {
 
                     Label {
                         Layout.fillWidth: true
-                        color: Theme.danger
+                        color: Theme.red
                         font.family: Theme.sansFamily
                         font.pixelSize: 11
                         objectName: "datasetProjectionIssue"
@@ -465,11 +472,77 @@ Item {
 
                     Label {
                         Layout.fillWidth: true
-                        color: Theme.warning
+                        color: Theme.amber
                         font.family: Theme.sansFamily
                         font.pixelSize: 11
                         text: root.datasetDraft.referenceAdvisory
                         visible: text.length > 0
+                        wrapMode: Text.Wrap
+                    }
+                }
+            }
+
+            ResponsiveCardGrid {
+                Layout.fillWidth: true
+                Layout.preferredHeight: implicitHeight
+                maximumColumns: Math.min(2, root.expectedColumns)
+                minimumCardWidth: 360
+                objectName: "datasetSummaryGrid"
+
+                Card {
+                    Layout.fillWidth: true
+                    objectName: "datasetConfigurationSummary"
+                    title: qsTr("Configuration summary")
+
+                    Label {
+                        Layout.fillWidth: true
+                        color: Theme.textMuted
+                        font.family: Theme.sansFamily
+                        font.pixelSize: 12
+                        text: qsTr("CoolProp  ·  %1  ·  %2").arg(root.modelLabel(
+                                                                     root.datasetDraft.modelName)).arg(
+                                  root.modeLabel(root.datasetDraft.modeName))
+                        wrapMode: Text.Wrap
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        color: root.datasetDraft.projectionAvailable ? Theme.success :
+                                                                       Theme.textMuted
+                        font.family: Theme.sansFamily
+                        font.pixelSize: 13
+                        font.weight: Font.Medium
+                        text: root.datasetDraft.projectionAvailable ? qsTr("%1 projected rows").arg(
+                                                                          root.formatCount(
+                                                                              root.datasetDraft.projectedRows)) :
+                                                                      qsTr("Projection unavailable")
+                    }
+                }
+
+                Card {
+                    Layout.fillWidth: true
+                    meta: root.configController.dirty ? qsTr("Unsaved changes") : qsTr("Saved")
+                    metaColor: root.configController.dirty ? Theme.amber : Theme.success
+                    objectName: "datasetDocumentSummary"
+                    title: qsTr("Document")
+
+                    Label {
+                        Layout.fillWidth: true
+                        color: Theme.text
+                        elide: Text.ElideMiddle
+                        font.family: Theme.monoFamily
+                        font.pixelSize: 11
+                        text: root.configController.fileDisplay.length > 0
+                              ? root.configController.fileDisplay : qsTr("New configuration")
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        color: Theme.textMuted
+                        font.family: Theme.sansFamily
+                        font.pixelSize: 12
+                        text: qsTr(
+                                  "Worker validation runs again on the exact YAML before every Save.")
                         wrapMode: Text.Wrap
                     }
                 }

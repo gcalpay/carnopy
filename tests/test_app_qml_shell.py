@@ -506,6 +506,36 @@ def test_header_appearance_controls_follow_docked_and_responsive_layouts(
     assert runtime.warning_capture.runtime_warnings == ()
 
 
+def test_document_commands_use_labels_wide_and_overflow_narrow(
+    runtime: QmlApplicationRuntime,
+    tmp_path: Path,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    _set_size(root, 1440, 900)
+
+    new_button = _visible_item(root, "commandNewButton")
+    import_button = _visible_item(root, "commandImportButton")
+    overflow = root.findChild(QQuickItem, "commandOverflowButton")
+    assert new_button.property("text") == "New"
+    assert import_button.property("text") == "Import"
+    assert overflow is not None
+    assert not overflow.isVisible()
+
+    workspace = initialize_workspace(tmp_path / "document-command-workspace")
+    assert runtime.controller.prepare_open_workspace(str(workspace.root))
+    assert runtime.controller.commit_workspace_operation()
+    _wait_for_idle(runtime)
+    assert runtime.controller.request_new_dataset("property_table")
+    _process_events()
+    _set_size(root, 768, 768)
+    assert not new_button.isVisible()
+    assert not import_button.isVisible()
+    assert overflow.isVisible()
+    assert _visible_item(root, "commandSaveButton").isVisible()
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
 def test_settings_exposes_system_light_warm_and_dark_modes(
     runtime: QmlApplicationRuntime,
 ) -> None:

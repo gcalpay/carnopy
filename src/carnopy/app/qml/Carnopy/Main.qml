@@ -185,6 +185,14 @@ ApplicationWindow {
         root.datasetNewRequested(mode, false);
     }
 
+    function requestCommandImport() {
+        routeTo("workspace");
+        Qt.callLater(function () {
+            if (pageLoader.item !== null && pageLoader.item.openImportDialog !== undefined)
+                pageLoader.item.openImportDialog();
+        });
+    }
+
     function routeTo(pageKey) {
         currentPage = pageKey;
         if (navigationDrawer.visible)
@@ -407,6 +415,8 @@ ApplicationWindow {
                         + root.configController.fileDisplay;
                         return root.desktopController.workspaceRootPath;
                     }
+                    canImport: root.configController !== null && root.configController.canImport
+                    canNew: root.configController !== null && root.configController.canCreate
                     canSave: root.configController !== null && root.configController.canSave
                     canSaveAs: root.configController !== null && root.configController.canSaveAs
                     documentDirty: root.configController !== null && root.configController.dirty
@@ -417,12 +427,15 @@ ApplicationWindow {
                     objectName: "documentCommandBar"
                     onAppearanceModeRequested: mode => root.qmlSettings.themeMode = mode
                     onCloseConfigurationRequested: root.requestConfigurationClose()
+                    onImportRequested: root.requestCommandImport()
                     onInspectorToggleRequested: root.requestInspectorToggle(
                                                     commandBar.inspectorToggleControl)
+                    onNewRequested: root.routeTo("workspace")
                     onRailMenuRequested: root.requestRailToggle(commandBar.railMenuControl)
                     onSaveAsRequested: root.datasetSaveAsRequested(false)
                     onSaveRequested: root.datasetSaveRequested(false)
                     pageTitle: root.pageTitle(root.currentPage)
+                    shellMode: root.shellMode
                     showInspectorButton: !(root.inspectorWideVisible || inspectorDrawer.visible)
                     showAppearanceSelector: !root.inspectorWideVisible
                     showRailMenu: root.shellMode === "narrow"
@@ -748,6 +761,7 @@ ApplicationWindow {
             attentionField: root.pendingAttentionField
             attentionRow: root.pendingAttentionRow
             attentionSerial: root.pendingAttentionSerial
+            configController: root.configController
             datasetDraft: root.desktopController.datasetDraft
             desktopController: root.desktopController
             expectedColumns: root.cardColumnCount

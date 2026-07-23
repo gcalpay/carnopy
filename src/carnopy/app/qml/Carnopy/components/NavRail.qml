@@ -80,21 +80,21 @@ Control {
             title: qsTr("Run")
             iconName: "play"
             available: false
-            unavailableReason: qsTr("Generation enters QML after Dataset parity in Stage 3.")
+            unavailableReason: qsTr("Generation is the next GUI-2 workflow in Stage 3.")
         }
         ListElement {
             pageKey: "inspect"
             title: qsTr("Inspect")
             iconName: "search"
             available: false
-            unavailableReason: qsTr("Inspection enters QML in Stage 4.")
+            unavailableReason: qsTr("Inspection follows generation in Stage 4.")
         }
         ListElement {
             pageKey: "activity"
             title: qsTr("Activity and Recovery")
             iconName: "activity"
             available: false
-            unavailableReason: qsTr("Activity, jobs, and recovery enter QML in Stage 5.")
+            unavailableReason: qsTr("Jobs and recovery enter QML in Stage 5.")
         }
         ListElement {
             pageKey: "sweeps"
@@ -108,7 +108,7 @@ Control {
             title: qsTr("ML Preparation")
             iconName: "flask-conical"
             available: false
-            unavailableReason: qsTr("Preparation remains outside this Stage 2 shell commit.")
+            unavailableReason: qsTr("ML preparation remains outside the active GUI-2 stage.")
         }
         ListElement {
             pageKey: "three-d"
@@ -165,7 +165,7 @@ Control {
             Layout.leftMargin: 4
             Layout.rightMargin: 4
             Layout.topMargin: 4
-            color: "#244059"
+            color: Theme.divider
             Layout.preferredHeight: 1
         }
 
@@ -245,7 +245,7 @@ Control {
                 }
 
                 background: Rectangle {
-                    border.color: navigationButton.activeFocus ? "#80b8ff" : "transparent"
+                    border.color: navigationButton.activeFocus ? Theme.focus : "transparent"
                     border.width: navigationButton.activeFocus ? 2 : 0
                     color: {
                         if (navigationButton.checked)

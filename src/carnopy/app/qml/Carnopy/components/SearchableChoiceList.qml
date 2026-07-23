@@ -364,20 +364,35 @@ Item {
                     required property int index
                     required property var model
 
+                    function boolRole(name) {
+                        return choiceRow.model !== null && choiceRow.model !== undefined
+                                && choiceRow.model[name] === true;
+                    }
+
+                    function stringRole(name) {
+                        if (choiceRow.model === null || choiceRow.model === undefined
+                                || choiceRow.model[name] === null || choiceRow.model[name]
+                                === undefined)
+                            return "";
+                        return String(choiceRow.model[name]);
+                    }
+
                     function applySelection() {
                         if (!choiceRow.enabled)
                             return;
-                        root.selectionRequested(choiceRow.model.value, !choiceRow.model.selected);
+                        root.selectionRequested(choiceRow.stringRole("value"), !choiceRow.boolRole(
+                                                    "selected"));
                         Qt.callLater(function () {
                             if (selectorPopup.opened)
                                 searchField.forceActiveFocus();
                         });
                     }
 
-                    Accessible.description: model.issue
-                    Accessible.name: model.label.length > 0 ? model.label : model.display
+                    Accessible.description: stringRole("issue")
+                    Accessible.name: stringRole("label").length > 0 ? stringRole("label") :
+                                                                      stringRole("display")
                     activeFocusOnTab: true
-                    enabled: !root.locked && (model.compatible || model.selected)
+                    enabled: !root.locked && (boolRole("compatible") || boolRole("selected"))
                     highlighted: ListView.isCurrentItem || hovered
                     objectName: root.objectName + "ChoiceItem-" + index
                     onClicked: applySelection()
@@ -413,10 +428,10 @@ Item {
 
                         Label {
                             Layout.preferredWidth: 20
-                            color: choiceRow.model.selected ? Theme.success : Theme.textSubtle
+                            color: choiceRow.boolRole("selected") ? Theme.success : Theme.textSubtle
                             font.family: Theme.sansFamily
                             font.pixelSize: 14
-                            text: choiceRow.model.selected ? "✓" : ""
+                            text: choiceRow.boolRole("selected") ? "✓" : ""
                         }
 
                         ColumnLayout {
@@ -429,33 +444,35 @@ Item {
                                 elide: Text.ElideRight
                                 font.family: Theme.sansFamily
                                 font.pixelSize: 12
-                                text: choiceRow.model.label.length > 0 ? choiceRow.model.label :
-                                                                         choiceRow.model.display
+                                text: choiceRow.stringRole("label").length > 0
+                                      ? choiceRow.stringRole("label") : choiceRow.stringRole(
+                                            "display")
                             }
 
                             Label {
                                 Layout.fillWidth: true
-                                color: choiceRow.model.issue.length > 0 ? Theme.danger :
-                                                                          Theme.textMuted
+                                color: choiceRow.stringRole("issue").length > 0 ? Theme.danger :
+                                                                                  Theme.textMuted
 
                                 elide: Text.ElideRight
                                 font.family: Theme.monoFamily
                                 font.pixelSize: 10
-                                text: choiceRow.model.issue.length > 0 ? choiceRow.model.issue :
-                                                                         choiceRow.model.value + (
-                                                                             choiceRow.model.canonical
-                                                                             !== choiceRow.model.value
-                                                                             ? " · " + choiceRow.model.canonical :
-                                                                               "")
+                                text: choiceRow.stringRole("issue").length > 0
+                                      ? choiceRow.stringRole("issue") : choiceRow.stringRole(
+                                            "value") + (choiceRow.stringRole("canonical")
+                                                        !== choiceRow.stringRole("value") ? " · "
+                                                                                            + choiceRow.stringRole(
+                                                                                                "canonical") :
+                                                                                            "")
                             }
                         }
 
                         PropertySymbol {
                             Layout.preferredWidth: 34
-                            accessibleName: choiceRow.model.label
-                            symbolMarkup: choiceRow.model.symbol
-                            visible: root.showPropertyPresentation && choiceRow.model.symbol.length
-                                     > 0
+                            accessibleName: choiceRow.stringRole("label")
+                            symbolMarkup: choiceRow.stringRole("symbol")
+                            visible: root.showPropertyPresentation && choiceRow.stringRole(
+                                         "symbol").length > 0
                         }
 
                         Label {
@@ -464,16 +481,17 @@ Item {
                             font.family: Theme.sansFamily
                             font.pixelSize: 11
                             horizontalAlignment: Text.AlignRight
-                            text: choiceRow.model.unit
-                            visible: root.showPropertyPresentation && choiceRow.model.unit.length
-                                     > 0
+                            text: choiceRow.stringRole("unit")
+                            visible: root.showPropertyPresentation && choiceRow.stringRole(
+                                         "unit").length > 0
                         }
                     }
 
                     background: Rectangle {
-                        border.color: choiceRow.activeFocus ? Theme.information : (
-                                                                  choiceRow.model.issue.length > 0
-                                                                  ? Theme.danger : Theme.border)
+                        border.color: choiceRow.activeFocus ? Theme.focus : (choiceRow.stringRole(
+                                                                                 "issue").length
+                                                                             > 0 ? Theme.danger :
+                                                                                   Theme.border)
                         border.width: choiceRow.activeFocus ? 2 : 1
                         color: choiceRow.highlighted ? Theme.surfaceMuted : Theme.surfaceRaised
                         radius: Theme.radiusSmall

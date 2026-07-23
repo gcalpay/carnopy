@@ -610,7 +610,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | --- | --- | --- |
 | 0 | Qualified a same-repository `QQuickVTKItem` companion bridge on the pinned Linux/Qt/VTK baseline | Complete |
 | 1 | Extracted request ownership, workspace state, dataset/visualization drafts, and complete configuration workflow into QML-ready QtCore controllers | Complete |
-| 2 | Package the Precision Grid QML Workspace, Dataset, Visualization, and YAML/Save workflows | Active; implemented through Step 17, Steps 18–19 and final native acceptance pending |
+| 2 | Package the Precision Grid QML Workspace, Dataset, Visualization, and YAML/Save workflows | Active; implemented through Step 18, Step 19 and final native acceptance pending |
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Pending |
 | 4 | Add controlled sweep and preparation worker operations | Pending |
 | 5 | Add structured sweep and preparation QML workflows | Pending |
@@ -629,9 +629,13 @@ the Dark-default Light/Warm/Dark/System QML appearance contract with
 runtime-only fallback-control palette synchronization. Dataset fluid and
 property selection now uses searchable proxy views over the existing draft
 models, bounded ordered summaries, retained incompatible values, and
-keyboard-accessible immediate selection without nested scrolling. These
-additions do not imply QML parity or public-launcher migration. The final
-workbench styling and Stage 2 acceptance records remain pending.
+keyboard-accessible immediate selection without nested scrolling. The
+approved scientific-workbench styling now supplies the flat semantic palette,
+responsive three-column 1920 and two-column 1440 Dataset layouts, labeled
+sampler controls, wide and narrow command treatments, flat divided inspector,
+readable selector hover, visibly amber Warm mode, and bounded Visualization
+layout. These additions do not imply QML parity or public-launcher migration.
+Only the final Stage 2 acceptance and completion records remain pending.
 
 ## Known current limitations
 

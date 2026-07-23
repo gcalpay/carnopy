@@ -147,10 +147,10 @@ def test_qml_runtime_applies_each_theme_palette_immediately_and_restores_it(
     assert root.property("color") == QColor("#0f0f0f")
 
     controller.set_theme_mode("warm")
-    assert application.palette().color(QPalette.ColorRole.Window) == QColor("#f2dfbd")
+    assert application.palette().color(QPalette.ColorRole.Window) == QColor("#e7bd69")
     assert application.palette().color(QPalette.ColorRole.Highlight) == QColor("#0b7650")
     assert application.palette().color(QPalette.ColorRole.HighlightedText) == QColor("#ffffff")
-    assert root.property("color") == QColor("#f2dfbd")
+    assert root.property("color") == QColor("#e7bd69")
 
     controller.set_theme_mode("light")
     assert application.palette().color(QPalette.ColorRole.Window) == QColor("#f3f5f4")
@@ -480,4 +480,4 @@ def test_qml_sources_pass_non_writing_qt_tooling() -> None:
         timeout=30,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
-    assert completed.stdout == "QML checks passed for 31 file(s).\n"
+    assert completed.stdout == "QML checks passed for 32 file(s).\n"

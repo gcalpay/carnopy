@@ -185,6 +185,64 @@ def test_default_dataset_renders_exact_sampler_and_row_projections(
     assert runtime.warning_capture.runtime_warnings == ()
 
 
+def test_dataset_workbench_uses_ordered_three_and_two_column_layouts(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    assert runtime.controller.request_new_dataset("property_table")
+    root.setWidth(1920)
+    root.setHeight(1080)
+    _process_events()
+
+    grid = _visual_item(root, "datasetSamplerGrid")
+    first_row = (
+        _visual_item(root, "datasetBackendModeCard"),
+        _visual_item(root, "datasetFluidsCard"),
+        _visual_item(root, "datasetPropertiesCard"),
+    )
+    second_row = (
+        _visual_item(root, "samplerEditor-temperature"),
+        _visual_item(root, "samplerEditor-pressure"),
+        _visual_item(root, "datasetOutputsCard"),
+    )
+    assert grid.property("columnCount") == 3
+    for row in (first_row, second_row):
+        positions = [item.mapToItem(grid, QPointF(0, 0)) for item in row]
+        assert (
+            max(position.y() for position in positions)
+            - min(position.y() for position in positions)
+            <= 1
+        )
+        assert max(item.height() for item in row) - min(item.height() for item in row) <= 1
+        assert positions[0].x() < positions[1].x() < positions[2].x()
+
+    root.setWidth(1440)
+    root.setHeight(900)
+    _process_events()
+    assert grid.property("columnCount") == 2
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_dataset_survives_live_appearance_and_width_changes_without_warnings(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    assert runtime.controller.request_new_dataset("property_table")
+    _process_events()
+
+    root.setWidth(1920)
+    runtime.controller.qml_settings.set_theme_mode("warm")
+    _process_events()
+    root.setWidth(1440)
+    runtime.controller.qml_settings.set_theme_mode("dark")
+    _process_events()
+
+    assert root.property("cardColumnCount") == 2
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
 def test_property_symbols_use_trusted_markup_and_complete_accessible_names(
     runtime: QmlApplicationRuntime,
 ) -> None:
@@ -246,6 +304,8 @@ def test_searchable_dataset_selectors_apply_changes_immediately(
         for row in range(draft.selected_fluids.rowCount())
     )
     assert "prandtl_number" in draft.selected_property_values()
+    assert _visual_item(root, "datasetFluidsCard").property("meta") == "3 selected"
+    assert _visual_item(root, "datasetPropertiesCard").property("meta") == "7 selected"
     assert runtime.warning_capture.runtime_warnings == ()
 
 
@@ -525,8 +585,8 @@ def test_dataset_selectors_share_readable_hover_styling() -> None:
         encoding="utf-8"
     )
 
-    assert "rowDelegate.highlighted || rowDelegate.hovered ? Theme.highlightedText" in combo_source
-    assert "rowDelegate.highlighted || rowDelegate.hovered ? Theme.primary" in combo_source
+    assert "color: Theme.text" in combo_source
+    assert "rowDelegate.highlighted || rowDelegate.hovered ? Theme.hover" in combo_source
     assert dataset_source.count("AppComboBox {") == 3
     assert sampler_source.count("AppComboBox {") == 2
     assert choice_source.count("AppComboBox {") == 1

@@ -9,6 +9,7 @@ Card {
     id: root
 
     required property var draft
+    required property int index
     property string attentionField: ""
     property int attentionSerial: 0
     property string unitRejectionMessage: ""
@@ -19,6 +20,16 @@ Card {
 
     function fieldVisible(name) {
         return root.draft.activeFields.indexOf(name) >= 0;
+    }
+
+    function axisLabel(axis) {
+        if (axis === "vapor_mass_fraction")
+            return qsTr("Vapor mass fraction sampler");
+        if (axis === "temperature")
+            return qsTr("Temperature sampler");
+        if (axis === "pressure")
+            return qsTr("Pressure sampler");
+        return String(axis).replace(/_/g, " ") + qsTr(" sampler");
     }
 
     function indexForValue(combo, value) {
@@ -72,20 +83,12 @@ Card {
     }
 
     objectName: "samplerEditor-" + String(draft.axis)
+    meta: root.draft.valid ? qsTr("%1 points").arg(root.draft.sampleCount) : qsTr("Unavailable")
+    metaColor: root.draft.valid ? Theme.success : Theme.red
+    metaObjectName: "samplerPointCount-" + String(root.draft.axis)
     subtitle: qsTr(
                   "Declared values remain in the selected unit. Exact canonical identity is required for a unit-only change.")
-    title: String(draft.axis).replace(/_/g, " ")
-
-    Label {
-        Layout.fillWidth: true
-        color: root.draft.valid ? Theme.success : Theme.danger
-        font.family: Theme.sansFamily
-        font.pixelSize: 11
-        font.weight: Font.Medium
-        objectName: "samplerPointCount-" + String(root.draft.axis)
-        text: root.draft.valid ? qsTr("%1 points").arg(root.draft.sampleCount) : qsTr(
-                                     "Point count unavailable")
-    }
+    title: root.axisLabel(draft.axis)
 
     Connections {
         function onAvailableUnitsChanged() {
@@ -166,15 +169,26 @@ Card {
         }
     }
 
-    TextField {
-        id: valuesField
-
-        Accessible.name: root.draft.axis + qsTr(" explicit values")
+    ColumnLayout {
         Layout.fillWidth: true
-        objectName: "samplerField-" + String(root.draft.axis) + "-values"
-        onTextEdited: root.textChangeRequested(root.draft, "values", text)
-        placeholderText: qsTr("Comma-separated values")
         visible: root.fieldVisible("values")
+
+        Label {
+            color: Theme.textMuted
+            font.family: Theme.sansFamily
+            font.pixelSize: 11
+            text: qsTr("Values")
+        }
+
+        TextField {
+            id: valuesField
+
+            Accessible.name: root.draft.axis + qsTr(" explicit values")
+            Layout.fillWidth: true
+            objectName: "samplerField-" + String(root.draft.axis) + "-values"
+            onTextEdited: root.textChangeRequested(root.draft, "values", text)
+            placeholderText: qsTr("Comma-separated values")
+        }
     }
 
     GridLayout {
@@ -184,82 +198,159 @@ Card {
         rowSpacing: Theme.spacingSmall
         visible: root.draft.kind !== "explicit"
 
-        TextField {
-            id: startField
-
-            Accessible.name: root.draft.axis + qsTr(" start")
+        ColumnLayout {
             Layout.fillWidth: true
-            objectName: "samplerField-" + String(root.draft.axis) + "-start"
-            onTextEdited: root.textChangeRequested(root.draft, "start", text)
-            placeholderText: qsTr("Start")
             visible: root.fieldVisible("start")
+
+            Label {
+                color: Theme.textMuted
+                font.family: Theme.sansFamily
+                font.pixelSize: 11
+                text: qsTr("Min")
+            }
+
+            TextField {
+                id: startField
+
+                Accessible.name: root.draft.axis + qsTr(" start")
+                Layout.fillWidth: true
+                objectName: "samplerField-" + String(root.draft.axis) + "-start"
+                onTextEdited: root.textChangeRequested(root.draft, "start", text)
+                placeholderText: qsTr("Start")
+            }
         }
 
-        TextField {
-            id: stopField
-
-            Accessible.name: root.draft.axis + qsTr(" stop")
+        ColumnLayout {
             Layout.fillWidth: true
-            objectName: "samplerField-" + String(root.draft.axis) + "-stop"
-            onTextEdited: root.textChangeRequested(root.draft, "stop", text)
-            placeholderText: qsTr("Stop")
             visible: root.fieldVisible("stop")
+
+            Label {
+                color: Theme.textMuted
+                font.family: Theme.sansFamily
+                font.pixelSize: 11
+                text: qsTr("Max")
+            }
+
+            TextField {
+                id: stopField
+
+                Accessible.name: root.draft.axis + qsTr(" stop")
+                Layout.fillWidth: true
+                objectName: "samplerField-" + String(root.draft.axis) + "-stop"
+                onTextEdited: root.textChangeRequested(root.draft, "stop", text)
+                placeholderText: qsTr("Stop")
+            }
         }
 
-        TextField {
-            id: stepField
-
-            Accessible.name: root.draft.axis + qsTr(" step")
+        ColumnLayout {
             Layout.fillWidth: true
-            objectName: "samplerField-" + String(root.draft.axis) + "-step"
-            onTextEdited: root.textChangeRequested(root.draft, "step", text)
-            placeholderText: qsTr("Step")
             visible: root.fieldVisible("step")
+
+            Label {
+                color: Theme.textMuted
+                font.family: Theme.sansFamily
+                font.pixelSize: 11
+                text: qsTr("Step")
+            }
+
+            TextField {
+                id: stepField
+
+                Accessible.name: root.draft.axis + qsTr(" step")
+                Layout.fillWidth: true
+                objectName: "samplerField-" + String(root.draft.axis) + "-step"
+                onTextEdited: root.textChangeRequested(root.draft, "step", text)
+                placeholderText: qsTr("Step")
+            }
         }
 
-        TextField {
-            id: startExponentField
-
-            Accessible.name: root.draft.axis + qsTr(" start exponent")
+        ColumnLayout {
             Layout.fillWidth: true
-            objectName: "samplerField-" + String(root.draft.axis) + "-start_exp"
-            onTextEdited: root.textChangeRequested(root.draft, "start_exp", text)
-            placeholderText: qsTr("Start exponent")
             visible: root.fieldVisible("start_exp")
+
+            Label {
+                color: Theme.textMuted
+                font.family: Theme.sansFamily
+                font.pixelSize: 11
+                text: qsTr("Start exponent")
+            }
+
+            TextField {
+                id: startExponentField
+
+                Accessible.name: root.draft.axis + qsTr(" start exponent")
+                Layout.fillWidth: true
+                objectName: "samplerField-" + String(root.draft.axis) + "-start_exp"
+                onTextEdited: root.textChangeRequested(root.draft, "start_exp", text)
+                placeholderText: qsTr("Start exponent")
+            }
         }
 
-        TextField {
-            id: stopExponentField
-
-            Accessible.name: root.draft.axis + qsTr(" stop exponent")
+        ColumnLayout {
             Layout.fillWidth: true
-            objectName: "samplerField-" + String(root.draft.axis) + "-stop_exp"
-            onTextEdited: root.textChangeRequested(root.draft, "stop_exp", text)
-            placeholderText: qsTr("Stop exponent")
             visible: root.fieldVisible("stop_exp")
+
+            Label {
+                color: Theme.textMuted
+                font.family: Theme.sansFamily
+                font.pixelSize: 11
+                text: qsTr("Stop exponent")
+            }
+
+            TextField {
+                id: stopExponentField
+
+                Accessible.name: root.draft.axis + qsTr(" stop exponent")
+                Layout.fillWidth: true
+                objectName: "samplerField-" + String(root.draft.axis) + "-stop_exp"
+                onTextEdited: root.textChangeRequested(root.draft, "stop_exp", text)
+                placeholderText: qsTr("Stop exponent")
+            }
         }
 
-        TextField {
-            id: countField
-
-            Accessible.name: root.draft.axis + qsTr(" number of samples")
+        ColumnLayout {
             Layout.fillWidth: true
-            inputMethodHints: Qt.ImhDigitsOnly
-            objectName: "samplerField-" + String(root.draft.axis) + "-num"
-            onTextEdited: root.textChangeRequested(root.draft, "num", text)
-            placeholderText: qsTr("Number of samples")
             visible: root.fieldVisible("num")
+
+            Label {
+                color: Theme.textMuted
+                font.family: Theme.sansFamily
+                font.pixelSize: 11
+                text: qsTr("Points")
+            }
+
+            TextField {
+                id: countField
+
+                Accessible.name: root.draft.axis + qsTr(" number of samples")
+                Layout.fillWidth: true
+                inputMethodHints: Qt.ImhDigitsOnly
+                objectName: "samplerField-" + String(root.draft.axis) + "-num"
+                onTextEdited: root.textChangeRequested(root.draft, "num", text)
+                placeholderText: qsTr("Number of samples")
+            }
         }
 
-        TextField {
-            id: baseField
-
-            Accessible.name: root.draft.axis + qsTr(" logarithm base")
+        ColumnLayout {
             Layout.fillWidth: true
-            objectName: "samplerField-" + String(root.draft.axis) + "-base"
-            onTextEdited: root.textChangeRequested(root.draft, "base", text)
-            placeholderText: qsTr("Base")
             visible: root.fieldVisible("base")
+
+            Label {
+                color: Theme.textMuted
+                font.family: Theme.sansFamily
+                font.pixelSize: 11
+                text: qsTr("Base")
+            }
+
+            TextField {
+                id: baseField
+
+                Accessible.name: root.draft.axis + qsTr(" logarithm base")
+                Layout.fillWidth: true
+                objectName: "samplerField-" + String(root.draft.axis) + "-base"
+                onTextEdited: root.textChangeRequested(root.draft, "base", text)
+                placeholderText: qsTr("Base")
+            }
         }
     }
 

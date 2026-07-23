@@ -101,6 +101,7 @@ Item {
 
             Card {
                 Layout.fillWidth: true
+                Layout.minimumWidth: 0
                 subtitle: root.visualizationDraft.hasActivePlotEdit ? qsTr(
                                                                           "Commit or cancel the temporary plot before changing shared settings.") :
                                                                       qsTr("Disabled visualization keeps its latent settings and plot requests without affecting dataset validity.")
@@ -140,7 +141,7 @@ Item {
 
                     Layout.fillWidth: true
                     columnSpacing: Theme.spacingMedium
-                    columns: width >= 760 ? 2 : 1
+                    columns: root.expectedColumns >= 3 && width >= 980 ? 2 : 1
                     enabled: root.visualizationDraft.enabled &&
                              !root.visualizationDraft.hasActivePlotEdit
                     objectName: "visualizationSharedSettingsGrid"
@@ -198,6 +199,7 @@ Item {
                             id: sharedFilterEditor
 
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 0
                             emptyText: qsTr("No shared filters.")
                             mappingModel: root.visualizationDraft.filterRows
                             noun: qsTr("shared filter")
@@ -217,6 +219,7 @@ Item {
                             id: sharedDisplayUnitEditor
 
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 0
                             emptyText: qsTr("No shared display-unit overrides.")
                             mappingModel: root.visualizationDraft.displayUnitRows
                             noun: qsTr("shared display unit")

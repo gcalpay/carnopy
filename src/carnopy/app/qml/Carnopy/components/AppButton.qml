@@ -23,10 +23,10 @@ Button {
     Accessible.name: text
     activeFocusOnTab: enabled
     hoverEnabled: true
-    implicitHeight: 38
-    implicitWidth: compact ? 38 : Math.max(88, contentRow.implicitWidth + 24)
-    leftPadding: compact ? 9 : 12
-    rightPadding: compact ? 9 : 12
+    implicitHeight: 36
+    implicitWidth: compact ? 36 : Math.max(82, contentRow.implicitWidth + 22)
+    leftPadding: compact ? 8 : 11
+    rightPadding: compact ? 8 : 11
 
     contentItem: RowLayout {
         id: contentRow
@@ -58,7 +58,7 @@ Button {
         border.color: {
             if (control.tone === "primary" || control.tone === "quiet")
                 return "transparent";
-            return control.activeFocus ? Theme.information : Theme.borderStrong;
+            return control.activeFocus ? Theme.focus : Theme.borderStrong;
         }
         border.width: control.activeFocus ? 2 : 1
         color: {
@@ -70,8 +70,8 @@ Button {
                 return control.hovered ? Theme.primaryHover : Theme.primary;
             }
             if (control.tone === "quiet")
-                return control.hovered || control.down ? Theme.surfaceMuted : "transparent";
-            return control.hovered || control.down ? Theme.surfaceMuted : Theme.surface;
+                return control.hovered || control.down ? Theme.hover : "transparent";
+            return control.hovered || control.down ? Theme.hover : Theme.surface;
         }
         radius: Theme.radiusSmall
 

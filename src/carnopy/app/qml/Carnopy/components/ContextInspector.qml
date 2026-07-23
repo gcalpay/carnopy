@@ -47,13 +47,13 @@ Control {
     }
 
     implicitWidth: 304
-    leftPadding: 16
-    rightPadding: 16
-    topPadding: 16
-    bottomPadding: 16
+    leftPadding: 18
+    rightPadding: 18
+    topPadding: 14
+    bottomPadding: 14
 
     background: Rectangle {
-        border.color: Theme.border
+        border.color: Theme.divider
         border.width: 1
         color: Theme.surfaceRaised
     }
@@ -106,6 +106,7 @@ Control {
                 width: parent.width
 
                 Card {
+                    flat: true
                     Layout.fillWidth: true
                     subtitle: root.workspacePath.length > 0 ? root.workspacePath : qsTr(
                                                                   "No local workspace is open.")
@@ -123,7 +124,14 @@ Control {
                     }
                 }
 
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 1
+                    color: Theme.divider
+                }
+
                 Card {
+                    flat: true
                     Layout.fillWidth: true
                     title: qsTr("Document state")
 
@@ -194,6 +202,12 @@ Control {
                     }
                 }
 
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 1
+                    color: Theme.divider
+                }
+
                 BlockingBanner {
                     Layout.fillWidth: true
                     actionText: qsTr("Focus")
@@ -209,6 +223,7 @@ Control {
                 }
 
                 Card {
+                    flat: true
                     Layout.fillWidth: true
                     subtitle: root.workspaceState !== "editing" ? qsTr(
                                                                       "Open a configuration to see Dataset validation.") :
@@ -228,7 +243,14 @@ Control {
                     }
                 }
 
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 1
+                    color: Theme.divider
+                }
+
                 Card {
+                    flat: true
                     Layout.fillWidth: true
                     subtitle: root.workspaceState !== "editing" ? qsTr(
                                                                       "Open a configuration to define configured visualization.") :

@@ -98,6 +98,7 @@ Item {
 
                             Accessible.name: qsTr("%1 field").arg(root.noun)
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 0
                             currentIndex: indexOfValue(mappingRow.field)
                             enabled: !root.locked
                             model: root.mappingModel === null || root.mappingModel === undefined
@@ -113,6 +114,7 @@ Item {
 
                             Accessible.name: qsTr("%1 value").arg(root.noun)
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 0
                             currentIndex: indexOfValue(mappingRow.rawValue)
                             enabled: !root.locked
                             model: mappingRow.choices
@@ -128,6 +130,7 @@ Item {
                         TextField {
                             Accessible.name: qsTr("%1 value").arg(root.noun)
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 0
                             color: Theme.text
                             enabled: !root.locked
                             font.family: Theme.monoFamily

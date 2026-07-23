@@ -10,6 +10,10 @@ import Carnopy
 Item {
     id: root
 
+    function openImportDialog() {
+        importConfigurationDialog.open();
+    }
+
     required property var desktopController
     property int expectedColumns: 1
     readonly property bool controllerAvailable: desktopController !== null

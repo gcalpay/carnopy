@@ -1056,26 +1056,43 @@ Current implementation status as of 2026-07-23:
   outside click, pointer activation, and keyboard activation retain changes and
   restore focus. The one bounded popup list lives on the window overlay while
   summary lists are noninteractive, avoiding nested page scrolling.
-- Steps 18 and 19 remain. The final reference-matched styling is not yet
-  implemented. The current disabled
-  navigation tooltips also retain obsolete Stage 4/5 timing for workflows now
-  assigned to Stage 3; Step 18 must align that presentation copy with this
-  plan before Stage 2 completion.
-- Recommended parent setting for Step 18 is **GPT-5.6 Sol XHigh**. The final
-  visual pass is a hard cross-page QML task spanning the approved reference,
-  responsive two/three-column layout, theme roles, native fallback-dialog
-  readability, hover and focus behavior, packaged-resource smoke coverage, and
-  regression avoidance across every implemented QML page. It does not require
-  Sol Max because the scientific, lifecycle, process, and public-schema
-  contracts are already fixed.
+- Step 18 is implemented. The current QML pages use the approved minimal role
+  palette, flat section hierarchy, compact controls, semantic hover/focus
+  treatment, and reference-matched dark workbench structure. The Dataset page
+  presents one ordered responsive workbench grid: Backend and mode, Fluids,
+  Properties, canonical sampler cards, and Dataset outputs. It uses three
+  aligned columns at 1920 logical pixels and two at 1440, followed by the
+  Configuration summary and Document surfaces. Sampler fields have explicit
+  labels, selected-fluid and property counts are live, and the Warm palette is
+  visibly amber rather than a near-Light neutral treatment.
+- The command header exposes labeled New, Import, Save, and Save As actions at
+  wide sizes and keeps Save visible while the remaining document actions move
+  into the narrow overflow. The Context inspector uses one flat divided
+  hierarchy, selector hover remains readable in every theme, and the
+  Visualization layout no longer clips or paints its mapping controls beyond
+  the shared-settings card. Disabled navigation descriptions now follow the
+  current Stage 3 ownership instead of obsolete Stage 4/5 timing.
+- Step 18 verification includes the warning-free 32-file QML source gate,
+  focused runtime, settings, shell, Dataset, Workspace, Visualization, YAML,
+  packaging, and distribution regressions, live width/theme changes, and
+  exact 1920 three-column and 1440 two-column layout assertions. Diagnostic
+  native renders covered Dark, Warm, Workspace, Dataset, Visualization, and
+  YAML surfaces; those temporary images are not repository assets.
+- Only Step 19 remains. Stage 2 is not complete until the final automated and
+  remote gates pass, the maintainer completes native/manual acceptance, and
+  the documentation-only completion boundary records the accepted result.
+- Recommended parent setting for Step 19 is **GPT-5.6 Sol High**. It is a
+  cross-repository verification, acceptance, and durable-documentation task,
+  not another implementation step. Increase effort only if final evidence
+  exposes a scientific, lifecycle, packaging, or platform contradiction.
 - No generation, inspection, table preview, plot rendering, VTK, or public-
-  launcher parity is inferred from Steps 11 through 17. Configured plot
+  launcher parity is inferred from Steps 11 through 18. Configured plot
   requests remain under Visualization; rendered output discovery and preview
   belong to Stage 3's Inspect workflow. Stage 3 planning must lock the exact
   placement of its session-only manual-plot editor. Both public launchers
-  remain on Widgets, and Stage 2 remains active until Steps 18 and 19,
-  the complete automated gates, native manual acceptance, and explicit
-  maintainer approval are complete.
+  remain on Widgets, and Stage 2 remains active until Step 19, the complete
+  automated gates, native manual acceptance, and explicit maintainer approval
+  are complete.
 - Git staging, commits, synchronization with the remote branch, and publication
   remain human-owned and are not implied by this implementation-status record.
 
