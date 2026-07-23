@@ -64,6 +64,7 @@ class MainWindow(QMainWindow):
         self.workspace_controller = self.desktop_controller.workspace_controller
         self.dataset_config_controller = self.desktop_controller.dataset_config_controller
         self.execution_controller = self.desktop_controller.execution_controller
+        self.inspection_controller = self.desktop_controller.inspection_controller
         self._close_when_idle = False
         self._close_after_plot_stop = False
         self.setWindowTitle("Carnopy")
@@ -76,7 +77,7 @@ class MainWindow(QMainWindow):
             desktop_controller=self.desktop_controller,
         )
         self.execution_page = DatasetExecutionPage(self.execution_controller)
-        self.inspection_page = InspectionPage(self.coordinator)
+        self.inspection_page = InspectionPage(self.inspection_controller)
         self.plot_page = PlotPage(self.coordinator)
         self.jobs_page = JobsDiagnosticsPage(self.execution_controller)
         for index, title in enumerate(PAGE_TITLES):
@@ -113,11 +114,8 @@ class MainWindow(QMainWindow):
         self.workspace_controller.status_message_changed.connect(self._update_workspace_status)
         self.workspace_controller.error_message_changed.connect(self._update_workspace_status)
         self.sources_panel.inspect_requested.connect(self._inspect_source)
-        self.inspection_page.inspection_loaded.connect(self.sources_panel.mark_inspectable)
-        self.inspection_page.inspection_failed.connect(self.sources_panel.mark_uninspectable)
-        self.inspection_page.inspection_changed.connect(self.plot_page.set_inspection)
+        self.inspection_controller.inspection_changed.connect(self.plot_page.set_inspection)
         self.plot_page.render_finished.connect(self._plot_render_finished)
-        self.execution_page.run_finalized.connect(self._run_finalized)
         self.execution_page.inspect_button.clicked.connect(self._inspect_finalized_run)
         self._update_workspace_status()
 
@@ -173,7 +171,7 @@ class MainWindow(QMainWindow):
         self.recent_workspaces.setModel(self.workspace_controller.recent_model)
         self.recent_workspaces.doubleClicked.connect(self._open_recent_workspace)
         layout.addWidget(self.recent_workspaces, 1)
-        self.sources_panel = WorkspaceSourcesPanel()
+        self.sources_panel = WorkspaceSourcesPanel(self.inspection_controller)
         layout.addWidget(self.sources_panel, 2)
         return page
 
@@ -257,7 +255,6 @@ class MainWindow(QMainWindow):
         self.inspection_page.set_workspace(workspace)
         self.plot_page.set_workspace(workspace)
         self.jobs_page.set_workspace(workspace)
-        self.sources_panel.set_workspace(workspace)
 
     def _update_workspace_status(self) -> None:
         message = self.workspace_controller.get_error_message()
@@ -354,9 +351,6 @@ class MainWindow(QMainWindow):
         message.exec()
         return message.clickedButton() is force_close
 
-    def _run_finalized(self, _path: object) -> None:
-        self.sources_panel.refresh()
-
     def _inspect_finalized_run(self) -> None:
         value = self.execution_page.inspect_button.property("source_path")
         if isinstance(value, str):
@@ -364,7 +358,7 @@ class MainWindow(QMainWindow):
 
     def _inspect_source(self, value: object) -> None:
         path = value if isinstance(value, Path) else Path(str(value))
-        self.inspection_page.inspect(path)
+        self.desktop_controller.request_inspect_source(str(path))
         self.navigation.setCurrentRow(3)
 
 

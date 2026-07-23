@@ -1364,11 +1364,27 @@ Current implementation status as of 2026-07-23:
   regressions prove validation and generation remain on Run, persist their
   schema-version-1 activity records, and retain current-saved-baseline identity
   across later unsaved draft edits.
-- `Inspect Run` and `View Plots` are visible after successful generation but
-  remain disabled with explicit accessible explanations until Steps 4 and 7
-  add their authoritative target controllers. Step 3 does not fake navigation,
-  inspect automatically, scan artifacts, or pull downstream ownership forward.
-- Step 4 is the next active implementation boundary. Neither public launcher
+- Step 4 is implemented. One composition-owned `InspectionController` now owns
+  direct-child workspace source discovery, worker inspection sessions, typed
+  source-kind projections, exact revision-bound table selection, bounded
+  preview paging, integrity presentation, and the inspected plot context.
+  Sources are revealed 20 at a time, sorted by nanosecond modification time
+  with a stable resolved-path tiebreaker, and symbolic links are excluded.
+- Dataset failure layer, code, and property counts remain three independent
+  models. Preparation array exports are flattened one row per logical named
+  array so mixed shapes and dtypes within one artifact remain truthful. Legacy
+  artifacts without logical-array metadata remain visible with an explicit
+  unavailable projection.
+- `carnopy.app.source_inspection` and `carnopy.app.table_preview` remain
+  worker-only. Importing the controller and Qt models does not load them or
+  pandas, PyArrow, NumPy, CoolProp, or Matplotlib. The temporary Widgets Inspect
+  and source-list pages are presentation adapters over the controller, and the
+  existing Plot page receives only the controller's copied inspected payload
+  until Step 7 extracts session plotting.
+- `Inspect Run` can now target the authoritative inspection controller in the
+  composition, but the QML Inspect page and exact cross-page navigation are
+  Step 5. `View Plots` remains unavailable until Step 7.
+- Step 5 is the next active implementation boundary. Neither public launcher
   has migrated.
 
 ### Permanent scientific and process boundaries
@@ -2115,6 +2131,15 @@ Implement bounded source discovery, separate failure aggregate models, source-
 kind summaries, logical arrays, revision-bound previews, heavy-import
 isolation, and temporary Widgets adapters. Keep `source_inspection.py` and
 `table_preview.py` worker-only and record that boundary durably.
+
+Implemented on 2026-07-23 without a worker-protocol, public-schema, dependency,
+or scientific change. `DesktopController` owns the one operative controller.
+Collections exposed for QML are stable-role Qt models, while raw nested summary
+data is retained only as preformatted diagnostic text and a copied payload for
+the temporary Plot-page adapter. An explicit inspection queues the first table
+preview only after the completed request releases the global coordinator.
+Preview row positions are one-based presentation positions; worker blocks
+remain bounded to 500 and local pages to 100.
 
 #### Step 5 — Add the QML Inspect workbench
 

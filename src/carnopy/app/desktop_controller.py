@@ -9,6 +9,7 @@ from carnopy.app.config_controller import DatasetConfigController
 from carnopy.app.dataset_draft import DatasetDraft
 from carnopy.app.execution_controller import DatasetExecutionController
 from carnopy.app.field_ids import VISUALIZATION_PLOTS
+from carnopy.app.inspection_controller import InspectionController
 from carnopy.app.mapping_draft import MappingDraftModel
 from carnopy.app.plot_draft import PlotDraft
 from carnopy.app.qml_settings import QmlSettingsController
@@ -56,6 +57,13 @@ class DesktopController(QObject):
             self.request_coordinator,
             self.dataset_config_controller,
             self,
+        )
+        self.inspection_controller = InspectionController(
+            self.request_coordinator,
+            self,
+        )
+        self.execution_controller.run_finalized.connect(
+            lambda _path: self.inspection_controller.refresh_sources()
         )
         self.dataset_config_controller.set_lifecycle_guard(self._guard_active_plot_edit)
         self.workspace_controller = WorkspaceController(
@@ -274,6 +282,15 @@ class DesktopController(QObject):
         constant=True,
     )
 
+    def get_inspection_controller(self) -> QObject:
+        return self.inspection_controller
+
+    inspectionController = Property(
+        QObject,
+        get_inspection_controller,
+        constant=True,
+    )
+
     def get_dataset_decision_title(self) -> str:
         decision = self._pending_dataset_decision
         if decision is None:
@@ -355,6 +372,26 @@ class DesktopController(QObject):
     @Slot(result=bool, name="requestExecutionForceStop")
     def request_execution_force_stop(self) -> bool:
         return self.execution_controller.force_stop()
+
+    @Slot(str, result=bool, name="requestInspectSource")
+    def request_inspect_source(self, source: str) -> bool:
+        return self.inspection_controller.inspect_source(source)
+
+    @Slot(result=bool, name="requestRefreshInspection")
+    def request_refresh_inspection(self) -> bool:
+        return self.inspection_controller.refresh_inspection()
+
+    @Slot(str, result=bool, name="requestInspectionTable")
+    def request_inspection_table(self, table_id: str) -> bool:
+        return self.inspection_controller.select_table(table_id)
+
+    @Slot(int, result=bool, name="requestInspectionPreviewPage")
+    def request_inspection_preview_page(self, page_offset: int) -> bool:
+        return self.inspection_controller.request_preview_page(page_offset)
+
+    @Slot(name="requestMoreInspectionSources")
+    def request_more_inspection_sources(self) -> None:
+        self.inspection_controller.reveal_more_sources()
 
     @Slot(str, result=bool, name="requestSavePathSelected")
     def request_save_path_selected(self, path: str) -> bool:
@@ -771,6 +808,7 @@ class DesktopController(QObject):
     def _workspace_activated(self, value: object) -> None:
         self.dataset_config_controller.set_workspace(value)
         self.execution_controller.set_workspace(value if isinstance(value, Workspace) else None)
+        self.inspection_controller.set_workspace(value if isinstance(value, Workspace) else None)
         self.workspace_state_changed.emit()
         self.workspace_confirmation_changed.emit()
 

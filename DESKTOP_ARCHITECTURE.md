@@ -38,9 +38,13 @@ The desktop has two frontend implementations during the GUI-2 migration:
 - saved-config validation and generation state are owned by one
   `DatasetExecutionController`; both the private QML Run workflow and the
   public Widgets Run page are view adapters over it;
-- QML inspection, table preview, plot-result viewing and exploration, Activity
-  and Recovery, launcher migration, and Widgets retirement belong to the
-  remaining Stage 3 steps.
+- source discovery, worker inspection, typed source summaries, logical-array
+  metadata, table selection, and bounded preview state are owned by one
+  `InspectionController`; the public Widgets Inspect/source pages are temporary
+  view adapters over it;
+- QML presentation of inspection and table preview, plot-result viewing and
+  exploration, Activity and Recovery, launcher migration, and Widgets
+  retirement belong to the remaining Stage 3 steps.
 
 The development version is `0.1.0a4.dev0`. The two public launchers switch to
 QML only after Stage 3 reaches tested GUI-1 parity; Carnopy will not ship two
@@ -113,6 +117,8 @@ MainWindow + page adapters            QQmlApplicationEngine + QML views
           |          DatasetDraft + VisualizationDraft
           |                  |
           +------- DatasetExecutionController
+          |
+          +------------ InspectionController
           |                  |
           +---------- DesktopRequestCoordinator
                              |
@@ -145,8 +151,9 @@ cross-controller facade. One instance owns:
 - `WorkspaceController`;
 - `DatasetDraft`;
 - `VisualizationDraft`; and
-- `DatasetConfigController`; and
-- `DatasetExecutionController`.
+- `DatasetConfigController`;
+- `DatasetExecutionController`; and
+- `InspectionController`.
 
 It binds workspace activation to configuration context exactly once. QML may
 edit a child draft through explicit local-edit requests, but workspace changes,
@@ -212,6 +219,39 @@ active workspace, and the current on-disk file. Unsaved draft edits do not make
 a result historical; a later Save, file replacement, document replacement, or
 workspace change can. This distinction prevents mutable editor state from
 rewriting the identity of an already executed scientific configuration.
+
+### `InspectionController`
+
+`InspectionController` is the authoritative read-only source-inspection
+workflow. It owns:
+
+- direct-child workspace source discovery, bounded disclosure, and
+  inspectability feedback;
+- the active worker inspection request and exact source revision;
+- source-kind-aware identity, backend, row, diagnostic, table, and integrity
+  projections;
+- three independent dataset failure aggregates for layer, code, and property;
+- one typed row per logical array, including distinct shapes and dtypes within
+  a shared artifact;
+- selected table identity, 500-row worker blocks, and 100-row local pages; and
+- the copied inspected plot context consumed temporarily by the Widgets Plot
+  page.
+
+Workspace candidates are sorted by `st_mtime_ns` descending with resolved path
+as the deterministic tiebreaker, revealed 20 at a time, and never discovered
+through recursive traversal or symbolic links. Table row positions shown in
+the frontend are one-based presentation positions; source order and worker
+payload rows are unchanged.
+
+`carnopy.app.source_inspection` and `carnopy.app.table_preview` are permanent
+worker-only modules. They may import pandas, PyArrow, visualization inspection,
+and data-reading implementations inside worker request handling.
+`InspectionController`, `inspection_models`, `table_model`, Widgets adapters,
+and future QML views import none of those modules and never open table or array
+bytes. They consume only JSON-compatible worker payloads. The first bounded
+preview is queued after an explicit successful inspection because the request
+coordinator releases its active session only after delivering the terminal
+result.
 
 ### `WorkerClient`
 
@@ -433,8 +473,11 @@ configuration, execution, sources, jobs, recovery, plot requests, and image
 preview. The Run page now consumes `DatasetExecutionController`; it no longer
 starts workers or emits persistence events. The Jobs page temporarily retains
 only record loading, display, removal, and recovery until the Stage 3 Activity
-controller is extracted. Widgets retain native file dialogs and existing
-manual workflows as a parity oracle until Stage 3.
+controller is extracted. The Inspect and generated-source pages project the
+shared `InspectionController`; they no longer start inspection or preview
+sessions, discover sources, or retain authoritative table state. Widgets retain
+native file dialogs and existing manual workflows as a parity oracle until
+Stage 3.
 
 Widgets must not regain shadow draft state while QML is added. A behavior fix
 at a shared boundary must be reflected in both frontends, as with safe sampler
@@ -474,9 +517,9 @@ Generate, Cancel, and Force Stop. It projects the authoritative execution
 controller's exact saved snapshot, progress, terminal result, activity
 persistence, and saved-baseline relation without parsing worker envelopes.
 Successful generation stays on Run. Its future `Inspect Run` and `View Plots`
-actions remain visibly unavailable until the corresponding authoritative
-inspection and configured-result controllers are introduced; QML does not
-simulate those workflows.
+actions remain visibly unavailable until the corresponding QML Inspect surface
+and configured-result controller are introduced; QML does not simulate those
+workflows.
 
 Close processing is deferred out of the native event-filter callback. Teardown
 is idempotent, removes the close filter before object destruction, and uses a
@@ -725,11 +768,11 @@ workaround.
   private development entry point.
 - The QML application can configure and save YAML and can validate or generate
   from the exact saved configuration through the authoritative execution
-  controller. It does not yet expose inspection, table preview, configured
-  plot results, or session rendering; those remain worker-owned later Stage 3
-  workflows.
-- QML inspection, tables, plotting, Activity and Recovery, sweep, preparation,
-  and 3D are not implemented.
+  controller. Inspection and bounded table state now have an authoritative
+  QtCore controller but no QML workbench yet. Configured plot results and
+  session rendering remain later Stage 3 workflows.
+- QML inspection/tables, plotting, Activity and Recovery, sweep, preparation,
+  and 3D presentation are not implemented.
 - Native folder dialogs and compositor behavior require human acceptance;
   headless tests do not automate them.
 - The current WSLg development host can use CPU rendering through Mesa

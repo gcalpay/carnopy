@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from typing import Any, cast
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -20,36 +18,26 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from carnopy.app.protocol import RequestType
-from carnopy.app.request_coordinator import (
-    DesktopRequestCoordinator,
-    RequestOutcome,
-    RequestSession,
-)
-from carnopy.app.table_model import LOCAL_PAGE_SIZE, PreviewTableModel
+from carnopy.app.inspection_controller import InspectionController
+from carnopy.app.table_model import LOCAL_PAGE_SIZE
 from carnopy.app.workspace import Workspace
 
 TABLE_ID_ROLE = Qt.ItemDataRole.UserRole
 
 
 class InspectionPage(QWidget):
-    inspection_loaded = Signal(object)
-    inspection_failed = Signal(object, str)
-    inspection_changed = Signal(object)
+    """Temporary Widgets view over the authoritative inspection controller."""
 
     def __init__(
         self,
-        coordinator: DesktopRequestCoordinator,
+        controller: InspectionController,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self.coordinator = coordinator
+        self.controller = controller
+        self.coordinator = controller.coordinator
         self.workspace: Workspace | None = None
-        self.source: Path | None = None
-        self.payload: dict[str, Any] | None = None
-        self._session: RequestSession | None = None
-        self._request_kind: str | None = None
-        self._requested_page_offset = 0
+        self._updating_tables = False
 
         root = QVBoxLayout(self)
         heading = QLabel("Inspect and Data")
@@ -61,7 +49,7 @@ class InspectionPage(QWidget):
         refresh = QPushButton("Refresh Inspection")
         browse_file.clicked.connect(self._browse_file)
         browse_bundle.clicked.connect(self._browse_bundle)
-        refresh.clicked.connect(self.refresh)
+        refresh.clicked.connect(controller.refresh_inspection)
         actions.addWidget(browse_file)
         actions.addWidget(browse_bundle)
         actions.addWidget(refresh)
@@ -74,6 +62,7 @@ class InspectionPage(QWidget):
         self.status.setWordWrap(True)
         self.status.setAccessibleName("Inspection status")
         root.addWidget(self.status)
+
         self.splitter = QSplitter(Qt.Orientation.Vertical)
         details = QWidget()
         self.details_widget = details
@@ -86,11 +75,9 @@ class InspectionPage(QWidget):
         details_layout.addWidget(QLabel("Tabular artifacts"))
         self.tables = QListWidget()
         self.tables.itemDoubleClicked.connect(lambda _item: self.preview_selected())
-        self.tables.currentItemChanged.connect(
-            lambda _current, _previous: self._update_preview_actions()
-        )
+        self.tables.currentItemChanged.connect(self._table_selected)
         details_layout.addWidget(self.tables, 1)
-        self.arrays_label = QLabel("Array/tensor artifacts: none")
+        self.arrays_label = QLabel("Logical arrays: none")
         self.arrays_label.setWordWrap(True)
         details_layout.addWidget(self.arrays_label)
 
@@ -105,8 +92,8 @@ class InspectionPage(QWidget):
         self.focus_table_button.setCheckable(True)
         self.focus_table_button.setAccessibleName("Focus table preview")
         self.preview_button.clicked.connect(self.preview_selected)
-        self.previous_button.clicked.connect(self.previous_page)
-        self.next_button.clicked.connect(self.next_page)
+        self.previous_button.clicked.connect(controller.previous_preview_page)
+        self.next_button.clicked.connect(controller.next_preview_page)
         self.focus_table_button.toggled.connect(self._set_table_focus)
         preview_actions.addWidget(self.preview_button)
         preview_actions.addWidget(self.previous_button)
@@ -116,7 +103,7 @@ class InspectionPage(QWidget):
         preview_layout.addLayout(preview_actions)
         self.preview_range = QLabel("No table preview loaded.")
         preview_layout.addWidget(self.preview_range)
-        self.table_model = PreviewTableModel()
+        self.table_model = controller.table_model
         self.table_view = QTableView()
         self.table_view.setModel(self.table_model)
         self.table_view.setSortingEnabled(False)
@@ -130,101 +117,44 @@ class InspectionPage(QWidget):
         self.splitter.setStretchFactor(1, 3)
         self.splitter.setSizes([240, 460])
         root.addWidget(self.splitter, 1)
-        self._update_preview_actions()
 
-        coordinator.busy_changed.connect(self._busy_changed)
+        controller.state_changed.connect(self._sync_from_controller)
+        controller.tables_model.modelReset.connect(self._sync_tables)
+        controller.arrays_model.modelReset.connect(self._sync_arrays)
+        self._sync_from_controller()
+
+    @property
+    def source(self) -> Path | None:
+        value = self.controller.get_source_path()
+        return Path(value) if value else None
+
+    @property
+    def payload(self) -> dict[str, object] | None:
+        return self.controller.current_payload()
 
     def set_workspace(self, workspace: Workspace | None) -> None:
         self.workspace = workspace
 
     def inspect(self, source: Path) -> None:
-        if self.coordinator.is_busy:
-            self.status.setText("Another Carnopy worker request is active.")
-            return
-        self.source = source.expanduser().absolute()
-        self.payload = None
-        self.inspection_changed.emit(None)
-        self.source_label.setText(str(self.source))
-        self.status.setText("Inspecting source…")
-        self.summary.clear()
-        self.tables.clear()
-        self.table_model.set_block(
-            {"columns": [], "rows": [], "total_row_count": 0, "block_offset": 0},
-            page_offset=0,
-        )
-        self.arrays_label.setText("Array/tensor artifacts: inspection pending")
-        self._start_request(
-            "inspect_source",
-            {"source_path": str(self.source)},
-        )
-        self._request_kind = "inspection"
+        self.controller.inspect_source(str(source))
 
     def refresh(self) -> None:
-        if self.source is not None:
-            self.inspect(self.source)
+        self.controller.refresh_inspection()
 
     def selected_table_id(self) -> str | None:
-        item = self.tables.currentItem()
-        return None if item is None else str(item.data(TABLE_ID_ROLE))
+        value = self.controller.get_selected_table_id()
+        return value or None
 
     def preview_selected(self) -> None:
-        self._request_preview(0)
+        table_id = self.selected_table_id()
+        if table_id:
+            self.controller.request_preview_page(0)
 
     def previous_page(self) -> None:
-        self._show_page(max(0, self.table_model.page_offset - LOCAL_PAGE_SIZE))
+        self.controller.previous_preview_page()
 
     def next_page(self) -> None:
-        self._show_page(self.table_model.page_offset + LOCAL_PAGE_SIZE)
-
-    def _show_page(self, page_offset: int) -> None:
-        if page_offset >= self.table_model.total_rows:
-            return
-        if self.table_model.contains_page(page_offset):
-            self.table_model.set_page(page_offset)
-            self._update_preview_range()
-            return
-        block_offset = (page_offset // 500) * 500
-        self._request_preview(block_offset, page_offset=page_offset)
-
-    def _request_preview(self, offset: int, *, page_offset: int | None = None) -> None:
-        payload = self.payload
-        source = self.source
-        table_id = self.selected_table_id()
-        if payload is None or source is None or table_id is None or self.coordinator.is_busy:
-            return
-        self._requested_page_offset = offset if page_offset is None else page_offset
-        self.status.setText(f"Loading rows {offset}-{offset + 499}…")
-        self._start_request(
-            "preview_table",
-            {
-                "source_path": str(source),
-                "table_id": table_id,
-                "inspection_revision": payload["revision"],
-                "offset": offset,
-                "limit": 500,
-            },
-        )
-        self._request_kind = "preview"
-
-    def _start_request(self, request_type: RequestType, payload: dict[str, object]) -> None:
-        session = self.coordinator.start_request(
-            "inspection",
-            request_type,
-            payload,
-        )
-        self._session = session
-        session.completed.connect(self._request_completed)
-
-    def _request_completed(self, value: object) -> None:
-        outcome = cast(RequestOutcome, value)
-        session = self._session
-        if session is None or outcome.request_id != session.request_id:
-            return
-        result = outcome.result_payload
-        if result is not None:
-            self._request_succeeded(result)
-            return
-        self._request_failed(outcome.failure_payload or {})
+        self.controller.next_preview_page()
 
     def _browse_file(self) -> None:
         selected, _filter = QFileDialog.getOpenFileName(
@@ -234,7 +164,7 @@ class InspectionPage(QWidget):
             "Carnopy tables (*.csv *.parquet)",
         )
         if selected:
-            self.inspect(Path(selected))
+            self.controller.inspect_source(selected)
 
     def _browse_bundle(self) -> None:
         selected = QFileDialog.getExistingDirectory(
@@ -243,67 +173,82 @@ class InspectionPage(QWidget):
             str(self.workspace.outputs if self.workspace else Path.home()),
         )
         if selected:
-            self.inspect(Path(selected))
+            self.controller.inspect_source(selected)
 
-    def _request_succeeded(self, value: object) -> None:
-        if self._session is None:
+    def _table_selected(
+        self,
+        current: QListWidgetItem | None,
+        _previous: QListWidgetItem | None,
+    ) -> None:
+        if self._updating_tables or current is None:
+            self._update_preview_actions()
             return
-        payload = cast(dict[str, Any], value)
-        if self._request_kind == "preview":
-            if "rows" not in payload or "columns" not in payload:
-                return
-            self.table_model.set_block(payload, page_offset=self._requested_page_offset)
-            self.status.setText("Table preview loaded without changing source row order.")
-            self._session = None
-            self._request_kind = None
-            self._update_preview_range()
-            return
-        if self._request_kind != "inspection" or "source_kind" not in payload:
-            return
-        self.payload = payload
-        self.inspection_changed.emit(payload)
-        self._session = None
-        self._request_kind = None
-        self.status.setText(
-            f"Inspection complete: {payload.get('source_kind')} — "
-            f"{len(payload.get('tables', []))} table(s)."
-        )
-        self.summary.setPlainText(
-            json.dumps(payload.get("summary", {}), indent=2, sort_keys=True, ensure_ascii=False)
-        )
+        table_id = current.data(TABLE_ID_ROLE)
+        if isinstance(table_id, str):
+            self.controller.select_table(table_id)
+        self._update_preview_actions()
+
+    def _sync_tables(self) -> None:
+        selected = self.controller.get_selected_table_id()
+        self._updating_tables = True
         self.tables.clear()
-        for descriptor in payload.get("tables", []):
-            if not isinstance(descriptor, dict):
-                continue
-            item = QListWidgetItem(
-                f"{descriptor.get('label', descriptor.get('id'))} "
-                f"({descriptor.get('format', 'unknown')})"
-            )
-            item.setData(TABLE_ID_ROLE, descriptor.get("id"))
+        selected_row = -1
+        for row, descriptor in enumerate(self.controller.tables_model.rows()):
+            table_id = str(descriptor.get("id", ""))
+            label = str(descriptor.get("label", table_id))
+            item = QListWidgetItem(f"{label} ({descriptor.get('format', 'unknown')})")
+            item.setData(TABLE_ID_ROLE, table_id)
             self.tables.addItem(item)
-        arrays = payload.get("arrays")
-        count = len(arrays) if isinstance(arrays, list) else 0
-        self.arrays_label.setText(f"Array/tensor artifacts listed in manifest: {count}")
-        if self.source is not None:
-            self.inspection_loaded.emit(self.source)
+            if table_id == selected:
+                selected_row = row
+        if selected_row >= 0:
+            self.tables.setCurrentRow(selected_row)
+        self._updating_tables = False
         self._update_preview_actions()
 
-    def _request_failed(self, value: object) -> None:
-        if self._session is None:
+    def _sync_arrays(self) -> None:
+        count = self.controller.arrays_model.get_count()
+        if self.controller.arrays_model.get_available():
+            self.arrays_label.setText(f"Logical arrays listed in manifest: {count}")
+        else:
+            self.arrays_label.setText("Logical arrays: unavailable")
+
+    def _sync_from_controller(self) -> None:
+        state = self.controller.get_state()
+        source = self.controller.get_source_path()
+        self.source_label.setText(source or "No source selected.")
+        issue = self.controller.get_issue()
+        if state == "loading":
+            status = "Inspecting source…"
+        elif state == "ready":
+            status = (
+                f"Inspection complete: {self.controller.get_source_kind()} — "
+                f"{self.controller.tables_model.get_count()} table(s)."
+            )
+        elif state == "stale":
+            status = f"Inspection is stale: {issue}"
+        elif state == "failed":
+            status = f"Uninspectable: {issue}"
+        else:
+            status = "Select a workspace source or browse an external source."
+        self._select_current_table()
+        if self.controller.get_preview_state() == "loading":
+            status = "Loading a bounded table block…"
+        self.status.setText(status)
+        self.summary.setPlainText(self.controller.get_diagnostic_text())
+        self._update_preview_range()
+
+    def _select_current_table(self) -> None:
+        selected = self.controller.get_selected_table_id()
+        if not selected or self.tables.currentItem() is not None:
             return
-        payload = cast(dict[str, Any], value)
-        message = str(payload.get("message", "inspection failed"))
-        request_kind = self._request_kind
-        self._session = None
-        self._request_kind = None
-        self.status.setText(f"Uninspectable: {message}")
-        if request_kind == "inspection":
-            self.inspection_changed.emit(None)
-        if request_kind == "inspection" and self.source is not None:
-            self.inspection_failed.emit(self.source, message)
-
-    def _busy_changed(self, _busy: bool) -> None:
-        self._update_preview_actions()
+        for row in range(self.tables.count()):
+            item = self.tables.item(row)
+            if item is not None and item.data(TABLE_ID_ROLE) == selected:
+                self._updating_tables = True
+                self.tables.setCurrentRow(row)
+                self._updating_tables = False
+                return
 
     def _set_table_focus(self, focused: bool) -> None:
         self.details_widget.setVisible(not focused)
@@ -316,16 +261,15 @@ class InspectionPage(QWidget):
                 f"No rows visible ({self.table_model.total_rows} total rows)."
             )
         else:
-            first = self.table_model.page_offset
-            last = first + count - 1
             self.preview_range.setText(
-                f"Rows {first}-{last} of {self.table_model.total_rows}; "
-                "100 rows per local page, 500 rows per worker block."
+                f"Rows {self.table_model.first_row}-{self.table_model.last_row} "
+                f"of {self.table_model.total_rows}; {LOCAL_PAGE_SIZE} rows per local "
+                "page, 500 rows per worker block."
             )
         self._update_preview_actions()
 
     def _update_preview_actions(self) -> None:
-        available = not self.coordinator.is_busy
+        available = self.controller.get_can_preview()
         self.preview_button.setEnabled(available and self.selected_table_id() is not None)
         self.previous_button.setEnabled(available and self.table_model.page_offset > 0)
         self.next_button.setEnabled(

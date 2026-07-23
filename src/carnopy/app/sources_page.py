@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
@@ -14,61 +13,60 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from carnopy.app.inspection_controller import (
+    InspectionController,
+    SourceCandidate,
+    discover_workspace_sources,
+)
 from carnopy.app.workspace import Workspace
 
 SOURCE_PATH_ROLE = Qt.ItemDataRole.UserRole
 
 
-@dataclass(frozen=True)
-class SourceCandidate:
-    path: Path
-    kind_hint: str
-
-
 class WorkspaceSourcesPanel(QWidget):
+    """Temporary Widgets projection of the authoritative workspace source model."""
+
     inspect_requested = Signal(object)
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        controller: InspectionController,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
-        self.workspace: Workspace | None = None
-        self._errors: dict[Path, str] = {}
+        self.controller = controller
         root = QVBoxLayout(self)
         header = QHBoxLayout()
         header.addWidget(QLabel("Generated sources"))
         refresh = QPushButton("Refresh")
-        refresh.clicked.connect(self.refresh)
+        refresh.clicked.connect(controller.refresh_sources)
         header.addWidget(refresh)
         header.addStretch(1)
         root.addLayout(header)
         self.sources = QListWidget()
         self.sources.itemDoubleClicked.connect(self._inspect_item)
         root.addWidget(self.sources, 1)
+        actions = QHBoxLayout()
         inspect = QPushButton("Inspect Selected")
         inspect.clicked.connect(self.inspect_selected)
-        root.addWidget(inspect)
+        self.more = QPushButton("Show 20 more")
+        self.more.clicked.connect(controller.reveal_more_sources)
+        actions.addWidget(inspect)
+        actions.addWidget(self.more)
+        root.addLayout(actions)
+        controller.workspace_sources_model.modelReset.connect(self._sync_sources)
+        controller.state_changed.connect(self._sync_more)
+        self._sync_sources()
+
+    @property
+    def workspace(self) -> Workspace | None:
+        return self.controller.workspace
 
     def set_workspace(self, workspace: Workspace | None) -> None:
-        self.workspace = workspace
-        self._errors.clear()
-        self.refresh()
+        self.controller.set_workspace(workspace)
 
     def refresh(self) -> None:
-        self.sources.clear()
-        workspace = self.workspace
-        if workspace is None:
-            return
-        candidates = discover_workspace_sources(workspace.outputs)
-        paths = {candidate.path for candidate in candidates}
-        self._errors = {path: value for path, value in self._errors.items() if path in paths}
-        for candidate in candidates:
-            error = self._errors.get(candidate.path)
-            label = f"{candidate.path.name} — {candidate.kind_hint}"
-            if error:
-                label += f" — Uninspectable: {error}"
-            item = QListWidgetItem(label)
-            item.setData(SOURCE_PATH_ROLE, str(candidate.path))
-            item.setToolTip(error or str(candidate.path))
-            self.sources.addItem(item)
+        self.controller.refresh_sources()
 
     def inspect_selected(self) -> None:
         self._inspect_item(self.sources.currentItem())
@@ -78,35 +76,40 @@ class WorkspaceSourcesPanel(QWidget):
             self.inspect_requested.emit(Path(str(item.data(SOURCE_PATH_ROLE))))
 
     def mark_uninspectable(self, path: Path, message: str) -> None:
-        self._errors[path.resolve()] = message
-        self.refresh()
+        self.controller.mark_uninspectable(path, message)
 
     def mark_inspectable(self, path: Path) -> None:
-        self._errors.pop(path.resolve(), None)
-        self.refresh()
+        self.controller.mark_inspectable(path)
+
+    def _sync_sources(self) -> None:
+        selected_path = ""
+        selected = self.sources.currentItem()
+        if selected is not None:
+            selected_path = str(selected.data(SOURCE_PATH_ROLE))
+        self.sources.clear()
+        selected_row = -1
+        for row, candidate in enumerate(self.controller.workspace_sources_model.rows()):
+            path = str(candidate.get("path", ""))
+            issue = str(candidate.get("issue", ""))
+            label = f"{candidate.get('name', '')} — {candidate.get('kindHint', '')}"
+            if issue:
+                label += f" — Uninspectable: {issue}"
+            item = QListWidgetItem(label)
+            item.setData(SOURCE_PATH_ROLE, path)
+            item.setToolTip(issue or path)
+            self.sources.addItem(item)
+            if path == selected_path:
+                selected_row = row
+        if selected_row >= 0:
+            self.sources.setCurrentRow(selected_row)
+        self._sync_more()
+
+    def _sync_more(self) -> None:
+        self.more.setVisible(self.controller.get_has_more_workspace_sources())
 
 
-def discover_workspace_sources(output_root: Path) -> tuple[SourceCandidate, ...]:
-    if not output_root.is_dir():
-        return ()
-    candidates: list[SourceCandidate] = []
-    for path in output_root.iterdir():
-        if path.is_symlink():
-            continue
-        if path.is_file() and path.suffix.lower() in {".csv", ".parquet"}:
-            candidates.append(SourceCandidate(path.resolve(), path.suffix[1:].upper()))
-            continue
-        if not path.is_dir():
-            continue
-        if (path / "preparation.normalized.json").is_file():
-            hint = "preparation bundle"
-        elif (path / "sweep.normalized.json").is_file():
-            hint = "model-sweep bundle"
-        elif any(
-            (path / name).is_file() for name in ("metadata.json", "dataset.csv", "dataset.parquet")
-        ):
-            hint = "dataset run"
-        else:
-            continue
-        candidates.append(SourceCandidate(path.resolve(), hint))
-    return tuple(sorted(candidates, key=lambda item: item.path.name))
+__all__ = [
+    "SourceCandidate",
+    "WorkspaceSourcesPanel",
+    "discover_workspace_sources",
+]

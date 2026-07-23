@@ -275,11 +275,14 @@ def test_opening_active_workspace_skips_discard_and_page_reset(
         "set_workspace",
         lambda _workspace: propagated.append("execution"),
     )
+    monkeypatch.setattr(
+        window.inspection_controller,
+        "set_workspace",
+        lambda _workspace: propagated.append("inspection"),
+    )
     for name, page in (
-        ("inspection", window.inspection_page),
         ("plot", window.plot_page),
         ("jobs", window.jobs_page),
-        ("sources", window.sources_panel),
     ):
         monkeypatch.setattr(
             page,
@@ -391,7 +394,6 @@ def test_successful_activation_propagates_once_to_every_workspace_page(
         "inspection",
         "plot",
         "jobs",
-        "sources",
     ]
     window.close()
 

@@ -15,6 +15,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QHeaderView
 
 from carnopy.app.client import WorkerClient
+from carnopy.app.inspection_controller import InspectionController
 from carnopy.app.inspection_page import InspectionPage
 from carnopy.app.request_coordinator import DesktopRequestCoordinator
 from carnopy.app.source_inspection import inspect_for_app, resolve_table
@@ -40,7 +41,8 @@ def test_inspection_page_can_focus_resizable_unsorted_table(
     del application
     client = WorkerClient()
     coordinator = DesktopRequestCoordinator(client)
-    page = InspectionPage(coordinator)
+    controller = InspectionController(coordinator)
+    page = InspectionPage(controller)
     page.table_model.set_block(
         {
             "columns": [{"name": "temperature", "dtype": "float64", "unit": "K"}],
@@ -84,6 +86,9 @@ def test_workspace_source_discovery_is_direct_and_lightweight(tmp_path: Path) ->
     unknown.mkdir()
     nested = unknown / "nested.csv"
     nested.write_text("value\n1\n", encoding="utf-8")
+    os.utime(outputs / "standalone.csv", ns=(1, 1))
+    os.utime(run, ns=(2, 2))
+    os.utime(broken, ns=(3, 3))
 
     candidates = discover_workspace_sources(outputs)
 
