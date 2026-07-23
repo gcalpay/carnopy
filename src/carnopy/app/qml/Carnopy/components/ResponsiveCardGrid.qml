@@ -8,6 +8,7 @@ Item {
     default property alias contentData: grid.data
     property int minimumCardWidth: 300
     property int maximumColumns: 3
+    property bool uniformHeights: true
     readonly property int columnCount: Math.max(1, Math.min(maximumColumns, Math.floor((width
                                                                                         + grid.columnSpacing)
                                                                                        / (minimumCardWidth
@@ -23,6 +24,6 @@ Item {
         columnSpacing: Theme.spacingMedium
         columns: root.columnCount
         rowSpacing: Theme.spacingMedium
-        uniformCellHeights: true
+        uniformCellHeights: root.uniformHeights
     }
 }

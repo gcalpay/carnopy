@@ -221,6 +221,10 @@ def test_dataset_workbench_uses_ordered_three_and_two_column_layouts(
     root.setHeight(900)
     _process_events()
     assert grid.property("columnCount") == 2
+    temperature = _visual_item(root, "samplerEditor-temperature")
+    temperature_count = _visual_item(root, "samplerField-temperature-num")
+    count_position = temperature_count.mapToItem(temperature, QPointF(0, 0))
+    assert count_position.y() + temperature_count.height() <= temperature.height() + 1
     assert runtime.warning_capture.runtime_warnings == ()
 
 
@@ -586,6 +590,7 @@ def test_dataset_selectors_share_readable_hover_styling() -> None:
     )
 
     assert "color: Theme.text" in combo_source
+    assert combo_source.count("leftPadding: Theme.spacingSmall") == 2
     assert "rowDelegate.highlighted || rowDelegate.hovered ? Theme.hover" in combo_source
     assert dataset_source.count("AppComboBox {") == 3
     assert sampler_source.count("AppComboBox {") == 2

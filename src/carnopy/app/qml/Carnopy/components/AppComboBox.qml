@@ -23,8 +23,8 @@ ComboBox {
         elide: Text.ElideRight
         font.family: Theme.sansFamily
         font.pixelSize: 12
-        leftPadding: 0
-        rightPadding: 0
+        leftPadding: Theme.spacingSmall
+        rightPadding: Theme.spacingSmall
         text: root.displayText
         verticalAlignment: Text.AlignVCenter
     }
@@ -44,6 +44,8 @@ ComboBox {
             elide: Text.ElideRight
             font.family: Theme.sansFamily
             font.pixelSize: 12
+            leftPadding: Theme.spacingSmall
+            rightPadding: Theme.spacingSmall
             text: rowDelegate.text
             verticalAlignment: Text.AlignVCenter
         }

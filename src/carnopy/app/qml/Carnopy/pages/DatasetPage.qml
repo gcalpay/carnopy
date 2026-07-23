@@ -219,6 +219,7 @@ Item {
                 maximumColumns: Math.min(3, root.expectedColumns)
                 minimumCardWidth: 300
                 objectName: "datasetSamplerGrid"
+                uniformHeights: false
 
                 Card {
                     Layout.fillHeight: true

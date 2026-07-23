@@ -43,8 +43,8 @@ chore(release): start 0.1.0a4 development
 
 Carnopy and companion bridge PEP 440 metadata now report `0.1.0a4.dev0`; the
 numeric CMake declaration remains `0.1.0`. This metadata-only transition does
-not require another native VTK qualification run. Stage 1 is complete and
-Stage 2 is active.
+not require another native VTK qualification run. Stages 0 through 2 are
+complete and Stage 3 is active.
 
 ## Authority and permanent boundaries
 
@@ -91,8 +91,8 @@ promises require maintainer approval.
 | --- | --- | --- |
 | 0 | Complete | Qualify the native Qt Quick and VTK bridge |
 | 1 | Complete | Establish request ownership and dataset desktop controllers |
-| 2 | Active | Add the modern QML workspace and dataset workflow |
-| 3 | Pending | Reach GUI-1 parity, retire Widgets, and qualify `0.1.0a4` |
+| 2 | Complete | Add the modern QML workspace and dataset workflow |
+| 3 | Active | Reach GUI-1 parity, retire Widgets, and qualify `0.1.0a4` |
 | 4 | Pending | Add controlled sweep and preparation worker operations |
 | 5 | Pending | Add structured sweep and preparation QML workflows |
 | 6 | Pending | Build exact emitted-value 3D scenes |
@@ -1078,21 +1078,34 @@ Current implementation status as of 2026-07-23:
   exact 1920 three-column and 1440 two-column layout assertions. Diagnostic
   native renders covered Dark, Warm, Workspace, Dataset, Visualization, and
   YAML surfaces; those temporary images are not repository assets.
-- Only Step 19 remains. Stage 2 is not complete until the final automated and
-  remote gates pass, the maintainer completes native/manual acceptance, and
-  the documentation-only completion boundary records the accepted result.
-- Recommended parent setting for Step 19 is **GPT-5.6 Sol High**. It is a
-  cross-repository verification, acceptance, and durable-documentation task,
-  not another implementation step. Increase effort only if final evidence
-  exposes a scientific, lifecycle, packaging, or platform contradiction.
+- Step 19 is complete. The final local gate passed lock, lint, formatting,
+  typing, the warning-free 32-file QML check, 785 repository tests, preflight,
+  environment compatibility, isolated sdist-to-wheel construction, Twine, and
+  exact wheel/sdist distribution inventories. PR #15 passed quality, Python
+  3.11 through 3.14, the dedicated desktop job, dependency review and audit,
+  CodeQL, distribution verification, and installed-QML startup smokes on
+  Ubuntu, Windows, and macOS.
+- The maintainer accepted the native application on Ubuntu 24.04.4 under
+  WSL2/WSLg with Qt 6.11.1 after exercising the implemented QML workflow. The
+  final visual correction adds readable selector padding and prevents sampler
+  fields from painting outside their card during a responsive three-to-two-
+  column transition. A focused geometry regression proves the last sampler
+  field remains inside its card while ordinary card grids retain aligned row
+  heights.
+- One initial local full-suite process ended in a Qt segmentation fault during
+  the acceptance audit. The same test and the entire 785-test suite then passed
+  in four consecutive complete runs, and the remote desktop and three-platform
+  QML jobs passed. No deterministic repository failure was reproduced; retain
+  this observation as test-harness evidence rather than silently treating it as
+  a supported-platform failure or inventing a workaround.
 - No generation, inspection, table preview, plot rendering, VTK, or public-
   launcher parity is inferred from Steps 11 through 18. Configured plot
   requests remain under Visualization; rendered output discovery and preview
   belong to Stage 3's Inspect workflow. Stage 3 planning must lock the exact
   placement of its session-only manual-plot editor. Both public launchers
-  remain on Widgets, and Stage 2 remains active until Step 19, the complete
-  automated gates, native manual acceptance, and explicit maintainer approval
-  are complete.
+  remain on Widgets. Stage 2 is complete; Stage 3 now owns parity, public-
+  launcher migration, Widgets deletion, and the bounded `0.1.0a4` release
+  qualification.
 - Git staging, commits, synchronization with the remote branch, and publication
   remain human-owned and are not implied by this implementation-status record.
 

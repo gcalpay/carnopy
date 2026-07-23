@@ -610,8 +610,8 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | --- | --- | --- |
 | 0 | Qualified a same-repository `QQuickVTKItem` companion bridge on the pinned Linux/Qt/VTK baseline | Complete |
 | 1 | Extracted request ownership, workspace state, dataset/visualization drafts, and complete configuration workflow into QML-ready QtCore controllers | Complete |
-| 2 | Package the Precision Grid QML Workspace, Dataset, Visualization, and YAML/Save workflows | Active; implemented through Step 18, Step 19 and final native acceptance pending |
-| 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Pending |
+| 2 | Package the Precision Grid QML Workspace, Dataset, Visualization, and YAML/Save workflows | Complete; automated, remote, and native acceptance passed |
+| 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Active |
 | 4 | Add controlled sweep and preparation worker operations | Pending |
 | 5 | Add structured sweep and preparation QML workflows | Pending |
 | 6 | Build exact emitted-value 3D scene contracts | Pending |
@@ -634,8 +634,25 @@ approved scientific-workbench styling now supplies the flat semantic palette,
 responsive three-column 1920 and two-column 1440 Dataset layouts, labeled
 sampler controls, wide and narrow command treatments, flat divided inspector,
 readable selector hover, visibly amber Warm mode, and bounded Visualization
-layout. These additions do not imply QML parity or public-launcher migration.
-Only the final Stage 2 acceptance and completion records remain pending.
+layout. Final responsive containment keeps sampler fields inside their cards
+without forcing unrelated card grids to abandon aligned row heights. These
+additions do not imply QML parity or public-launcher migration.
+
+Stage 2 acceptance passed on 2026-07-23. The complete local gate covered 785
+tests, preflight, environment compatibility, isolated wheel/sdist construction,
+Twine, and exact distribution inventories. PR #15 passed its Python, desktop,
+security, dependency, distribution, and installed-QML checks, including startup
+smokes on Ubuntu, Windows, and macOS. The maintainer accepted the native QML
+application on Ubuntu 24.04.4 under WSL2/WSLg with Qt 6.11.1. Those remote
+startup smokes and one native Linux acceptance do not claim full Stage 8
+platform qualification.
+
+One initial local acceptance-suite process ended in a Qt segmentation fault.
+The affected test and the complete 785-test suite subsequently passed in four
+consecutive runs, alongside the green remote desktop checks. No deterministic
+failure was reproduced. This remains test-harness evidence to watch if it
+recurs, not a reason to weaken teardown behavior or add an ungrounded
+workaround.
 
 ## Known current limitations
 
@@ -682,18 +699,19 @@ turning them into automatic refactors:
 
 | File | Lines | Current reason to watch |
 | --- | ---: | --- |
-| `qml/Carnopy/Main.qml` | 1,040 | Shell, breakpoint, focus, and application-lifecycle concerns meet here |
-| `dataset_draft.py` | 1,044 | Dataset validity, capabilities, sampler ownership, and projections meet here |
+| `qml/Carnopy/Main.qml` | 1,056 | Shell, breakpoint, focus, and application-lifecycle concerns meet here |
+| `dataset_draft.py` | 1,075 | Dataset validity, capabilities, sampler ownership, and projections meet here |
 | `config_controller.py` | 976 | Document/YAML, worker validation, Save, and replacement orchestration meet here |
 | `visualization_draft.py` | 971 | Shared visualization state, compatibility, dirty state, and plot editing meet here |
 | `plot_draft.py` | 931 | Plot-kind fields, mappings, compatibility, and validation meet here |
-| `desktop_controller.py` | 822 | Cross-controller lifecycle guards and QML facade operations meet here |
-| `qml_runtime.py` | 767 | Application startup, resources, palette, window state, and teardown meet here |
+| `desktop_controller.py` | 828 | Cross-controller lifecycle guards and QML facade operations meet here |
+| `qml_runtime.py` | 773 | Application startup, resources, palette, window state, and teardown meet here |
 
-Step 19 rechecks this list after the Dataset layout settles. Stage 3 then
-measures it again after obsolete Widgets presentation code is deleted. A split
-is justified only when it removes a named responsibility from one of these
-files without creating a second state owner or weakening a worker boundary.
+Step 19 rechecked this list after the Dataset layout settled and found no
+independent refactor required before Stage 3. Stage 3 measures it again after
+obsolete Widgets presentation code is deleted. A split is justified only when
+it removes a named responsibility from one of these files without creating a
+second state owner or weakening a worker boundary.
 
 Use focused checks while a desktop step is being developed. Run the full source,
 distribution, and preflight gates at stage or release boundaries, or earlier
