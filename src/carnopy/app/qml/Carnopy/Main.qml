@@ -50,6 +50,12 @@ ApplicationWindow {
     signal runForceStopRequested
     signal runGenerateRequested
     signal runValidateRequested
+    signal inspectionInspectRequested(string path)
+    signal inspectionMoreSourcesRequested
+    signal inspectionPreviewPageRequested(int pageOffset)
+    signal inspectionRefreshRequested
+    signal inspectionSourcesRefreshRequested
+    signal inspectionTableRequested(string tableId)
     signal plotFieldChangeRequested(var draft, string field, string value)
     signal plotFluidSelectionRequested(var draft, string value, bool selected)
     signal visualizationAddPlotRequested
@@ -92,6 +98,8 @@ ApplicationWindow {
                                             ? desktopController.datasetConfigController : null
     readonly property var executionController: controllerAvailable
                                                ? desktopController.executionController : null
+    readonly property var inspectionController: controllerAvailable
+                                                ? desktopController.inspectionController : null
     readonly property bool hasFake3dViewport: false
     readonly property string effectiveTheme: qmlSettings.effectiveTheme
     readonly property int motionDuration: Theme.durationStandard
@@ -126,6 +134,8 @@ ApplicationWindow {
             return qsTr("YAML Preview");
         if (pageKey === "run")
             return qsTr("Run");
+        if (pageKey === "inspect")
+            return qsTr("Inspect");
         return qsTr("Workspace");
     }
 
@@ -393,7 +403,9 @@ ApplicationWindow {
             currentPage: root.currentPage
             datasetAvailable: root.controllerAvailable && root.desktopController.workspaceState
                               === "editing"
-            runAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
+            inspectAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
+            runAvailable: root.executionController !== null
+                          && root.executionController.snapshotAvailable
             visualizationAvailable: datasetAvailable
             yamlAvailable: datasetAvailable
             objectName: "persistentNavigationRail"
@@ -590,6 +602,8 @@ ApplicationWindow {
                         return yamlPage;
                         if (root.currentPage === "run")
                         return runPage;
+                        if (root.currentPage === "inspect")
+                        return inspectPage;
                         return workspacePage;
                     }
                 }
@@ -676,6 +690,7 @@ ApplicationWindow {
                 datasetValid: root.controllerAvailable
                               && root.desktopController.datasetDraft.locallyValid
                 executionController: root.executionController
+                inspectionController: root.inspectionController
                 objectName: "persistentContextInspector"
                 onAttentionRequested: (section, field, row) => root.configurationAttentionRequested(
                                                                    section, field, row)
@@ -719,7 +734,9 @@ ApplicationWindow {
             currentPage: root.currentPage
             datasetAvailable: root.controllerAvailable && root.desktopController.workspaceState
                               === "editing"
-            runAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
+            inspectAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
+            runAvailable: root.executionController !== null
+                          && root.executionController.snapshotAvailable
             visualizationAvailable: datasetAvailable
             yamlAvailable: datasetAvailable
             onPageRequested: pageKey => root.routeTo(pageKey)
@@ -752,6 +769,7 @@ ApplicationWindow {
             datasetValid: root.controllerAvailable
                           && root.desktopController.datasetDraft.locallyValid
             executionController: root.executionController
+            inspectionController: root.inspectionController
             objectName: "drawerContextInspector"
             onAttentionRequested: (section, field, row) => root.configurationAttentionRequested(
                                                                section, field, row)
@@ -897,6 +915,21 @@ ApplicationWindow {
     }
 
     Component {
+        id: inspectPage
+
+        InspectPage {
+            inspectionController: root.inspectionController
+            objectName: "inspectPage"
+            onInspectSourceRequested: path => root.inspectionInspectRequested(path)
+            onMoreSourcesRequested: root.inspectionMoreSourcesRequested()
+            onPreviewPageRequested: pageOffset => root.inspectionPreviewPageRequested(pageOffset)
+            onRefreshRequested: root.inspectionRefreshRequested()
+            onRefreshSourcesRequested: root.inspectionSourcesRefreshRequested()
+            onSelectTableRequested: tableId => root.inspectionTableRequested(tableId)
+        }
+    }
+
+    Component {
         id: settingsPage
 
         SettingsPage {
@@ -952,6 +985,8 @@ ApplicationWindow {
                     !== "editing")
                 root.routeTo("workspace");
             if (root.currentPage === "run" && !root.desktopController.workspaceAvailable)
+                root.routeTo("workspace");
+            if (root.currentPage === "inspect" && !root.desktopController.workspaceAvailable)
                 root.routeTo("workspace");
         }
 

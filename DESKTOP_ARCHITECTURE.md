@@ -28,7 +28,7 @@ The desktop has two frontend implementations during the GUI-2 migration:
 - both frontends reuse the same authoritative QtCore controllers and private
   worker boundary;
 - the QML application currently implements the responsive shell, Workspace,
-  Dataset, Visualization, YAML Preview, Run, Settings, and Help surfaces,
+  Dataset, Visualization, YAML Preview, Run, Inspect, Settings, and Help surfaces,
   including worker-validated Save and Save As plus exact-saved-configuration
   validation and generation;
 - typed blocking state, revision-bound standalone validation, operation
@@ -40,11 +40,10 @@ The desktop has two frontend implementations during the GUI-2 migration:
   public Widgets Run page are view adapters over it;
 - source discovery, worker inspection, typed source summaries, logical-array
   metadata, table selection, and bounded preview state are owned by one
-  `InspectionController`; the public Widgets Inspect/source pages are temporary
-  view adapters over it;
-- QML presentation of inspection and table preview, plot-result viewing and
-  exploration, Activity and Recovery, launcher migration, and Widgets
-  retirement belong to the remaining Stage 3 steps.
+  `InspectionController`; the private QML Inspect workbench and public Widgets
+  Inspect/source pages are view adapters over it;
+- plot-result viewing and exploration, Activity and Recovery, launcher
+  migration, and Widgets retirement belong to the remaining Stage 3 steps.
 
 The development version is `0.1.0a4.dev0`. The two public launchers switch to
 QML only after Stage 3 reaches tested GUI-1 parity; Carnopy will not ship two
@@ -509,6 +508,10 @@ them to Python with queued Qt connections, avoiding re-entrant model mutation
 while delegates are handling input. Native folder dialogs have an explicit
 transient parent and defer path dispatch until the dialog is hidden and the
 event loop advances. Save-file selection follows the same deferred boundary.
+The selected QML palette is applied before the QML engine is constructed so
+fallback controls cannot cache the pre-Carnopy application highlight. Native
+dialog placement itself remains compositor-owned; the transient parent is the
+portable centering and modality contract.
 Window close is routed through the composition-owned active-edit, worker-busy,
 and dirty-document guards before runtime teardown.
 
@@ -517,9 +520,30 @@ Generate, Cancel, and Force Stop. It projects the authoritative execution
 controller's exact saved snapshot, progress, terminal result, activity
 persistence, and saved-baseline relation without parsing worker envelopes.
 Successful generation stays on Run. Its future `Inspect Run` and `View Plots`
-actions remain visibly unavailable until the corresponding QML Inspect surface
-and configured-result controller are introduced; QML does not simulate those
+actions remain visibly unavailable until the exact cross-page actions and
+configured-result controller are introduced; QML does not simulate those
 workflows.
+
+The QML Inspect workbench consumes only the typed Qt models owned by
+`InspectionController`. Workspace discovery is direct-child, symlink-excluding,
+newest-first, and revealed 20 entries at a time. Explicit source inspection can
+automatically request the first reported table, but never inspects another
+source automatically. A virtualized table presents 100-row local pages backed
+by bounded 500-row worker blocks, preserves emitted order, and labels positions
+one-based. Summary, logical-array, and source-kind diagnostic projections remain
+separate; QML never infers correlations among independent failure aggregates or
+opens array bytes. Native external file/folder selections are deferred until
+their dialog is hidden before crossing the queued root facade, and the facade
+normalizes `file:` URLs before inspection. Workspace-source rows are the normal
+path for generated outputs; the external actions intentionally accept sources
+outside the active workspace.
+
+Run navigation requires the execution controller's exact saved snapshot,
+whereas Inspect requires only an active workspace so historical outputs remain
+available without a current configuration. Dataset draft validation and Run
+saved-snapshot validation are optional diagnostics. Neither authorizes Save or
+generation; those operations retain their own fresh worker-authoritative
+validation at the existing trust boundaries.
 
 Close processing is deferred out of the native event-filter callback. Teardown
 is idempotent, removes the close filter before object destruction, and uses a
@@ -768,10 +792,11 @@ workaround.
   private development entry point.
 - The QML application can configure and save YAML and can validate or generate
   from the exact saved configuration through the authoritative execution
-  controller. Inspection and bounded table state now have an authoritative
-  QtCore controller but no QML workbench yet. Configured plot results and
-  session rendering remain later Stage 3 workflows.
-- QML inspection/tables, plotting, Activity and Recovery, sweep, preparation,
+  controller. It can also explicitly inspect workspace or external dataset,
+  sweep, and preparation sources and present their typed summaries, logical
+  arrays, diagnostics, and bounded tables. Configured plot results and session
+  rendering remain later Stage 3 workflows.
+- QML plotting, Activity and Recovery, sweep creation, preparation creation,
   and 3D presentation are not implemented.
 - Native folder dialogs and compositor behavior require human acceptance;
   headless tests do not automate them.

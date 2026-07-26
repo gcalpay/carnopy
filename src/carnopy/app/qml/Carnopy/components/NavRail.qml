@@ -12,6 +12,7 @@ Control {
     property bool allowCollapse: true
     property string currentPage: "workspace"
     property bool datasetAvailable: false
+    property bool inspectAvailable: false
     property bool runAvailable: false
     property bool visualizationAvailable: false
     property bool yamlAvailable: false
@@ -74,14 +75,14 @@ Control {
             title: qsTr("Run")
             iconName: "play"
             available: true
-            unavailableReason: qsTr("Open a workspace before running a saved configuration.")
+            unavailableReason: qsTr("Save or open a valid configuration before using Run.")
         }
         ListElement {
             pageKey: "inspect"
             title: qsTr("Inspect")
             iconName: "search"
-            available: false
-            unavailableReason: qsTr("Inspection is the next Stage 3 workflow.")
+            available: true
+            unavailableReason: qsTr("Open a workspace before inspecting generated outputs.")
         }
         ListElement {
             pageKey: "visualization"
@@ -203,6 +204,8 @@ Control {
                                                                  || root.yamlAvailable) && (pageKey
                                                                                             !== "run"
                                                                                             || root.runAvailable)
+                                                             && (pageKey !== "inspect"
+                                                                 || root.inspectAvailable)
 
                 Accessible.description: effectivelyAvailable ? "" : unavailableReason
                 Accessible.name: title

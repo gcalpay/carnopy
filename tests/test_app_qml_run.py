@@ -9,7 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QCoreApplication, QEventLoop, QMetaObject, QObject, QSettings, QTimer
-from PySide6.QtQuick import QQuickItem
+from PySide6.QtQuick import QQuickItem, QQuickWindow
 from PySide6.QtWidgets import QApplication
 
 from carnopy.app.jobs import JobStore
@@ -81,7 +81,14 @@ def _save_saturation_configuration(runtime: QmlApplicationRuntime) -> Path:
 
 
 def _visible_item(root: QObject, object_name: str) -> QQuickItem:
-    matches = [item for item in root.findChildren(QQuickItem, object_name) if item.isVisible()]
+    assert isinstance(root, QQuickWindow)
+    matches: list[QQuickItem] = []
+    pending = [root.contentItem()]
+    while pending:
+        item = pending.pop()
+        pending.extend(item.childItems())
+        if item.objectName() == object_name and item.isVisible():
+            matches.append(item)
     assert len(matches) == 1
     return matches[0]
 
@@ -117,6 +124,25 @@ def test_run_page_exposes_saved_snapshot_prerequisite_and_responsive_layout(
     _process_events()
     assert grid.property("columnCount") == 1
     assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_run_navigation_requires_a_saved_snapshot_but_inspection_only_requires_workspace(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    assert root.setProperty("width", 1440)
+    assert root.setProperty("height", 900)
+    _process_events()
+
+    run_navigation = _visible_item(root, "nav-run")
+    inspect_navigation = _visible_item(root, "nav-inspect")
+    assert not run_navigation.isEnabled()
+    assert inspect_navigation.isEnabled()
+
+    _save_saturation_configuration(runtime)
+    _process_events()
+    assert runtime.controller.execution_controller.get_snapshot_available()
+    assert run_navigation.isEnabled()
 
 
 def test_run_validation_uses_the_facade_and_persists_activity(

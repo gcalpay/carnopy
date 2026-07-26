@@ -202,7 +202,7 @@ Item {
                     objectName: "runOperationCard"
                     sectionNumber: "2"
                     subtitle: qsTr(
-                                  "Generate performs its own fresh worker validation before backend initialization.")
+                                  "The saved-config check is optional. Generate always performs its own fresh worker validation before backend initialization.")
                     title: qsTr("Choose operation")
 
                     AppButton {
@@ -212,7 +212,7 @@ Item {
                         enabled: root.executionController.canValidate
                         objectName: "runValidateButton"
                         onClicked: root.validateRequested()
-                        text: qsTr("Validate saved configuration")
+                        text: qsTr("Check saved configuration")
                     }
 
                     AppButton {

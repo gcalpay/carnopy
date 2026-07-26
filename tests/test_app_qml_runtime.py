@@ -27,6 +27,7 @@ from PySide6.QtGui import QColor, QPalette, QScreen, QWindow
 from PySide6.QtQml import QQmlError
 from PySide6.QtWidgets import QApplication
 
+import carnopy.app.qml_runtime as qml_runtime_module
 from carnopy.app.application_identity import APPLICATION_NAME, ORGANIZATION_NAME
 from carnopy.app.qml_resources import (
     MANDATORY_ICON_FILES,
@@ -138,11 +139,20 @@ def test_qml_runtime_applies_each_theme_palette_immediately_and_restores_it(
 ) -> None:
     previous = QPalette(application.palette())
     settings = QSettings(str(tmp_path / "palette.ini"), QSettings.Format.IniFormat)
+    real_engine = qml_runtime_module.QQmlApplicationEngine
+    engine_creation_highlights: list[QColor] = []
+
+    def create_engine() -> object:
+        engine_creation_highlights.append(application.palette().color(QPalette.ColorRole.Highlight))
+        return real_engine()
+
+    monkeypatch.setattr(qml_runtime_module, "QQmlApplicationEngine", create_engine)
     runtime = create_qml_runtime(settings=settings, application_arguments=[])
     controller = runtime.controller.qml_settings
     root = runtime.engine.rootObjects()[0]
 
     assert controller.get_theme_mode() == "dark"
+    assert engine_creation_highlights == [QColor("#159660")]
     assert application.palette().color(QPalette.ColorRole.Window) == QColor("#0f0f0f")
     assert root.property("color") == QColor("#0f0f0f")
 
@@ -480,4 +490,4 @@ def test_qml_sources_pass_non_writing_qt_tooling() -> None:
         timeout=30,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
-    assert completed.stdout == "QML checks passed for 34 file(s).\n"
+    assert completed.stdout == "QML checks passed for 36 file(s).\n"

@@ -375,11 +375,15 @@ class DesktopController(QObject):
 
     @Slot(str, result=bool, name="requestInspectSource")
     def request_inspect_source(self, source: str) -> bool:
-        return self.inspection_controller.inspect_source(source)
+        return self.inspection_controller.inspect_source(_local_path(source))
 
     @Slot(result=bool, name="requestRefreshInspection")
     def request_refresh_inspection(self) -> bool:
         return self.inspection_controller.refresh_inspection()
+
+    @Slot(name="requestRefreshInspectionSources")
+    def request_refresh_inspection_sources(self) -> None:
+        self.inspection_controller.refresh_sources()
 
     @Slot(str, result=bool, name="requestInspectionTable")
     def request_inspection_table(self, table_id: str) -> bool:

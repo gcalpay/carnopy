@@ -1381,11 +1381,36 @@ Current implementation status as of 2026-07-23:
   and source-list pages are presentation adapters over the controller, and the
   existing Plot page receives only the controller's copied inspected payload
   until Step 7 extracts session plotting.
-- `Inspect Run` can now target the authoritative inspection controller in the
-  composition, but the QML Inspect page and exact cross-page navigation are
-  Step 5. `View Plots` remains unavailable until Step 7.
-- Step 5 is the next active implementation boundary. Neither public launcher
-  has migrated.
+- Step 5 is implemented. The private QML frontend now exposes the bounded
+  workspace source list, explicit external file/folder choices,
+  Summary/Tables/Arrays/Diagnostics views, a virtualized 100-row table page,
+  automatic first preview after explicit inspection, local paging, Focus
+  Table, and an Inspect-specific context inspector. All operations cross queued
+  root-facade signals; QML consumes only the lightweight typed models from Step
+  4 and does not import or materialize source data.
+- Workspace-generated outputs remain the primary Inspect source path: their
+  typed workspace rows show source kind before the generated directory ID.
+  External CSV/Parquet and run/bundle dialogs are explicitly for sources not
+  selected from that list, and QML `file:` URLs are normalized by the
+  composition facade before worker inspection.
+- Run navigation is available only when the execution controller has an exact
+  saved snapshot; Inspect remains available for an open workspace so historical
+  outputs can be inspected without a current configuration. The Dataset draft
+  check and Run saved-snapshot check are labeled as optional diagnostics.
+  Generation still performs its own mandatory fresh worker validation.
+- The QML runtime now applies the selected application palette before creating
+  the QML engine, preventing fallback file dialogs from caching the platform
+  highlight until the first theme change. Inspection fact layouts no longer
+  feed a child width back into the `RowLayout` measuring it, and supported
+  interaction tests remain warning-free.
+- Dataset failure layer, code, and property aggregates remain visibly separate.
+  Logical arrays retain per-array shapes and dtypes, and integrity wording stays
+  source-kind-aware. The explicit `Explore in Visualization` affordance remains
+  disabled until Step 7 introduces the authoritative session-plot controller;
+  it does not simulate navigation or rendering.
+- Step 6 is the next active implementation boundary. `Inspect Run` exact
+  cross-page navigation remains in Step 10, `View Plots` remains unavailable
+  until Step 7, and neither public launcher has migrated.
 
 ### Permanent scientific and process boundaries
 
@@ -2153,6 +2178,23 @@ Add the bounded source list, Summary/Tables/Arrays/Diagnostics tabs,
 virtualized table, automatic first preview after explicit inspection, Focus
 Table, source-kind integrity language, root-facade external source actions, and
 explicit Explore in Visualization.
+
+Implemented on 2026-07-26 without a worker-protocol, public-schema, dependency,
+or scientific change. The page uses the Step 4 typed models and queued
+composition facade, keeps external native-dialog completion outside the dialog
+event, and never opens table or array bytes in QML. The table view displays one-
+based presentation rows in virtualized 100-row pages backed by bounded 500-row
+worker requests. Focused real-worker tests cover explicit source inspection,
+automatic preview, Focus Table, and paging through row 150. Session plotting is
+honestly unavailable until its authoritative controller enters QML in Step 7.
+The same completed slice normalizes native-dialog file URLs at the composition
+facade, gates Run navigation on a saved execution snapshot, distinguishes its
+two optional diagnostic checks from generation's mandatory fresh validation,
+applies the startup palette before QML-engine construction, and removes a
+recursive Inspect `RowLayout` width dependency. Native dialog placement remains
+owned by the platform compositor after Carnopy supplies the transient parent;
+Carnopy does not replace native dialogs merely to control their first mapped
+pixel position.
 
 #### Step 6 — Extract Activity and Recovery state
 

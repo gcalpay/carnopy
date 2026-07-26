@@ -310,6 +310,11 @@ class QmlApplicationRuntime:
         self.initial_workspace = initial_workspace
         self._previous_application_palette = QPalette(application.palette())
         self._palette_applied = False
+        self.controller.qml_settings.effectiveThemeChanged.connect(self._apply_application_palette)
+        # Apply the selected palette before the QML engine can cache fallback-control
+        # colors. Otherwise the first native/fallback dialog may retain the platform
+        # highlight until a later theme change refreshes it.
+        self._apply_application_palette()
         self.engine = QQmlApplicationEngine()
         self.warning_capture = QmlWarningCapture(self.engine)
         self._close_guard: QmlWindowCloseGuard | None = None
@@ -325,8 +330,6 @@ class QmlApplicationRuntime:
         self._closing = False
         self._closed = False
         self._close_result = False
-        self.controller.qml_settings.effectiveThemeChanged.connect(self._apply_application_palette)
-        self._apply_application_palette()
 
     def _apply_application_palette(self) -> None:
         self.application.setPalette(
@@ -491,6 +494,18 @@ class QmlApplicationRuntime:
             ("runGenerateRequested", self.controller.request_dataset_generation),
             ("runCancelRequested", self.controller.request_execution_cancel),
             ("runForceStopRequested", self.controller.request_execution_force_stop),
+            ("inspectionInspectRequested", self.controller.request_inspect_source),
+            ("inspectionRefreshRequested", self.controller.request_refresh_inspection),
+            (
+                "inspectionSourcesRefreshRequested",
+                self.controller.request_refresh_inspection_sources,
+            ),
+            ("inspectionTableRequested", self.controller.request_inspection_table),
+            (
+                "inspectionPreviewPageRequested",
+                self.controller.request_inspection_preview_page,
+            ),
+            ("inspectionMoreSourcesRequested", self.controller.request_more_inspection_sources),
             ("visualizationEnabledRequested", self.controller.request_visualization_enabled),
             ("visualizationFormatRequested", self.controller.request_visualization_format),
             (

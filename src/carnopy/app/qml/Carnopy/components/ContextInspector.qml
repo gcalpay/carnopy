@@ -18,6 +18,7 @@ Control {
     property bool datasetValid: false
     property string datasetIssue: ""
     property var executionController: null
+    property var inspectionController: null
     property string pageKey: "workspace"
     property bool visualizationActiveEdit: false
     property string visualizationIssue: ""
@@ -96,7 +97,7 @@ Control {
             contentWidth: width
             flickableDirection: Flickable.VerticalFlick
             pixelAligned: true
-            visible: root.pageKey !== "run"
+            visible: root.pageKey !== "run" && root.pageKey !== "inspect"
 
             ScrollBar.vertical: ScrollBar {
                 policy: ScrollBar.AsNeeded
@@ -170,7 +171,7 @@ Control {
                             color: Theme.textMuted
                             font.family: Theme.sansFamily
                             font.pixelSize: 12
-                            text: qsTr("Worker validation")
+                            text: qsTr("Draft YAML check")
                         }
 
                         Label {
@@ -231,7 +232,7 @@ Control {
                     subtitle: root.workspaceState !== "editing" ? qsTr(
                                                                       "Open a configuration to see Dataset validation.") :
                                                                   (root.datasetValid ? qsTr(
-                                                                                           "All Dataset fields are locally complete. Worker validation still runs before Save.") :
+                                                                                           "All Dataset fields are locally complete. The optional draft check does not authorize Save or Generate.") :
                                                                                        root.datasetIssue)
                     title: qsTr("Dataset validation")
 
@@ -289,8 +290,8 @@ Control {
                     enabled: root.canValidate
                     objectName: "inspectorValidateButton"
                     onClicked: root.validateRequested()
-                    text: root.workerValidationState === "running" ? qsTr("Validating…") : qsTr(
-                                                                         "Run validation")
+                    text: root.workerValidationState === "running" ? qsTr("Checking draft…") : qsTr(
+                                                                         "Check current draft YAML")
                     tone: "primary"
                     visible: root.configurationOpen
                 }
@@ -302,6 +303,13 @@ Control {
             Layout.fillWidth: true
             executionController: root.executionController
             visible: root.pageKey === "run" && root.executionController !== null
+        }
+
+        InspectionContextInspector {
+            Layout.fillHeight: true
+            Layout.fillWidth: true
+            inspectionController: root.inspectionController
+            visible: root.pageKey === "inspect" && root.inspectionController !== null
         }
     }
 }

@@ -10,6 +10,7 @@ Card 1.0 components/Card.qml
 CommandBar 1.0 components/CommandBar.qml
 ContextInspector 1.0 components/ContextInspector.qml
 RunContextInspector 1.0 components/RunContextInspector.qml
+InspectionContextInspector 1.0 components/InspectionContextInspector.qml
 DecisionDialog 1.0 components/DecisionDialog.qml
 MappingEditor 1.0 components/MappingEditor.qml
 LineNumberedTextArea 1.0 components/LineNumberedTextArea.qml
@@ -33,3 +34,4 @@ DatasetPage 1.0 pages/DatasetPage.qml
 VisualizationPage 1.0 pages/VisualizationPage.qml
 YamlPreviewPage 1.0 pages/YamlPreviewPage.qml
 RunPage 1.0 pages/RunPage.qml
+InspectPage 1.0 pages/InspectPage.qml
