@@ -7,15 +7,18 @@ from PySide6.QtCore import Property, QObject, QSettings, QTimer, QUrl, Signal, S
 from carnopy.app.activity_controller import ActivityController
 from carnopy.app.client import WorkerClient
 from carnopy.app.config_controller import DatasetConfigController
+from carnopy.app.configured_plot_results_controller import ConfiguredPlotResultsController
 from carnopy.app.dataset_draft import DatasetDraft
 from carnopy.app.execution_controller import DatasetExecutionController
 from carnopy.app.field_ids import VISUALIZATION_PLOTS
 from carnopy.app.inspection_controller import InspectionController
 from carnopy.app.mapping_draft import MappingDraftModel
 from carnopy.app.plot_draft import PlotDraft
+from carnopy.app.plot_preview_provider import VerifiedPlotPreviewRegistry
 from carnopy.app.qml_settings import QmlSettingsController
 from carnopy.app.request_coordinator import DesktopRequestCoordinator
 from carnopy.app.sampler_draft import SamplerDraft
+from carnopy.app.session_plot_controller import SessionPlotController
 from carnopy.app.visualization_draft import VisualizationDraft
 from carnopy.app.workspace import Workspace
 from carnopy.app.workspace_controller import WorkspaceController
@@ -67,6 +70,22 @@ class DesktopController(QObject):
             self.request_coordinator,
             self,
         )
+        self.plot_preview_registry = VerifiedPlotPreviewRegistry(self)
+        self.configured_plot_results_controller = ConfiguredPlotResultsController(
+            self.activity_controller,
+            self.dataset_config_controller,
+            self.plot_preview_registry,
+            self,
+        )
+        self.session_plot_controller = SessionPlotController(
+            self.request_coordinator,
+            self.inspection_controller,
+            self.plot_preview_registry,
+            self,
+        )
+        self.inspection_controller.set_lifecycle_guard(
+            self.session_plot_controller.can_replace_inspection
+        )
         self.execution_controller.activity_record_changed.connect(
             self.activity_controller.refresh_records
         )
@@ -91,6 +110,10 @@ class DesktopController(QObject):
         self.dataset_config_controller.document_opened.connect(self.datasetDocumentOpened)
         self.request_coordinator.busy_changed.connect(self._request_state_changed)
         self.visualization_draft.active_plot_draft_changed.connect(self._active_plot_state_changed)
+        self.session_plot_controller.active_edit_changed.connect(self._active_plot_state_changed)
+        self.session_plot_controller.attention_requested.connect(
+            lambda field, row: self.attentionRequested.emit("visualization", field, row)
+        )
         self.visualization_draft.plot_commit_rejected.connect(self._plot_commit_rejected)
         self._queued_workspace_request: tuple[str, str, str, bool] | None = None
         self._pending_dataset_decision: tuple[str, str] | None = None
@@ -161,6 +184,7 @@ class DesktopController(QObject):
         return (
             self.workspace_controller.get_can_change_workspace()
             and self.visualization_draft.get_active_plot_draft() is None
+            and not self.session_plot_controller.get_has_active_edit()
         )
 
     canChangeWorkspace = Property(
@@ -272,6 +296,30 @@ class DesktopController(QObject):
         notify=workspace_state_changed,
     )
 
+    hasConfiguredPlotEdit = Property(
+        bool,
+        get_has_active_plot_edit,
+        notify=workspace_state_changed,
+    )
+
+    def get_has_session_plot_edit(self) -> bool:
+        return self.session_plot_controller.get_has_active_edit()
+
+    hasSessionPlotEdit = Property(
+        bool,
+        get_has_session_plot_edit,
+        notify=workspace_state_changed,
+    )
+
+    def get_has_any_transient_edit(self) -> bool:
+        return self.get_has_active_plot_edit() or self.get_has_session_plot_edit()
+
+    hasAnyTransientEdit = Property(
+        bool,
+        get_has_any_transient_edit,
+        notify=workspace_state_changed,
+    )
+
     def get_dataset_config_controller(self) -> QObject:
         return self.dataset_config_controller
 
@@ -305,6 +353,24 @@ class DesktopController(QObject):
     activityController = Property(
         QObject,
         get_activity_controller,
+        constant=True,
+    )
+
+    def get_configured_plot_results_controller(self) -> QObject:
+        return self.configured_plot_results_controller
+
+    configuredPlotResultsController = Property(
+        QObject,
+        get_configured_plot_results_controller,
+        constant=True,
+    )
+
+    def get_session_plot_controller(self) -> QObject:
+        return self.session_plot_controller
+
+    sessionPlotController = Property(
+        QObject,
+        get_session_plot_controller,
         constant=True,
     )
 
@@ -782,6 +848,8 @@ class DesktopController(QObject):
             return True
         if not self._guard_active_plot_edit("closing Carnopy"):
             return False
+        if not self._guard_session_plot_edit("closing Carnopy"):
+            return False
         self.workspace_controller.cancel_pending()
         if self.request_coordinator.is_busy:
             return False
@@ -795,6 +863,8 @@ class DesktopController(QObject):
     @Slot(result=bool, name="requestShutdown")
     def request_shutdown(self) -> bool:
         if not self._guard_active_plot_edit("closing Carnopy"):
+            return False
+        if not self._guard_session_plot_edit("closing Carnopy"):
             return False
         if self.request_coordinator.is_busy:
             self.workspace_controller.report_error(
@@ -817,6 +887,8 @@ class DesktopController(QObject):
             return False
         if not self._guard_active_plot_edit("closing Carnopy"):
             return False
+        if not self._guard_session_plot_edit("closing Carnopy"):
+            return False
         if self.request_coordinator.is_busy:
             self.workspace_controller.report_error(
                 "Wait for the active worker request to finish before closing Carnopy."
@@ -829,8 +901,12 @@ class DesktopController(QObject):
     def _workspace_activated(self, value: object) -> None:
         self.dataset_config_controller.set_workspace(value)
         self.execution_controller.set_workspace(value if isinstance(value, Workspace) else None)
+        self.session_plot_controller.set_workspace(value if isinstance(value, Workspace) else None)
         self.inspection_controller.set_workspace(value if isinstance(value, Workspace) else None)
         self.activity_controller.set_workspace(value if isinstance(value, Workspace) else None)
+        self.configured_plot_results_controller.set_workspace(
+            value if isinstance(value, Workspace) else None
+        )
         self.workspace_state_changed.emit()
         self.workspace_confirmation_changed.emit()
 
@@ -846,7 +922,9 @@ class DesktopController(QObject):
         self.workspace_confirmation_changed.emit()
 
     def _guard_workspace_change(self, *, before_commit: bool) -> bool:
-        if self._guard_active_plot_edit():
+        if self._guard_active_plot_edit() and self._guard_session_plot_edit(
+            "replacing the workspace"
+        ):
             return True
         if before_commit:
             self.workspace_controller.cancel_pending()
@@ -863,6 +941,12 @@ class DesktopController(QObject):
             VISUALIZATION_PLOTS,
             -1,
         )
+        return False
+
+    def _guard_session_plot_edit(self, operation: str = "this operation") -> bool:
+        if self.session_plot_controller.can_replace_inspection(operation):
+            return True
+        self.workspace_controller.report_error(self.session_plot_controller.get_issue())
         return False
 
     def _plot_commit_rejected(self, field: str, row: int, _message: str) -> None:

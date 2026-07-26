@@ -39,6 +39,10 @@ from PySide6.QtWidgets import QApplication
 
 from carnopy.app.application_identity import apply_application_identity
 from carnopy.app.desktop_controller import DesktopController
+from carnopy.app.plot_preview_provider import (
+    PLOT_PREVIEW_PROVIDER,
+    VerifiedPlotImageProvider,
+)
 from carnopy.app.qml_resources import (
     MANDATORY_FONT_FILES,
     QML_MODULE,
@@ -316,6 +320,8 @@ class QmlApplicationRuntime:
         # highlight until a later theme change refreshes it.
         self._apply_application_palette()
         self.engine = QQmlApplicationEngine()
+        self.plot_image_provider = VerifiedPlotImageProvider(self.controller.plot_preview_registry)
+        self.engine.addImageProvider(PLOT_PREVIEW_PROVIDER, self.plot_image_provider)
         self.warning_capture = QmlWarningCapture(self.engine)
         self._close_guard: QmlWindowCloseGuard | None = None
         self._geometry_fit_timer = QTimer(self.engine)

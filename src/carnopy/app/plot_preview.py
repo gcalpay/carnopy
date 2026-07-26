@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import hashlib
-import stat
 from pathlib import Path
 
 from PySide6.QtCore import QByteArray, Qt, QTimer, QUrl
@@ -19,7 +17,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-SUPPORTED_PREVIEW_FORMATS = frozenset({"png", "svg", "pdf"})
+from carnopy.app.plot_artifacts import PlotArtifactError, validated_plot_bytes
+
 ZOOM_FACTOR = 1.25
 MINIMUM_ZOOM = 0.05
 MAXIMUM_ZOOM = 32.0
@@ -220,61 +219,15 @@ def _validated_bytes(
     image_format: str,
     expected_sha256: str,
 ) -> bytes:
-    if image_format not in SUPPORTED_PREVIEW_FORMATS:
-        raise PlotPreviewError(f"unsupported plot preview format: {image_format}")
-    if image_path.suffix.casefold() != f".{image_format}":
-        raise PlotPreviewError("rendered plot suffix does not match its reported format")
-    if len(expected_sha256) != 64 or any(
-        character not in "0123456789abcdef" for character in expected_sha256.casefold()
-    ):
-        raise PlotPreviewError("rendered plot SHA-256 is invalid")
-
-    root = figures_root.absolute()
-    path = image_path.absolute()
     try:
-        root_info = root.lstat()
-    except OSError as exc:
-        raise PlotPreviewError(f"workspace figures directory is unavailable: {root}") from exc
-    if stat.S_ISLNK(root_info.st_mode) or not stat.S_ISDIR(root_info.st_mode):
-        raise PlotPreviewError("workspace figures path must be a regular directory")
-    try:
-        relative = path.relative_to(root)
-    except ValueError as exc:
-        raise PlotPreviewError("rendered plot is outside the workspace figures directory") from exc
-    if not relative.parts:
-        raise PlotPreviewError("rendered plot path does not identify a file")
-
-    current = root
-    before = None
-    for index, part in enumerate(relative.parts):
-        current /= part
-        try:
-            info = current.lstat()
-        except OSError as exc:
-            raise PlotPreviewError(f"rendered plot path is unavailable: {current}") from exc
-        if stat.S_ISLNK(info.st_mode):
-            raise PlotPreviewError("rendered plot path must not contain symbolic links")
-        if index < len(relative.parts) - 1 and not stat.S_ISDIR(info.st_mode):
-            raise PlotPreviewError("rendered plot parent path is not a directory")
-        before = info
-    assert before is not None
-    if not stat.S_ISREG(before.st_mode):
-        raise PlotPreviewError("rendered plot is not a regular file")
-    try:
-        if not path.resolve(strict=True).is_relative_to(root.resolve(strict=True)):
-            raise PlotPreviewError("rendered plot escapes the workspace figures directory")
-        data = path.read_bytes()
-        after = path.lstat()
-    except OSError as exc:
-        raise PlotPreviewError(f"rendered plot could not be read: {path}") from exc
-    if stat.S_ISLNK(after.st_mode) or (before.st_dev, before.st_ino) != (
-        after.st_dev,
-        after.st_ino,
-    ):
-        raise PlotPreviewError("rendered plot changed while it was being validated")
-    if hashlib.sha256(data).hexdigest() != expected_sha256.casefold():
-        raise PlotPreviewError("rendered plot SHA-256 does not match the worker result")
-    return data
+        return validated_plot_bytes(
+            figures_root,
+            image_path,
+            image_format,
+            expected_sha256,
+        )
+    except PlotArtifactError as exc:
+        raise PlotPreviewError(str(exc)) from exc
 
 
 def _open_local_file(path: Path) -> bool:

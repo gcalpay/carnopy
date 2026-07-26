@@ -113,6 +113,7 @@ def test_private_qml_runtime_loads_one_warning_free_root(
     assert root.property("runtimeReady") is True
     assert root.property("desktopController") is runtime.controller
     assert root.property("qmlSettings") is runtime.controller.qml_settings
+    assert runtime.plot_image_provider.registry is runtime.controller.plot_preview_registry
     assert root.property("geometryTrackingReady") is True
     assert root.property("startupWorkspace") == str(workspace.root)
     assert runtime.controller.workspace_controller.workspace == workspace

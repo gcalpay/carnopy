@@ -1,0 +1,343 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+from typing import cast
+from uuid import uuid4
+
+import pytest
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+pytest.importorskip("PySide6")
+
+from PySide6.QtCore import QObject, Signal
+from PySide6.QtWidgets import QApplication
+
+from carnopy.app.inspection_controller import InspectionController
+from carnopy.app.plot_preview_provider import VerifiedPlotPreviewRegistry
+from carnopy.app.protocol import RequestType, WorkerEvent
+from carnopy.app.request_coordinator import (
+    DesktopRequestCoordinator,
+    RequestFinalizer,
+    RequestOutcome,
+)
+from carnopy.app.session_plot_controller import SessionPlotController
+from carnopy.app.workspace import initialize_workspace
+from carnopy.visualization.requests import PlotRequest, request_id
+
+
+class StubSession(QObject):
+    event_received = Signal(object)
+    completed = Signal(object)
+    policy_changed = Signal()
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.request_id = uuid4()
+        self.force_stop_available = True
+
+    def force_stop(self) -> bool:
+        self.force_stop_available = False
+        self.policy_changed.emit()
+        return True
+
+
+class StubCoordinator(QObject):
+    busy_changed = Signal(bool)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.is_busy = False
+        self.session: StubSession | None = None
+        self.finalizer: RequestFinalizer | None = None
+        self.started: dict[str, object] | None = None
+
+    def start_request(
+        self,
+        _owner: str,
+        _request_type: RequestType,
+        payload: dict[str, object],
+        *,
+        finalizer: RequestFinalizer | None = None,
+    ) -> StubSession:
+        self.started = payload
+        self.finalizer = finalizer
+        self.session = StubSession()
+        self.is_busy = True
+        self.busy_changed.emit(True)
+        return self.session
+
+    def finish(
+        self,
+        *,
+        result: dict[str, object] | None = None,
+        failure: dict[str, object] | None = None,
+    ) -> None:
+        assert self.session is not None
+        successful = result is not None
+        cleanup = self.finalizer.finish(successful) if self.finalizer is not None else None
+        terminal = (
+            WorkerEvent(
+                request_id=self.session.request_id,
+                type="result",
+                payload=result,
+            )
+            if result is not None
+            else None
+        )
+        outcome = RequestOutcome(
+            request_id=self.session.request_id,
+            request_type="render_plot",
+            owner="plot",
+            terminal_event=terminal,
+            client_failure=failure,
+            stderr="",
+            exit_code=0 if successful else 1,
+            exit_status="normal" if successful else "crash",
+            force_stopped=False,
+            cleanup_error=cleanup,
+            terminal_envelope={
+                "request_id": str(self.session.request_id),
+                "request_type": "render_plot",
+                "terminal_event": (None if terminal is None else terminal.model_dump(mode="json")),
+                "client_failure": failure,
+                "stderr": "",
+                "exit_code": 0 if successful else 1,
+                "exit_status": "normal" if successful else "crash",
+                "force_stopped": False,
+                "cleanup_error": cleanup,
+            },
+        )
+        self.session.completed.emit(outcome)
+        self.is_busy = False
+        self.busy_changed.emit(False)
+
+
+@pytest.fixture(scope="module")
+def application() -> QApplication:
+    existing = QApplication.instance()
+    app = existing if isinstance(existing, QApplication) else QApplication([])
+    yield app
+
+
+def _context(source: Path) -> dict[str, object]:
+    return {
+        "source": str(source),
+        "source_kind": "dataset",
+        "revision": "a" * 64,
+        "plot_context": {
+            "mode": "property_table",
+            "fluids": ["Propane"],
+            "properties": ["mass_density"],
+            "visualization": {
+                "plot_kinds": ["property_curves", "xy", "pv"],
+                "formats": ["png", "svg", "pdf"],
+                "scales": ["linear", "log"],
+                "kind_contracts": {
+                    "property_curves": {
+                        "required": ["property", "x", "format"],
+                        "applicable": ["property", "x", "format"],
+                    },
+                    "xy": {
+                        "required": ["x", "y", "format"],
+                        "applicable": ["x", "y", "format"],
+                    },
+                    "pv": {
+                        "required": ["format"],
+                        "applicable": ["format"],
+                    },
+                },
+                "fields": [
+                    {
+                        "name": "temperature",
+                        "kind": "numeric",
+                        "axis_allowed": True,
+                        "group_allowed": True,
+                        "filter_allowed": True,
+                    },
+                    {
+                        "name": "pressure",
+                        "kind": "numeric",
+                        "axis_allowed": True,
+                        "group_allowed": True,
+                        "filter_allowed": True,
+                    },
+                    {
+                        "name": "mass_density",
+                        "kind": "numeric",
+                        "axis_allowed": True,
+                        "group_allowed": False,
+                        "filter_allowed": False,
+                    },
+                    {
+                        "name": "specific_volume",
+                        "kind": "numeric",
+                        "axis_allowed": True,
+                        "group_allowed": False,
+                        "filter_allowed": False,
+                    },
+                ],
+            },
+        },
+    }
+
+
+def _controller(
+    tmp_path: Path,
+) -> tuple[SessionPlotController, StubCoordinator, Path]:
+    stub = StubCoordinator()
+    inspection = InspectionController(cast(DesktopRequestCoordinator, stub))
+    controller = SessionPlotController(
+        cast(DesktopRequestCoordinator, stub),
+        inspection,
+        VerifiedPlotPreviewRegistry(),
+    )
+    workspace = initialize_workspace(tmp_path / "workspace")
+    source = workspace.outputs / "source.parquet"
+    source.write_bytes(b"source")
+    controller.set_workspace(workspace)
+    controller._inspection_changed(_context(source))
+    return controller, stub, source
+
+
+def test_session_plot_success_commits_result_and_destroys_edit(
+    tmp_path: Path,
+    application: QApplication,
+) -> None:
+    del application
+    controller, stub, source = _controller(tmp_path)
+    assert controller.begin_edit("png")
+    assert controller.get_can_render()
+    assert controller.render()
+    request = PlotRequest(
+        name="session-plot",
+        kind="property_curves",
+        property_name="mass_density",
+        x_field="temperature",
+    )
+    canonical = request.canonical_dict()
+    visualization_id = request_id((request,))
+    image = controller.workspace.figures / "source" / "session-plot.png"  # type: ignore[union-attr]
+    image.parent.mkdir()
+    image.write_bytes(b"png")
+    sidecar_path = image.with_suffix(".plot.json")
+    digest = hashlib.sha256(image.read_bytes()).hexdigest()
+    sidecar_path.write_text(
+        json.dumps(
+            {
+                "plot_schema_version": 2,
+                "plot_kind": "property_curves",
+                "source_identity": {
+                    "requested_path": str(source),
+                    "dataset_path": str(source),
+                },
+                "visualization_request_id": visualization_id,
+                "normalized_request": canonical,
+                "valid_sample_count": 4,
+                "excluded_sample_count": 0,
+                "advisories": [],
+                "image": {
+                    "path": str(image),
+                    "sidecar_path": str(sidecar_path),
+                    "sha256": digest,
+                    "format": "png",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    sidecar_digest = hashlib.sha256(sidecar_path.read_bytes()).hexdigest()
+    stub.finish(
+        result={
+            "source": str(source),
+            "inspection_revision": "a" * 64,
+            "image_path": str(image),
+            "sidecar_path": str(sidecar_path),
+            "sidecar_sha256": sidecar_digest,
+            "image_sha256": digest,
+            "format": "png",
+            "kind": "property_curves",
+            "valid_rows_plotted": 4,
+            "invalid_rows_excluded": 0,
+            "visualization_request_id": visualization_id,
+            "normalized_request": canonical,
+        }
+    )
+
+    assert controller.get_state() == "succeeded"
+    assert not controller.get_has_active_edit()
+    assert controller.get_committed_request()["name"] == "session-plot"
+    assert controller.get_preview_url().startswith("image://carnopy-plots/")
+
+    assert controller.begin_edit("svg")
+    assert controller.render()
+    stub.finish(
+        failure={
+            "category": "execution",
+            "code": "execution_failed",
+            "message": "second render failed",
+        }
+    )
+    assert controller.get_has_active_edit()
+    assert controller.get_has_result()
+    assert controller.cancel_edit()
+    assert controller.get_has_result()
+
+
+def test_session_plot_failure_keeps_edit_and_uses_only_structured_field(
+    tmp_path: Path,
+    application: QApplication,
+) -> None:
+    del application
+    controller, stub, _source = _controller(tmp_path)
+    attention: list[tuple[str, int]] = []
+    controller.attention_requested.connect(lambda field, row: attention.append((field, row)))
+    assert controller.begin_edit("png")
+    assert controller.render()
+    stub.finish(
+        failure={
+            "category": "execution",
+            "code": "execution_failed",
+            "message": "English text mentions plot.name but is not parsed",
+            "details": {"issues": [{"field": "plot.filters", "row": 2}]},
+        }
+    )
+
+    assert controller.get_state() == "editing"
+    assert controller.get_has_active_edit()
+    assert attention == [("plot.filters", 2)]
+    assert controller.can_replace_inspection("changing source") is False
+    workspace = controller.workspace
+    assert workspace is not None
+    replacement = initialize_workspace(tmp_path / "replacement")
+    controller.set_workspace(replacement)
+    assert controller.workspace == workspace
+    assert controller.cancel_edit()
+
+
+def test_importing_plot_controllers_keeps_worker_dependencies_out_of_gui() -> None:
+    code = """
+import sys
+import carnopy.app.configured_plot_results_controller
+import carnopy.app.session_plot_controller
+for name in (
+    "carnopy.visualization.configuration", "carnopy.visualization.models",
+    "carnopy.visualization.plots", "carnopy.app.plot_rendering",
+    "carnopy.app.source_inspection", "carnopy.app.table_preview",
+    "CoolProp", "numpy", "pandas", "pyarrow", "matplotlib",
+):
+    if name in sys.modules:
+        raise SystemExit(name)
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", code],
+        check=False,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "QT_QPA_PLATFORM": "offscreen"},
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr

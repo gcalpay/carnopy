@@ -287,9 +287,14 @@ def test_opening_active_workspace_skips_discard_and_page_reset(
         lambda _workspace: propagated.append("activity"),
     )
     monkeypatch.setattr(
-        window.plot_page,
+        window.session_plot_controller,
         "set_workspace",
-        lambda _workspace: propagated.append("plot"),
+        lambda _workspace: propagated.append("session-plot"),
+    )
+    monkeypatch.setattr(
+        window.desktop_controller.configured_plot_results_controller,
+        "set_workspace",
+        lambda _workspace: propagated.append("configured-plots"),
     )
     with monkeypatch.context() as scoped:
         scoped.setattr(
@@ -382,15 +387,21 @@ def test_successful_activation_propagates_once_to_every_workspace_page(
         "set_workspace",
         lambda _workspace: propagated.append("activity"),
     )
-    for name, page in (
-        ("plot", window.plot_page),
-        ("sources", window.sources_panel),
-    ):
-        monkeypatch.setattr(
-            page,
-            "set_workspace",
-            lambda _workspace, name=name: propagated.append(name),
-        )
+    monkeypatch.setattr(
+        window.session_plot_controller,
+        "set_workspace",
+        lambda _workspace: propagated.append("session-plot"),
+    )
+    monkeypatch.setattr(
+        window.desktop_controller.configured_plot_results_controller,
+        "set_workspace",
+        lambda _workspace: propagated.append("configured-plots"),
+    )
+    monkeypatch.setattr(
+        window.inspection_page,
+        "set_workspace",
+        lambda _workspace: propagated.append("inspection-page"),
+    )
     target = tmp_path / "workspace"
     window.workspace_path.setText(str(target))
 
@@ -401,9 +412,11 @@ def test_successful_activation_propagates_once_to_every_workspace_page(
     assert propagated == [
         "configuration",
         "execution",
+        "session-plot",
         "inspection",
         "activity",
-        "plot",
+        "configured-plots",
+        "inspection-page",
     ]
     window.close()
 

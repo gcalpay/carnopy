@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import copy
 import json
 import shlex
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, cast
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -20,38 +19,26 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from carnopy.app.export_cleanup import ImageExportFinalizer
 from carnopy.app.plot_draft import PlotDraft
 from carnopy.app.plot_preview import PlotPreview, PlotPreviewError
 from carnopy.app.plot_request_dialog import PlotRequestDialog
-from carnopy.app.plot_staging import create_plot_staging
-from carnopy.app.protocol import WorkerEvent
-from carnopy.app.request_coordinator import (
-    DesktopRequestCoordinator,
-    RequestOutcome,
-    RequestSession,
-)
-from carnopy.app.workspace import Workspace
+from carnopy.app.session_plot_controller import SessionPlotController
 
 
 class PlotPage(QWidget):
+    """Temporary Widgets adapter over the authoritative session-plot controller."""
+
     request_changed = Signal(object)
     render_finished = Signal(object)
 
     def __init__(
         self,
-        coordinator: DesktopRequestCoordinator,
+        controller: SessionPlotController,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self.coordinator = coordinator
-        self.workspace: Workspace | None = None
-        self.inspection: dict[str, Any] | None = None
-        self.context: dict[str, Any] | None = None
-        self.request: dict[str, Any] | None = None
-        self._source_identity: tuple[str, str] | None = None
-        self._session: RequestSession | None = None
-        self._cleanup_error: str | None = None
+        self.controller = controller
+        self.coordinator = controller.coordinator
 
         layout = QVBoxLayout(self)
         self.splitter = QSplitter(Qt.Orientation.Vertical)
@@ -76,22 +63,18 @@ class PlotPage(QWidget):
         actions = QHBoxLayout()
         self.edit_button = QPushButton("Edit Plot Request…")
         self.edit_button.clicked.connect(self.edit_request)
-        self.edit_button.setEnabled(False)
         actions.addWidget(self.edit_button)
         actions.addWidget(QLabel("Format"))
         self.format_selector = QComboBox()
         self.format_selector.addItems(["png", "svg", "pdf"])
         self.format_selector.setAccessibleName("Plot output format")
-        self.format_selector.currentTextChanged.connect(self._render_inputs_changed)
+        self.format_selector.currentTextChanged.connect(self._format_changed)
         actions.addWidget(self.format_selector)
         self.render_button = QPushButton("Render Plot")
         self.render_button.clicked.connect(self.render_plot)
-        self.render_button.setEnabled(False)
         actions.addWidget(self.render_button)
         self.force_stop_button = QPushButton("Force Stop Render")
         self.force_stop_button.clicked.connect(self.force_stop)
-        self.force_stop_button.setVisible(False)
-        self.force_stop_button.setEnabled(False)
         actions.addWidget(self.force_stop_button)
         actions.addStretch(1)
         controls_layout.addLayout(actions)
@@ -123,311 +106,156 @@ class PlotPage(QWidget):
         self.splitter.setStretchFactor(0, 1)
         self.splitter.setStretchFactor(1, 2)
 
-        self.coordinator.busy_changed.connect(self._busy_changed)
+        controller.state_changed.connect(self._refresh)
+        controller.active_edit_changed.connect(self._refresh)
+        controller.render_finished.connect(self.render_finished)
+        self._refresh()
 
     @property
     def owns_active_request(self) -> bool:
-        return self._session is not None
+        return self.controller.get_is_rendering()
 
     @property
     def source_path(self) -> Path | None:
-        if self.inspection is None:
-            return None
-        value = self.inspection.get("source")
-        return Path(value) if isinstance(value, str) else None
+        value = self.controller.get_source_path()
+        return Path(value) if value else None
 
-    def set_workspace(self, workspace: Workspace | None) -> None:
-        if self.workspace != workspace:
-            self.workspace = workspace
-            self.set_inspection(None)
-
-    def set_inspection(self, value: object) -> None:
-        inspection = value if isinstance(value, dict) else None
-        identity = (
-            (str(inspection.get("source")), str(inspection.get("revision")))
-            if inspection is not None
-            else None
-        )
-        if identity != self._source_identity:
-            self.request = None
-            self.request_summary.clear()
-            self._clear_render_result()
-            self.request_changed.emit(None)
-        self._source_identity = identity
-        self.inspection = inspection
-        self.context = None
-        self.reference_advisory.clear()
-        if inspection is None:
-            self.source_label.setText("Inspect a dataset source first.")
-            self.status.setText("Manual plotting is available for inspected datasets only.")
-            self._update_actions()
-            return
-
-        self.source_label.setText(str(inspection.get("source", "Unknown source")))
-        source_kind = str(inspection.get("source_kind", "unknown"))
-        if source_kind != "dataset":
-            self.status.setText(
-                f"Manual plotting is unavailable for {source_kind} bundles in GUI-1. "
-                "Inspect a dataset run, CSV, or Parquet source instead."
-            )
-            self._update_actions()
-            return
-        context = inspection.get("plot_context")
-        if not isinstance(context, dict):
-            self.status.setText("The dataset inspection did not provide plot controls.")
-            self._update_actions()
-            return
-        visualization = context.get("visualization")
-        kinds = visualization.get("plot_kinds") if isinstance(visualization, dict) else None
-        if not isinstance(kinds, list) or not kinds:
-            self.status.setText("This dataset has no compatible plot kinds.")
-            self._update_actions()
-            return
-        self.context = context
-        summary = inspection.get("summary")
-        source_summary = summary.get("source") if isinstance(summary, dict) else None
-        integrity = (
-            source_summary.get("integrity") if isinstance(source_summary, dict) else "unknown"
-        )
-        self.status.setText(
-            f"Dataset inspection is ready ({integrity} integrity). "
-            f"Compatible kinds: {', '.join(str(kind) for kind in kinds)}."
-        )
-        self._set_reference_advisory(context)
-        self._update_actions()
+    @property
+    def request(self) -> dict[str, object] | None:
+        draft = self.controller.get_active_plot_draft()
+        if isinstance(draft, PlotDraft) and draft.get_locally_valid():
+            return draft.payload()
+        committed = self.controller.get_committed_request()
+        return committed or None
 
     def edit_request(self) -> None:
-        context = self.context
-        if context is None or self.coordinator.is_busy:
-            return
-        draft = PlotDraft(
-            context,
-            context,
-            copy.deepcopy(self.request),
-            allow_format=False,
-        )
-        dialog = PlotRequestDialog(draft, self)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-        self.request = draft.payload()
-        self.request_summary.setPlainText(
-            json.dumps(self.request, indent=2, sort_keys=True, ensure_ascii=False)
-        )
-        self._clear_render_result()
-        self.request_changed.emit(copy.deepcopy(self.request))
-        self._update_actions()
-
-    def render_plot(self) -> None:
-        workspace = self.workspace
-        source = self.source_path
-        inspection = self.inspection
-        request = self.request
-        if (
-            workspace is None
-            or source is None
-            or inspection is None
-            or request is None
-            or self.coordinator.is_busy
+        if self.controller.get_active_plot_draft() is None and not self.controller.begin_edit(
+            self.format_selector.currentText()
         ):
             return
-        revision = inspection.get("revision")
-        plot_name = request.get("name")
-        if not isinstance(revision, str) or not isinstance(plot_name, str):
-            self.phase_label.setText("Render unavailable: inspection or plot name is invalid.")
+        draft = self.controller.get_active_plot_draft()
+        if not isinstance(draft, PlotDraft):
             return
+        dialog = PlotRequestDialog(draft, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            self.controller.cancel_edit()
+            return
+        self.request_changed.emit(self.request)
+        self._refresh()
 
-        self._clear_render_result()
-        self.phase_label.setText("Starting plot worker…")
-        payload: dict[str, object] = {
-            "workspace_path": str(workspace.root),
-            "source_path": str(source),
-            "inspection_revision": revision,
-            "plot_name": plot_name,
-            "format": self.format_selector.currentText(),
-            "plot": copy.deepcopy(request),
-        }
-        finalizer: ImageExportFinalizer | None = None
-        try:
-            lease = create_plot_staging(workspace.root)
-            payload["staging"] = lease.worker_payload()
-            finalizer = ImageExportFinalizer(lease)
-            session = self.coordinator.start_request(
-                "plot",
-                "render_plot",
-                payload,
-                finalizer=finalizer,
-            )
-        except Exception as exc:  # pragma: no cover - defensive Qt process boundary
-            if finalizer is not None:
-                finalizer.finish(False)
-            self.phase_label.setText("Failed to start plot render")
-            self.result_summary.setPlainText(str(exc))
-            self._update_actions()
-            return
-        self._session = session
-        session.event_received.connect(self._event_received)
-        session.completed.connect(self._request_completed)
-        session.policy_changed.connect(self._session_policy_changed)
-        self._update_actions()
+    def render_plot(self) -> None:
+        self.controller.render()
 
     def force_stop(self, *, confirm: bool = True) -> bool:
-        session = self._session
-        if session is None:
-            return False
-        if confirm and not self._confirm_force_stop():
-            return False
-        stopped = session.force_stop()
-        if stopped:
-            self.force_stop_button.setEnabled(False)
-            self.phase_label.setText("Force-stopping plot worker…")
-        return stopped
+        if confirm:
+            answer = QMessageBox.warning(
+                self,
+                "Force Stop Plot Rendering",
+                "Force-stop the plot worker? The current render will be interrupted.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return False
+        return self.controller.force_stop()
 
-    def _confirm_force_stop(self) -> bool:
-        answer = QMessageBox.warning(
-            self,
-            "Force Stop Plot Rendering",
-            "Force-stop the plot worker? The current render will be interrupted.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
+    def _format_changed(self, value: str) -> None:
+        draft = self.controller.get_active_plot_draft()
+        if isinstance(draft, PlotDraft):
+            draft.set_output_format(value)
+
+    def _refresh(self) -> None:
+        source = self.controller.get_source_path()
+        self.source_label.setText(source or "Inspect a dataset source first.")
+        payload = self.controller.inspection.current_payload()
+        self.reference_advisory.clear()
+        if source and isinstance(payload, dict):
+            summary = payload.get("summary")
+            source_summary = summary.get("source") if isinstance(summary, Mapping) else None
+            integrity = (
+                source_summary.get("integrity")
+                if isinstance(source_summary, Mapping)
+                else "unknown"
+            )
+            context = payload.get("plot_context")
+            visualization = context.get("visualization") if isinstance(context, Mapping) else None
+            kinds = visualization.get("plot_kinds") if isinstance(visualization, Mapping) else None
+            compatible = (
+                ", ".join(str(kind) for kind in kinds) if isinstance(kinds, list) else "unreported"
+            )
+            self.status.setText(
+                self.controller.get_issue()
+                or f"Dataset inspection is ready ({integrity} integrity). "
+                f"Compatible kinds: {compatible}."
+            )
+            if isinstance(context, Mapping):
+                self._set_reference_advisory(context)
+        else:
+            self.status.setText(
+                self.controller.get_issue()
+                or "Manual plotting is available for inspected datasets only."
+            )
+        self.phase_label.setText(self.controller.get_phase() or "Idle")
+        request = self.request
+        self.request_summary.setPlainText(
+            "" if request is None else json.dumps(request, indent=2, sort_keys=True)
         )
-        return answer == QMessageBox.StandardButton.Yes
+        self._refresh_result()
+        self.edit_button.setEnabled(self.controller.get_can_begin_edit())
+        self.format_selector.setEnabled(not self.controller.get_is_rendering())
+        self.render_button.setEnabled(self.controller.get_can_render())
+        self.force_stop_button.setVisible(self.controller.get_can_force_stop())
+        self.force_stop_button.setEnabled(self.controller.get_can_force_stop())
 
-    def _event_received(self, value: object) -> None:
-        event = cast(WorkerEvent, value)
-        if event.type == "phase":
-            self.phase_label.setText(f"Phase: {event.payload.get('name', 'unknown')}")
-        elif event.type in {"result", "error", "cancelled"}:
-            self.force_stop_button.setEnabled(False)
-
-    def _request_completed(self, value: object) -> None:
-        outcome = cast(RequestOutcome, value)
-        session = self._session
-        if session is None or outcome.request_id != session.request_id:
+    def _refresh_result(self) -> None:
+        result = self.controller.committed_result_payload()
+        if result is None:
+            if not self.controller.get_is_rendering():
+                self.preview.clear()
+                self.command.clear()
+                self.result_summary.clear()
             return
-        self._cleanup_error = outcome.cleanup_error
-        self.render_finished.emit(outcome.terminal_envelope)
-        result = outcome.result_payload
-        if result is not None:
-            self._request_succeeded(result)
-            return
-        self._request_failed(outcome.failure_payload or {})
-
-    def _request_succeeded(self, value: object) -> None:
-        if self._session is None:
-            return
-        payload = cast(dict[str, Any], value)
-        advisories = payload.get("advisories")
-        advisory_lines = _advisory_lines(advisories)
-        cleanup = self._cleanup_error
-        status = "Completed with cleanup warning" if cleanup else "Completed"
-        self.phase_label.setText(status)
         lines = [
-            f"Image: {payload.get('image_path')}",
-            f"Sidecar: {payload.get('sidecar_path')}",
-            f"Source integrity: {payload.get('source_integrity')}",
-            f"Rows plotted: {payload.get('valid_rows_plotted')}",
-            f"Invalid rows excluded: {payload.get('invalid_rows_excluded')}",
+            f"Image: {result.get('image_path')}",
+            f"Sidecar: {result.get('sidecar_path')}",
+            f"Source integrity: {result.get('source_integrity')}",
+            f"Rows plotted: {result.get('valid_rows_plotted')}",
+            f"Invalid rows excluded: {result.get('invalid_rows_excluded')}",
         ]
-        if advisory_lines:
-            lines.extend(["Advisories:", *advisory_lines])
-        if cleanup:
-            lines.append(f"Cleanup warning: {cleanup}")
-        preview_error = self._load_preview(payload)
-        if preview_error is not None:
-            lines.append(f"Preview unavailable: {preview_error}")
+        if self.controller.get_issue():
+            lines.append(f"{self.controller.get_issue_code()}: {self.controller.get_issue()}")
         self.result_summary.setPlainText("\n".join(lines))
-        normalized = payload.get("normalized_request")
-        image_path = payload.get("image_path")
-        source = payload.get("source")
-        if isinstance(normalized, dict) and isinstance(image_path, str) and isinstance(source, str):
+        workspace = self.controller.workspace
+        image_path = result.get("image_path")
+        image_format = result.get("format")
+        image_sha256 = result.get("image_sha256")
+        if (
+            workspace is not None
+            and isinstance(image_path, str)
+            and isinstance(image_format, str)
+            and isinstance(image_sha256, str)
+            and self.preview.image_path != Path(image_path)
+        ):
+            try:
+                self.preview.load_export(
+                    workspace.figures,
+                    Path(image_path),
+                    image_format,
+                    image_sha256,
+                )
+            except PlotPreviewError as exc:
+                lines.append(f"Preview unavailable: {exc}")
+                self.result_summary.setPlainText("\n".join(lines))
+        normalized = result.get("normalized_request")
+        source = result.get("source")
+        if isinstance(normalized, dict) and isinstance(source, str) and isinstance(image_path, str):
             self.command.setPlainText(
                 _equivalent_plot_command(Path(source), normalized, Path(image_path))
             )
-        self._finish_request()
 
-    def _request_failed(self, value: object) -> None:
-        if self._session is None:
-            return
-        payload = cast(dict[str, Any], value)
-        code = str(payload.get("code", "execution_failed"))
-        message = str(payload.get("message", "plot rendering failed"))
-        cleanup = self._cleanup_error
-        if code == "force_stopped" and cleanup:
-            self.phase_label.setText("Force-stopped; cleanup failed")
-        elif code == "force_stopped":
-            self.phase_label.setText("Force-stopped")
-        else:
-            self.phase_label.setText("Render failed")
-        details = f"{code}: {message}"
-        if cleanup:
-            details += f"\nCleanup error: {cleanup}"
-        self.result_summary.setPlainText(details)
-        self._finish_request()
-
-    def _finish_request(self) -> None:
-        self._session = None
-        self.force_stop_button.setVisible(False)
-        self.force_stop_button.setEnabled(False)
-        self._update_actions()
-
-    def _busy_changed(self, _busy: bool) -> None:
-        self._update_actions()
-
-    def _session_policy_changed(self) -> None:
-        self._update_actions()
-
-    def _render_inputs_changed(self, _value: str) -> None:
-        if not self.owns_active_request:
-            self._clear_render_result()
-        self._update_actions()
-
-    def _clear_render_result(self) -> None:
-        self._cleanup_error = None
-        self.command.clear()
-        self.result_summary.clear()
-        self.preview.clear()
-        if not self.owns_active_request:
-            self.phase_label.setText("Idle")
-
-    def _load_preview(self, payload: dict[str, Any]) -> str | None:
-        workspace = self.workspace
-        image_path = payload.get("image_path")
-        image_format = payload.get("format")
-        image_sha256 = payload.get("image_sha256")
-        if (
-            workspace is None
-            or not isinstance(image_path, str)
-            or not isinstance(image_format, str)
-            or not isinstance(image_sha256, str)
-        ):
-            return "worker result did not contain complete preview metadata"
-        try:
-            self.preview.load_export(
-                workspace.figures,
-                Path(image_path),
-                image_format,
-                image_sha256,
-            )
-        except PlotPreviewError as exc:
-            self.preview.status.setText(f"Preview unavailable: {exc}")
-            return str(exc)
-        return None
-
-    def _update_actions(self) -> None:
-        editable = self.context is not None
-        renderable = self.workspace is not None and editable
-        idle = not self.coordinator.is_busy
-        self.edit_button.setEnabled(editable and idle)
-        self.format_selector.setEnabled(idle)
-        self.render_button.setEnabled(renderable and self.request is not None and idle)
-        session = self._session
-        force_available = session is not None and session.force_stop_available
-        self.force_stop_button.setVisible(force_available)
-        self.force_stop_button.setEnabled(force_available)
-
-    def _set_reference_advisory(self, context: dict[str, Any]) -> None:
+    def _set_reference_advisory(self, context: Mapping[str, object]) -> None:
         reference = context.get("reference_state")
-        if not isinstance(reference, dict):
+        if not isinstance(reference, Mapping):
             return
         properties = reference.get("reference_dependent_properties")
         if not isinstance(properties, list) or not properties:
@@ -439,19 +267,6 @@ class PlotPage(QWidget):
         )
 
 
-def _advisory_lines(value: object) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    lines: list[str] = []
-    for item in value:
-        if not isinstance(item, dict):
-            continue
-        code = str(item.get("code", "advisory"))
-        message = str(item.get("message", ""))
-        lines.append(f"- {code}: {message}" if message else f"- {code}")
-    return lines
-
-
 def _equivalent_plot_command(
     source: Path,
     request: dict[str, object],
@@ -459,14 +274,13 @@ def _equivalent_plot_command(
 ) -> str:
     kind = str(request.get("kind", "")).replace("_", "-")
     parts = ["carnopy", "plot", str(source), "--kind", kind]
-    scalar_options = (
+    for field, option in (
         ("property_name", "--property"),
         ("x_field", "--x"),
         ("y_field", "--y"),
         ("group_by", "--group-by"),
         ("saturation_coordinate", "--saturation-coordinate"),
-    )
-    for field, option in scalar_options:
+    ):
         value = request.get(field)
         if value is not None:
             parts.extend([option, str(value)])

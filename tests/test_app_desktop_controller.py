@@ -99,6 +99,11 @@ def test_desktop_controller_owns_one_composition_and_preserves_settings_identity
     assert desktop.execution_controller.config_controller is desktop.dataset_config_controller
     assert desktop.activity_controller.parent() is desktop
     assert desktop.activity_controller.coordinator is desktop.request_coordinator
+    assert desktop.configured_plot_results_controller.parent() is desktop
+    assert desktop.configured_plot_results_controller.activity is desktop.activity_controller
+    assert desktop.session_plot_controller.parent() is desktop
+    assert desktop.session_plot_controller.coordinator is desktop.request_coordinator
+    assert desktop.session_plot_controller.inspection is desktop.inspection_controller
     assert desktop.workspace_controller.coordinator is desktop.request_coordinator
     assert desktop.client.parent() is desktop
     assert desktop.request_coordinator.parent() is desktop
@@ -110,6 +115,11 @@ def test_desktop_controller_owns_one_composition_and_preserves_settings_identity
     assert desktop.property("datasetConfigController") is desktop.dataset_config_controller
     assert desktop.property("executionController") is desktop.execution_controller
     assert desktop.property("activityController") is desktop.activity_controller
+    assert (
+        desktop.property("configuredPlotResultsController")
+        is desktop.configured_plot_results_controller
+    )
+    assert desktop.property("sessionPlotController") is desktop.session_plot_controller
     assert (
         desktop.workspace_controller.property("recentWorkspaces")
         is desktop.workspace_controller.recent_model
@@ -492,6 +502,50 @@ def test_active_plot_edit_blocks_all_composition_lifecycle_paths(
     assert all(item == ("visualization", "visualization.plots", -1) for item in attention)
 
 
+def test_session_plot_edit_guards_replacement_but_not_configuration_save(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    calls: list[str] = []
+    monkeypatch.setattr(
+        desktop.session_plot_controller,
+        "get_has_active_edit",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        desktop.session_plot_controller,
+        "can_replace_inspection",
+        lambda operation: calls.append(operation) or False,
+    )
+    monkeypatch.setattr(
+        desktop.session_plot_controller,
+        "get_issue",
+        lambda: "Render or cancel the session plot edit.",
+    )
+    save_calls: list[str] = []
+    monkeypatch.setattr(
+        desktop.dataset_config_controller,
+        "request_save",
+        lambda *_args: save_calls.append("save") or True,
+    )
+
+    assert not desktop.get_can_change_workspace()
+    assert not desktop.prepare_create_workspace_path(str(tmp_path / "workspace"))
+    assert not desktop.shutdown()
+    assert desktop.request_save()
+    assert save_calls == ["save"]
+    assert calls == ["replacing the workspace", "closing Carnopy"]
+    monkeypatch.setattr(
+        desktop.session_plot_controller,
+        "can_replace_inspection",
+        lambda _operation: True,
+    )
+    assert desktop.shutdown()
+
+
 def test_visualization_facade_accepts_only_the_owned_active_plot_and_mappings(
     tmp_path: Path,
     application: QCoreApplication,
@@ -844,6 +898,7 @@ for name in (
     "CoolProp", "numpy", "pandas", "pyarrow", "matplotlib",
     "carnopy.cli", "carnopy.pipeline", "carnopy.app.source_inspection",
     "carnopy.app.table_preview", "carnopy.app.plot_rendering",
+    "carnopy.visualization.configuration", "carnopy.visualization.models",
 ):
     if name in sys.modules:
         raise SystemExit(name)

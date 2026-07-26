@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -66,6 +67,7 @@ class InspectionController(QObject):
         self._source_candidates: tuple[SourceCandidate, ...] = ()
         self._source_issues: dict[Path, str] = {}
         self._revealed_source_count = SOURCE_PAGE_SIZE
+        self._lifecycle_guard: Callable[[str], bool] | None = None
 
         self.workspace_sources_model = InspectionListModel(
             ("path", "name", "kindHint", "modifiedNs", "issue", "inspectable"),
@@ -317,6 +319,9 @@ class InspectionController(QObject):
         self._clear_inspection()
         self.refresh_sources()
 
+    def set_lifecycle_guard(self, guard: Callable[[str], bool]) -> None:
+        self._lifecycle_guard = guard
+
     @Slot(name="refreshWorkspaceSources")
     def refresh_sources(self) -> None:
         workspace = self.workspace
@@ -344,6 +349,10 @@ class InspectionController(QObject):
 
     @Slot(str, result=bool, name="inspectSource")
     def inspect_source(self, source: str) -> bool:
+        if self._lifecycle_guard is not None and not self._lifecycle_guard(
+            "replacing the inspected source"
+        ):
+            return False
         if self.coordinator.is_busy:
             self._issue = "Another Carnopy worker request is active."
             self.state_changed.emit()

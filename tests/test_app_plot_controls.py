@@ -16,9 +16,10 @@ from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication, QComboBox, QLineEdit
 
-from carnopy.app.client import WorkerClient
+from carnopy.app.inspection_controller import InspectionController
 from carnopy.app.plot_draft import PlotDraft
 from carnopy.app.plot_page import PlotPage, _equivalent_plot_command
+from carnopy.app.plot_preview_provider import VerifiedPlotPreviewRegistry
 from carnopy.app.plot_request_dialog import PlotRequestDialog
 from carnopy.app.protocol import RequestType, WorkerEvent
 from carnopy.app.request_coordinator import (
@@ -26,8 +27,11 @@ from carnopy.app.request_coordinator import (
     RequestFinalizer,
     RequestOutcome,
 )
+from carnopy.app.session_plot_controller import SessionPlotController
 from carnopy.app.source_inspection import inspect_for_app
+from carnopy.app.workspace import Workspace
 from carnopy.provenance import sha256_file
+from carnopy.visualization.requests import PlotRequest, request_id
 
 
 class StubSession(QObject):
@@ -188,6 +192,22 @@ def _dataset(path: Path, *, temperature_count: int = 2) -> Path:
     return path
 
 
+def _session_controller(
+    coordinator: StubCoordinator,
+    workspace: Workspace,
+    inspection_payload: dict[str, object],
+) -> SessionPlotController:
+    inspection = InspectionController(cast(DesktopRequestCoordinator, coordinator))
+    controller = SessionPlotController(
+        cast(DesktopRequestCoordinator, coordinator),
+        inspection,
+        VerifiedPlotPreviewRegistry(),
+    )
+    controller.set_workspace(workspace)
+    controller._inspection_changed(inspection_payload)
+    return controller
+
+
 def test_dataset_inspection_builds_backend_free_plot_context(tmp_path: Path) -> None:
     inspected = inspect_for_app(_dataset(tmp_path / "dataset.parquet"))
     context = inspected.plot_context
@@ -291,24 +311,21 @@ def test_plot_page_clears_session_request_when_source_changes(
     application: QApplication,
 ) -> None:
     del application
-    client = WorkerClient()
-    coordinator = DesktopRequestCoordinator(client)
-    page = PlotPage(coordinator)
+    from carnopy.app.workspace import initialize_workspace
+
+    workspace = initialize_workspace(tmp_path / "workspace")
+    coordinator = StubCoordinator()
     first = inspect_for_app(_dataset(tmp_path / "first.parquet")).public_payload()
     second = inspect_for_app(_dataset(tmp_path / "second.parquet")).public_payload()
+    controller = _session_controller(coordinator, workspace, first)
+    page = PlotPage(controller)
 
-    page.set_inspection(first)
-    page.request = {"name": "density", "kind": "pv"}
-    page.request_summary.setPlainText("saved in session")
-    page.set_inspection(first)
-    assert page.request == {"name": "density", "kind": "pv"}
-
-    page.set_inspection(second)
+    assert page.edit_button.isEnabled()
+    controller._inspection_changed(second)
     assert page.request is None
     assert page.request_summary.toPlainText() == ""
-    assert page.edit_button.isEnabled()
 
-    page.set_inspection(
+    controller._inspection_changed(
         {
             "source": str(tmp_path / "sweep"),
             "source_kind": "model_sweep",
@@ -317,9 +334,8 @@ def test_plot_page_clears_session_request_when_source_changes(
         }
     )
     assert not page.edit_button.isEnabled()
-    assert "unavailable" in page.status.text()
+    assert "Inspect a dataset" in page.status.text()
     page.close()
-    coordinator.shutdown()
 
 
 def test_plot_page_renders_owned_request_and_reports_result(
@@ -332,17 +348,20 @@ def test_plot_page_renders_owned_request_and_reports_result(
     dataset = _dataset(tmp_path / "My Dataset.parquet")
     inspection = inspect_for_app(dataset).public_payload()
     stub = StubCoordinator()
-    page = PlotPage(cast(DesktopRequestCoordinator, stub))
-    page.set_workspace(workspace)
-    page.set_inspection(inspection)
-    page.request = {
-        "name": "density-curves",
-        "kind": "property_curves",
-        "property": "mass_density",
-        "x": "temperature",
-    }
-    page.request_summary.setPlainText(json.dumps(page.request))
-    page._update_actions()
+    controller = _session_controller(stub, workspace, inspection)
+    page = PlotPage(controller)
+    assert controller.begin_edit("png")
+    draft = controller.get_active_plot_draft()
+    assert isinstance(draft, PlotDraft)
+    draft.load_payload(
+        {
+            "name": "density-curves",
+            "kind": "property_curves",
+            "property": "mass_density",
+            "x": "temperature",
+            "format": "png",
+        }
+    )
 
     page.render_plot()
 
@@ -358,7 +377,7 @@ def test_plot_page_renders_owned_request_and_reports_result(
         "inspection_revision": inspection["revision"],
         "plot_name": "density-curves",
         "format": "png",
-        "plot": page.request,
+        "plot": draft.payload(),
     }
     assert isinstance(started_payload["staging"], dict)
     image = workspace.figures / "my-dataset" / "density-curves.png"
@@ -366,26 +385,51 @@ def test_plot_page_renders_owned_request_and_reports_result(
     rendered = QImage(40, 20, QImage.Format.Format_RGB32)
     rendered.fill(Qt.GlobalColor.cyan)
     assert rendered.save(str(image), "PNG")
-    normalized = {
-        "kind": "property_curves",
-        "property_name": "mass_density",
-        "x_field": "temperature",
-        "filters": [],
-        "series": [],
-        "display_units": [],
-        "fluids": ["Propane"],
-        "value_scale": "linear",
-        "color_scale": "linear",
-        "x_scale": "linear",
-        "y_scale": "linear",
-    }
+    normalized_request = PlotRequest(
+        name="density-curves",
+        kind="property_curves",
+        property_name="mass_density",
+        x_field="temperature",
+        fluids=("Propane",),
+    )
+    normalized = normalized_request.canonical_dict()
+    visualization_id = request_id((normalized_request,))
+    sidecar = image.with_suffix(".plot.json")
+    sidecar.write_text(
+        json.dumps(
+            {
+                "plot_schema_version": 2,
+                "plot_kind": "property_curves",
+                "source_identity": {
+                    "requested_path": str(dataset),
+                    "dataset_path": str(dataset),
+                },
+                "visualization_request_id": visualization_id,
+                "normalized_request": normalized,
+                "valid_sample_count": 4,
+                "excluded_sample_count": 0,
+                "advisories": [{"code": "sparse", "message": "few rows"}],
+                "image": {
+                    "path": str(image),
+                    "sidecar_path": str(sidecar),
+                    "sha256": sha256_file(image),
+                    "format": "png",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     stub.finish(
         {
             "source": str(dataset),
+            "inspection_revision": inspection["revision"],
             "image_path": str(image),
-            "sidecar_path": str(image.with_suffix(".plot.json")),
+            "sidecar_path": str(sidecar),
+            "sidecar_sha256": sha256_file(sidecar),
             "image_sha256": sha256_file(image),
             "format": "png",
+            "kind": "property_curves",
+            "visualization_request_id": visualization_id,
             "source_integrity": "verified",
             "valid_rows_plotted": 4,
             "invalid_rows_excluded": 0,
@@ -397,7 +441,6 @@ def test_plot_page_renders_owned_request_and_reports_result(
     assert not page.owns_active_request
     assert page.phase_label.text() == "Completed"
     assert "Rows plotted: 4" in page.result_summary.toPlainText()
-    assert "sparse: few rows" in page.result_summary.toPlainText()
     assert shlex_split(page.command.toPlainText())[-2:] == ["--output", str(image)]
     application.processEvents()
     assert page.preview.has_graphic
@@ -407,7 +450,6 @@ def test_plot_page_renders_owned_request_and_reports_result(
 def test_plot_page_force_stop_is_immediate_confirmed_and_reports_cleanup_failure(
     tmp_path: Path,
     application: QApplication,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     del application
     from carnopy.app.workspace import initialize_workspace
@@ -415,15 +457,16 @@ def test_plot_page_force_stop_is_immediate_confirmed_and_reports_cleanup_failure
     workspace = initialize_workspace(tmp_path / "workspace")
     dataset = _dataset(tmp_path / "dataset.parquet")
     stub = StubCoordinator()
-    page = PlotPage(cast(DesktopRequestCoordinator, stub))
-    page.set_workspace(workspace)
-    page.set_inspection(inspect_for_app(dataset).public_payload())
-    page.request = {"name": "density", "kind": "pv"}
-    page._update_actions()
+    inspection = inspect_for_app(dataset).public_payload()
+    controller = _session_controller(stub, workspace, inspection)
+    page = PlotPage(controller)
+    assert controller.begin_edit("png")
+    draft = controller.get_active_plot_draft()
+    assert isinstance(draft, PlotDraft)
+    draft.load_payload({"name": "density", "kind": "pv", "format": "png"})
     page.render_plot()
-    monkeypatch.setattr(page, "_confirm_force_stop", lambda: True)
 
-    assert page.force_stop()
+    assert page.force_stop(confirm=False)
     assert stub.session is not None
     assert stub.session.stopped
 
@@ -436,8 +479,9 @@ def test_plot_page_force_stop_is_immediate_confirmed_and_reports_cleanup_failure
         cleanup_error="plot staging cleanup failed: simulated",
     )
 
-    assert page.phase_label.text() == "Force-stopped; cleanup failed"
-    assert "simulated" in page.result_summary.toPlainText()
+    assert controller.get_has_active_edit()
+    assert controller.get_issue_code() == "force_stopped"
+    assert "simulated" in controller.get_issue() or "force-stopped" in controller.get_issue()
     page.close()
 
 

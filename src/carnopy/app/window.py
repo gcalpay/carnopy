@@ -66,6 +66,7 @@ class MainWindow(QMainWindow):
         self.execution_controller = self.desktop_controller.execution_controller
         self.inspection_controller = self.desktop_controller.inspection_controller
         self.activity_controller = self.desktop_controller.activity_controller
+        self.session_plot_controller = self.desktop_controller.session_plot_controller
         self._close_when_idle = False
         self._close_after_plot_stop = False
         self.setWindowTitle("Carnopy")
@@ -79,7 +80,7 @@ class MainWindow(QMainWindow):
         )
         self.execution_page = DatasetExecutionPage(self.execution_controller)
         self.inspection_page = InspectionPage(self.inspection_controller)
-        self.plot_page = PlotPage(self.coordinator)
+        self.plot_page = PlotPage(self.session_plot_controller)
         self.jobs_page = JobsDiagnosticsPage(self.activity_controller)
         for index, title in enumerate(PAGE_TITLES):
             self.navigation.addItem(title)
@@ -115,7 +116,6 @@ class MainWindow(QMainWindow):
         self.workspace_controller.status_message_changed.connect(self._update_workspace_status)
         self.workspace_controller.error_message_changed.connect(self._update_workspace_status)
         self.sources_panel.inspect_requested.connect(self._inspect_source)
-        self.inspection_controller.inspection_changed.connect(self.plot_page.set_inspection)
         self.plot_page.render_finished.connect(self._plot_render_finished)
         self.execution_page.inspect_button.clicked.connect(self._inspect_finalized_run)
         self._update_workspace_status()
@@ -254,7 +254,6 @@ class MainWindow(QMainWindow):
         workspace = value
         self.workspace_path.setText(str(workspace.root))
         self.inspection_page.set_workspace(workspace)
-        self.plot_page.set_workspace(workspace)
 
     def _update_workspace_status(self) -> None:
         message = self.workspace_controller.get_error_message()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 from collections.abc import Mapping
 from pathlib import Path
@@ -51,6 +52,7 @@ class ActivityController(QObject):
     """Own persisted Run-activity projection and bounded staging recovery."""
 
     state_changed = Signal()
+    records_changed = Signal()
 
     def __init__(
         self,
@@ -173,6 +175,7 @@ class ActivityController(QObject):
             self.records_model.clear()
             self._selected_record_id = ""
             self._clear_selected_record()
+            self.records_changed.emit()
             self.state_changed.emit()
             return
 
@@ -194,7 +197,16 @@ class ActivityController(QObject):
         if self._selected_record_id not in records:
             self._selected_record_id = ""
         self._refresh_selected_record()
+        self.records_changed.emit()
         self.state_changed.emit()
+
+    def record_payload(self, record_id: str) -> dict[str, object] | None:
+        """Return a detached private record for another composition-owned controller."""
+
+        loaded = self._loaded_records.get(record_id)
+        if loaded is None or loaded.data is None:
+            return None
+        return copy.deepcopy(loaded.data)
 
     @Slot(str, result=bool, name="selectRecord")
     def select_record(self, record_id: str) -> bool:

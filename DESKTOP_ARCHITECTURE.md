@@ -46,8 +46,12 @@ The desktop has two frontend implementations during the GUI-2 migration:
   interrupted-state projection, and identity-checked staging recovery are owned
   by one `ActivityController`; the public Widgets Jobs page is a view adapter
   over it;
-- plot-result viewing and exploration, the QML Activity page, launcher migration,
-  and Widgets retirement belong to the remaining Stage 3 steps.
+- configured plot-evidence projection is owned by one
+  `ConfiguredPlotResultsController`, while inspected-data plot editing and
+  rendering are owned by one `SessionPlotController`; the public Widgets Plot
+  page is a temporary view adapter over the latter;
+- QML plot-result viewing and exploration, the QML Activity page, launcher
+  migration, and Widgets retirement belong to the remaining Stage 3 steps.
 
 The development version is `0.1.0a4.dev0`. The two public launchers switch to
 QML only after Stage 3 reaches tested GUI-1 parity; Carnopy will not ship two
@@ -153,11 +157,14 @@ cross-controller facade. One instance owns:
 - `DesktopRequestCoordinator`;
 - `WorkspaceController`;
 - `DatasetDraft`;
-- `VisualizationDraft`; and
+- `VisualizationDraft`;
 - `DatasetConfigController`;
-- `DatasetExecutionController`; and
-- `InspectionController`; and
-- `ActivityController`.
+- `DatasetExecutionController`;
+- `InspectionController`;
+- `ActivityController`;
+- `ConfiguredPlotResultsController`;
+- `SessionPlotController`; and
+- the shared verified-plot preview registry.
 
 It binds workspace activation to configuration context exactly once. QML may
 edit a child draft through explicit local-edit requests, but workspace changes,
@@ -281,6 +288,51 @@ reported and retained rather than being adopted as a new deletion target.
 after execution record changes. The temporary Widgets Jobs page is only a view
 adapter over this controller; the later QML Activity page will bind the same
 models and actions.
+
+### Configured and session plot controllers
+
+`ConfiguredPlotResultsController` is the read-only owner of configured plot
+results. Discovery starts from a successful schema-version-1 generation record
+loaded by `ActivityController`; it never scans a figure directory or treats
+unrecorded files as configured outcomes. For the record's exact report and
+ordered outcomes, the lightweight `plot_artifacts` verifier checks:
+
+- workspace containment and absence of symbolic-link path components;
+- run, spec, generation-context, source-directory, and visualization identity;
+- the ordered canonical request at each outcome position and its unique name;
+- report/result counts and each completed outcome's exact sidecar request;
+- source dataset path and well-formed recorded SHA-256 identity; and
+- image/sidecar pairing, format, and image SHA-256.
+
+The resulting UI label is limited to recorded-provenance consistency; it is not
+independent scientific validation. PNG and SVG previews receive opaque tokens
+bound to workspace identity, canonical path, expected image hash, format, and
+verification revision. The QML image provider resolves only those tokens and
+revalidates bytes on each read. PDF is revalidated immediately before an
+explicit external open.
+
+Image-plus-sidecar export is a no-overwrite pair operation. It revalidates the
+source evidence, stages both destination files in their final directory,
+copies the image, and rewrites only the exported `image.path` and
+`image.sidecar_path` fields in deterministic sidecar JSON before exclusive
+promotion. It does not claim two-file crash atomicity.
+
+`SessionPlotController` owns one inspected-dataset `PlotDraft`, one worker
+render session, structured failure state, the last committed request/result,
+and its preview token. A successful render revalidates the result and sidecar
+before it commits and destroys the temporary draft. Local invalidity focuses a
+typed field and row. Worker failures retain the draft and expose their
+structured category/code/message; field focus occurs only when a structured
+field exists. Cancel returns to the prior committed result. Session edits are
+transient, not YAML dirty: they block source/workspace replacement and
+shutdown, but do not block unrelated Dataset edits or Save.
+
+Both controllers use `carnopy.visualization.requests` for lightweight canonical
+request identity. They do not import visualization configuration/models,
+renderers, source inspection, table readers, pandas, PyArrow, NumPy, CoolProp,
+or Matplotlib. The temporary Widgets Plot page consumes
+`SessionPlotController`; Stage 3 Step 8 will bind these same controllers into
+QML.
 
 ### `WorkerClient`
 
@@ -478,10 +530,10 @@ to navigate. Widgets keep the established modal dialog over the same draft and
 lifecycle.
 
 Stage 2 edits configured plot requests but intentionally does not render them.
-Reusable post-generation requests remain on Visualization. Stage 3 will expose
-generated outputs and rendered artifacts through Inspect while preserving the
-worker-only rendering boundary; its design must explicitly place the separate
-session-only manual-plot workflow.
+Stage 3 Step 7 extracts configured-result evidence and session-only manual
+plotting into authoritative controllers while preserving the worker-only
+rendering boundary. Step 8 will expose both workflows through QML Visualization;
+Inspect remains the source-selection and table/diagnostic workbench.
 
 The QML YAML Preview page is a read-only projection of the complete document.
 It provides line numbers, search, selection/copy, file and dirty-state context,
@@ -506,6 +558,8 @@ owns staging recovery. The Inspect and generated-source pages project the shared
 `InspectionController`; they no longer start inspection or preview sessions,
 discover sources, or retain authoritative table state. Widgets retain native
 file dialogs and existing manual workflows as a parity oracle until Stage 3.
+The Plot page now projects `SessionPlotController`; it no longer owns the
+temporary plot draft, worker session, committed result, or artifact evidence.
 
 Widgets must not regain shadow draft state while QML is added. A behavior fix
 at a shared boundary must be reflected in both frontends, as with safe sampler
@@ -936,6 +990,8 @@ When changing the desktop, start at the owner of the behavior:
 | Dataset document, merge, validation, Save, and dirty workflow | `carnopy.app.config_controller` and `config_document` |
 | Dataset or sampler editable state | `dataset_draft` and `sampler_draft` |
 | Configured visualization or temporary plot state | `visualization_draft`, `plot_draft`, and `mapping_draft` |
+| Configured plot evidence, preview authorization, and safe pair export | `configured_plot_results_controller`, `plot_artifacts`, and `plot_preview_provider` |
+| Inspected-data session plot edit and render lifecycle | `session_plot_controller` |
 | Widgets presentation | `window` and the relevant Widgets page/editor |
 | QML presentation | `qml/Carnopy/` plus narrow runtime signal wiring |
 | QML startup, resources, fonts, and warning policy | `qml_runtime`, `qml_resources`, and the resource manifest |
