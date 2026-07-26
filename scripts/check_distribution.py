@@ -13,17 +13,24 @@ from typing import Protocol
 
 PROJECT_NAME = "carnopy"
 PROJECT_SUMMARY = (
-    "CLI-first thermophysical dataset generation and leakage-aware ML preparation "
-    "from thermodynamic backends, with an optional Linux-first desktop GUI."
+    "Reproducible thermophysical dataset generation from thermodynamic backends with "
+    "inspection, visualization and leakage-aware ML preparation via CLI and optional "
+    "desktop GUI."
 )
 PROJECT_KEYWORDS = {
+    "chemical-engineering",
     "coolprop",
+    "data leakage prevention",
+    "data provenance",
+    "data visualization",
     "dataset generation",
     "fluid properties",
+    "leakage-aware",
     "machine learning",
-    "scientific computing",
     "surrogate modeling",
+    "synthetic data",
     "thermodynamics",
+    "thermophysical",
     "thermophysical properties",
 }
 SOURCE_VERSION_PATTERN = re.compile(r'^__version__\s*=\s*"([^"]+)"\s*$')

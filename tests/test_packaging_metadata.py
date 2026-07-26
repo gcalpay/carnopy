@@ -123,9 +123,11 @@ def test_alpha_metadata_uses_modern_license_and_release_urls() -> None:
     project = pyproject["project"]
     assert project["requires-python"] == ">=3.11"
     assert project["description"] == (
-        "CLI-first thermophysical dataset generation and leakage-aware ML preparation "
-        "from thermodynamic backends, with an optional Linux-first desktop GUI."
+        "Reproducible thermophysical dataset generation from thermodynamic backends with "
+        "inspection, visualization and leakage-aware ML preparation via CLI and optional "
+        "desktop GUI."
     )
+    assert project["authors"] == [{"name": "gcalpay"}]
     assert project["license"] == "MIT"
     assert project["license-files"] == ["LICENSE"]
     assert project["urls"] == {
@@ -136,19 +138,26 @@ def test_alpha_metadata_uses_modern_license_and_release_urls() -> None:
     }
     assert {
         "thermodynamics",
+        "thermophysical",
         "fluid properties",
         "thermophysical properties",
         "dataset generation",
-        "scientific computing",
+        "synthetic data",
+        "data provenance",
+        "data visualization",
+        "data leakage prevention",
+        "leakage-aware",
         "machine learning",
         "surrogate modeling",
         "CoolProp",
+        "chemical-engineering",
     } == set(project["keywords"])
     for classifier in (
         "Environment :: Console",
         "Intended Audience :: Science/Research",
         "Operating System :: OS Independent",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
+        "Topic :: Scientific/Engineering :: Chemistry",
         "Topic :: Scientific/Engineering :: Physics",
         "Topic :: Software Development :: Libraries :: Python Modules",
     ):
@@ -238,8 +247,9 @@ def test_readme_documents_the_0_1_0a3_release_boundary() -> None:
     assert "pending publisher" not in text.casefold()
     assert "Typing: typed" not in text
     assert (
-        "CLI-first thermophysical dataset generation and leakage-aware ML preparation\n"
-        "from thermodynamic backends, with an optional Linux-first desktop GUI."
+        "Reproducible thermophysical dataset generation from thermodynamic backends with\n"
+        "inspection, visualization, and leakage-aware ML preparation through a CLI and\n"
+        "optional desktop GUI."
     ) in text
 
 

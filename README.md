@@ -5,8 +5,9 @@
 [![Verify](https://github.com/gcalpay/carnopy/actions/workflows/ci.yml/badge.svg)](https://github.com/gcalpay/carnopy/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-CLI-first thermophysical dataset generation and leakage-aware ML preparation
-from thermodynamic backends, with an optional Linux-first desktop GUI.
+Reproducible thermophysical dataset generation from thermodynamic backends with
+inspection, visualization, and leakage-aware ML preparation through a CLI and
+optional desktop GUI.
 
 > Alpha software: public interfaces and generated schemas may still change
 > before the stable `0.1.0` release.
