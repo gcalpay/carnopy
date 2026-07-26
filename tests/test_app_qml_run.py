@@ -145,6 +145,39 @@ def test_run_navigation_requires_a_saved_snapshot_but_inspection_only_requires_w
     assert run_navigation.isEnabled()
 
 
+def test_rapid_dataset_to_run_navigation_retains_the_loaded_dataset_page(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    _save_saturation_configuration(runtime)
+    desktop = runtime.controller
+    root = runtime.engine.rootObjects()[0]
+    assert root.setProperty("currentPage", "dataset")
+    _process_events()
+
+    dataset_page = root.findChild(QObject, "datasetPage")
+    dataset_loader = root.findChild(QObject, "datasetPageLoader")
+    assert dataset_page is not None
+    assert dataset_loader is not None
+    assert dataset_page.property("visible") is True
+    assert dataset_loader.property("active") is True
+
+    if "prandtl_number" not in desktop.dataset_draft.selected_property_values():
+        assert desktop.dataset_draft.add_property("prandtl_number")
+    assert root.setProperty("currentPage", "run")
+    _process_events()
+
+    assert dataset_loader.property("active") is True
+    assert dataset_loader.property("item") is dataset_page
+    assert dataset_page.property("visible") is False
+    assert root.findChild(QObject, "runPage") is not None
+
+    assert root.setProperty("currentPage", "dataset")
+    _process_events()
+    assert dataset_loader.property("item") is dataset_page
+    assert dataset_page.property("visible") is True
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
 def test_run_validation_uses_the_facade_and_persists_activity(
     runtime: QmlApplicationRuntime,
 ) -> None:

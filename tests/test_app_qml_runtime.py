@@ -41,6 +41,7 @@ from carnopy.app.qml_runtime import (
     QmlStartupError,
     QmlWarningCapture,
     _acquire_instance_lock,
+    _configure_quick_style,
     create_qml_runtime,
     fitted_window_frame,
 )
@@ -130,6 +131,20 @@ def test_private_qml_runtime_loads_one_warning_free_root(
     assert runtime.close()
     assert runtime._font_ids == []
     application.processEvents()
+
+
+def test_qml_quick_style_is_not_reset_after_basic_controls_are_loaded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed_names = iter(("Fusion", "Basic"))
+    set_calls: list[str] = []
+    monkeypatch.setattr(qml_runtime_module.QQuickStyle, "name", lambda: next(observed_names))
+    monkeypatch.setattr(qml_runtime_module.QQuickStyle, "setStyle", set_calls.append)
+
+    _configure_quick_style()
+    _configure_quick_style()
+
+    assert set_calls == ["Basic"]
 
 
 def test_qml_runtime_applies_each_theme_palette_immediately_and_restores_it(

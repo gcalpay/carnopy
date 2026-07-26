@@ -206,8 +206,9 @@ ApplicationWindow {
     function requestCommandImport() {
         routeTo("workspace");
         Qt.callLater(function () {
-            if (pageLoader.item !== null && pageLoader.item.openImportDialog !== undefined)
-                pageLoader.item.openImportDialog();
+            if (workspacePageLoader.item !== null && workspacePageLoader.item.openImportDialog
+                    !== undefined)
+                workspacePageLoader.item.openImportDialog();
         });
     }
 
@@ -583,28 +584,89 @@ ApplicationWindow {
                     title: root.operationFailureTitle
                 }
 
-                Loader {
-                    id: pageLoader
-
+                Item {
                     Layout.fillHeight: true
                     Layout.fillWidth: true
-                    objectName: "workbenchPageLoader"
-                    sourceComponent: {
-                        if (root.currentPage === "settings")
-                        return settingsPage;
-                        if (root.currentPage === "help")
-                        return helpPage;
-                        if (root.currentPage === "dataset")
-                        return datasetPage;
-                        if (root.currentPage === "visualization")
-                        return visualizationPage;
-                        if (root.currentPage === "yaml")
-                        return yamlPage;
-                        if (root.currentPage === "run")
-                        return runPage;
-                        if (root.currentPage === "inspect")
-                        return inspectPage;
-                        return workspacePage;
+                    objectName: "workbenchPageHost"
+
+                    Loader {
+                        id: workspacePageLoader
+
+                        active: root.currentPage === "workspace" || item !== null
+                        anchors.fill: parent
+                        objectName: "workspacePageLoader"
+                        sourceComponent: workspacePage
+                        visible: root.currentPage === "workspace"
+                    }
+
+                    Loader {
+                        id: datasetPageLoader
+
+                        active: root.currentPage === "dataset" || item !== null
+                        anchors.fill: parent
+                        objectName: "datasetPageLoader"
+                        sourceComponent: datasetPage
+                        visible: root.currentPage === "dataset"
+                    }
+
+                    Loader {
+                        id: yamlPageLoader
+
+                        active: root.currentPage === "yaml" || item !== null
+                        anchors.fill: parent
+                        objectName: "yamlPageLoader"
+                        sourceComponent: yamlPage
+                        visible: root.currentPage === "yaml"
+                    }
+
+                    Loader {
+                        id: visualizationPageLoader
+
+                        active: root.currentPage === "visualization" || item !== null
+                        anchors.fill: parent
+                        objectName: "visualizationPageLoader"
+                        sourceComponent: visualizationPage
+                        visible: root.currentPage === "visualization"
+                    }
+
+                    Loader {
+                        id: runPageLoader
+
+                        active: root.currentPage === "run" || item !== null
+                        anchors.fill: parent
+                        objectName: "runPageLoader"
+                        sourceComponent: runPage
+                        visible: root.currentPage === "run"
+                    }
+
+                    Loader {
+                        id: inspectPageLoader
+
+                        active: root.currentPage === "inspect" || item !== null
+                        anchors.fill: parent
+                        objectName: "inspectPageLoader"
+                        sourceComponent: inspectPage
+                        visible: root.currentPage === "inspect"
+                    }
+
+                    Loader {
+                        id: settingsPageLoader
+
+                        active: root.currentPage === "settings" || item !== null
+                        anchors.fill: parent
+                        objectName: "settingsPageLoader"
+                        sourceComponent: settingsPage
+                        visible: root.currentPage === "settings"
+                    }
+
+                    Loader {
+                        id: helpPageLoader
+
+                        active: root.currentPage === "help" || item !== null
+                        anchors.fill: parent
+                        objectName: "helpPageLoader"
+                        sourceComponent: helpPage
+                        visible: root.currentPage === "help"
                     }
                 }
 

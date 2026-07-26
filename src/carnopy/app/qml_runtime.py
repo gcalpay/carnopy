@@ -669,6 +669,11 @@ def _application(arguments: Sequence[str] | None = None) -> QApplication:
     return existing
 
 
+def _configure_quick_style() -> None:
+    if QQuickStyle.name() != "Basic":
+        QQuickStyle.setStyle("Basic")
+
+
 def _acquire_instance_lock() -> QLockFile:
     user_suffix = f"-{os.getuid()}" if hasattr(os, "getuid") else ""
     lock_path = Path(tempfile.gettempdir()) / f"carnopy-qml-desktop{user_suffix}.lock"
@@ -690,7 +695,7 @@ def create_qml_runtime(
 ) -> QmlApplicationRuntime:
     application = _application(application_arguments)
     apply_application_identity(application)
-    QQuickStyle.setStyle("Basic")
+    _configure_quick_style()
     selected_settings = settings if settings is not None else QSettings()
     controller = DesktopController(settings=selected_settings, parent=application)
     runtime = QmlApplicationRuntime(
