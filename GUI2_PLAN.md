@@ -1338,7 +1338,31 @@ a separate `0.1.0a4` release branch and pull request after Stage 3 merges.
 `carnopy-gui` becomes the canonical desktop command. `carnopy-app` remains a
 thin QML compatibility alias for the documented `0.1.0a4` deprecation window.
 
-Current implementation status as of 2026-07-23:
+Current implementation status as of 2026-07-26:
+
+| Step | Tracked state | Verification and remaining boundary |
+| --- | --- | --- |
+| 1. Lock the Stage 3 contract | Implemented and committed | The complete approved parity, ownership, provenance, launcher, retirement, and release contracts below are authoritative. |
+| 2. Extract execution state | Implemented and committed | Focused checks and the branch's remote Desktop-app check passed. |
+| 3. Add QML Run | Implemented and committed | Focused checks and the branch's remote Desktop-app check passed. |
+| 4. Extract inspection state | Implemented and committed | Focused checks pass. Its remote run exposed the page-loader/delegate-incubation race recorded below. |
+| 5. Add QML Inspect | Implemented and committed | Focused and native checks pass. Its remote run reproduced the same race rather than introducing a second Desktop-app failure. |
+| 6. Extract Activity and Recovery | Implemented locally; human commit and push pending | Focused QML, Ruff, mypy, controller, Widgets-adapter, packaging, import-isolation, and exact Desktop-app checks pass. This boundary also carries the reviewed lifecycle correction below. |
+| 7. Extract plot-result and session state | Next | Begin after the coherent Step 6/corrective push restores the remote Desktop-app check. |
+| 8–13 | Planned | Not implemented. |
+
+The two failed remote runs exposed a real QML lifecycle warning, not a
+scientific, worker, inspection, or packaging failure. Rapid Dataset-to-Run
+navigation replaced the central page `Loader` while `SearchableChoiceList`
+still had a `ListView` delegate under incubation. Qt then reported both
+`Loader: Cannot create delegate` and `Object or context destroyed during
+incubation`. The local correction lazily instantiates each page on first visit
+and retains it until runtime teardown, so navigation changes visibility rather
+than destroying live delegates. Repeated runtime creation also avoids resetting
+the already selected Basic Controls style. Warning assertions remain strict,
+and a deterministic rapid Dataset-to-Run-to-Dataset regression verifies page
+identity and warning-free navigation. Remote confirmation waits for the human
+commit and push.
 
 - Step 1 is complete and this tracked Stage 3 contract is the implementation
   authority.
@@ -1350,9 +1374,7 @@ Current implementation status as of 2026-07-23:
   without an event-loop handoff. Progress persistence is coalesced to at most
   four writes per second while phase and terminal changes persist immediately.
 - The temporary Widgets Run page is now a view adapter over that controller,
-  and the Jobs page no longer creates or updates execution records. Activity
-  loading, projection, removal, and recovery remain there temporarily until
-  Step 6 extracts their read side.
+  and the Jobs page no longer creates or updates execution records.
 - Step 3 is implemented. The private QML frontend exposes the authoritative
   saved-configuration Run workflow through a numbered responsive page and a
   Run-specific inspector. Validate, Generate, cooperative Cancel, and delayed
@@ -1408,7 +1430,20 @@ Current implementation status as of 2026-07-23:
   source-kind-aware. The explicit `Explore in Visualization` affordance remains
   disabled until Step 7 introduces the authoritative session-plot controller;
   it does not simulate navigation or rendering.
-- Step 6 is the next active implementation boundary. `Inspect Run` exact
+- Step 6 is implemented. One composition-owned `ActivityController` now owns
+  schema-version-1 record loading, typed projection, selection, diagnostic
+  presentation, record-only removal, effective `Interrupted` state, and
+  recognized staging recovery. It never starts a request or writes an activity
+  record; `DatasetExecutionController` retains that write-side ownership.
+- Stored `running` records without the matching live execution request display
+  as interrupted without rewriting their JSON. Record removal leaves generated
+  runs and figures untouched. Recovery rescans selected direct-child staging
+  paths, compares path/device/inode identity, and then reuses the existing
+  containment, type, symlink, and identity checks before deletion.
+- The temporary Widgets Jobs page is a narrow adapter over the controller, and
+  importing the controller remains free of worker inspection and heavy
+  scientific/data/rendering modules. Step 7 is the next active implementation
+  boundary. `Inspect Run` exact
   cross-page navigation remains in Step 10, `View Plots` remains unavailable
   until Step 7, and neither public launcher has migrated.
 
@@ -2067,6 +2102,14 @@ Update this document with the complete Stage 3 contract and preserve Stages 0
 through 2 and 4 through 8. Stop for human review and commit before
 implementation.
 
+Implemented on 2026-07-23 as the first Stage 3 commit. It records the final
+navigation order, synchronous Run reservation and activity-persistence
+contract, saved-baseline semantics, worker-only inspection boundary, typed
+inspection and Activity projections, configured-result provenance rules,
+sidecar-rewriting export, cross-page actions, QML launcher migration,
+backward-compatible `carnopy-app` alias, Widgets-retirement gate, and separate
+`0.1.0a4` release boundary. No implementation code changed in this Step.
+
 #### Step 2 — Extract authoritative execution state
 
 Recommended commit:
@@ -2207,6 +2250,18 @@ refactor(app): extract activity and recovery state
 Move only record loading/projection/selection/removal, interrupted projection,
 and staging recovery into `ActivityController`. Do not reopen execution startup
 or duplicate Step 2's write-side ownership.
+
+Implemented on 2026-07-26 without a worker-protocol, public-schema, dependency,
+or job-schema change. `DesktopController` owns the one operative controller and
+propagates workspace context once. Its stable-role record and recovery models
+retain malformed records visibly, derive interruption only from the matching
+live coordinator session, remove only private record JSON, and reject staging
+replacement between selection and deletion. The temporary Widgets Jobs page
+contains confirmation and presentation only. Before handoff, the exact remote
+Desktop-app failure was traced to destructive QML page replacement rather than
+Activity ownership. The same boundary retains lazily loaded visited pages,
+makes Basic-style setup idempotent, and adds the fast-navigation regression;
+the exact local Desktop-app suite is warning-free.
 
 #### Step 7 — Extract configured-result and session-plot state
 

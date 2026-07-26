@@ -42,8 +42,12 @@ The desktop has two frontend implementations during the GUI-2 migration:
   metadata, table selection, and bounded preview state are owned by one
   `InspectionController`; the private QML Inspect workbench and public Widgets
   Inspect/source pages are view adapters over it;
-- plot-result viewing and exploration, Activity and Recovery, launcher
-  migration, and Widgets retirement belong to the remaining Stage 3 steps.
+- private Run-activity loading, typed projection, record-only removal,
+  interrupted-state projection, and identity-checked staging recovery are owned
+  by one `ActivityController`; the public Widgets Jobs page is a view adapter
+  over it;
+- plot-result viewing and exploration, the QML Activity page, launcher migration,
+  and Widgets retirement belong to the remaining Stage 3 steps.
 
 The development version is `0.1.0a4.dev0`. The two public launchers switch to
 QML only after Stage 3 reaches tested GUI-1 parity; Carnopy will not ship two
@@ -152,7 +156,8 @@ cross-controller facade. One instance owns:
 - `VisualizationDraft`; and
 - `DatasetConfigController`;
 - `DatasetExecutionController`; and
-- `InspectionController`.
+- `InspectionController`; and
+- `ActivityController`.
 
 It binds workspace activation to configuration context exactly once. QML may
 edit a child draft through explicit local-edit requests, but workspace changes,
@@ -251,6 +256,31 @@ bytes. They consume only JSON-compatible worker payloads. The first bounded
 preview is queued after an explicit successful inspection because the request
 coordinator releases its active session only after delivering the terminal
 result.
+
+### `ActivityController`
+
+`ActivityController` is the authoritative read side of private Run activity and
+staging recovery. It owns:
+
+- schema-version-1-compatible record loading and stable-role projection;
+- record selection, typed summaries, and preformatted raw diagnostics;
+- effective `Interrupted` projection for a stored `running` record that has no
+  matching live execution session, without rewriting that record;
+- deletion of the selected private activity JSON only; and
+- recognized direct-child staging discovery, selection, rescan, identity
+  revalidation, and removal.
+
+It never starts a request, updates execution records, owns a generated run, or
+deletes generated artifacts. `DatasetExecutionController` remains the sole
+write-side owner. Recovery removal compares the selected path, device, and inode
+with a fresh scan and then uses the filesystem helper's containment, type,
+symlink, and identity checks immediately before deletion. A replacement is
+reported and retained rather than being adopted as a new deletion target.
+
+`DesktopController` supplies the active workspace once and refreshes Activity
+after execution record changes. The temporary Widgets Jobs page is only a view
+adapter over this controller; the later QML Activity page will bind the same
+models and actions.
 
 ### `WorkerClient`
 
@@ -470,13 +500,12 @@ parity migration.
 Widgets pages are adapters over shared controllers for workspace,
 configuration, execution, sources, jobs, recovery, plot requests, and image
 preview. The Run page now consumes `DatasetExecutionController`; it no longer
-starts workers or emits persistence events. The Jobs page temporarily retains
-only record loading, display, removal, and recovery until the Stage 3 Activity
-controller is extracted. The Inspect and generated-source pages project the
-shared `InspectionController`; they no longer start inspection or preview
-sessions, discover sources, or retain authoritative table state. Widgets retain
-native file dialogs and existing manual workflows as a parity oracle until
-Stage 3.
+starts workers or emits persistence events. The Jobs page consumes
+`ActivityController`; it no longer loads JSON, decides interruption state, or
+owns staging recovery. The Inspect and generated-source pages project the shared
+`InspectionController`; they no longer start inspection or preview sessions,
+discover sources, or retain authoritative table state. Widgets retain native
+file dialogs and existing manual workflows as a parity oracle until Stage 3.
 
 Widgets must not regain shadow draft state while QML is added. A behavior fix
 at a shared boundary must be reflected in both frontends, as with safe sampler
@@ -600,6 +629,10 @@ Each surface has one shared toggle action, so pointer, keyboard, settings, and
 breakpoint transitions cannot apply duplicate state changes. The shell remains
 interactive while capability discovery is active and shows that it is
 preparing local CoolProp capabilities rather than implying network activity.
+Workbench pages are instantiated lazily on first visit and then retained until
+runtime teardown. Navigation changes page visibility rather than destroying a
+page whose virtualized delegates may still be incubating; this also preserves
+local view position and focus state without duplicating controller ownership.
 Window restoration clamps the full decorated frame to an available screen and
 prefers the monitor on which the window was last closed. The runtime assigns
 and fits the still-hidden native window to that monitor before showing or

@@ -161,6 +161,7 @@ def test_window_uses_one_shared_request_coordinator(
     assert window.execution_page.coordinator is window.coordinator
     assert window.inspection_page.coordinator is window.coordinator
     assert window.plot_page.coordinator is window.coordinator
+    assert window.jobs_page.controller is window.activity_controller
     window.close()
 
 
@@ -280,15 +281,16 @@ def test_opening_active_workspace_skips_discard_and_page_reset(
         "set_workspace",
         lambda _workspace: propagated.append("inspection"),
     )
-    for name, page in (
-        ("plot", window.plot_page),
-        ("jobs", window.jobs_page),
-    ):
-        monkeypatch.setattr(
-            page,
-            "set_workspace",
-            lambda _workspace, name=name: propagated.append(name),
-        )
+    monkeypatch.setattr(
+        window.activity_controller,
+        "set_workspace",
+        lambda _workspace: propagated.append("activity"),
+    )
+    monkeypatch.setattr(
+        window.plot_page,
+        "set_workspace",
+        lambda _workspace: propagated.append("plot"),
+    )
     with monkeypatch.context() as scoped:
         scoped.setattr(
             window.configure_page,
@@ -370,10 +372,18 @@ def test_successful_activation_propagates_once_to_every_workspace_page(
         "set_workspace",
         lambda _workspace: propagated.append("execution"),
     )
+    monkeypatch.setattr(
+        window.inspection_controller,
+        "set_workspace",
+        lambda _workspace: propagated.append("inspection"),
+    )
+    monkeypatch.setattr(
+        window.activity_controller,
+        "set_workspace",
+        lambda _workspace: propagated.append("activity"),
+    )
     for name, page in (
-        ("inspection", window.inspection_page),
         ("plot", window.plot_page),
-        ("jobs", window.jobs_page),
         ("sources", window.sources_panel),
     ):
         monkeypatch.setattr(
@@ -392,8 +402,8 @@ def test_successful_activation_propagates_once_to_every_workspace_page(
         "configuration",
         "execution",
         "inspection",
+        "activity",
         "plot",
-        "jobs",
     ]
     window.close()
 

@@ -4,6 +4,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Property, QObject, QSettings, QTimer, QUrl, Signal, Slot
 
+from carnopy.app.activity_controller import ActivityController
 from carnopy.app.client import WorkerClient
 from carnopy.app.config_controller import DatasetConfigController
 from carnopy.app.dataset_draft import DatasetDraft
@@ -61,6 +62,13 @@ class DesktopController(QObject):
         self.inspection_controller = InspectionController(
             self.request_coordinator,
             self,
+        )
+        self.activity_controller = ActivityController(
+            self.request_coordinator,
+            self,
+        )
+        self.execution_controller.activity_record_changed.connect(
+            self.activity_controller.refresh_records
         )
         self.execution_controller.run_finalized.connect(
             lambda _path: self.inspection_controller.refresh_sources()
@@ -288,6 +296,15 @@ class DesktopController(QObject):
     inspectionController = Property(
         QObject,
         get_inspection_controller,
+        constant=True,
+    )
+
+    def get_activity_controller(self) -> QObject:
+        return self.activity_controller
+
+    activityController = Property(
+        QObject,
+        get_activity_controller,
         constant=True,
     )
 
@@ -813,6 +830,7 @@ class DesktopController(QObject):
         self.dataset_config_controller.set_workspace(value)
         self.execution_controller.set_workspace(value if isinstance(value, Workspace) else None)
         self.inspection_controller.set_workspace(value if isinstance(value, Workspace) else None)
+        self.activity_controller.set_workspace(value if isinstance(value, Workspace) else None)
         self.workspace_state_changed.emit()
         self.workspace_confirmation_changed.emit()
 

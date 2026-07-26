@@ -24,6 +24,7 @@ from PySide6.QtCore import (
 
 from carnopy.app.desktop_controller import DesktopController
 from carnopy.app.draft_models import DraftItem
+from carnopy.app.jobs import JobStore
 from carnopy.app.request_coordinator import DesktopRequestCoordinator
 from carnopy.app.workspace import initialize_workspace
 from carnopy.app.workspace_controller import (
@@ -96,6 +97,8 @@ def test_desktop_controller_owns_one_composition_and_preserves_settings_identity
     assert desktop.execution_controller.parent() is desktop
     assert desktop.execution_controller.coordinator is desktop.request_coordinator
     assert desktop.execution_controller.config_controller is desktop.dataset_config_controller
+    assert desktop.activity_controller.parent() is desktop
+    assert desktop.activity_controller.coordinator is desktop.request_coordinator
     assert desktop.workspace_controller.coordinator is desktop.request_coordinator
     assert desktop.client.parent() is desktop
     assert desktop.request_coordinator.parent() is desktop
@@ -106,6 +109,7 @@ def test_desktop_controller_owns_one_composition_and_preserves_settings_identity
     assert desktop.property("visualizationDraft") is desktop.visualization_draft
     assert desktop.property("datasetConfigController") is desktop.dataset_config_controller
     assert desktop.property("executionController") is desktop.execution_controller
+    assert desktop.property("activityController") is desktop.activity_controller
     assert (
         desktop.workspace_controller.property("recentWorkspaces")
         is desktop.workspace_controller.recent_model
@@ -262,6 +266,30 @@ def test_execution_facade_routes_qml_intent_to_the_authoritative_controller(
     assert desktop.request_execution_cancel()
     assert desktop.request_execution_force_stop()
     assert calls == ["validate", "generate", "cancel", "force_stop"]
+    assert desktop.shutdown()
+
+
+def test_execution_record_changes_refresh_the_shared_activity_projection(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    workspace = initialize_workspace(tmp_path / "workspace")
+    desktop.activity_controller.set_workspace(workspace)
+    assert desktop.activity_controller.records_model.get_count() == 0
+    JobStore(workspace.private_directory).start(
+        request_id="00000000-0000-0000-0000-000000000020",
+        operation="validate",
+        config_relative_path="configs/dataset.yaml",
+        yaml_snapshot="schema_version: 2\n",
+        config_sha256="a" * 64,
+    )
+
+    desktop.execution_controller.activity_record_changed.emit()
+
+    assert desktop.activity_controller.records_model.get_count() == 1
+    assert desktop.activity_controller.records_model.rows()[0]["state"] == "interrupted"
     assert desktop.shutdown()
 
 

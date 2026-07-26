@@ -180,6 +180,7 @@ def test_distribution_resource_manifest_rejects_changed_bytes() -> None:
 def test_distribution_checker_requires_model_sweep_artifacts() -> None:
     assert {
         "carnopy/_execution.py",
+        "carnopy/app/activity_controller.py",
         "carnopy/app/application_identity.py",
         "carnopy/app/capabilities.py",
         "carnopy/app/launcher.py",
@@ -266,6 +267,7 @@ def test_distribution_checker_requires_model_sweep_artifacts() -> None:
         "configs/model_sweep_example.yaml",
         "scripts/check_qml.py",
         "src/carnopy/_execution.py",
+        "src/carnopy/app/activity_controller.py",
         "src/carnopy/app/application_identity.py",
         "src/carnopy/app/capabilities.py",
         "src/carnopy/app/launcher.py",
