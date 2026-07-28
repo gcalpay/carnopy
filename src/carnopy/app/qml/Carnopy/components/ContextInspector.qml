@@ -19,6 +19,7 @@ Control {
     property string datasetIssue: ""
     property var executionController: null
     property var inspectionController: null
+    property var activityController: null
     property string pageKey: "workspace"
     property bool visualizationActiveEdit: false
     property string visualizationIssue: ""
@@ -97,7 +98,8 @@ Control {
             contentWidth: width
             flickableDirection: Flickable.VerticalFlick
             pixelAligned: true
-            visible: root.pageKey !== "run" && root.pageKey !== "inspect"
+            visible: root.pageKey !== "run" && root.pageKey !== "inspect" && root.pageKey
+                     !== "activity"
 
             ScrollBar.vertical: ScrollBar {
                 policy: ScrollBar.AsNeeded
@@ -310,6 +312,13 @@ Control {
             Layout.fillWidth: true
             inspectionController: root.inspectionController
             visible: root.pageKey === "inspect" && root.inspectionController !== null
+        }
+
+        ActivityContextInspector {
+            Layout.fillHeight: true
+            Layout.fillWidth: true
+            activityController: root.activityController
+            visible: root.pageKey === "activity" && root.activityController !== null
         }
     }
 }

@@ -13,6 +13,7 @@ Control {
     property string currentPage: "workspace"
     property bool datasetAvailable: false
     property bool inspectAvailable: false
+    property bool activityAvailable: false
     property bool runAvailable: false
     property bool visualizationAvailable: false
     property bool yamlAvailable: false
@@ -95,8 +96,8 @@ Control {
             pageKey: "activity"
             title: qsTr("Activity and Recovery")
             iconName: "activity"
-            available: false
-            unavailableReason: qsTr("Jobs and recovery enter QML in Stage 5.")
+            available: true
+            unavailableReason: qsTr("Open a workspace to review activity and staging recovery.")
         }
         ListElement {
             pageKey: "sweeps"
@@ -205,7 +206,9 @@ Control {
                                                                                             !== "run"
                                                                                             || root.runAvailable)
                                                              && (pageKey !== "inspect"
-                                                                 || root.inspectAvailable)
+                                                                 || root.inspectAvailable) && (
+                                                                 pageKey !== "activity"
+                                                                 || root.activityAvailable)
 
                 Accessible.description: effectivelyAvailable ? "" : unavailableReason
                 Accessible.name: title

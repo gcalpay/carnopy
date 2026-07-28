@@ -60,12 +60,14 @@ def test_qml_runtime_is_private_and_resources_live_in_the_app_package() -> None:
     app_root = root / "src" / "carnopy" / "app"
     for relative_path in (
         "qml/Carnopy/Main.qml",
+        "qml/Carnopy/pages/ActivityPage.qml",
         "qml/Carnopy/pages/DatasetPage.qml",
         "qml/Carnopy/pages/InspectPage.qml",
         "qml/Carnopy/pages/RunPage.qml",
         "qml/Carnopy/pages/VisualizationPage.qml",
         "qml/Carnopy/pages/YamlPreviewPage.qml",
         "qml/Carnopy/components/BlockingBanner.qml",
+        "qml/Carnopy/components/ActivityContextInspector.qml",
         "qml/Carnopy/components/InspectionContextInspector.qml",
         "qml/Carnopy/components/LineNumberedTextArea.qml",
         "qml/Carnopy/components/MappingEditor.qml",

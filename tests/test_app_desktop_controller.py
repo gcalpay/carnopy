@@ -335,6 +335,58 @@ def test_execution_record_changes_refresh_the_shared_activity_projection(
     assert desktop.shutdown()
 
 
+def test_activity_cross_page_actions_use_exact_selected_record_identity(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    source = str((tmp_path / "workspace" / "outputs" / "run-id").resolve())
+    inspected: list[str] = []
+    selected: list[str] = []
+    navigation: list[tuple[str, str]] = []
+    desktop.navigationRequested.connect(lambda page, detail: navigation.append((page, detail)))
+    monkeypatch.setattr(
+        desktop.activity_controller,
+        "get_selected_record_summary",
+        lambda: {"outputDirectory": source},
+    )
+    monkeypatch.setattr(
+        desktop.activity_controller,
+        "get_selected_record_id",
+        lambda: "request-id",
+    )
+    monkeypatch.setattr(
+        desktop.activity_controller,
+        "get_can_inspect_run",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        desktop.activity_controller,
+        "get_can_view_plots",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        desktop.inspection_controller,
+        "inspect_source",
+        lambda value: inspected.append(value) or True,
+    )
+    monkeypatch.setattr(
+        desktop.configured_plot_results_controller,
+        "select_generation",
+        lambda value: selected.append(value) or True,
+    )
+
+    assert desktop.request_activity_inspect_run()
+    assert desktop.request_activity_view_plots()
+
+    assert inspected == [source]
+    assert selected == ["request-id"]
+    assert navigation == [("inspect", ""), ("visualization", "configured")]
+    assert desktop.shutdown()
+
+
 def test_save_as_facade_converts_qml_file_urls_at_the_composition_boundary(
     tmp_path: Path,
     application: QCoreApplication,

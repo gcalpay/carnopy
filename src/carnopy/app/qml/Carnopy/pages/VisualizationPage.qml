@@ -47,6 +47,10 @@ Item {
     property string exportTarget: ""
     property string exportFormat: ""
 
+    function showConfiguredPlots() {
+        viewTabs.currentIndex = 0;
+    }
+
     function openExportDialog(target, format) {
         exportTarget = target;
         exportFormat = format;

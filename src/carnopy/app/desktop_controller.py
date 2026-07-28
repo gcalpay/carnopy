@@ -38,6 +38,8 @@ class DesktopController(QObject):
     shutdownConfirmationRequested = Signal()
     transientEditShutdownConfirmationRequested = Signal(str)
     closeWindowRequested = Signal()
+    navigationRequested = Signal(str, str)
+    activityActionFailed = Signal(str, str)
 
     def __init__(
         self,
@@ -480,6 +482,53 @@ class DesktopController(QObject):
     @Slot(name="requestMoreInspectionSources")
     def request_more_inspection_sources(self) -> None:
         self.inspection_controller.reveal_more_sources()
+
+    @Slot(result=bool, name="requestActivityInspectRun")
+    def request_activity_inspect_run(self) -> bool:
+        summary = self.activity_controller.get_selected_record_summary()
+        source = summary.get("outputDirectory")
+        if not self.activity_controller.get_can_inspect_run() or not isinstance(source, str):
+            self.activityActionFailed.emit(
+                "Inspect Run",
+                "Select a completed generation record with a recorded output directory.",
+            )
+            return False
+        if not self.inspection_controller.inspect_source(source):
+            self.activityActionFailed.emit(
+                "Inspect Run",
+                self.inspection_controller.get_issue()
+                or "The selected run could not be submitted for inspection.",
+            )
+            return False
+        self.navigationRequested.emit("inspect", "")
+        return True
+
+    @Slot(result=bool, name="requestActivityViewPlots")
+    def request_activity_view_plots(self) -> bool:
+        record_id = self.activity_controller.get_selected_record_id()
+        if not self.activity_controller.get_can_view_plots() or not record_id:
+            self.activityActionFailed.emit(
+                "View Plots",
+                "Select a completed generation record with configured plot evidence.",
+            )
+            return False
+        if not self.configured_plot_results_controller.select_generation(record_id):
+            self.activityActionFailed.emit(
+                "View Plots",
+                self.configured_plot_results_controller.get_issue()
+                or "The selected plot evidence could not be opened.",
+            )
+            return False
+        self.navigationRequested.emit("visualization", "configured")
+        return True
+
+    @Slot(result=bool, name="requestActivityRecordRemoval")
+    def request_activity_record_removal(self) -> bool:
+        return self.activity_controller.remove_selected_record()
+
+    @Slot(result=bool, name="requestActivityRecoveryRemoval")
+    def request_activity_recovery_removal(self) -> bool:
+        return self.activity_controller.remove_selected_recovery()
 
     @Slot(str, result=bool, name="requestSavePathSelected")
     def request_save_path_selected(self, path: str) -> bool:

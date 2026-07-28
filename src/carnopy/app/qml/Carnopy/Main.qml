@@ -56,6 +56,10 @@ ApplicationWindow {
     signal inspectionRefreshRequested
     signal inspectionSourcesRefreshRequested
     signal inspectionTableRequested(string tableId)
+    signal activityInspectRunRequested
+    signal activityRecordRemovalRequested
+    signal activityRecoveryRemovalRequested
+    signal activityViewPlotsRequested
     signal plotFieldChangeRequested(var draft, string field, string value)
     signal plotFluidSelectionRequested(var draft, string value, bool selected)
     signal visualizationAddPlotRequested
@@ -111,6 +115,8 @@ ApplicationWindow {
                                                ? desktopController.executionController : null
     readonly property var inspectionController: controllerAvailable
                                                 ? desktopController.inspectionController : null
+    readonly property var activityController: controllerAvailable
+                                              ? desktopController.activityController : null
     readonly property var configuredPlotResultsController: controllerAvailable
                                                            ? desktopController.configuredPlotResultsController :
                                                              null
@@ -152,6 +158,8 @@ ApplicationWindow {
             return qsTr("Run");
         if (pageKey === "inspect")
             return qsTr("Inspect");
+        if (pageKey === "activity")
+            return qsTr("Activity");
         return qsTr("Workspace");
     }
 
@@ -418,6 +426,7 @@ ApplicationWindow {
             allowCollapse: root.shellMode === "wide"
             collapsed: root.railEffectiveCollapsed
             currentPage: root.currentPage
+            activityAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
             datasetAvailable: root.controllerAvailable && root.desktopController.workspaceState
                               === "editing"
             inspectAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
@@ -666,6 +675,16 @@ ApplicationWindow {
                     }
 
                     Loader {
+                        id: activityPageLoader
+
+                        active: root.currentPage === "activity" || item !== null
+                        anchors.fill: parent
+                        objectName: "activityPageLoader"
+                        sourceComponent: activityPage
+                        visible: root.currentPage === "activity"
+                    }
+
+                    Loader {
                         id: settingsPageLoader
 
                         active: root.currentPage === "settings" || item !== null
@@ -747,6 +766,7 @@ ApplicationWindow {
             ContextInspector {
                 id: persistentInspector
 
+                activityController: root.activityController
                 blockingField: root.configController !== null ? root.configController.blockingField :
                                                                 ""
                 blockingIssue: root.configController !== null ? root.configController.blockingIssue :
@@ -810,6 +830,7 @@ ApplicationWindow {
             allowCollapse: false
             collapsed: false
             currentPage: root.currentPage
+            activityAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
             datasetAvailable: root.controllerAvailable && root.desktopController.workspaceState
                               === "editing"
             inspectAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
@@ -832,6 +853,7 @@ ApplicationWindow {
         width: Math.min(328, root.width * 0.9)
 
         contentItem: ContextInspector {
+            activityController: root.activityController
             blockingField: root.configController !== null ? root.configController.blockingField : ""
             blockingIssue: root.configController !== null ? root.configController.blockingIssue : ""
             blockingRow: root.configController !== null ? root.configController.blockingRow : -1
@@ -1025,6 +1047,19 @@ ApplicationWindow {
     }
 
     Component {
+        id: activityPage
+
+        ActivityPage {
+            activityController: root.activityController
+            objectName: "activityPage"
+            onInspectRunRequested: root.activityInspectRunRequested()
+            onRemoveRecordRequested: root.activityRecordRemovalRequested()
+            onRemoveRecoveryRequested: root.activityRecoveryRemovalRequested()
+            onViewPlotsRequested: root.activityViewPlotsRequested()
+        }
+    }
+
+    Component {
         id: settingsPage
 
         SettingsPage {
@@ -1049,6 +1084,10 @@ ApplicationWindow {
     }
 
     Connections {
+        function onActivityActionFailed(title, message) {
+            toastHost.showMessage(title + ": " + message, "danger");
+        }
+
         function onAttentionRequested(section, field, row) {
             if (section !== "dataset" && section !== "visualization")
                 return;
@@ -1070,6 +1109,15 @@ ApplicationWindow {
             root.routeTo("dataset");
         }
 
+        function onNavigationRequested(pageKey, detail) {
+            root.routeTo(pageKey);
+            if (pageKey === "visualization" && detail === "configured")
+                Qt.callLater(function () {
+                    if (visualizationPageLoader.item !== null)
+                        visualizationPageLoader.item.showConfiguredPlots();
+                });
+        }
+
         function onShutdownConfirmationRequested() {
             shutdownDiscardDialog.open();
         }
@@ -1087,6 +1135,8 @@ ApplicationWindow {
             if (root.currentPage === "run" && !root.desktopController.workspaceAvailable)
                 root.routeTo("workspace");
             if (root.currentPage === "inspect" && !root.desktopController.workspaceAvailable)
+                root.routeTo("workspace");
+            if (root.currentPage === "activity" && !root.desktopController.workspaceAvailable)
                 root.routeTo("workspace");
         }
 

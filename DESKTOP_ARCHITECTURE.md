@@ -289,9 +289,12 @@ symlink, and identity checks immediately before deletion. A replacement is
 reported and retained rather than being adopted as a new deletion target.
 
 `DesktopController` supplies the active workspace once and refreshes Activity
-after execution record changes. The temporary Widgets Jobs page is only a view
-adapter over this controller; the later QML Activity page will bind the same
-models and actions.
+after execution record changes. The temporary Widgets Jobs page and the QML
+Activity page are views over the same controller. QML selection and refresh are
+local presentation operations; exact Inspect/View navigation and both removal
+operations cross the queued root bridge into composition-owned façade slots.
+The controller exposes preformatted confirmation paths because Python sequence
+wrappers are not treated as JavaScript arrays by QML.
 
 ### Configured and session plot controllers
 
@@ -651,6 +654,22 @@ saved-snapshot validation are optional diagnostics. Neither authorizes Save or
 generation; those operations retain their own fresh worker-authoritative
 validation at the existing trust boundaries.
 
+The QML Visualization page projects both plot controllers without importing or
+running rendering code in the GUI process. Configured results start from a
+selected persisted generation record and expose only verified report outcomes;
+session plots start only after an explicit Render action. Opening the page,
+switching its tabs, selecting an outcome, or opening focus mode starts no
+worker. Dense numeric series use the shared continuous color scale while every
+finite emitted coordinate and deliberate phase break remains unchanged.
+
+The QML Activity page uses the rail label **Activity and Recovery**, the page
+heading **Activity**, and separate **Run activity** and **Staging Recovery**
+tabs. Record and recovery collections remain stable-role Qt models. The page
+shows typed summaries and exposes the raw record only as expandable diagnostic
+text. It never scans output or figure directories and never treats an activity
+record as artifact ownership. Recovery confirmation lists exact selected paths;
+the controller still rescans and identity-checks them before removal.
+
 Close processing is deferred out of the native event-filter callback. Teardown
 is idempotent, removes the close filter before object destruction, and uses a
 one-use bypass only after the composition guard accepts the close. SIGINT enters
@@ -904,10 +923,12 @@ workaround.
   from the exact saved configuration through the authoritative execution
   controller. It can also explicitly inspect workspace or external dataset,
   sweep, and preparation sources and present their typed summaries, logical
-  arrays, diagnostics, and bounded tables. Configured plot results and session
-  rendering remain later Stage 3 workflows.
-- QML plotting, Activity and Recovery, sweep creation, preparation creation,
-  and 3D presentation are not implemented.
+  arrays, diagnostics, and bounded tables. It also presents configured plot
+  evidence, explicit session rendering, private Run activity, and guarded
+  staging recovery.
+- Cross-page end-to-end parity, public-launcher migration, Widgets retirement,
+  sweep creation, preparation creation, and 3D presentation are not
+  implemented.
 - Native folder dialogs and compositor behavior require human acceptance;
   headless tests do not automate them.
 - The current WSLg development host can use CPU rendering through Mesa

@@ -144,6 +144,24 @@ class ActivityController(QObject):
         notify=state_changed,
     )
 
+    def get_selected_recovery_paths(self) -> list[str]:
+        return [str(path) for path in self.selected_recovery_paths()]
+
+    selectedRecoveryPaths = Property(
+        object,
+        get_selected_recovery_paths,
+        notify=state_changed,
+    )
+
+    def get_selected_recovery_paths_text(self) -> str:
+        return "\n".join(self.get_selected_recovery_paths())
+
+    selectedRecoveryPathsText = Property(
+        str,
+        get_selected_recovery_paths_text,
+        notify=state_changed,
+    )
+
     def get_recovery_state(self) -> str:
         return self._recovery_state
 

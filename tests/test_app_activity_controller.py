@@ -213,6 +213,9 @@ def test_recovery_removes_only_selected_identity_checked_direct_candidates(
     assert controller.set_recovery_selected(0, True)
     assert controller.get_selected_recovery_count() == 1
     assert controller.selected_recovery_paths() == (first,)
+    assert controller.get_selected_recovery_paths() == [str(first)]
+    assert controller.property("selectedRecoveryPaths") == [str(first)]
+    assert controller.get_selected_recovery_paths_text() == str(first)
     assert controller.remove_selected_recovery()
 
     assert not first.exists()

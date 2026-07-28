@@ -11,6 +11,7 @@ CommandBar 1.0 components/CommandBar.qml
 ContextInspector 1.0 components/ContextInspector.qml
 RunContextInspector 1.0 components/RunContextInspector.qml
 InspectionContextInspector 1.0 components/InspectionContextInspector.qml
+ActivityContextInspector 1.0 components/ActivityContextInspector.qml
 DecisionDialog 1.0 components/DecisionDialog.qml
 MappingEditor 1.0 components/MappingEditor.qml
 LineNumberedTextArea 1.0 components/LineNumberedTextArea.qml
@@ -36,3 +37,4 @@ VisualizationPage 1.0 pages/VisualizationPage.qml
 YamlPreviewPage 1.0 pages/YamlPreviewPage.qml
 RunPage 1.0 pages/RunPage.qml
 InspectPage 1.0 pages/InspectPage.qml
+ActivityPage 1.0 pages/ActivityPage.qml

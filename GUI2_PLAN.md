@@ -1354,8 +1354,9 @@ Current implementation status as of 2026-07-28:
 | 5. Add QML Inspect | Implemented and committed | Focused and native checks pass. Its remote run reproduced the same race rather than introducing a second Desktop-app failure. |
 | 6. Extract Activity and Recovery | Implemented and committed | Focused and remote checks pass, including the corrective page-lifecycle regression. |
 | 7. Extract plot-result and session state | Implemented and committed | Focused artifact, controller, Widgets-adapter, import-isolation, packaging, and composition checks pass. The branch's remote checks passed. No protocol or public-schema change was required. |
-| 8. Complete QML Visualization | Implemented locally; human commit and push pending | QML binds both Step 7 controllers, and focused QML, artifact, export, runtime, packaging, composition, and scientific rendering checks pass. Page and tab entry remain worker-idle. Native review found and corrected dense-series legend crowding without changing emitted states. |
-| 9–13 | Planned | Step 9 is the next implementation boundary after Step 8 is committed; Steps 9–13 are not implemented. |
+| 8. Complete QML Visualization | Implemented and committed | QML binds both Step 7 controllers, and focused QML, artifact, export, runtime, packaging, composition, and scientific rendering checks plus the branch's remote checks pass. Page and tab entry remain worker-idle. Native review found and corrected dense-series legend crowding without changing emitted states. |
+| 9. Add QML Activity and Recovery | Implemented locally; human review and commit pending | The two-tab Activity page binds the existing typed models, routes destructive and cross-page actions through the composition façade, and keeps record/artifact ownership and identity-checked recovery unchanged. Focused controller, QML, runtime, and packaging checks pass. |
+| 10–13 | Planned | Step 10 is the next implementation boundary after Step 9 is committed; Steps 10–13 are not implemented. |
 
 Two earlier failed remote runs exposed a real QML lifecycle warning, not a
 scientific, worker, inspection, or packaging failure. Rapid Dataset-to-Run
@@ -1472,9 +1473,26 @@ remote checks pass.
   request-identity path and do not load source inspection, table readers,
   pandas, PyArrow, NumPy, CoolProp, Matplotlib, or visualization renderer/model
   modules. The temporary Widgets Plot page is a view adapter over the shared
-  session controller. QML Visualization presentation remains Step 8; exact
-  cross-page navigation remains Step 10, and neither public launcher has
-  migrated.
+  session controller.
+- Step 8 is implemented. QML Visualization now presents the configured editor,
+  record-driven configured-result evidence, opaque PNG/SVG previews, explicit
+  PDF opening, provenance-preserving export, and session-only rendering over
+  the Step 7 controllers. Page and tab entry remain worker-idle, and the
+  emitted-state p–v/T–s correction preserves exact finite coordinates while
+  replacing dense per-series legends with a continuous color scale.
+- Step 9 is implemented locally. The QML rail now enables **Activity and
+  Recovery** for an active workspace. Its **Activity** page exposes **Run
+  activity** and **Staging Recovery** tabs, virtualized record and candidate
+  lists, typed selected-record details, an explicitly expanded diagnostic
+  envelope, exact selected recovery paths, and confirmation before either
+  private-record or staging removal.
+- Activity selection and refresh remain local presentation operations on the
+  read-side controller. `Inspect Run`, `View Plots`, private-record removal,
+  and recovery removal cross queued root signals into `DesktopController`.
+  Inspect submits the exact recorded output directory before navigating;
+  View Plots selects the exact generation request and opens the configured
+  subview without inspection or rendering. Full cross-page parity remains Step
+  10, and neither public launcher has migrated.
 
 ### Permanent scientific and process boundaries
 
@@ -2368,7 +2386,8 @@ not construct a saturation dome, cycle, process path, or backend-derived state.
 Focused tests compare plotted finite coordinates exactly with emitted rows and
 cover both the dense color scale and phase-break provenance.
 
-Step 9 is next after human review, commit, push, and remote verification.
+Step 9 is implemented locally with focused verification complete. Human review,
+commit, push, and remote verification precede Step 10.
 
 #### Step 9 — Add QML Activity and Recovery
 
@@ -2381,6 +2400,11 @@ feat(app): add QML activity and recovery
 Add the two-tab Activity page, bounded records, typed details, exact cross-page
 actions, diagnostic expansion, recovery selection, confirmation, and
 accessible status presentation.
+
+Implemented. The page consumes only the existing stable-role models and typed
+selected summary. Record and recovery removals remain composition-routed and
+preserve the controller's record-only and rescan-and-identity-checked safety
+contracts. No worker request starts when the page or either tab opens.
 
 #### Step 10 — Complete guarded end-to-end parity
 
