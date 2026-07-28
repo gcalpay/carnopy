@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import os
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -8,7 +10,17 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QCoreApplication, QEventLoop, QObject, QPointF, QSettings, Qt, QTimer
+from PySide6.QtCore import (
+    QCoreApplication,
+    QEventLoop,
+    QMetaObject,
+    QObject,
+    QPointF,
+    QSettings,
+    Qt,
+    QTimer,
+)
+from PySide6.QtGui import QImage
 from PySide6.QtQuick import QQuickItem, QQuickWindow
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
@@ -60,6 +72,16 @@ def _process_events() -> None:
         application.processEvents()
 
 
+def _wait_until(predicate: Callable[[], bool], *, timeout_ms: int = 5_000) -> None:
+    elapsed = 0
+    while not predicate():
+        if elapsed >= timeout_ms:
+            raise AssertionError("condition did not become true before the timeout")
+        QTest.qWait(25)
+        _process_events()
+        elapsed += 25
+
+
 def _item(root: QQuickWindow, object_name: str) -> QQuickItem:
     pending: list[QQuickItem] = [root.contentItem()]
     while pending:
@@ -90,6 +112,13 @@ def _click(root: QQuickWindow, item: QQuickItem) -> None:
         desired = min(maximum, max(0.0, position.y() - viewport_height / 3))
         flickable.setProperty("contentY", desired)
         _process_events()
+    point = item.mapToScene(QPointF(item.width() / 2, item.height() / 2)).toPoint()
+    QTest.mouseClick(root, Qt.MouseButton.LeftButton, delay=0, pos=point)
+    QTest.qWait(120)
+    _process_events()
+
+
+def _click_scene(root: QQuickWindow, item: QQuickItem) -> None:
     point = item.mapToScene(QPointF(item.width() / 2, item.height() / 2)).toPoint()
     QTest.mouseClick(root, Qt.MouseButton.LeftButton, delay=0, pos=point)
     QTest.qWait(120)
@@ -303,4 +332,121 @@ def test_visualization_tabs_do_not_render_and_session_edit_is_explicit(
     _click(root, cancel_button)
     assert not desktop.session_plot_controller.get_has_active_edit()
     assert not desktop.request_coordinator.is_busy
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_configured_result_columns_share_top_alignment_and_list_height(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    desktop = runtime.controller
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    desktop.qml_settings.set_rail_collapsed(True)
+    desktop.qml_settings.set_inspector_collapsed(True)
+    root.setWidth(1920)
+    root.setHeight(1080)
+    assert root.setProperty("currentPage", "visualization")
+
+    controller = desktop.configured_plot_results_controller
+    controller.records_model.set_rows(
+        (
+            {
+                "requestId": "request-1",
+                "runId": "run-1",
+                "createdAtUtc": "2026-07-29T10:00:00Z",
+                "configurationPath": "configs/demo.yaml",
+                "configurationSha256": "a" * 64,
+                "visualizationStatus": "completed",
+                "hasRecordedVisualization": True,
+            },
+        ),
+        available=True,
+    )
+    controller.outcomes_model.set_rows(
+        (
+            {
+                "index": index,
+                "name": f"plot-{index}",
+                "kind": "xy",
+                "status": "completed",
+                "format": "png",
+                "previewAvailable": True,
+                "openExternally": False,
+                "validSampleCount": 10,
+                "excludedSampleCount": 0,
+                "issue": "",
+            }
+            for index in range(4)
+        ),
+        available=True,
+    )
+    _process_events()
+
+    grid = _item(root, "configuredResultsGrid")
+    generation_column = _item(root, "configuredGenerationColumn")
+    outcome_column = _item(root, "configuredOutcomeColumn")
+    preview_column = _item(root, "configuredPreviewColumn")
+    generation_list = _item(root, "configuredPlotGenerationList")
+    outcome_list = _item(root, "configuredPlotOutcomeList")
+
+    assert grid.property("columns") == 3
+    column_tops = {
+        round(column.mapToItem(grid, QPointF(0, 0)).y())
+        for column in (generation_column, outcome_column, preview_column)
+    }
+    assert len(column_tops) == 1
+    assert generation_list.height() == pytest.approx(outcome_list.height(), abs=1)
+    assert generation_list.height() == pytest.approx(176, abs=1)
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_plot_focus_mode_distinguishes_fit_from_native_size(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    desktop = runtime.controller
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    root.setWidth(1440)
+    root.setHeight(900)
+    assert root.setProperty("currentPage", "visualization")
+
+    workspace = desktop.workspace_controller.workspace
+    image_path = workspace.figures / "focus-mode-test.png"
+    image = QImage(2400, 1200, QImage.Format.Format_ARGB32)
+    image.fill(Qt.GlobalColor.white)
+    assert image.save(str(image_path), "PNG")
+    token = desktop.plot_preview_registry.issue(
+        workspace_identity=str(workspace.root),
+        figures_root=workspace.figures,
+        image_path=image_path,
+        image_sha256=hashlib.sha256(image_path.read_bytes()).hexdigest(),
+        image_format="png",
+        verification_revision="focus-mode-test",
+    )
+
+    view = _item(root, "configuredVerifiedPlotView")
+    view.setProperty("canPreview", True)
+    view.setProperty("previewSource", desktop.plot_preview_registry.url(token))
+    view.setVisible(True)
+    _process_events()
+    assert QMetaObject.invokeMethod(view, "openFocusMode", Qt.ConnectionType.DirectConnection)
+    _process_events()
+
+    viewport = _item(root, "plotFocusModeViewport")
+    focus_image = _item(root, "plotFocusModeImage")
+    _wait_until(lambda: focus_image.property("implicitWidth") == 2400)
+    assert focus_image.width() <= viewport.width() + 1
+    assert focus_image.height() <= viewport.height() + 1
+
+    _click_scene(root, _item(root, "plotFocusActualSizeButton"))
+    assert focus_image.width() == pytest.approx(2400, abs=1)
+    assert focus_image.height() == pytest.approx(1200, abs=1)
+    assert focus_image.width() > viewport.width()
+
+    _click_scene(root, _item(root, "plotFocusFitButton"))
+    assert focus_image.width() <= viewport.width() + 1
+    assert focus_image.height() <= viewport.height() + 1
+    assert focus_image.x() >= 0
+    assert focus_image.y() >= 0
+    _click_scene(root, _item(root, "plotFocusModeCloseButton"))
     assert runtime.warning_capture.runtime_warnings == ()

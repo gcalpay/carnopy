@@ -71,16 +71,76 @@ Item {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
+        height: 48
         objectName: "visualizationViewTabs"
 
-        TabButton {
-            objectName: "configuredPlotsTab"
-            text: qsTr("Configured plots")
+        background: Rectangle {
+            color: Theme.canvas
+
+            Rectangle {
+                anchors.bottom: parent.bottom
+                color: Theme.divider
+                height: 1
+                width: parent.width
+            }
         }
 
         TabButton {
+            id: configuredTab
+
+            objectName: "configuredPlotsTab"
+            text: qsTr("Configured plots")
+
+            contentItem: Label {
+                color: configuredTab.checked ? Theme.success : Theme.textMuted
+                font.family: Theme.sansFamily
+                font.pixelSize: 13
+                font.weight: configuredTab.checked ? Font.DemiBold : Font.Medium
+                horizontalAlignment: Text.AlignHCenter
+                text: configuredTab.text
+                verticalAlignment: Text.AlignVCenter
+            }
+
+            background: Rectangle {
+                color: configuredTab.hovered ? Theme.hover : "transparent"
+
+                Rectangle {
+                    anchors.bottom: parent.bottom
+                    color: Theme.focus
+                    height: 2
+                    visible: configuredTab.checked
+                    width: parent.width
+                }
+            }
+        }
+
+        TabButton {
+            id: exploreTab
+
             objectName: "exploreInspectedDataTab"
             text: qsTr("Explore inspected data")
+
+            contentItem: Label {
+                color: exploreTab.checked ? Theme.success : Theme.textMuted
+                font.family: Theme.sansFamily
+                font.pixelSize: 13
+                font.weight: exploreTab.checked ? Font.DemiBold : Font.Medium
+                horizontalAlignment: Text.AlignHCenter
+                text: exploreTab.text
+                verticalAlignment: Text.AlignVCenter
+            }
+
+            background: Rectangle {
+                color: exploreTab.hovered ? Theme.hover : "transparent"
+
+                Rectangle {
+                    anchors.bottom: parent.bottom
+                    color: Theme.focus
+                    height: 2
+                    visible: exploreTab.checked
+                    width: parent.width
+                }
+            }
         }
     }
 
@@ -475,14 +535,24 @@ Item {
                 title: qsTr("Generated configured results")
 
                 GridLayout {
+                    id: configuredResultsGrid
+
+                    readonly property real listHeight: Math.max(72, Math.min(220, Math.max(
+                                                                                 generationList.count,
+                                                                                 outcomeList.count)
+                                                                             * 44))
+
                     Layout.fillWidth: true
                     columnSpacing: Theme.spacingMedium
                     columns: root.width >= 1080 ? 3 : 1
+                    objectName: "configuredResultsGrid"
                     rowSpacing: Theme.spacingMedium
 
                     ColumnLayout {
+                        Layout.alignment: Qt.AlignTop
                         Layout.fillWidth: true
                         Layout.minimumWidth: 220
+                        objectName: "configuredGenerationColumn"
 
                         Label {
                             color: Theme.text
@@ -492,8 +562,10 @@ Item {
                         }
 
                         ListView {
+                            id: generationList
+
                             Layout.fillWidth: true
-                            Layout.preferredHeight: Math.max(72, Math.min(220, count * 44))
+                            Layout.preferredHeight: configuredResultsGrid.listHeight
                             boundsBehavior: Flickable.StopAtBounds
                             clip: true
                             model: root.configuredResultsController.generationRecordsModel
@@ -521,8 +593,10 @@ Item {
                     }
 
                     ColumnLayout {
+                        Layout.alignment: Qt.AlignTop
                         Layout.fillWidth: true
                         Layout.minimumWidth: 220
+                        objectName: "configuredOutcomeColumn"
 
                         Label {
                             color: Theme.text
@@ -532,8 +606,10 @@ Item {
                         }
 
                         ListView {
+                            id: outcomeList
+
                             Layout.fillWidth: true
-                            Layout.preferredHeight: Math.max(72, Math.min(220, count * 44))
+                            Layout.preferredHeight: configuredResultsGrid.listHeight
                             boundsBehavior: Flickable.StopAtBounds
                             clip: true
                             model: root.configuredResultsController.outcomesModel
@@ -561,8 +637,17 @@ Item {
                     }
 
                     ColumnLayout {
+                        Layout.alignment: Qt.AlignTop
                         Layout.fillWidth: true
                         Layout.minimumWidth: 300
+                        objectName: "configuredPreviewColumn"
+
+                        Label {
+                            color: Theme.text
+                            font.family: Theme.sansFamily
+                            font.weight: Font.Medium
+                            text: qsTr("Selected result")
+                        }
 
                         StatusBadge {
                             label: root.configuredResultsController.evidenceLabel.length > 0

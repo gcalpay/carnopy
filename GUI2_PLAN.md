@@ -260,7 +260,7 @@ guarantee. Existing narrow migration adapters remain only until tested QML
 parity and receive no new features. This does not relax public YAML, generated
 dataset, provenance, artifact-integrity, CLI, or scientific contracts.
 
-Current implementation status as of 2026-07-28:
+Current implementation status as of 2026-07-29:
 
 | Step | Tracked state | Verification and remaining boundary |
 | --- | --- | --- |
@@ -275,8 +275,8 @@ Current implementation status as of 2026-07-28:
 | 9. Add QML Activity and Recovery | Implemented and committed | The two-tab Activity page binds the existing typed models, routes destructive and cross-page actions through the composition façade, and keeps record/artifact ownership and identity-checked recovery unchanged. Focused controller, QML, runtime, packaging, and native delegate-click checks pass. |
 | 10. Complete guarded workflow parity | Implemented and committed | The six exact cross-page paths, record-driven configured empty state, explicit inspected-data exploration, and operation-specific busy-close decisions are implemented. Focused QML, controller, lifecycle, and warning checks pass. |
 | 11. Make QML the public desktop frontend | Implemented and committed | Both package entry points resolve directly to the lightweight QML launcher; source, installed-distribution, and remote checks pass. |
-| 12. Retire the Widgets presentation layer | Implemented locally | Fourteen obsolete source modules, five implementation-specific test modules, and obsolete mixed-test UI coverage are removed. Focused structural and QML parity verification passes; remote checks remain after commit and push. |
-| 13. Accept and complete Stage 3 | Planned | Begins only after Step 12 is committed, its remote checks pass, and the maintainer completes the recorded native acceptance. |
+| 12. Retire the Widgets presentation layer | Implemented and committed | Fourteen obsolete source modules, five implementation-specific test modules, and obsolete mixed-test UI coverage are removed. Focused structural and QML parity verification and the branch's remote checks pass. |
+| 13. Accept and complete Stage 3 | Native acceptance in progress | Step 12 and its remote checks pass. Native review rejected the first presentation capture and exposed the configured-result alignment and focus-preview defects recorded below; Stage 3 remains incomplete until the corrected workflow is accepted and a representative capture replaces the rejected draft. |
 
 Two earlier failed remote runs exposed a real QML lifecycle warning, not a
 scientific, worker, inspection, or packaging failure. Rapid Dataset-to-Run
@@ -1348,6 +1348,18 @@ high-cardinality presentation is shared by existing property curves. It does
 not construct a saturation dome, cycle, process path, or backend-derived state.
 Focused tests compare plotted finite coordinates exactly with emitted rows and
 cover both the dense color scale and phase-break provenance.
+
+Stage 3 native acceptance on 2026-07-29 rejected the first configured-result
+capture because the result selectors were vertically centered independently,
+the top-level Visualization tabs retained generic Controls styling, and focus
+mode could center a clamped preview inside an oversized native-image canvas.
+The corrective presentation uses flat reference-aligned tabs, top-aligns all
+three configured-result columns, gives the run and outcome selectors one
+shared wide-layout height, and separates **Fit** from native-pixel **100%**
+scaling. Geometry and interaction regressions cover unequal selector counts and
+a source image larger than the focus viewport. This is presentation-only: it
+does not change plot bytes, preview-token verification, export provenance, or
+worker rendering.
 
 Steps 9 and 10 are implemented and committed with focused verification. Native
 human review covers Step 9, and the corrective queued delegate-interaction

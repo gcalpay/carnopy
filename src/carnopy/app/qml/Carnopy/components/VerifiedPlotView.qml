@@ -28,6 +28,7 @@ Item {
                                                                root.Window.window.activeFocusItem;
 
 
+        focusMode.fitToWindow = true;
         focusMode.zoom = 1.0;
         focusMode.open();
     }
@@ -151,6 +152,7 @@ Item {
     Dialog {
         id: focusMode
 
+        property bool fitToWindow: true
         property Item returnTarget: null
         property real zoom: 1.0
 
@@ -177,24 +179,35 @@ Item {
             spacing: Theme.spacingSmall
 
             Flickable {
+                id: focusViewport
+
                 Layout.fillHeight: true
                 Layout.fillWidth: true
                 boundsBehavior: Flickable.StopAtBounds
                 clip: true
-                contentHeight: Math.max(height, focusImage.implicitHeight * focusMode.zoom)
-                contentWidth: Math.max(width, focusImage.implicitWidth * focusMode.zoom)
+                contentHeight: Math.max(height, focusImage.height)
+                contentWidth: Math.max(width, focusImage.width)
+                objectName: "plotFocusModeViewport"
 
                 Image {
                     id: focusImage
 
-                    anchors.centerIn: parent
+                    readonly property real fitScale: Math.min(focusViewport.width / Math.max(1, implicitWidth),
+                                                              focusViewport.height / Math.max(1,
+                                                                                              implicitHeight))
+                    readonly property real displayScale: focusMode.fitToWindow ? fitScale :
+                                                                                 focusMode.zoom
+
                     asynchronous: true
                     cache: false
                     fillMode: Image.PreserveAspectFit
-                    height: Math.min(implicitHeight * focusMode.zoom, parent.height
-                                     * focusMode.zoom)
+                    height: Math.max(1, implicitHeight * displayScale)
+                    objectName: "plotFocusModeImage"
                     source: root.previewSource
-                    width: Math.min(implicitWidth * focusMode.zoom, parent.width * focusMode.zoom)
+                    smooth: true
+                    width: Math.max(1, implicitWidth * displayScale)
+                    x: (focusViewport.contentWidth - width) / 2
+                    y: (focusViewport.contentHeight - height) / 2
                 }
             }
 
@@ -202,24 +215,42 @@ Item {
                 Layout.fillWidth: true
 
                 AppButton {
-                    onClicked: focusMode.zoom = 1.0
+                    objectName: "plotFocusFitButton"
+                    onClicked: {
+                        focusMode.fitToWindow = true;
+                        focusMode.zoom = 1.0;
+                    }
                     text: qsTr("Fit")
                 }
 
                 AppButton {
-                    enabled: focusMode.zoom > 0.25
-                    onClicked: focusMode.zoom = Math.max(0.25, focusMode.zoom - 0.25)
+                    enabled: focusImage.displayScale > 0.25
+                    objectName: "plotFocusZoomOutButton"
+                    onClicked: {
+                        const currentScale = focusImage.displayScale;
+                        focusMode.fitToWindow = false;
+                        focusMode.zoom = Math.max(0.25, currentScale - 0.25);
+                    }
                     text: qsTr("−")
                 }
 
                 AppButton {
-                    enabled: focusMode.zoom < 4.0
-                    onClicked: focusMode.zoom = Math.min(4.0, focusMode.zoom + 0.25)
+                    enabled: focusImage.displayScale < 4.0
+                    objectName: "plotFocusZoomInButton"
+                    onClicked: {
+                        const currentScale = focusImage.displayScale;
+                        focusMode.fitToWindow = false;
+                        focusMode.zoom = Math.min(4.0, currentScale + 0.25);
+                    }
                     text: qsTr("+")
                 }
 
                 AppButton {
-                    onClicked: focusMode.zoom = 1.0
+                    objectName: "plotFocusActualSizeButton"
+                    onClicked: {
+                        focusMode.fitToWindow = false;
+                        focusMode.zoom = 1.0;
+                    }
                     text: qsTr("100%")
                 }
 
