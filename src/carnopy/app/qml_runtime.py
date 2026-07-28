@@ -500,7 +500,10 @@ class QmlApplicationRuntime:
             ("runGenerateRequested", self.controller.request_dataset_generation),
             ("runCancelRequested", self.controller.request_execution_cancel),
             ("runForceStopRequested", self.controller.request_execution_force_stop),
+            ("runInspectRunRequested", self.controller.request_execution_inspect_run),
+            ("runViewPlotsRequested", self.controller.request_execution_view_plots),
             ("inspectionInspectRequested", self.controller.request_inspect_source),
+            ("inspectionExploreRequested", self.controller.request_inspection_explore),
             ("inspectionRefreshRequested", self.controller.request_refresh_inspection),
             (
                 "inspectionSourcesRefreshRequested",
@@ -602,6 +605,10 @@ class QmlApplicationRuntime:
                 self.controller.request_configured_plot_export,
             ),
             (
+                "configuredPlotExploreRunRequested",
+                self.controller.request_configured_plot_explore_run,
+            ),
+            (
                 "configuredPlotOpenPdfRequested",
                 self.controller.request_configured_plot_open_pdf,
             ),
@@ -635,6 +642,7 @@ class QmlApplicationRuntime:
             ),
             ("settingsLayoutResetRequested", self.controller.qml_settings.resetLayout),
             ("shutdownConfirmed", self.controller.confirm_shutdown),
+            ("busyShutdownConfirmed", self.controller.confirm_busy_shutdown),
             (
                 "transientEditShutdownConfirmed",
                 self.controller.confirm_transient_edit_shutdown,

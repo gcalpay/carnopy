@@ -54,8 +54,9 @@ The desktop has two frontend implementations during the GUI-2 migration:
 - the QML Visualization page exposes record-driven configured outcomes and
   explicit inspected-data session rendering, including verified preview,
   focus, PDF-open, and image-plus-sidecar export actions;
-- the QML Activity page, end-to-end navigation/close parity, launcher migration,
-  and Widgets retirement belong to the remaining Stage 3 steps.
+- the QML Activity page and guarded end-to-end cross-page/close parity are
+  implemented; launcher migration and Widgets retirement belong to the
+  remaining Stage 3 steps.
 
 The development version is `0.1.0a4.dev0`. The two public launchers switch to
 QML only after Stage 3 reaches tested GUI-1 parity; Carnopy will not ship two
@@ -175,6 +176,13 @@ edit a child draft through explicit local-edit requests, but workspace changes,
 document replacement, mode or coordinate replacement, Save, and shutdown must
 pass through composition-level decisions and guards. This prevents a view from
 bypassing dirty-state, active-edit, or worker-busy rules.
+
+Cross-page workflow actions are also composition-owned. Run-result and Activity
+actions reuse the same helpers for exact-output inspection and exact-generation
+configured-result selection. Inspected-data exploration starts only after an
+explicit inspection of the requested source succeeds; the view never infers a
+source, performs hidden inspection, or starts rendering as a navigation side
+effect.
 
 ### `DesktopRequestCoordinator`
 
@@ -317,6 +325,12 @@ bound to workspace identity, canonical path, expected image hash, format, and
 verification revision. The QML image provider resolves only those tokens and
 revalidates bytes on each read. PDF is revalidated immediately before an
 explicit external open.
+
+A completed generation remains selectable when it has no configured
+visualization report. That state is explicit evidence absence, not an inferred
+failure or a directory-scan fallback. The controller exposes the record's exact
+output directory so the composition facade can offer **Explore this run**;
+inspection must succeed before QML enters the inspected-data plot workflow.
 
 Image-plus-sidecar export is a no-overwrite pair operation. It revalidates the
 source evidence, stages both destination files in their final directory,
@@ -624,14 +638,22 @@ portable centering and modality contract.
 Window close is routed through the composition-owned active-edit, worker-busy,
 and dirty-document guards before runtime teardown.
 
+Busy close is operation-specific. Generation offers cooperative cancellation
+and closes only after the coordinator releases the request. Plot rendering may
+offer explicit force-stop only through `SessionPlotController` and the
+coordinator's parent-owned staging finalizer; a reported cleanup issue aborts
+close. Configuration, inspection, and preview operations without a safe
+cancellation path remain wait-only. These decisions are enforced in
+`DesktopController`; QML presents the decision and cannot bypass it.
+
 The QML Run page follows that same queued root-signal boundary for Validate,
 Generate, Cancel, and Force Stop. It projects the authoritative execution
 controller's exact saved snapshot, progress, terminal result, activity
 persistence, and saved-baseline relation without parsing worker envelopes.
-Successful generation stays on Run. Its future `Inspect Run` and `View Plots`
-actions remain visibly unavailable until the exact cross-page actions and
-configured-result controller are introduced; QML does not simulate those
-workflows.
+Successful generation stays on Run. **Inspect Run** submits its exact recorded
+output directory through the inspection controller. **View Plots** selects its
+exact generation request in configured results, including the explicit empty
+state when no configured report exists. Neither action renders automatically.
 
 The QML Inspect workbench consumes only the typed Qt models owned by
 `InspectionController`. Workspace discovery is direct-child, symlink-excluding,

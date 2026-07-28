@@ -273,7 +273,8 @@ Current implementation status as of 2026-07-28:
 | 7. Extract plot-result and session state | Implemented and committed | Focused artifact, controller, Widgets-adapter, import-isolation, packaging, and composition checks pass. The branch's remote checks passed. No protocol or public-schema change was required. |
 | 8. Complete QML Visualization | Implemented and committed | QML binds both Step 7 controllers, and focused QML, artifact, export, runtime, packaging, composition, and scientific rendering checks plus the branch's remote checks pass. Page and tab entry remain worker-idle. Native review found and corrected dense-series legend crowding without changing emitted states. |
 | 9. Add QML Activity and Recovery | Implemented and committed | The two-tab Activity page binds the existing typed models, routes destructive and cross-page actions through the composition façade, and keeps record/artifact ownership and identity-checked recovery unchanged. Focused controller, QML, runtime, packaging, and native delegate-click checks pass. |
-| 10–13 | Planned | Step 10 is the next implementation boundary after Step 9 is committed; Steps 10–13 are not implemented. |
+| 10. Complete guarded workflow parity | Implemented locally | The six exact cross-page paths, record-driven configured empty state, explicit inspected-data exploration, and operation-specific busy-close decisions are implemented. Focused QML, controller, lifecycle, and warning checks pass; human commit and remote checks remain. |
+| 11–13 | Planned | Step 11 is the next implementation boundary after Step 10 is committed and its remote checks pass. |
 
 Two earlier failed remote runs exposed a real QML lifecycle warning, not a
 scientific, worker, inspection, or packaging failure. Rapid Dataset-to-Run
@@ -410,8 +411,24 @@ remote checks pass.
   cross queued root signals into `DesktopController`.
   Inspect submits the exact recorded output directory before navigating;
   View Plots selects the exact generation request and opens the configured
-  subview without inspection or rendering. Full cross-page parity remains Step
-  10, and neither public launcher has migrated.
+  subview without inspection or rendering. Neither public launcher has
+  migrated.
+- Step 10 is implemented locally. Run-result, Activity-record, Inspect, and
+  configured-empty-state actions now share composition-owned helpers rather
+  than duplicating navigation logic in QML. **Inspect Run** submits the exact
+  generated output directory and navigates to Inspect when the request is
+  accepted. **View Plots** selects the exact generation record even when it
+  contains no configured visualization report, so the configured subview can
+  present an explicit empty state. **Explore this run** performs an explicit
+  inspection of that exact output and enters inspected-data exploration only
+  after the matching inspection succeeds; it never creates or renders a plot.
+- Busy shutdown is operation-specific. Generation close requests cooperative
+  cancellation and completes only after the coordinator becomes idle. Plot
+  rendering may use its parent-owned force-stop/finalizer path, but any staging
+  cleanup failure aborts close and remains visible. Configuration, inspection,
+  and preview requests without safe cancellation remain wait-only. Existing
+  configured/session transient-edit, dirty-document, workspace, and source
+  replacement guards remain authoritative below QML.
 
 ### Permanent scientific and process boundaries
 
@@ -1307,7 +1324,8 @@ cover both the dense color scale and phase-break provenance.
 
 Step 9 is implemented and committed with focused verification and native human
 review complete. The corrective queued delegate-interaction regression is part
-of that accepted boundary. Step 10 is the next implementation boundary.
+of that accepted boundary. Step 10 is implemented locally with focused
+verification; human commit and remote checks remain before Step 11 begins.
 
 #### Step 9 — Add QML Activity and Recovery
 
@@ -1352,6 +1370,33 @@ Inspect → Explore inspected data
 Cover workspace/source replacement, both transient edit types, busy close,
 cleanup refusal, repeated launch/close, and warning-free teardown. Do not
 migrate launchers before this boundary is green.
+
+Implemented locally on 2026-07-28. All six approved paths cross queued root
+signals into `DesktopController` and reuse the exact typed run/output identity:
+
+```text
+Generate → Inspect Run
+Generate → View Plots
+Configured empty state → Explore this run
+Activity → Inspect Run
+Activity → View Plots
+Inspect → Explore inspected data
+```
+
+A completed generation without a configured report remains selectable in the
+configured-results controller and presents **Explore this run** instead of
+being disabled. Exploration explicitly inspects the generation's recorded
+output directory, waits for the matching success, and only then opens the
+session-exploration subview; failure stays in the current context with typed
+feedback. No cross-page action renders automatically.
+
+Close handling now distinguishes safe lifecycle paths: generation uses
+cooperative cancellation, plot rendering uses only its parent-owned
+force-stop/finalizer path, cleanup failure keeps the application open, and
+other active request kinds must finish. Controller and native QML regressions
+cover exact routing, no automatic render, cancellation-to-close, cleanup
+refusal, and the existing warning-free runtime boundary. No protocol, public
+schema, scientific behavior, dependency, or launcher change is included.
 
 #### Step 11 — Make QML the public desktop frontend
 

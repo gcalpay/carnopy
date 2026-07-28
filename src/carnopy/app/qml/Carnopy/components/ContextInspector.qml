@@ -34,6 +34,7 @@ Control {
 
     signal closeRequested
     signal attentionRequested(string section, string field, int row)
+    signal inspectionExploreRequested
     signal validateRequested
 
     function validationLabel(state) {
@@ -311,6 +312,7 @@ Control {
             Layout.fillHeight: true
             Layout.fillWidth: true
             inspectionController: root.inspectionController
+            onExploreRequested: root.inspectionExploreRequested()
             visible: root.pageKey === "inspect" && root.inspectionController !== null
         }
 

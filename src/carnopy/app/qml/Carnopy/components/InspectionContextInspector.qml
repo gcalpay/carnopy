@@ -10,6 +10,8 @@ Flickable {
 
     required property var inspectionController
 
+    signal exploreRequested
+
     boundsBehavior: Flickable.StopAtBounds
     clip: true
     contentHeight: inspectionColumn.implicitHeight
@@ -152,19 +154,21 @@ Flickable {
             flat: true
             Layout.fillWidth: true
             subtitle: root.inspectionController.canExplorePlots ? qsTr(
-                                                                      "This inspected dataset can be used by the session plot workflow once that controller enters QML.") :
+                                                                      "This exact inspected dataset is ready for session plotting.") :
                                                                   qsTr("Session plotting requires an inspected dataset source with compatible emitted fields.")
             title: qsTr("Visualization")
 
             AppButton {
                 Layout.fillWidth: true
-                enabled: false
+                enabled: root.inspectionController.canExplorePlots
                 objectName: "inspectionExploreButton"
+                onClicked: root.exploreRequested()
                 text: qsTr("Explore in Visualization")
                 tone: "primary"
 
-                ToolTip.text: qsTr(
-                                  "The authoritative session plot controller is introduced in Stage 3 Step 7.")
+                ToolTip.text: enabled ? qsTr(
+                                            "Open session plotting for this exact inspected dataset without rendering automatically.") :
+                                        qsTr("Inspect a compatible generated dataset before opening session plotting.")
                 ToolTip.visible: hovered
             }
         }

@@ -35,6 +35,7 @@ Item {
     signal configuredGenerationRequested(string requestId)
     signal configuredOutcomeRequested(int index)
     signal configuredExportRequested(string path)
+    signal configuredExploreRunRequested
     signal configuredOpenPdfRequested
     signal sessionBeginEditRequested(string format)
     signal sessionCancelEditRequested
@@ -49,6 +50,10 @@ Item {
 
     function showConfiguredPlots() {
         viewTabs.currentIndex = 0;
+    }
+
+    function showExploreInspectedData() {
+        viewTabs.currentIndex = 1;
     }
 
     function openExportDialog(target, format) {
@@ -503,7 +508,7 @@ Item {
                                 required property string runId
 
                                 width: ListView.view.width
-                                enabled: hasRecordedVisualization
+                                enabled: true
                                 objectName: "configuredPlotGeneration-" + requestId
                                 onClicked: root.configuredGenerationRequested(requestId)
                                 text: (runId.length > 0 ? runId : requestId.substring(0, 12)) + (
@@ -576,6 +581,17 @@ Item {
                             text: root.configuredResultsController.issue
                             visible: text.length > 0
                             wrapMode: Text.Wrap
+                        }
+
+                        AppButton {
+                            Layout.fillWidth: true
+                            enabled: root.configuredResultsController.canExploreRun
+                            objectName: "configuredExploreRunButton"
+                            onClicked: root.configuredExploreRunRequested()
+                            text: qsTr("Explore this run")
+                            tone: "primary"
+                            visible: root.configuredResultsController.selectedRecordId.length > 0
+                                     && !root.configuredResultsController.canExport
                         }
 
                         VerifiedPlotView {

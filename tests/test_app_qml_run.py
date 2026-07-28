@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -61,6 +62,25 @@ def _wait_for_idle(runtime: QmlApplicationRuntime) -> None:
     loop.exec()
     _process_events()
     assert not runtime.controller.request_coordinator.is_busy
+
+
+def _wait_until(
+    runtime: QmlApplicationRuntime,
+    predicate: Callable[[], bool],
+) -> None:
+    if predicate():
+        _process_events()
+        return
+    loop = QEventLoop()
+    timer = QTimer()
+    timer.setInterval(10)
+    timer.timeout.connect(lambda: loop.quit() if predicate() else None)
+    timer.start()
+    QTimer.singleShot(60_000, loop.quit)
+    loop.exec()
+    timer.stop()
+    _process_events()
+    assert predicate()
 
 
 def _save_saturation_configuration(runtime: QmlApplicationRuntime) -> Path:
@@ -185,6 +205,8 @@ def test_run_validation_uses_the_facade_and_persists_activity(
     desktop = runtime.controller
     execution = desktop.execution_controller
     root = runtime.engine.rootObjects()[0]
+    assert root.setProperty("width", 1440)
+    assert root.setProperty("height", 900)
     assert root.setProperty("currentPage", "run")
     _process_events()
 
@@ -226,6 +248,8 @@ def test_run_generation_stays_on_page_and_retains_saved_baseline_identity(
     desktop = runtime.controller
     execution = desktop.execution_controller
     root = runtime.engine.rootObjects()[0]
+    assert root.setProperty("width", 1440)
+    assert root.setProperty("height", 900)
     assert root.setProperty("currentPage", "run")
     _process_events()
 
@@ -246,8 +270,57 @@ def test_run_generation_stays_on_page_and_retains_saved_baseline_identity(
     assert execution.get_result_matches_current_saved_baseline()
     inspect_run = _visible_item(root, "runInspectButton")
     view_plots = _visible_item(root, "runViewPlotsButton")
-    assert not inspect_run.isEnabled()
-    assert not view_plots.isEnabled()
+    assert inspect_run.isEnabled()
+    assert view_plots.isEnabled()
+
+    assert QMetaObject.invokeMethod(view_plots, "click")
+    _process_events()
+    assert root.property("currentPage") == "visualization"
+    configured = desktop.configured_plot_results_controller
+    assert configured.get_selected_record_id() == execution.get_result_request_id()
+    assert configured.get_state() == "incomplete"
+    assert not desktop.request_coordinator.is_busy
+
+    explore_run = _visible_item(root, "configuredExploreRunButton")
+    assert explore_run.isEnabled()
+    assert QMetaObject.invokeMethod(explore_run, "click")
+    tabs = root.findChild(QObject, "visualizationViewTabs")
+    assert tabs is not None
+    _wait_until(
+        runtime,
+        lambda: (
+            root.property("currentPage") == "visualization"
+            and tabs.property("currentIndex") == 1
+            and desktop.inspection_controller.get_state() == "ready"
+            and desktop.inspection_controller.get_preview_state() == "ready"
+            and not desktop.request_coordinator.is_busy
+        ),
+    )
+    assert desktop.inspection_controller.get_source_path() == str(output_directory)
+    assert desktop.session_plot_controller.get_source_path() == str(output_directory)
+
+    assert root.setProperty("currentPage", "run")
+    _process_events()
+    inspect_run = _visible_item(root, "runInspectButton")
+    assert QMetaObject.invokeMethod(inspect_run, "click")
+    _process_events()
+    assert root.property("currentPage") == "inspect"
+    _wait_until(
+        runtime,
+        lambda: (
+            desktop.inspection_controller.get_state() == "ready"
+            and desktop.inspection_controller.get_preview_state() == "ready"
+            and not desktop.request_coordinator.is_busy
+        ),
+    )
+
+    explore_inspected = _visible_item(root, "inspectionExploreButton")
+    assert explore_inspected.isEnabled()
+    assert QMetaObject.invokeMethod(explore_inspected, "click")
+    _process_events()
+    assert root.property("currentPage") == "visualization"
+    assert tabs.property("currentIndex") == 1
+    assert not desktop.request_coordinator.is_busy
 
     desktop.dataset_draft.set_output_selected("csv", False)
     _process_events()

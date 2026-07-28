@@ -49,7 +49,10 @@ ApplicationWindow {
     signal runCancelRequested
     signal runForceStopRequested
     signal runGenerateRequested
+    signal runInspectRunRequested
     signal runValidateRequested
+    signal runViewPlotsRequested
+    signal inspectionExploreRequested
     signal inspectionInspectRequested(string path)
     signal inspectionMoreSourcesRequested
     signal inspectionPreviewPageRequested(int pageOffset)
@@ -82,6 +85,7 @@ ApplicationWindow {
     signal configuredPlotGenerationRequested(string requestId)
     signal configuredPlotOutcomeRequested(int index)
     signal configuredPlotExportRequested(string path)
+    signal configuredPlotExploreRunRequested
     signal configuredPlotOpenPdfRequested
     signal sessionPlotBeginEditRequested(string format)
     signal sessionPlotCancelEditRequested
@@ -92,6 +96,7 @@ ApplicationWindow {
     signal normalGeometryRememberRequested(int x, int y, int width, int height)
     signal settingsLayoutResetRequested
     signal shutdownConfirmed(bool discardConfirmed)
+    signal busyShutdownConfirmed(bool confirmed)
     signal transientEditShutdownConfirmed(bool discardConfirmed)
 
     readonly property bool runtimeReady: true
@@ -797,6 +802,7 @@ ApplicationWindow {
                 onAttentionRequested: (section, field, row) => root.configurationAttentionRequested(
                                                                    section, field, row)
                 onCloseRequested: root.requestInspectorToggle(persistentInspector.closeControl)
+                onInspectionExploreRequested: root.inspectionExploreRequested()
                 onValidateRequested: root.datasetValidateRequested()
                 pageKey: root.currentPage
                 workspacePath: root.controllerAvailable ? root.desktopController.workspaceRootPath :
@@ -878,6 +884,7 @@ ApplicationWindow {
             onAttentionRequested: (section, field, row) => root.configurationAttentionRequested(
                                                                section, field, row)
             onCloseRequested: root.requestInspectorToggle(null)
+            onInspectionExploreRequested: root.inspectionExploreRequested()
             onValidateRequested: root.datasetValidateRequested()
             pageKey: root.currentPage
             workspacePath: root.controllerAvailable ? root.desktopController.workspaceRootPath : ""
@@ -1005,6 +1012,7 @@ ApplicationWindow {
                                                               requestId)
             onConfiguredOutcomeRequested: index => root.configuredPlotOutcomeRequested(index)
             onConfiguredExportRequested: path => root.configuredPlotExportRequested(path)
+            onConfiguredExploreRunRequested: root.configuredPlotExploreRunRequested()
             onConfiguredOpenPdfRequested: root.configuredPlotOpenPdfRequested()
             onSessionBeginEditRequested: format => root.sessionPlotBeginEditRequested(format)
             onSessionCancelEditRequested: root.sessionPlotCancelEditRequested()
@@ -1023,15 +1031,20 @@ ApplicationWindow {
         id: runPage
 
         RunPage {
-            configuredPlotsAvailable: false
+            configuredPlotsAvailable: executionController !== null && executionController.operation
+                                      === "generate" && executionController.state === "succeeded"
+                                      && executionController.resultRequestId.length > 0
             executionController: root.executionController
             expectedColumns: root.shellMode === "narrow" ? 1 : root.cardColumnCount
-            inspectRunAvailable: false
+            inspectRunAvailable: configuredPlotsAvailable
+                                 && executionController.resultOutputDirectory.length > 0
             objectName: "runPage"
             onCancelRequested: root.runCancelRequested()
             onForceStopRequested: root.runForceStopRequested()
             onGenerateRequested: root.runGenerateRequested()
+            onInspectRunRequested: root.runInspectRunRequested()
             onValidateRequested: root.runValidateRequested()
+            onViewPlotsRequested: root.runViewPlotsRequested()
         }
     }
 
@@ -1097,6 +1110,14 @@ ApplicationWindow {
             toastHost.showMessage(title + ": " + message, "danger");
         }
 
+        function onBusyShutdownConfirmationRequested(mode, message) {
+            busyShutdownDialog.busyMode = mode;
+            busyShutdownDialog.bodyText = message;
+            busyShutdownDialog.acceptText = mode === "cancel_generation" ? qsTr("Cancel and close") :
+                                                                           qsTr("Force stop and close");
+            busyShutdownDialog.open();
+        }
+
         function onAttentionRequested(section, field, row) {
             if (section !== "dataset" && section !== "visualization")
                 return;
@@ -1124,6 +1145,11 @@ ApplicationWindow {
                 Qt.callLater(function () {
                     if (visualizationPageLoader.item !== null)
                         visualizationPageLoader.item.showConfiguredPlots();
+                });
+            else if (pageKey === "visualization" && detail === "explore")
+                Qt.callLater(function () {
+                    if (visualizationPageLoader.item !== null)
+                        visualizationPageLoader.item.showExploreInspectedData();
                 });
         }
 
@@ -1286,6 +1312,21 @@ ApplicationWindow {
         onRejected: root.transientEditShutdownConfirmed(false)
         rejectText: qsTr("Keep open")
         title: qsTr("Unfinished plot edit")
+    }
+
+    DecisionDialog {
+        id: busyShutdownDialog
+
+        property string busyMode: ""
+
+        acceptText: qsTr("Cancel and close")
+        bodyText: ""
+        objectName: "busyShutdownDialog"
+        onAccepted: root.busyShutdownConfirmed(true)
+        onRejected: root.busyShutdownConfirmed(false)
+        rejectText: qsTr("Keep open")
+        title: busyMode === "force_stop_plot" ? qsTr("Stop plot render and close?") : qsTr(
+                                                    "Cancel generation and close?")
     }
 
     FileDialog {

@@ -40,6 +40,7 @@ class DesktopController(QObject):
     closeWindowRequested = Signal()
     navigationRequested = Signal(str, str)
     activityActionFailed = Signal(str, str)
+    busyShutdownConfirmationRequested = Signal(str, str)
 
     def __init__(
         self,
@@ -89,9 +90,16 @@ class DesktopController(QObject):
         self.inspection_controller.set_lifecycle_guard(
             self.session_plot_controller.can_replace_inspection
         )
+        self.inspection_controller.inspection_loaded.connect(
+            self._pending_explore_inspection_loaded
+        )
+        self.inspection_controller.inspection_failed.connect(
+            self._pending_explore_inspection_failed
+        )
         self.execution_controller.activity_record_changed.connect(
             self.activity_controller.refresh_records
         )
+        self.execution_controller.state_changed.connect(self._continue_pending_busy_shutdown)
         self.execution_controller.run_finalized.connect(
             lambda _path: self.inspection_controller.refresh_sources()
         )
@@ -126,6 +134,8 @@ class DesktopController(QObject):
         self._workspace_request_timer.timeout.connect(self._run_queued_workspace_request)
         self._shutdown = False
         self._shutdown_discard_confirmed = False
+        self._pending_explore_source: Path | None = None
+        self._pending_busy_shutdown = ""
 
     def get_workspace_controller(self) -> QObject:
         return self.workspace_controller
@@ -483,6 +493,58 @@ class DesktopController(QObject):
     def request_more_inspection_sources(self) -> None:
         self.inspection_controller.reveal_more_sources()
 
+    @Slot(result=bool, name="requestExecutionInspectRun")
+    def request_execution_inspect_run(self) -> bool:
+        if (
+            self.execution_controller.get_operation() != "generate"
+            or self.execution_controller.get_state() != "succeeded"
+        ):
+            self.activityActionFailed.emit(
+                "Inspect Run",
+                "Generate a dataset successfully before inspecting its output.",
+            )
+            return False
+        return self._inspect_run(
+            self.execution_controller.get_result_output_directory(),
+            navigate=True,
+        )
+
+    @Slot(result=bool, name="requestExecutionViewPlots")
+    def request_execution_view_plots(self) -> bool:
+        if (
+            self.execution_controller.get_operation() != "generate"
+            or self.execution_controller.get_state() != "succeeded"
+        ):
+            self.activityActionFailed.emit(
+                "View Plots",
+                "Generate a dataset successfully before opening its plot results.",
+            )
+            return False
+        return self._view_configured_generation(self.execution_controller.get_result_request_id())
+
+    @Slot(result=bool, name="requestInspectionExplore")
+    def request_inspection_explore(self) -> bool:
+        if not self.inspection_controller.get_can_explore_plots():
+            self.activityActionFailed.emit(
+                "Explore inspected data",
+                self.inspection_controller.get_issue()
+                or "Inspect a compatible generated dataset before opening session plotting.",
+            )
+            return False
+        self.navigationRequested.emit("visualization", "explore")
+        return True
+
+    @Slot(result=bool, name="requestConfiguredPlotExploreRun")
+    def request_configured_plot_explore_run(self) -> bool:
+        controller = self.configured_plot_results_controller
+        if not controller.get_can_explore_run():
+            self.activityActionFailed.emit(
+                "Explore this run",
+                "Select a successful generated run with a recorded output directory.",
+            )
+            return False
+        return self._inspect_for_exploration(controller.get_selected_output_directory())
+
     @Slot(result=bool, name="requestActivityInspectRun")
     def request_activity_inspect_run(self) -> bool:
         summary = self.activity_controller.get_selected_record_summary()
@@ -493,15 +555,7 @@ class DesktopController(QObject):
                 "Select a completed generation record with a recorded output directory.",
             )
             return False
-        if not self.inspection_controller.inspect_source(source):
-            self.activityActionFailed.emit(
-                "Inspect Run",
-                self.inspection_controller.get_issue()
-                or "The selected run could not be submitted for inspection.",
-            )
-            return False
-        self.navigationRequested.emit("inspect", "")
-        return True
+        return self._inspect_run(source, navigate=True)
 
     @Slot(result=bool, name="requestActivityViewPlots")
     def request_activity_view_plots(self) -> bool:
@@ -509,18 +563,10 @@ class DesktopController(QObject):
         if not self.activity_controller.get_can_view_plots() or not record_id:
             self.activityActionFailed.emit(
                 "View Plots",
-                "Select a completed generation record with configured plot evidence.",
+                "Select a completed generation record with a recorded output directory.",
             )
             return False
-        if not self.configured_plot_results_controller.select_generation(record_id):
-            self.activityActionFailed.emit(
-                "View Plots",
-                self.configured_plot_results_controller.get_issue()
-                or "The selected plot evidence could not be opened.",
-            )
-            return False
-        self.navigationRequested.emit("visualization", "configured")
-        return True
+        return self._view_configured_generation(record_id)
 
     @Slot(result=bool, name="requestActivityRecordRemoval")
     def request_activity_record_removal(self) -> bool:
@@ -965,6 +1011,37 @@ class DesktopController(QObject):
 
     @Slot(result=bool, name="requestShutdown")
     def request_shutdown(self) -> bool:
+        active_session = self.request_coordinator.active_session
+        if active_session is not None:
+            if (
+                active_session.owner == "execution"
+                and active_session.request_type == "generate_dataset"
+            ):
+                self.busyShutdownConfirmationRequested.emit(
+                    "cancel_generation",
+                    "Dataset generation is active. Cancel it cooperatively and close "
+                    "Carnopy after the worker and activity record finish safely?",
+                )
+            elif (
+                active_session.owner == "plot"
+                and active_session.request_type == "render_plot"
+                and self.session_plot_controller.get_can_force_stop()
+            ):
+                self.busyShutdownConfirmationRequested.emit(
+                    "force_stop_plot",
+                    "A session plot render is active. Force-stop it and close Carnopy only "
+                    "after its owned staging cleanup succeeds?",
+                )
+            else:
+                self.workspace_controller.report_error(
+                    "Wait for the active worker request to finish before closing Carnopy."
+                )
+            return False
+        if self.request_coordinator.is_busy:
+            self.workspace_controller.report_error(
+                "Wait for the active worker request to finish before closing Carnopy."
+            )
+            return False
         if self.get_has_any_transient_edit():
             edit_names = []
             if self.get_has_active_plot_edit():
@@ -976,11 +1053,6 @@ class DesktopController(QObject):
                 f"A {description} edit is still open. Cancel the edit and close Carnopy?"
             )
             return False
-        if self.request_coordinator.is_busy:
-            self.workspace_controller.report_error(
-                "Wait for the active worker request to finish before closing Carnopy."
-            )
-            return False
         if (
             self.dataset_config_controller.needs_discard_confirmation()
             and not self._shutdown_discard_confirmed
@@ -989,6 +1061,28 @@ class DesktopController(QObject):
             return False
         self._shutdown_discard_confirmed = False
         return self.shutdown()
+
+    @Slot(bool, result=bool, name="confirmBusyShutdown")
+    def confirm_busy_shutdown(self, confirmed: bool) -> bool:
+        if not confirmed:
+            self._pending_busy_shutdown = ""
+            return False
+        session = self.request_coordinator.active_session
+        if session is None:
+            return False
+        if session.owner == "execution" and session.request_type == "generate_dataset":
+            self._pending_busy_shutdown = "generation_waiting"
+            self._continue_pending_busy_shutdown()
+            return True
+        if session.owner == "plot" and session.request_type == "render_plot":
+            if not self.session_plot_controller.force_stop():
+                self.workspace_controller.report_error(
+                    "The plot worker cannot be force-stopped safely yet."
+                )
+                return False
+            self._pending_busy_shutdown = "plot"
+            return True
+        return False
 
     @Slot(bool, result=bool, name="confirmTransientEditShutdown")
     def confirm_transient_edit_shutdown(self, discard_confirmed: bool) -> bool:
@@ -1025,6 +1119,7 @@ class DesktopController(QObject):
         return True
 
     def _workspace_activated(self, value: object) -> None:
+        self._pending_explore_source = None
         self.dataset_config_controller.set_workspace(value)
         self.execution_controller.set_workspace(value if isinstance(value, Workspace) else None)
         self.session_plot_controller.set_workspace(value if isinstance(value, Workspace) else None)
@@ -1040,8 +1135,47 @@ class DesktopController(QObject):
         self.workspace_state_changed.emit()
         self.workspace_confirmation_changed.emit()
 
-    def _request_state_changed(self, _busy: bool) -> None:
+    def _request_state_changed(self, busy: bool) -> None:
         self.workspace_state_changed.emit()
+        if not busy and self._pending_busy_shutdown:
+            QTimer.singleShot(0, self._complete_busy_shutdown)
+
+    def _continue_pending_busy_shutdown(self) -> None:
+        if self._pending_busy_shutdown != "generation_waiting":
+            return
+        session = self.request_coordinator.active_session
+        if (
+            session is None
+            or session.owner != "execution"
+            or session.request_type != "generate_dataset"
+            or not self.execution_controller.get_can_cancel()
+        ):
+            return
+        self._pending_busy_shutdown = "generation"
+        if not self.execution_controller.cancel():
+            self._pending_busy_shutdown = "generation_waiting"
+
+    def _complete_busy_shutdown(self) -> None:
+        mode, self._pending_busy_shutdown = self._pending_busy_shutdown, ""
+        if not mode or self.request_coordinator.is_busy:
+            return
+        if mode == "plot":
+            cleanup_issue = self.session_plot_controller.get_cleanup_issue()
+            if cleanup_issue:
+                message = f"Plot staging cleanup failed; Carnopy remains open: {cleanup_issue}"
+                self.workspace_controller.report_error(message)
+                self.activityActionFailed.emit("Close Carnopy", message)
+                return
+            if (
+                self.session_plot_controller.get_has_active_edit()
+                and not self.session_plot_controller.cancel_edit()
+            ):
+                self.workspace_controller.report_error(
+                    "The stopped session plot edit could not be cancelled safely."
+                )
+                return
+        if self.request_shutdown():
+            self.closeWindowRequested.emit()
 
     def _active_plot_state_changed(self) -> None:
         self.workspace_state_changed.emit()
@@ -1077,6 +1211,70 @@ class DesktopController(QObject):
 
     def _plot_commit_rejected(self, field: str, row: int, _message: str) -> None:
         self.attentionRequested.emit("visualization", field, row)
+
+    def _inspect_run(self, source: str, *, navigate: bool) -> bool:
+        if not source:
+            self.activityActionFailed.emit(
+                "Inspect Run",
+                "The selected generation record has no output directory.",
+            )
+            return False
+        if not self.inspection_controller.inspect_source(source):
+            self.activityActionFailed.emit(
+                "Inspect Run",
+                self.inspection_controller.get_issue()
+                or "The selected run could not be submitted for inspection.",
+            )
+            return False
+        if navigate:
+            self.navigationRequested.emit("inspect", "")
+        return True
+
+    def _view_configured_generation(self, record_id: str) -> bool:
+        if not record_id:
+            self.activityActionFailed.emit(
+                "View Plots",
+                "The selected generation has no persisted request identity.",
+            )
+            return False
+        if not self.configured_plot_results_controller.select_generation(record_id):
+            self.activityActionFailed.emit(
+                "View Plots",
+                self.configured_plot_results_controller.get_issue()
+                or "The selected plot evidence could not be opened.",
+            )
+            return False
+        self.navigationRequested.emit("visualization", "configured")
+        return True
+
+    def _inspect_for_exploration(self, source: str) -> bool:
+        if self._pending_explore_source is not None or not source:
+            return False
+        resolved = Path(source).expanduser().resolve()
+        self._pending_explore_source = resolved
+        if self.inspection_controller.inspect_source(str(resolved)):
+            return True
+        self._pending_explore_source = None
+        self.activityActionFailed.emit(
+            "Explore this run",
+            self.inspection_controller.get_issue()
+            or "The selected run could not be submitted for inspection.",
+        )
+        return False
+
+    def _pending_explore_inspection_loaded(self, value: object) -> None:
+        pending = self._pending_explore_source
+        if pending is None or not isinstance(value, Path) or value.resolve() != pending:
+            return
+        self._pending_explore_source = None
+        self.navigationRequested.emit("visualization", "explore")
+
+    def _pending_explore_inspection_failed(self, value: object, message: str) -> None:
+        pending = self._pending_explore_source
+        if pending is None or not isinstance(value, Path) or value.resolve() != pending:
+            return
+        self._pending_explore_source = None
+        self.activityActionFailed.emit("Explore this run", message)
 
     def _queue_workspace_request(
         self,

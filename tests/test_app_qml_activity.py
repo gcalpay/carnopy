@@ -127,7 +127,7 @@ def test_activity_page_projects_records_details_and_diagnostics(
     assert controller.get_selected_record_state() == "completed"
     assert controller.get_selected_record_id() == row["recordId"]
     assert controller.get_can_inspect_run()
-    assert not controller.get_can_view_plots()
+    assert controller.get_can_view_plots()
     assert page.setProperty("diagnosticExpanded", True)
     _process_events()
     diagnostic = _visible_item(root, "activityDiagnosticText")

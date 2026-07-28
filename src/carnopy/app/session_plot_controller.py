@@ -98,6 +98,11 @@ class SessionPlotController(QObject):
 
     issue = Property(str, get_issue, notify=state_changed)
 
+    def get_cleanup_issue(self) -> str:
+        return self._cleanup_issue
+
+    cleanupIssue = Property(str, get_cleanup_issue, notify=state_changed)
+
     def get_issues(self) -> list[dict[str, object]]:
         return copy.deepcopy(self._issues)
 

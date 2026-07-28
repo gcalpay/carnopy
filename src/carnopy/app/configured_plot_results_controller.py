@@ -115,6 +115,22 @@ class ConfiguredPlotResultsController(QObject):
 
     selectedRecordId = Property(str, get_selected_record_id, notify=state_changed)
 
+    def get_selected_output_directory(self) -> str:
+        record = self.activity.record_payload(self._selected_record_id)
+        summary = _mapping(None if record is None else record.get("summary"))
+        return _text(summary.get("output_directory"))
+
+    selectedOutputDirectory = Property(
+        str,
+        get_selected_output_directory,
+        notify=state_changed,
+    )
+
+    def get_can_explore_run(self) -> bool:
+        return bool(self._selected_record_id and self.get_selected_output_directory())
+
+    canExploreRun = Property(bool, get_can_explore_run, notify=state_changed)
+
     def get_selected_outcome_index(self) -> int:
         return self._selected_outcome_index
 
@@ -258,7 +274,7 @@ class ConfiguredPlotResultsController(QObject):
             self._issue = "Open a workspace to review configured plot results."
         elif not rows:
             self._state = "empty"
-            self._issue = "No successful generated runs have configured plot evidence."
+            self._issue = "No successful generated runs are available."
         elif not self._selected_record_id:
             self._state = "unselected"
             self._issue = "Select a generated run to verify its configured plot evidence."

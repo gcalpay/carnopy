@@ -83,8 +83,8 @@ Flickable {
                 font.family: Theme.sansFamily
                 font.pixelSize: 11
                 text: root.activityController.canViewPlots ? qsTr(
-                                                                 "Configured plot evidence is recorded for this generation.") :
-                                                             qsTr("No configured plot evidence is available for this record.")
+                                                                 "Open this generation's configured-results context; runs without a report show an evidence-empty state.") :
+                                                             qsTr("View Plots requires a completed generation with a recorded output directory.")
                 wrapMode: Text.Wrap
             }
         }

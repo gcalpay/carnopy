@@ -436,7 +436,6 @@ class ActivityController(QObject):
         completed_generation = (
             operation == "generate" and self._selected_record_state == "completed"
         )
-        visualization_status = _text(visualization.get("status"))
         self._selected_record_summary = {
             **row,
             "runStatus": _text(summary.get("run_status")),
@@ -452,12 +451,10 @@ class ActivityController(QObject):
         }
         self._selected_diagnostic_text = json.dumps(data, indent=2, sort_keys=True)
         self._can_inspect_run = completed_generation and bool(output_directory)
-        self._can_view_plots = (
-            completed_generation
-            and visualization_status
-            in {"completed", "completed_with_failures", "failed", "skipped_zero_valid_rows"}
-            and bool(_text(visualization.get("report_path")))
-        )
+        # Every completed generation can open the configured-results context. A run
+        # without a visualization report intentionally lands on its evidence-empty
+        # state, where the user may explicitly inspect and explore that exact run.
+        self._can_view_plots = completed_generation and bool(output_directory)
 
     def _clear_selected_record(self) -> None:
         self._selected_record_state = ""

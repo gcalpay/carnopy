@@ -369,7 +369,7 @@ Item {
                         AppButton {
                             Accessible.description: root.inspectRunAvailable ? qsTr(
                                                                                    "Inspect this exact generated output") :
-                                                                               qsTr("Available after the QML inspection controller is added")
+                                                                               qsTr("Available after a successful generation with a recorded output directory")
                             Layout.fillWidth: true
                             enabled: root.inspectRunAvailable
                             objectName: "runInspectButton"
@@ -380,7 +380,7 @@ Item {
                         AppButton {
                             Accessible.description: root.configuredPlotsAvailable ? qsTr(
                                                                                         "Open configured plots for this exact generation request") :
-                                                                                    qsTr("Available after configured plot results enter QML")
+                                                                                    qsTr("Available after a successful generation with a persisted request identity")
                             Layout.fillWidth: true
                             enabled: root.configuredPlotsAvailable
                             objectName: "runViewPlotsButton"
