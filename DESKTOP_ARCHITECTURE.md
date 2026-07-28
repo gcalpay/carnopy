@@ -999,24 +999,26 @@ git rev-list --count <graph-source-revision>..HEAD
 
 For legacy artifacts without an embedded source revision, use the latest commit
 that changed the complete public artifact set (`GRAPH_REPORT.md`, `graph.html`,
-and `graph.json`) as a conservative baseline. Apply these rules:
+and `graph.json`) as a conservative baseline. The repository-wide gate is
+defined in `docs/agent-guides/DEVELOPMENT.md`; for clarity it is:
 
 - zero intervening commits: the graph may guide navigation, with source
   verification for exact behavior;
-- one through nineteen intervening commits: the graph is navigation-only and
+- one through five intervening commits: the graph is navigation-only and
   every conclusion must be checked against current source;
-- twenty or more intervening commits, or any completed architecture stage not
+- six or more intervening commits, or any completed architecture stage not
   represented in the graph: the graph is hard-stale and must not be queried for
   current architecture or implementation work;
 - a hard-stale graph is either refreshed intentionally and atomically or simply
   bypassed in favor of source, tests, and scoped text search.
 
-As audited on 2026-07-23, the public graph's latest artifact commit is
-`1d819a3dd639958601115758b0c6032b4596ef92`, 34 commits behind the then-current
-Stage 2 branch and older than the packaged QML runtime. It is therefore disabled
-as a navigation source for the remaining Stage 2 work. Refreshing after the
-Stage 2 QML structure settles is preferable to rebuilding it repeatedly during
-layout churn.
+As audited on 2026-07-28, the public artifacts were last refreshed in
+`42ff05955e4dc6ea418a14a41bd9dda2780f7b12` from exact source revision
+`e3550b244d2ac05d0a33cb37875c98c0cb49c7c5`. That source is 13 commits behind
+the then-current Stage 3 branch. The graph is therefore hard-stale and must not
+be queried during the remaining parity work. Refresh it intentionally after
+the Stage 3 Widgets deletion settles the architecture rather than repeatedly
+during migration churn.
 
 GitHub Issues are enabled for `gcalpay/carnopy`; the repository had no open or
 closed issues in the 2026-07-23 audit. Create an issue only for reproducible,

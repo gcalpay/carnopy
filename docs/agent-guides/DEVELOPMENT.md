@@ -75,13 +75,41 @@ Use:
 
 - `rg` for searches;
 - `graphify query` for broad architecture, dependency, or codebase-navigation
-  questions when `graphify-out/graph.json` exists;
+  questions only when `graphify-out/graph.json` exists and passes the freshness
+  gate below;
 - `apply_patch` for repository file edits;
 - temporary directories for generated test artifacts;
 - focused tests for every behavior change.
 
-Graphify is optional local analysis tooling. When `graphify-out/graph.json`
-exists, prefer scoped graph queries such as:
+Graphify is optional local analysis tooling. Its existence does not make it
+current. Before any query, use the exact source revision recorded by the public
+graph report. For a legacy graph without one, conservatively use the latest
+commit that changed the complete public artifact set:
+
+```bash
+git log -1 --format=%H -- \
+  graphify-out/GRAPH_REPORT.md \
+  graphify-out/graph.html \
+  graphify-out/graph.json
+git rev-list --count <graph-source-revision>..HEAD
+```
+
+Apply this repository-wide gate:
+
+- zero intervening commits: the graph may guide navigation, with exact claims
+  still verified against source;
+- one through five intervening commits: the graph is navigation-only and every
+  conclusion must be checked against current source;
+- six or more intervening commits, or any completed architecture stage absent
+  from the graph: the graph is hard-stale and no Graphify query, path, explain,
+  or other traversal may be run for current repository work.
+
+Do not maintain a manual counter; Git history is the counter. A hard-stale graph
+is either intentionally refreshed as one separately reviewed artifact update or
+bypassed completely in favor of source, tests, and scoped `rg`. Do not load or
+query it merely to confirm that it is stale.
+
+When the graph passes that gate, prefer scoped queries such as:
 
 ```bash
 graphify query "how does preparation resolve semantic fields?" --graph graphify-out/graph.json
@@ -164,4 +192,3 @@ test(sampler): cover descending stepspace ranges
 docs(project): consolidate public guidance
 build(packaging): declare parquet runtime dependency
 ```
-
