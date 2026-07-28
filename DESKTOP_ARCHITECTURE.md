@@ -667,8 +667,11 @@ heading **Activity**, and separate **Run activity** and **Staging Recovery**
 tabs. Record and recovery collections remain stable-role Qt models. The page
 shows typed summaries and exposes the raw record only as expandable diagnostic
 text. It never scans output or figure directories and never treats an activity
-record as artifact ownership. Recovery confirmation lists exact selected paths;
-the controller still rescans and identity-checks them before removal.
+record as artifact ownership. Record selection, refresh, recovery selection,
+and recovery refresh cross queued root signals before they touch Python state;
+model-backed delegates are never reset or rebound synchronously inside their
+own input callbacks. Recovery confirmation lists exact selected paths; the
+controller still rescans and identity-checks them before removal.
 
 Close processing is deferred out of the native event-filter callback. Teardown
 is idempotent, removes the close filter before object destruction, and uses a

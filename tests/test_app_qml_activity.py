@@ -27,40 +27,41 @@ def application() -> QApplication:
 def runtime(tmp_path: Path, application: QApplication) -> QmlApplicationRuntime:
     del application
     workspace = initialize_workspace(tmp_path / "workspace")
-    request_id = "00000000-0000-0000-0000-000000000091"
     store = JobStore(workspace.private_directory)
-    record = store.start(
-        request_id=request_id,
-        operation="generate",
-        config_relative_path="configs/dataset.yaml",
-        yaml_snapshot="schema_version: 2\n",
-        config_sha256="a" * 64,
-    )
-    store.finish(
-        record,
-        {
-            "request_id": request_id,
-            "request_type": "generate_dataset",
-            "terminal_event": {
-                "type": "result",
-                "payload": {
-                    "run_id": "run-id",
-                    "run_status": "completed",
-                    "output_directory": str(workspace.outputs / "run-id"),
-                    "row_count": 10,
-                    "valid_row_count": 9,
-                    "invalid_row_count": 1,
-                    "visualization": {
-                        "status": "not_requested",
+    for suffix in ("090", "091"):
+        request_id = f"00000000-0000-0000-0000-000000000{suffix}"
+        record = store.start(
+            request_id=request_id,
+            operation="generate",
+            config_relative_path="configs/dataset.yaml",
+            yaml_snapshot="schema_version: 2\n",
+            config_sha256="a" * 64,
+        )
+        store.finish(
+            record,
+            {
+                "request_id": request_id,
+                "request_type": "generate_dataset",
+                "terminal_event": {
+                    "type": "result",
+                    "payload": {
+                        "run_id": f"run-id-{suffix}",
+                        "run_status": "completed",
+                        "output_directory": str(workspace.outputs / f"run-id-{suffix}"),
+                        "row_count": 10,
+                        "valid_row_count": 9,
+                        "invalid_row_count": 1,
+                        "visualization": {
+                            "status": "not_requested",
+                        },
                     },
                 },
+                "stderr": "",
+                "exit_code": 0,
+                "exit_status": "normal",
+                "force_stopped": False,
             },
-            "stderr": "",
-            "exit_code": 0,
-            "exit_status": "normal",
-            "force_stopped": False,
-        },
-    )
+        )
     candidate = workspace.outputs / ".20260728T120000Z_property_1a2b3c4d.staging"
     candidate.mkdir()
     created = create_qml_runtime(
@@ -109,21 +110,33 @@ def test_activity_page_projects_records_details_and_diagnostics(
     records = _visible_item(root, "activityRecordsList")
     inspector = _visible_item(root, "activityContextInspector")
     assert page is not None
-    assert records.property("count") == 1
+    assert records.property("count") == 2
     assert inspector.isVisible()
     assert not runtime.controller.request_coordinator.is_busy
 
-    [row] = controller.records_model.rows()
-    assert controller.select_record(str(row["recordId"]))
+    rows = controller.records_model.rows()
+    row = rows[-1]
+    assert records.setProperty("currentIndex", len(rows) - 1)
+    _process_events()
+    record = records.property("currentItem")
+    assert isinstance(record, QQuickItem)
+    assert record.property("objectName") == f"activityRecord-{row['recordId']}"
+    assert QMetaObject.invokeMethod(record, "click")
     _process_events()
 
     assert controller.get_selected_record_state() == "completed"
+    assert controller.get_selected_record_id() == row["recordId"]
     assert controller.get_can_inspect_run()
     assert not controller.get_can_view_plots()
     assert page.setProperty("diagnosticExpanded", True)
     _process_events()
     diagnostic = _visible_item(root, "activityDiagnosticText")
     assert '"request_id"' in diagnostic.property("text")
+
+    refresh = _visible_item(root, "activityRefreshButton")
+    assert QMetaObject.invokeMethod(refresh, "click")
+    _process_events()
+    assert controller.get_selected_record_id() == row["recordId"]
 
 
 def test_recovery_tab_selects_exact_paths_before_confirmation(
@@ -141,11 +154,22 @@ def test_recovery_tab_selects_exact_paths_before_confirmation(
     _process_events()
 
     controller = runtime.controller.activity_controller
-    assert controller.set_recovery_selected(0, True)
+    candidates = _visible_item(root, "recoveryCandidatesList")
+    assert candidates.setProperty("currentIndex", 0)
+    _process_events()
+    candidate = candidates.property("currentItem")
+    assert isinstance(candidate, QQuickItem)
+    assert candidate.property("objectName") == "recoveryCandidate-0"
+    assert QMetaObject.invokeMethod(candidate, "click")
     _process_events()
     assert controller.get_selected_recovery_count() == 1
     [selected_path] = controller.get_selected_recovery_paths()
     assert selected_path.endswith(".staging")
+
+    refresh = _visible_item(root, "recoveryRefreshButton")
+    assert QMetaObject.invokeMethod(refresh, "click")
+    _process_events()
+    assert controller.get_selected_recovery_count() == 1
 
     remove = _visible_item(root, "recoveryRemoveButton")
     assert QMetaObject.invokeMethod(remove, "click")

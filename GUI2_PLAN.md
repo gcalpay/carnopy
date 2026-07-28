@@ -1487,8 +1487,10 @@ remote checks pass.
   envelope, exact selected recovery paths, and confirmation before either
   private-record or staging removal.
 - Activity selection and refresh remain local presentation operations on the
-  read-side controller. `Inspect Run`, `View Plots`, private-record removal,
-  and recovery removal cross queued root signals into `DesktopController`.
+  read-side controller, but QML dispatches them through queued root signals so
+  a clicked model delegate is not rebound during its own input callback.
+  `Inspect Run`, `View Plots`, private-record removal, and recovery removal
+  cross queued root signals into `DesktopController`.
   Inspect submits the exact recorded output directory before navigating;
   View Plots selects the exact generation request and opens the configured
   subview without inspection or rendering. Full cross-page parity remains Step
@@ -2404,7 +2406,11 @@ accessible status presentation.
 Implemented. The page consumes only the existing stable-role models and typed
 selected summary. Record and recovery removals remain composition-routed and
 preserve the controller's record-only and rescan-and-identity-checked safety
-contracts. No worker request starts when the page or either tab opens.
+contracts. Record selection, refresh, recovery selection, and recovery refresh
+also cross queued root signals, preventing model-backed delegates from being
+reset or rebound inside their own click/toggle callback. Real delegate-click
+regressions cover both record and recovery selection. No worker request starts
+when the page or either tab opens.
 
 #### Step 10 — Complete guarded end-to-end parity
 

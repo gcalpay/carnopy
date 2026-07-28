@@ -512,6 +512,22 @@ class QmlApplicationRuntime:
                 self.controller.request_inspection_preview_page,
             ),
             ("inspectionMoreSourcesRequested", self.controller.request_more_inspection_sources),
+            (
+                "activityRecordSelectionRequested",
+                self.controller.activity_controller.select_record,
+            ),
+            (
+                "activityRecordsRefreshRequested",
+                self.controller.activity_controller.refresh_records,
+            ),
+            (
+                "activityRecoveryRefreshRequested",
+                self.controller.activity_controller.refresh_recovery,
+            ),
+            (
+                "activityRecoverySelectionRequested",
+                self.controller.activity_controller.set_recovery_selected,
+            ),
             ("activityInspectRunRequested", self.controller.request_activity_inspect_run),
             ("activityViewPlotsRequested", self.controller.request_activity_view_plots),
             (

@@ -57,8 +57,12 @@ ApplicationWindow {
     signal inspectionSourcesRefreshRequested
     signal inspectionTableRequested(string tableId)
     signal activityInspectRunRequested
+    signal activityRecordSelectionRequested(string recordId)
+    signal activityRecordsRefreshRequested
     signal activityRecordRemovalRequested
+    signal activityRecoveryRefreshRequested
     signal activityRecoveryRemovalRequested
+    signal activityRecoverySelectionRequested(int row, bool selected)
     signal activityViewPlotsRequested
     signal plotFieldChangeRequested(var draft, string field, string value)
     signal plotFluidSelectionRequested(var draft, string value, bool selected)
@@ -1053,6 +1057,11 @@ ApplicationWindow {
             activityController: root.activityController
             objectName: "activityPage"
             onInspectRunRequested: root.activityInspectRunRequested()
+            onRecordSelectionRequested: recordId => root.activityRecordSelectionRequested(recordId)
+            onRecordsRefreshRequested: root.activityRecordsRefreshRequested()
+            onRecoveryRefreshRequested: root.activityRecoveryRefreshRequested()
+            onRecoverySelectionRequested: (row, selected) => root.activityRecoverySelectionRequested(
+                                                                 row, selected)
             onRemoveRecordRequested: root.activityRecordRemovalRequested()
             onRemoveRecoveryRequested: root.activityRecoveryRemovalRequested()
             onViewPlotsRequested: root.activityViewPlotsRequested()

@@ -11,6 +11,10 @@ Item {
     required property var activityController
 
     signal inspectRunRequested
+    signal recordSelectionRequested(string recordId)
+    signal recordsRefreshRequested
+    signal recoveryRefreshRequested
+    signal recoverySelectionRequested(int row, bool selected)
     signal removeRecordRequested
     signal removeRecoveryRequested
     signal viewPlotsRequested
@@ -111,7 +115,7 @@ Item {
                     AppButton {
                         iconName: "rotate-ccw"
                         objectName: "activityRefreshButton"
-                        onClicked: root.activityController.refreshRecords()
+                        onClicked: root.recordsRefreshRequested()
                         text: qsTr("Refresh")
                     }
                 }
@@ -155,7 +159,7 @@ Item {
                                                                                operation).arg(
                                                                                createdAtUtc)
                                 objectName: "activityRecord-" + recordId
-                                onClicked: root.activityController.selectRecord(recordId)
+                                onClicked: root.recordSelectionRequested(recordId)
                                 text: readable ? stateLabel + " · " + operation + " · "
                                                  + createdAtUtc : qsTr("Unreadable · ") + recordId
                                 tone: root.activityController.selectedRecordId === recordId
@@ -356,7 +360,7 @@ Item {
                     AppButton {
                         iconName: "rotate-ccw"
                         objectName: "recoveryRefreshButton"
-                        onClicked: root.activityController.refreshRecovery()
+                        onClicked: root.recoveryRefreshRequested()
                         text: qsTr("Rescan")
                     }
                 }
@@ -396,7 +400,7 @@ Item {
                             checked: selected
                             enabled: removable
                             objectName: "recoveryCandidate-" + index
-                            onToggled: root.activityController.setRecoverySelected(index, checked)
+                            onToggled: root.recoverySelectionRequested(index, checked)
                             text: qsTr("%1 · %2 minutes old").arg(name).arg((ageSeconds
                                                                              / 60).toFixed(1))
                             width: ListView.view.width
