@@ -16,6 +16,7 @@ from PySide6.QtCore import (
     QCoreApplication,
     QEventLoop,
     QMargins,
+    QObject,
     QPoint,
     QRect,
     QSettings,
@@ -349,6 +350,44 @@ def test_qml_close_approval_uses_one_bypass_then_restores_the_guard(
     assert runtime.close()
 
 
+def test_qml_close_offers_an_explicit_transient_edit_decision(
+    application: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runtime = create_qml_runtime(
+        settings=QSettings(str(tmp_path / "transient-close.ini"), QSettings.Format.IniFormat),
+        application_arguments=[],
+    )
+    root = runtime.engine.rootObjects()[0]
+    active = {"session": True}
+    monkeypatch.setattr(runtime.controller, "get_has_active_plot_edit", lambda: False)
+    monkeypatch.setattr(
+        runtime.controller,
+        "get_has_session_plot_edit",
+        lambda: active["session"],
+    )
+    monkeypatch.setattr(
+        runtime.controller.session_plot_controller,
+        "cancel_edit",
+        lambda: active.update(session=False) is None,
+    )
+
+    root.close()
+    application.processEvents()
+
+    dialog = root.findChild(QObject, "transientEditShutdownDialog")
+    assert dialog is not None
+    assert dialog.property("opened") is True
+    assert "session plot edit" in dialog.property("bodyText")
+
+    assert runtime.controller.confirm_transient_edit_shutdown(True)
+    application.processEvents()
+    application.processEvents()
+    assert root.property("visible") is False
+    assert runtime.close()
+
+
 def test_qml_runtime_teardown_is_idempotent_and_removes_the_close_filter(
     application: QApplication,
     monkeypatch: pytest.MonkeyPatch,
@@ -506,4 +545,4 @@ def test_qml_sources_pass_non_writing_qt_tooling() -> None:
         timeout=30,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
-    assert completed.stdout == "QML checks passed for 36 file(s).\n"
+    assert completed.stdout == "QML checks passed for 37 file(s).\n"

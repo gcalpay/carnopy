@@ -56,6 +56,7 @@ QML_SHELL_APP_FILES = {
     "qml/Carnopy/components/NavRail.qml",
     "qml/Carnopy/components/OperationFeedback.qml",
     "qml/Carnopy/components/PlotEditor.qml",
+    "qml/Carnopy/components/VerifiedPlotView.qml",
     "qml/Carnopy/components/PropertySymbol.qml",
     "qml/Carnopy/components/ResponsiveCardGrid.qml",
     "qml/Carnopy/components/RunContextInspector.qml",

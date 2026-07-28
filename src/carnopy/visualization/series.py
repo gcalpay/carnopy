@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -13,6 +14,7 @@ from carnopy.visualization.render import create_faceted_figure, finish_figure
 from carnopy.visualization.requests import PlotRequest
 
 LINE_STYLES = ("-", "--", "-.", ":")
+MAX_DISCRETE_LEGEND_SERIES = 20
 
 
 @dataclass(frozen=True)
@@ -22,6 +24,8 @@ class SeriesData:
     y_values: np.ndarray[Any, np.dtype[np.float64]]
     sample_count: int
     gap_count: int
+    phase_break_count: int
+    level_value: float | str | None = None
     markers_only: bool = False
 
 
@@ -43,23 +47,46 @@ def render_series_facets(
 ) -> RenderedPlot:
     figure, axes = create_faceted_figure(mpl=mpl, fluids=fluids)
     maximum_series = max((len(items) for items in facet_series.values()), default=0)
-    colors = _series_colors(mpl, maximum_series)
     x_unit = effective_display_unit(plot_source, request, x_field)
     y_unit = effective_display_unit(plot_source, request, y_field)
     group_unit = (
         effective_display_unit(plot_source, request, group_by) if group_by is not None else None
     )
+    level_values = [item.level_value for items in facet_series.values() for item in items]
+    if group_by is not None:
+        level_values = [
+            series_display_value(plot_source, request, group_by, value) for value in level_values
+        ]
+    continuous_encoding = continuous_series_color_encoding(
+        mpl,
+        level_values,
+        maximum_series=maximum_series,
+    )
+    colors = _series_colors(mpl, maximum_series)
     for axis, fluid in zip(axes, fluids, strict=True):
         for index, item in enumerate(facet_series[fluid]):
+            display_level = (
+                series_display_value(plot_source, request, group_by, item.level_value)
+                if group_by is not None
+                else item.level_value
+            )
+            color = (
+                continuous_encoding[0][float(cast(Any, display_level))]
+                if continuous_encoding is not None and display_level is not None
+                else colors[index % len(colors)]
+            )
+            linestyle = (
+                "None"
+                if item.markers_only
+                else "-"
+                if continuous_encoding is not None
+                else LINE_STYLES[(index // len(colors)) % len(LINE_STYLES)]
+            )
             axis.plot(
                 item.x_values,
                 item.y_values,
-                color=colors[index % len(colors)],
-                linestyle=(
-                    "None"
-                    if item.markers_only
-                    else LINE_STYLES[(index // len(colors)) % len(LINE_STYLES)]
-                ),
+                color=color,
+                linestyle=linestyle,
                 marker="o",
                 markersize=4.0,
                 linewidth=1.2,
@@ -73,10 +100,19 @@ def render_series_facets(
         axis.tick_params(which="both", direction="in", top=True, right=True)
         axis.grid(True, which="major", color="0.80", linewidth=0.6)
         axis.grid(True, which="minor", color="0.90", linewidth=0.4, alpha=0.8)
-        if facet_series[fluid] and (
-            len(facet_series[fluid]) > 1 or facet_series[fluid][0].label != "samples"
+        if (
+            continuous_encoding is None
+            and facet_series[fluid]
+            and (len(facet_series[fluid]) > 1 or facet_series[fluid][0].label != "samples")
         ):
             axis.legend(fontsize=7, title_fontsize=7, loc="best")
+    if continuous_encoding is not None and group_by is not None:
+        add_continuous_series_colorbar(
+            figure,
+            axes,
+            continuous_encoding[1],
+            get_field(group_by).label_for_unit(group_unit),
+        )
     finish_figure(
         figure=figure,
         axes=axes,
@@ -89,26 +125,45 @@ def render_series_facets(
     )
     finite_x = _finite_series_values(facet_series, axis="x")
     finite_y = _finite_series_values(facet_series, axis="y")
+    group_metadata = axis_metadata(group_by, group_unit) if group_by is not None else None
     return RenderedPlot(
         figure=figure,
         axes={
             "x": axis_metadata(x_field, x_unit),
             "y": axis_metadata(y_field, y_unit),
-            "series": (axis_metadata(group_by, group_unit) if group_by is not None else None),
-            "color": None,
+            "series": group_metadata,
+            "color": group_metadata if continuous_encoding is not None else None,
         },
-        scales={"x": request.x_scale, "y": request.y_scale, "color": None},
+        scales={
+            "x": request.x_scale,
+            "y": request.y_scale,
+            "color": "linear" if continuous_encoding is not None else None,
+        },
         settings={
             "figure_size_inches": [6.4 * len(fluids), 4.8],
             "constrained_layout": True,
-            "palette": "tab10" if maximum_series <= 10 else "tab20",
-            "line_styles": list(LINE_STYLES),
+            "palette": (
+                "viridis"
+                if continuous_encoding is not None
+                else "tab10"
+                if maximum_series <= 10
+                else "tab20"
+            ),
+            "series_encoding": (
+                "continuous_colorbar" if continuous_encoding is not None else "discrete_legend"
+            ),
+            "line_styles": ["-"] if continuous_encoding is not None else list(LINE_STYLES),
             "marker": "o",
             "major_grid": True,
             "minor_grid": True,
             "smoothing": False,
             "group_by": group_by,
             "path_coordinate": path_coordinate,
+            "color_range": (
+                [continuous_encoding[2], continuous_encoding[3]]
+                if continuous_encoding is not None
+                else None
+            ),
             "x_range": [min(finite_x), max(finite_x)] if finite_x else None,
             "y_range": [min(finite_y), max(finite_y)] if finite_y else None,
         },
@@ -120,6 +175,7 @@ def render_series_facets(
                         "label": item.label,
                         "sample_count": item.sample_count,
                         "gap_count": item.gap_count,
+                        "phase_break_count": item.phase_break_count,
                         "markers_only": item.markers_only,
                     }
                     for item in items
@@ -138,6 +194,7 @@ def series_from_frame(
     ordering_field: str | None,
     split_phase: bool,
     markers_only: bool,
+    level_value: float | str | None = None,
 ) -> SeriesData:
     ordered = ordered_frame(plot_source, frame, ordering_field)
     if ordering_field is not None:
@@ -150,8 +207,9 @@ def series_from_frame(
             )
     x_values = ordered["_x_plot"].to_numpy(dtype=float)
     y_values = ordered["_y_plot"].to_numpy(dtype=float)
+    phase_break_count = 0
     if split_phase:
-        x_values, y_values = split_phase_changes(
+        x_values, y_values, phase_break_count = split_phase_changes(
             x_values,
             y_values,
             ordered["phase"].astype("string").tolist(),
@@ -162,6 +220,8 @@ def series_from_frame(
         y_values=y_values,
         sample_count=int(ordered["_plot_valid"].sum()),
         gap_count=int((~ordered["_plot_valid"]).sum()),
+        phase_break_count=phase_break_count,
+        level_value=level_value,
         markers_only=markers_only,
     )
 
@@ -267,6 +327,23 @@ def series_label(
     return f"{get_field(field).symbol or field} = {display_value:.6g}{suffix}"
 
 
+def series_display_value(
+    plot_source: PlotSource,
+    request: PlotRequest,
+    field: str,
+    value: float | str | None,
+) -> float | str | None:
+    if value is None or isinstance(value, str):
+        return value
+    unit = effective_display_unit(plot_source, request, field)
+    native = get_field(field).unit
+    if unit is None or unit == native:
+        return float(value)
+    from carnopy.visualization.units import DISPLAY_UNITS
+
+    return float(DISPLAY_UNITS[unit].from_si(float(value)))
+
+
 def required_saturation_coordinate(plot_source: PlotSource) -> str:
     if plot_source.saturation_coordinate is None:
         raise VisualizationError(
@@ -293,15 +370,17 @@ def axis_metadata(
 def split_phase_changes(
     x_values: np.ndarray[Any, np.dtype[np.float64]],
     y_values: np.ndarray[Any, np.dtype[np.float64]],
-    phases: list[str],
+    phases: Sequence[str | None],
 ) -> tuple[
     np.ndarray[Any, np.dtype[np.float64]],
     np.ndarray[Any, np.dtype[np.float64]],
+    int,
 ]:
     split_x: list[float] = []
     split_y: list[float] = []
     previous_phase: str | None = None
     previous_valid = False
+    phase_break_count = 0
     for x_value, y_value, phase_value in zip(
         x_values,
         y_values,
@@ -319,11 +398,48 @@ def split_phase_changes(
         ):
             split_x.append(float("nan"))
             split_y.append(float("nan"))
+            phase_break_count += 1
         split_x.append(float(x_value))
         split_y.append(float(y_value))
         previous_phase = phase
         previous_valid = current_valid
-    return np.asarray(split_x), np.asarray(split_y)
+    return np.asarray(split_x), np.asarray(split_y), phase_break_count
+
+
+def continuous_series_color_encoding(
+    mpl: dict[str, Any],
+    values: list[float | str | None],
+    *,
+    maximum_series: int,
+) -> tuple[dict[float, Any], Any, float, float] | None:
+    numeric_values = [float(cast(Any, value)) for value in values if _is_numeric(value)]
+    unique_values = list(dict.fromkeys(numeric_values))
+    if maximum_series <= MAX_DISCRETE_LEGEND_SERIES or len(numeric_values) != len(values):
+        return None
+    minimum = min(unique_values)
+    maximum = max(unique_values)
+    if minimum == maximum:
+        return None
+    normalization = mpl["Normalize"](vmin=minimum, vmax=maximum)
+    color_map = mpl["pyplot"].get_cmap("viridis")
+    colors = {value: color_map(normalization(value)) for value in unique_values}
+    mappable = mpl["ScalarMappable"](norm=normalization, cmap=color_map)
+    mappable.set_array([])
+    return colors, mappable, minimum, maximum
+
+
+def add_continuous_series_colorbar(
+    figure: Any,
+    axes: list[Any],
+    mappable: Any,
+    label: str,
+) -> None:
+    figure.colorbar(
+        mappable,
+        ax=axes,
+        label=label,
+        pad=0.02,
+    )
 
 
 def _finite_series_values(

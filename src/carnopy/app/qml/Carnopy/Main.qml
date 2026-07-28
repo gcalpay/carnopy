@@ -71,9 +71,20 @@ ApplicationWindow {
     signal visualizationMappingValueChangeRequested(var model, int row, string value)
     signal visualizationMovePlotRequested(int row, int offset)
     signal visualizationRemovePlotRequested(int row)
+    signal configuredPlotGenerationRequested(string requestId)
+    signal configuredPlotOutcomeRequested(int index)
+    signal configuredPlotExportRequested(string path)
+    signal configuredPlotOpenPdfRequested
+    signal sessionPlotBeginEditRequested(string format)
+    signal sessionPlotCancelEditRequested
+    signal sessionPlotRenderRequested
+    signal sessionPlotForceStopRequested
+    signal sessionPlotExportRequested(string path)
+    signal sessionPlotOpenPdfRequested
     signal normalGeometryRememberRequested(int x, int y, int width, int height)
     signal settingsLayoutResetRequested
     signal shutdownConfirmed(bool discardConfirmed)
+    signal transientEditShutdownConfirmed(bool discardConfirmed)
 
     readonly property bool runtimeReady: true
     readonly property string shellMode: width >= 1280 ? "wide" : (width >= 800 ? "compact" :
@@ -100,6 +111,11 @@ ApplicationWindow {
                                                ? desktopController.executionController : null
     readonly property var inspectionController: controllerAvailable
                                                 ? desktopController.inspectionController : null
+    readonly property var configuredPlotResultsController: controllerAvailable
+                                                           ? desktopController.configuredPlotResultsController :
+                                                             null
+    readonly property var sessionPlotController: controllerAvailable
+                                                 ? desktopController.sessionPlotController : null
     readonly property bool hasFake3dViewport: false
     readonly property string effectiveTheme: qmlSettings.effectiveTheme
     readonly property int motionDuration: Theme.durationStandard
@@ -931,7 +947,9 @@ ApplicationWindow {
             attentionRow: root.pendingAttentionRow
             attentionSerial: root.pendingAttentionSerial
             expectedColumns: root.cardColumnCount
+            configuredResultsController: root.configuredPlotResultsController
             objectName: "visualizationPage"
+            sessionPlotController: root.sessionPlotController
             visualizationDraft: root.desktopController.visualizationDraft
             onAddPlotRequested: root.visualizationAddPlotRequested()
             onCancelPlotRequested: root.visualizationCancelPlotRequested()
@@ -957,6 +975,21 @@ ApplicationWindow {
                                            => root.plotFluidSelectionRequested(draft, value,
                                                                                selected)
             onRemovePlotRequested: row => root.visualizationRemovePlotRequested(row)
+            onConfiguredGenerationRequested: requestId => root.configuredPlotGenerationRequested(
+                                                              requestId)
+            onConfiguredOutcomeRequested: index => root.configuredPlotOutcomeRequested(index)
+            onConfiguredExportRequested: path => root.configuredPlotExportRequested(path)
+            onConfiguredOpenPdfRequested: root.configuredPlotOpenPdfRequested()
+            onSessionBeginEditRequested: format => root.sessionPlotBeginEditRequested(format)
+            onSessionCancelEditRequested: root.sessionPlotCancelEditRequested()
+            onSessionRenderRequested: root.sessionPlotRenderRequested()
+            onSessionForceStopRequested: root.sessionPlotForceStopRequested()
+            onSessionExportRequested: path => root.sessionPlotExportRequested(path)
+            onSessionOpenPdfRequested: root.sessionPlotOpenPdfRequested()
+            onPlotExportCompleted: (imagePath, sidecarPath) => toastHost.showMessage(qsTr(
+                                                                                         "Exported %1 and its provenance sidecar.").arg(
+                                                                                         imagePath),
+                                                                                     "success")
         }
     }
 
@@ -1039,6 +1072,11 @@ ApplicationWindow {
 
         function onShutdownConfirmationRequested() {
             shutdownDiscardDialog.open();
+        }
+
+        function onTransientEditShutdownConfirmationRequested(message) {
+            transientEditShutdownDialog.bodyText = message;
+            transientEditShutdownDialog.open();
         }
 
         function onWorkspaceStateChanged() {
@@ -1177,6 +1215,18 @@ ApplicationWindow {
         onRejected: root.shutdownConfirmed(false)
         rejectText: qsTr("Cancel")
         title: qsTr("Close Carnopy?")
+    }
+
+    DecisionDialog {
+        id: transientEditShutdownDialog
+
+        acceptText: qsTr("Cancel edit and close")
+        bodyText: ""
+        objectName: "transientEditShutdownDialog"
+        onAccepted: root.transientEditShutdownConfirmed(true)
+        onRejected: root.transientEditShutdownConfirmed(false)
+        rejectText: qsTr("Keep open")
+        title: qsTr("Unfinished plot edit")
     }
 
     FileDialog {

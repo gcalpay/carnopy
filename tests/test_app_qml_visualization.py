@@ -71,7 +71,15 @@ def _item(root: QQuickWindow, object_name: str) -> QQuickItem:
 
 
 def _click(root: QQuickWindow, item: QQuickItem) -> None:
-    flickable = root.findChild(QObject, "visualizationPageFlickable")
+    flickable = next(
+        (
+            candidate
+            for object_name in ("visualizationPageFlickable", "sessionPlotPageFlickable")
+            if isinstance((candidate := root.findChild(QObject, object_name)), QQuickItem)
+            and candidate.isVisible()
+        ),
+        None,
+    )
     if isinstance(flickable, QQuickItem):
         position = item.mapToItem(flickable, QPointF(0, 0))
         viewport_height = float(flickable.property("height"))
@@ -86,6 +94,65 @@ def _click(root: QQuickWindow, item: QQuickItem) -> None:
     QTest.mouseClick(root, Qt.MouseButton.LeftButton, delay=0, pos=point)
     QTest.qWait(120)
     _process_events()
+
+
+def _session_plot_context(source: Path) -> dict[str, object]:
+    return {
+        "source": str(source),
+        "source_kind": "dataset",
+        "revision": "a" * 64,
+        "plot_context": {
+            "mode": "property_table",
+            "fluids": ["Propane"],
+            "properties": ["mass_density"],
+            "visualization": {
+                "plot_kinds": ["property_curves", "xy", "pv"],
+                "formats": ["png", "svg", "pdf"],
+                "scales": ["linear", "log"],
+                "kind_contracts": {
+                    "property_curves": {
+                        "required": ["property", "x", "format"],
+                        "applicable": ["property", "x", "format"],
+                    },
+                    "xy": {
+                        "required": ["x", "y", "format"],
+                        "applicable": ["x", "y", "format"],
+                    },
+                    "pv": {"required": ["format"], "applicable": ["format"]},
+                },
+                "fields": [
+                    {
+                        "name": "temperature",
+                        "kind": "numeric",
+                        "axis_allowed": True,
+                        "group_allowed": True,
+                        "filter_allowed": True,
+                    },
+                    {
+                        "name": "pressure",
+                        "kind": "numeric",
+                        "axis_allowed": True,
+                        "group_allowed": True,
+                        "filter_allowed": True,
+                    },
+                    {
+                        "name": "mass_density",
+                        "kind": "numeric",
+                        "axis_allowed": True,
+                        "group_allowed": False,
+                        "filter_allowed": False,
+                    },
+                    {
+                        "name": "specific_volume",
+                        "kind": "numeric",
+                        "axis_allowed": True,
+                        "group_allowed": False,
+                        "filter_allowed": False,
+                    },
+                ],
+            },
+        },
+    }
 
 
 def test_qml_visualization_uses_authoritative_temporary_plot_lifecycle(
@@ -195,4 +262,45 @@ def test_active_qml_plot_edit_blocks_replacement_and_cancel_is_non_durable(
     assert desktop.request_close_configuration(discard_confirmed=True)
     _process_events()
     assert root.property("currentPage") == "workspace"
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_visualization_tabs_do_not_render_and_session_edit_is_explicit(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    desktop = runtime.controller
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    assert desktop.request_new_dataset("property_table")
+    source = desktop.workspace_controller.workspace.outputs / "inspected.parquet"
+    source.write_bytes(b"source")
+    desktop.session_plot_controller._inspection_changed(_session_plot_context(source))
+    assert root.setProperty("currentPage", "visualization")
+    _process_events()
+
+    page = root.findChild(QObject, "visualizationPage")
+    assert page is not None
+    assert (
+        page.property("configuredResultsController") is desktop.configured_plot_results_controller
+    )
+    assert page.property("sessionPlotController") is desktop.session_plot_controller
+    assert not desktop.request_coordinator.is_busy
+
+    explore_tab = _item(root, "exploreInspectedDataTab")
+    _click(root, explore_tab)
+    assert not desktop.request_coordinator.is_busy
+    assert not desktop.session_plot_controller.get_has_active_edit()
+
+    begin_button = _item(root, "sessionPlotBeginButton")
+    assert begin_button.isEnabled()
+    _click(root, begin_button)
+    assert desktop.session_plot_controller.get_has_active_edit()
+    assert not desktop.request_coordinator.is_busy
+    assert root.findChild(QObject, "sessionPlotEditor") is not None
+
+    cancel_button = _item(root, "plotCancelButton")
+    assert cancel_button.isVisible()
+    _click(root, cancel_button)
+    assert not desktop.session_plot_controller.get_has_active_edit()
+    assert not desktop.request_coordinator.is_busy
     assert runtime.warning_capture.runtime_warnings == ()

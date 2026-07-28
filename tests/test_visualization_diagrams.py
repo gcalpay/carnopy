@@ -292,6 +292,69 @@ def test_ts_property_table_uses_emitted_entropy_and_reference_policy(
     assert sidecar["axes"]["y"]["field"] == "temperature"
 
 
+def test_dense_ts_family_uses_shared_pressure_scale_and_preserves_emitted_gaps(
+    tmp_path: Path,
+) -> None:
+    pressures = tuple(float(value) for value in np.linspace(1.01325, 5.06625, 21))
+    run = generate_dataset(
+        _write_diagram_config(
+            tmp_path / "dense-property.yaml",
+            mode="property_table",
+            temperatures=(223.15, 243.15, 263.15, 283.15, 303.15, 323.15),
+            pressures_bar=pressures,
+        ),
+        output_root=tmp_path / "runs",
+    )
+    result = plot_thermodynamic_diagram(
+        run.output_directory,
+        kind="ts",
+        display_units={"pressure": "bar"},
+        output=tmp_path / "dense-ts.png",
+    )
+
+    plot_axis, colorbar_axis = result.figure.axes
+    assert result.figure.get_suptitle() == "T–s emitted-state diagram"  # noqa: RUF001
+    assert len(plot_axis.lines) == 21
+    assert plot_axis.get_legend() is None
+    assert "Pressure" in colorbar_axis.get_ylabel()
+    assert "bar" in colorbar_axis.get_ylabel()
+
+    frame = pd.read_parquet(run.output_directory / "dataset.parquet")
+    expected = frame.loc[frame["pressure_Pa"] == 101_325.0].sort_values("temperature_K")
+    actual_x = np.asarray(plot_axis.lines[0].get_xdata(), dtype=float)
+    actual_y = np.asarray(plot_axis.lines[0].get_ydata(), dtype=float)
+    np.testing.assert_allclose(
+        actual_x[np.isfinite(actual_x)],
+        expected["specific_entropy_J_kgK"].to_numpy(dtype=float),
+        rtol=0.0,
+        atol=0.0,
+    )
+    np.testing.assert_allclose(
+        actual_y[np.isfinite(actual_y)],
+        expected["temperature_K"].to_numpy(dtype=float),
+        rtol=0.0,
+        atol=0.0,
+    )
+
+    sidecar = json.loads(result.sidecar_path.read_text(encoding="utf-8"))
+    assert sidecar["axes"]["color"] == {
+        "column": "pressure_Pa",
+        "field": "pressure",
+        "unit": "bar",
+    }
+    assert sidecar["effective_settings"]["series_encoding"] == "continuous_colorbar"
+    assert sidecar["effective_settings"]["palette"] == "viridis"
+    assert sidecar["effective_settings"]["color_range"] == [1.01325, 5.06625]
+    series = sidecar["series_or_cells"]["series"]["n-Propane"]
+    assert all(item["gap_count"] == 0 for item in series)
+    assert any(item["phase_break_count"] > 0 for item in series)
+    assert any(
+        advisory["code"] == "crowded_curve_family"
+        and "continuous color scale" in advisory["message"]
+        for advisory in sidecar["advisories"]
+    )
+
+
 @pytest.mark.parametrize("kind", ["pv", "ts"])
 def test_saturation_diagrams_keep_liquid_and_vapor_branches_separate(
     tmp_path: Path,

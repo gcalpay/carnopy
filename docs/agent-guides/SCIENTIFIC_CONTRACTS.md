@@ -384,9 +384,17 @@ Visualization is a reproducible view of emitted columns:
 - never call a thermodynamic backend;
 - never smooth, interpolate, extrapolate, or invent states;
 - preserve invalid and missing gaps;
+- keep p-v and T-s as emitted-state diagrams, split connected series at
+  observed phase-label changes, and never imply a saturation dome, cycle, or
+  process path;
 - derive only `specific_volume = 1 / mass_density`;
 - use semantic scientific labels and units;
 - keep visualization identity separate from dataset identity.
+
+Sampled-series sidecars distinguish invalid or missing `gap_count` from
+deliberate `phase_break_count`. Dense numeric curve families may replace an
+unreadable discrete legend with one shared continuous colorbar across facets,
+but the rendered coordinates and series membership remain the emitted values.
 
 Supported kinds:
 
@@ -468,4 +476,3 @@ Keep focused module boundaries:
 - visualization requests, selection, rendering, and automation;
 - desktop presentation, worker protocol, process control, workspace-local job
   records, safe source descriptors, and bounded table preview.
-

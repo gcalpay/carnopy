@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import Carnopy
 
@@ -9,6 +10,8 @@ Item {
     id: root
 
     required property var visualizationDraft
+    required property var configuredResultsController
+    required property var sessionPlotController
     property string attentionField: ""
     property int attentionRow: -1
     property int attentionSerial: 0
@@ -29,10 +32,51 @@ Item {
     signal plotFieldChangeRequested(var draft, string field, string value)
     signal plotFluidSelectionRequested(var draft, string value, bool selected)
     signal removePlotRequested(int row)
+    signal configuredGenerationRequested(string requestId)
+    signal configuredOutcomeRequested(int index)
+    signal configuredExportRequested(string path)
+    signal configuredOpenPdfRequested
+    signal sessionBeginEditRequested(string format)
+    signal sessionCancelEditRequested
+    signal sessionRenderRequested
+    signal sessionForceStopRequested
+    signal sessionExportRequested(string path)
+    signal sessionOpenPdfRequested
+    signal plotExportCompleted(string imagePath, string sidecarPath)
+
+    property string exportTarget: ""
+    property string exportFormat: ""
+
+    function openExportDialog(target, format) {
+        exportTarget = target;
+        exportFormat = format;
+        exportDialog.nameFilters = format === "svg" ? [qsTr("SVG image (*.svg)")] : (format === "pdf"
+                                                                                     ? [qsTr("PDF document (*.pdf)")] :
+                                                                                       [qsTr("PNG image (*.png)")]);
+        exportDialog.open();
+    }
+
+    TabBar {
+        id: viewTabs
+
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        objectName: "visualizationViewTabs"
+
+        TabButton {
+            objectName: "configuredPlotsTab"
+            text: qsTr("Configured plots")
+        }
+
+        TabButton {
+            objectName: "exploreInspectedDataTab"
+            text: qsTr("Explore inspected data")
+        }
+    }
 
     function focusField(field, row) {
-        if (field.indexOf("plot.") === 0 && activePlotEditor.visible) {
-            activePlotEditor.focusField(field, row);
+        if (field.indexOf("plot.") === 0) {
             return;
         }
         if (field === "visualization.enabled")
@@ -56,7 +100,10 @@ Item {
     })
 
     Flickable {
-        anchors.fill: parent
+        anchors.bottom: parent.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: viewTabs.bottom
         boundsBehavior: Flickable.StopAtBounds
         clip: true
         contentHeight: pageColumn.implicitHeight + 40
@@ -64,6 +111,7 @@ Item {
         flickableDirection: Flickable.VerticalFlick
         objectName: "visualizationPageFlickable"
         pixelAligned: true
+        visible: viewTabs.currentIndex === 0
 
         ScrollBar.vertical: ScrollBar {
             policy: ScrollBar.AsNeeded
@@ -376,28 +424,186 @@ Item {
                 title: qsTr("Plot editor")
                 visible: root.visualizationDraft.hasActivePlotEdit
 
-                PlotEditor {
+                Loader {
                     id: activePlotEditor
 
+                    readonly property PlotEditor loadedEditor: item as PlotEditor
+
+                    active: root.visualizationDraft.hasActivePlotEdit
                     Layout.fillWidth: true
-                    draft: root.visualizationDraft.activePlotDraft
+                    Layout.preferredHeight: loadedEditor === null ? 0 : loadedEditor.implicitHeight
                     objectName: "activePlotEditor"
-                    onCancelRequested: root.cancelPlotRequested()
-                    onCommitRequested: root.commitPlotRequested()
-                    onFieldChangeRequested: (draft, field, value) => root.plotFieldChangeRequested(
-                                                                         draft, field, value)
-                    onFluidSelectionRequested: (draft, value, selected)
-                                               => root.plotFluidSelectionRequested(draft, value,
-                                                                                   selected)
-                    onMappingAddRequested: model => root.mappingAddRequested(model)
-                    onMappingFieldChangeRequested: (model, row, field)
-                                                   => root.mappingFieldChangeRequested(model, row,
-                                                                                       field)
-                    onMappingRemoveRequested: (model, row) => root.mappingRemoveRequested(model,
-                                                                                          row)
-                    onMappingValueChangeRequested: (model, row, value)
-                                                   => root.mappingValueChangeRequested(model, row,
-                                                                                       value)
+                    sourceComponent: PlotEditor {
+                        attentionField: root.attentionField
+                        attentionRow: root.attentionRow
+                        attentionSerial: root.attentionSerial
+                        draft: root.visualizationDraft.activePlotDraft
+                        onCancelRequested: root.cancelPlotRequested()
+                        onCommitRequested: root.commitPlotRequested()
+                        onFieldChangeRequested: (draft, field, value)
+                                                => root.plotFieldChangeRequested(draft, field,
+                                                                                 value)
+                        onFluidSelectionRequested: (draft, value, selected)
+                                                   => root.plotFluidSelectionRequested(draft, value,
+                                                                                       selected)
+                        onMappingAddRequested: model => root.mappingAddRequested(model)
+                        onMappingFieldChangeRequested: (model, row, field)
+                                                       => root.mappingFieldChangeRequested(model,
+                                                                                           row, field)
+                        onMappingRemoveRequested: (model, row) => root.mappingRemoveRequested(model,
+                                                                                              row)
+                        onMappingValueChangeRequested: (model, row, value)
+                                                       => root.mappingValueChangeRequested(model,
+                                                                                           row, value)
+                    }
+                }
+            }
+
+            Card {
+                Layout.fillWidth: true
+                subtitle: qsTr(
+                              "Select a successful generation record explicitly. Only its ordered report outcomes are verified and shown; directories are never scanned for plots.")
+                title: qsTr("Generated configured results")
+
+                GridLayout {
+                    Layout.fillWidth: true
+                    columnSpacing: Theme.spacingMedium
+                    columns: root.width >= 1080 ? 3 : 1
+                    rowSpacing: Theme.spacingMedium
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 220
+
+                        Label {
+                            color: Theme.text
+                            font.family: Theme.sansFamily
+                            font.weight: Font.Medium
+                            text: qsTr("Generated runs")
+                        }
+
+                        ListView {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: Math.max(72, Math.min(220, count * 44))
+                            boundsBehavior: Flickable.StopAtBounds
+                            clip: true
+                            model: root.configuredResultsController.generationRecordsModel
+                            objectName: "configuredPlotGenerationList"
+                            spacing: Theme.spacingTiny
+
+                            delegate: AppButton {
+                                required property string configurationPath
+                                required property string createdAtUtc
+                                required property bool hasRecordedVisualization
+                                required property string requestId
+                                required property string runId
+
+                                width: ListView.view.width
+                                enabled: hasRecordedVisualization
+                                objectName: "configuredPlotGeneration-" + requestId
+                                onClicked: root.configuredGenerationRequested(requestId)
+                                text: (runId.length > 0 ? runId : requestId.substring(0, 12)) + (
+                                          hasRecordedVisualization ? "" : qsTr(
+                                                                         " · no configured plots"))
+                                tone: root.configuredResultsController.selectedRecordId
+                                      === requestId ? "primary" : "secondary"
+                            }
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 220
+
+                        Label {
+                            color: Theme.text
+                            font.family: Theme.sansFamily
+                            font.weight: Font.Medium
+                            text: qsTr("Report outcomes")
+                        }
+
+                        ListView {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: Math.max(72, Math.min(220, count * 44))
+                            boundsBehavior: Flickable.StopAtBounds
+                            clip: true
+                            model: root.configuredResultsController.outcomesModel
+                            objectName: "configuredPlotOutcomeList"
+                            spacing: Theme.spacingTiny
+
+                            delegate: AppButton {
+                                required property string format
+                                required property int index
+                                required property string kind
+                                required property string name
+                                required property string status
+
+                                width: ListView.view.width
+                                enabled: status === "completed"
+                                objectName: "configuredPlotOutcome-" + index
+                                onClicked: root.configuredOutcomeRequested(index)
+                                text: name + " · " + kind + (format.length > 0 ? " · "
+                                                                                 + format.toUpperCase(
+                                                                                     ) : "")
+                                tone: root.configuredResultsController.selectedOutcomeIndex
+                                      === index ? "primary" : "secondary"
+                            }
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 300
+
+                        StatusBadge {
+                            label: root.configuredResultsController.evidenceLabel.length > 0
+                                   ? root.configuredResultsController.evidenceLabel : qsTr(
+                                         "No evidence selected")
+                            tone: root.configuredResultsController.state === "consistent"
+                                  ? "success" : (root.configuredResultsController.state
+                                                 === "mismatch" ? "danger" : "neutral")
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            color: Theme.textMuted
+                            font.family: Theme.sansFamily
+                            font.pixelSize: 12
+                            text: root.configuredResultsController.issue
+                            visible: text.length > 0
+                            wrapMode: Text.Wrap
+                        }
+
+                        VerifiedPlotView {
+                            Layout.fillWidth: true
+                            canExport: root.configuredResultsController.canExport
+                            canOpenPdf: root.configuredResultsController.canOpenPdf
+                            canPreview: root.configuredResultsController.canPreview
+                            excludedSampleCount:
+                            root.configuredResultsController.selectedExcludedSampleCount
+                            format: root.configuredResultsController.selectedFormat
+                            objectName: "configuredVerifiedPlotView"
+                            plotKind: root.configuredResultsController.selectedKind
+                            plotName: root.configuredResultsController.selectedName
+                            previewSource: root.configuredResultsController.previewUrl
+                            validSampleCount:
+                            root.configuredResultsController.selectedValidSampleCount
+                            visible: root.configuredResultsController.canExport
+                            onExportRequested: root.openExportDialog("configured",
+                                                                     root.configuredResultsController.selectedFormat)
+                            onOpenPdfRequested: root.configuredOpenPdfRequested()
+                        }
+                    }
+                }
+
+                Label {
+                    Layout.fillWidth: true
+                    color: Theme.textMuted
+                    font.family: Theme.sansFamily
+                    font.pixelSize: 11
+                    text: root.configuredResultsController.resultRelationIssue
+                    visible: text.length > 0
+                    wrapMode: Text.Wrap
                 }
             }
 
@@ -407,5 +613,236 @@ Item {
                 issue: root.visualizationDraft.issue
             }
         }
+    }
+
+    Flickable {
+        id: exploreFlickable
+
+        anchors.bottom: parent.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: viewTabs.bottom
+        boundsBehavior: Flickable.StopAtBounds
+        clip: true
+        contentHeight: exploreColumn.implicitHeight + 40
+        contentWidth: width
+        flickableDirection: Flickable.VerticalFlick
+        objectName: "sessionPlotPageFlickable"
+        pixelAligned: true
+        visible: viewTabs.currentIndex === 1
+
+        ScrollBar.vertical: ScrollBar {
+            policy: ScrollBar.AsNeeded
+        }
+
+        ColumnLayout {
+            id: exploreColumn
+
+            anchors.left: parent.left
+            anchors.leftMargin: 24
+            anchors.right: parent.right
+            anchors.rightMargin: 24
+            anchors.top: parent.top
+            anchors.topMargin: 24
+            spacing: Theme.spacingMedium
+
+            Label {
+                Layout.fillWidth: true
+                color: Theme.text
+                font.family: Theme.sansFamily
+                font.pixelSize: 22
+                font.weight: Font.DemiBold
+                text: qsTr("Explore inspected data")
+            }
+
+            Label {
+                Layout.fillWidth: true
+                color: Theme.textMuted
+                font.family: Theme.sansFamily
+                font.pixelSize: 12
+                text: qsTr(
+                          "Create a session-only view of the currently inspected dataset. Opening this page never renders; Render plot is always explicit.")
+                wrapMode: Text.Wrap
+            }
+
+            Card {
+                Layout.fillWidth: true
+                subtitle: root.sessionPlotController.sourcePath.length > 0
+                          ? root.sessionPlotController.sourcePath : qsTr(
+                                "Inspect a generated dataset source before creating a session plot.")
+                title: qsTr("Inspected source")
+
+                RowLayout {
+                    Layout.fillWidth: true
+
+                    StatusBadge {
+                        label: root.sessionPlotController.sourcePath.length > 0 ? qsTr(
+                                                                                      "Source ready") :
+                                                                                  qsTr("No dataset source")
+                        tone: root.sessionPlotController.sourcePath.length > 0 ? "success" :
+                                                                                 "neutral"
+                    }
+
+                    Item {
+                        Layout.fillWidth: true
+                    }
+
+                    AppComboBox {
+                        id: newSessionFormat
+
+                        Accessible.name: qsTr("Session plot output format")
+                        Layout.preferredWidth: 140
+                        model: ["png", "svg", "pdf"]
+                        objectName: "sessionPlotFormatBox"
+                    }
+
+                    AppButton {
+                        enabled: root.sessionPlotController.canBeginEdit
+                        objectName: "sessionPlotBeginButton"
+                        onClicked: root.sessionBeginEditRequested(String(
+                                                                      newSessionFormat.currentText))
+                        text: root.sessionPlotController.hasResult ? qsTr("Render another format") :
+                                                                     qsTr("Create session plot")
+                        tone: "primary"
+                    }
+                }
+            }
+
+            Card {
+                Layout.fillWidth: true
+                subtitle: qsTr(
+                              "This unresolved edit is session state, not YAML dirty state. Render commits one result; Cancel returns to the last committed result.")
+                title: qsTr("Session plot editor")
+                visible: root.sessionPlotController.hasActiveEdit
+
+                Loader {
+                    id: sessionPlotEditor
+
+                    readonly property PlotEditor loadedEditor: item as PlotEditor
+
+                    active: root.sessionPlotController.hasActiveEdit
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: loadedEditor === null ? 0 : loadedEditor.implicitHeight
+                    objectName: "sessionPlotEditor"
+                    sourceComponent: PlotEditor {
+                        attentionField: root.attentionField
+                        attentionRow: root.attentionRow
+                        attentionSerial: root.attentionSerial
+                        draft: root.sessionPlotController.activePlotDraft
+                        primaryActionText: qsTr("Render plot")
+                        onCancelRequested: root.sessionCancelEditRequested()
+                        onCommitRequested: root.sessionRenderRequested()
+                        onFieldChangeRequested: (draft, field, value)
+                                                => root.plotFieldChangeRequested(draft, field,
+                                                                                 value)
+                        onFluidSelectionRequested: (draft, value, selected)
+                                                   => root.plotFluidSelectionRequested(draft, value,
+                                                                                       selected)
+                        onMappingAddRequested: model => root.mappingAddRequested(model)
+                        onMappingFieldChangeRequested: (model, row, field)
+                                                       => root.mappingFieldChangeRequested(model,
+                                                                                           row, field)
+                        onMappingRemoveRequested: (model, row) => root.mappingRemoveRequested(model,
+                                                                                              row)
+                        onMappingValueChangeRequested: (model, row, value)
+                                                       => root.mappingValueChangeRequested(model,
+                                                                                           row, value)
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    visible: root.sessionPlotController.isRendering
+
+                    BusyIndicator {
+                        running: visible
+                        visible: root.sessionPlotController.isRendering
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        color: Theme.textMuted
+                        font.family: Theme.sansFamily
+                        text: root.sessionPlotController.phase
+                    }
+
+                    AppButton {
+                        enabled: root.sessionPlotController.canForceStop
+                        objectName: "sessionPlotForceStopButton"
+                        onClicked: root.sessionForceStopRequested()
+                        text: qsTr("Force stop")
+                        tone: "danger"
+                    }
+                }
+            }
+
+            Card {
+                Layout.fillWidth: true
+                subtitle: qsTr(
+                              "The preview is hash-verified against its worker result and provenance sidecar before exposure.")
+                title: qsTr("Session result")
+                visible: root.sessionPlotController.hasResult
+
+                VerifiedPlotView {
+                    Layout.fillWidth: true
+                    canExport: root.sessionPlotController.canExport
+                    canOpenPdf: root.sessionPlotController.canOpenPdf
+                    canPreview: root.sessionPlotController.canPreview
+                    excludedSampleCount: root.sessionPlotController.excludedSampleCount
+                    format: root.sessionPlotController.resultFormat
+                    objectName: "sessionVerifiedPlotView"
+                    plotKind: root.sessionPlotController.resultKind
+                    plotName: root.sessionPlotController.resultName
+                    previewSource: root.sessionPlotController.previewUrl
+                    validSampleCount: root.sessionPlotController.validSampleCount
+                    onExportRequested: root.openExportDialog("session",
+                                                             root.sessionPlotController.resultFormat)
+                    onOpenPdfRequested: root.sessionOpenPdfRequested()
+                }
+            }
+
+            ValidationIssue {
+                Layout.fillWidth: true
+                field: root.sessionPlotController.issueCode
+                issue: root.sessionPlotController.issue
+            }
+        }
+    }
+
+    FileDialog {
+        id: exportDialog
+
+        acceptLabel: qsTr("Export")
+        fileMode: FileDialog.SaveFile
+        objectName: "plotExportDialog"
+        title: qsTr("Export verified plot bundle")
+
+        onAccepted: {
+            const destination = String(selectedFile);
+            Qt.callLater(function () {
+                if (root.exportTarget === "configured")
+                    root.configuredExportRequested(destination);
+                else if (root.exportTarget === "session")
+                    root.sessionExportRequested(destination);
+                root.exportTarget = "";
+            });
+        }
+        onRejected: root.exportTarget = ""
+    }
+
+    Connections {
+        function onExportSucceeded(imagePath, sidecarPath) {
+            root.plotExportCompleted(imagePath, sidecarPath);
+        }
+
+        target: root.configuredResultsController
+    }
+
+    Connections {
+        function onExportSucceeded(imagePath, sidecarPath) {
+            root.plotExportCompleted(imagePath, sidecarPath);
+        }
+
+        target: root.sessionPlotController
     }
 }

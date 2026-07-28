@@ -36,6 +36,7 @@ class DesktopController(QObject):
     datasetDocumentOpened = Signal()
     attentionRequested = Signal(str, str, int)
     shutdownConfirmationRequested = Signal()
+    transientEditShutdownConfirmationRequested = Signal(str)
     closeWindowRequested = Signal()
 
     def __init__(
@@ -673,6 +674,46 @@ class DesktopController(QObject):
             return False
         return self.visualization_draft.move_plot(row, offset)
 
+    @Slot(str, result=bool, name="requestConfiguredPlotGeneration")
+    def request_configured_plot_generation(self, request_id: str) -> bool:
+        return self.configured_plot_results_controller.select_generation(request_id)
+
+    @Slot(int, result=bool, name="requestConfiguredPlotOutcome")
+    def request_configured_plot_outcome(self, index: int) -> bool:
+        return self.configured_plot_results_controller.select_outcome(index)
+
+    @Slot(str, result=bool, name="requestConfiguredPlotExport")
+    def request_configured_plot_export(self, destination: str) -> bool:
+        return self.configured_plot_results_controller.export_selected(_local_path(destination))
+
+    @Slot(result=bool, name="requestConfiguredPlotOpenPdf")
+    def request_configured_plot_open_pdf(self) -> bool:
+        return self.configured_plot_results_controller.open_selected_pdf()
+
+    @Slot(str, result=bool, name="requestSessionPlotBeginEdit")
+    def request_session_plot_begin_edit(self, output_format: str) -> bool:
+        return self.session_plot_controller.begin_edit(output_format)
+
+    @Slot(result=bool, name="requestSessionPlotCancelEdit")
+    def request_session_plot_cancel_edit(self) -> bool:
+        return self.session_plot_controller.cancel_edit()
+
+    @Slot(result=bool, name="requestSessionPlotRender")
+    def request_session_plot_render(self) -> bool:
+        return self.session_plot_controller.render()
+
+    @Slot(result=bool, name="requestSessionPlotForceStop")
+    def request_session_plot_force_stop(self) -> bool:
+        return self.session_plot_controller.force_stop()
+
+    @Slot(str, result=bool, name="requestSessionPlotExport")
+    def request_session_plot_export(self, destination: str) -> bool:
+        return self.session_plot_controller.export_result(_local_path(destination))
+
+    @Slot(result=bool, name="requestSessionPlotOpenPdf")
+    def request_session_plot_open_pdf(self) -> bool:
+        return self.session_plot_controller.open_result_pdf()
+
     @Slot(QObject, str, str, name="requestPlotFieldChange")
     def request_plot_field_change(self, candidate: QObject, field: str, value: str) -> None:
         draft = self._owned_active_plot(candidate)
@@ -747,8 +788,18 @@ class DesktopController(QObject):
         )
 
     def _owned_active_plot(self, candidate: QObject) -> PlotDraft | None:
-        active = self.visualization_draft.get_active_plot_draft()
-        return active if isinstance(active, PlotDraft) and active is candidate else None
+        active_drafts = (
+            self.visualization_draft.get_active_plot_draft(),
+            self.session_plot_controller.get_active_plot_draft(),
+        )
+        return next(
+            (
+                active
+                for active in active_drafts
+                if isinstance(active, PlotDraft) and active is candidate
+            ),
+            None,
+        )
 
     def _owned_visualization_mapping(
         self,
@@ -762,12 +813,15 @@ class DesktopController(QObject):
             if not self._guard_active_plot_edit("shared visualization mapping change"):
                 return None
             return candidate if isinstance(candidate, MappingDraftModel) else None
-        active = self.visualization_draft.get_active_plot_draft()
-        if not isinstance(active, PlotDraft):
-            return None
-        mappings = (active.filters, active.series, active.display_units)
-        if isinstance(candidate, MappingDraftModel) and candidate in mappings:
-            return candidate
+        for active in (
+            self.visualization_draft.get_active_plot_draft(),
+            self.session_plot_controller.get_active_plot_draft(),
+        ):
+            if not isinstance(active, PlotDraft):
+                continue
+            mappings = (active.filters, active.series, active.display_units)
+            if isinstance(candidate, MappingDraftModel) and candidate in mappings:
+                return candidate
         return None
 
     @Slot(str, str, result=bool, name="prepareCreateWorkspace")
@@ -862,9 +916,16 @@ class DesktopController(QObject):
 
     @Slot(result=bool, name="requestShutdown")
     def request_shutdown(self) -> bool:
-        if not self._guard_active_plot_edit("closing Carnopy"):
-            return False
-        if not self._guard_session_plot_edit("closing Carnopy"):
+        if self.get_has_any_transient_edit():
+            edit_names = []
+            if self.get_has_active_plot_edit():
+                edit_names.append("configured plot")
+            if self.get_has_session_plot_edit():
+                edit_names.append("session plot")
+            description = " and ".join(edit_names)
+            self.transientEditShutdownConfirmationRequested.emit(
+                f"A {description} edit is still open. Cancel the edit and close Carnopy?"
+            )
             return False
         if self.request_coordinator.is_busy:
             self.workspace_controller.report_error(
@@ -879,6 +940,22 @@ class DesktopController(QObject):
             return False
         self._shutdown_discard_confirmed = False
         return self.shutdown()
+
+    @Slot(bool, result=bool, name="confirmTransientEditShutdown")
+    def confirm_transient_edit_shutdown(self, discard_confirmed: bool) -> bool:
+        if not discard_confirmed:
+            return False
+        if self.request_coordinator.is_busy:
+            self.workspace_controller.report_error(
+                "Wait for the active worker request to finish before closing Carnopy."
+            )
+            return False
+        if self.get_has_active_plot_edit() and not self.visualization_draft.cancel_plot():
+            return False
+        if self.get_has_session_plot_edit() and not self.session_plot_controller.cancel_edit():
+            return False
+        self.closeWindowRequested.emit()
+        return True
 
     @Slot(bool, result=bool, name="confirmShutdown")
     def confirm_shutdown(self, discard_confirmed: bool) -> bool:

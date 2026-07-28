@@ -42,6 +42,7 @@ MANDATORY_QML_FILES = (
     "qml/Carnopy/components/NavRail.qml",
     "qml/Carnopy/components/OperationFeedback.qml",
     "qml/Carnopy/components/PlotEditor.qml",
+    "qml/Carnopy/components/VerifiedPlotView.qml",
     "qml/Carnopy/components/ResponsiveCardGrid.qml",
     "qml/Carnopy/components/SamplerEditor.qml",
     "qml/Carnopy/components/StatusBadge.qml",

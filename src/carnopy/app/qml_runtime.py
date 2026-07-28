@@ -564,11 +564,55 @@ class QmlApplicationRuntime:
                 self.controller.request_visualization_mapping_remove,
             ),
             (
+                "configuredPlotGenerationRequested",
+                self.controller.request_configured_plot_generation,
+            ),
+            (
+                "configuredPlotOutcomeRequested",
+                self.controller.request_configured_plot_outcome,
+            ),
+            (
+                "configuredPlotExportRequested",
+                self.controller.request_configured_plot_export,
+            ),
+            (
+                "configuredPlotOpenPdfRequested",
+                self.controller.request_configured_plot_open_pdf,
+            ),
+            (
+                "sessionPlotBeginEditRequested",
+                self.controller.request_session_plot_begin_edit,
+            ),
+            (
+                "sessionPlotCancelEditRequested",
+                self.controller.request_session_plot_cancel_edit,
+            ),
+            (
+                "sessionPlotRenderRequested",
+                self.controller.request_session_plot_render,
+            ),
+            (
+                "sessionPlotForceStopRequested",
+                self.controller.request_session_plot_force_stop,
+            ),
+            (
+                "sessionPlotExportRequested",
+                self.controller.request_session_plot_export,
+            ),
+            (
+                "sessionPlotOpenPdfRequested",
+                self.controller.request_session_plot_open_pdf,
+            ),
+            (
                 "normalGeometryRememberRequested",
                 self.controller.qml_settings.rememberNormalGeometry,
             ),
             ("settingsLayoutResetRequested", self.controller.qml_settings.resetLayout),
             ("shutdownConfirmed", self.controller.confirm_shutdown),
+            (
+                "transientEditShutdownConfirmed",
+                self.controller.confirm_transient_edit_shutdown,
+            ),
         )
         for signal_name, callback in connections:
             signal = getattr(root, signal_name, None)

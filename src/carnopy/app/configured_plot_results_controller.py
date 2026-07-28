@@ -50,6 +50,7 @@ class ConfiguredPlotResultsController(QObject):
 
     state_changed = Signal()
     export_succeeded = Signal(str, str)
+    exportSucceeded = Signal(str, str)
 
     def __init__(
         self,
@@ -129,6 +130,38 @@ class ConfiguredPlotResultsController(QObject):
         return "" if artifact is None else artifact.image_format
 
     selectedFormat = Property(str, get_selected_format, notify=state_changed)
+
+    def get_selected_name(self) -> str:
+        artifact = self._selected_artifact()
+        return "" if artifact is None else artifact.name
+
+    selectedName = Property(str, get_selected_name, notify=state_changed)
+
+    def get_selected_kind(self) -> str:
+        artifact = self._selected_artifact()
+        return "" if artifact is None else artifact.kind
+
+    selectedKind = Property(str, get_selected_kind, notify=state_changed)
+
+    def get_selected_valid_sample_count(self) -> int:
+        artifact = self._selected_artifact()
+        return 0 if artifact is None else artifact.valid_sample_count
+
+    selectedValidSampleCount = Property(
+        int,
+        get_selected_valid_sample_count,
+        notify=state_changed,
+    )
+
+    def get_selected_excluded_sample_count(self) -> int:
+        artifact = self._selected_artifact()
+        return 0 if artifact is None else artifact.excluded_sample_count
+
+    selectedExcludedSampleCount = Property(
+        int,
+        get_selected_excluded_sample_count,
+        notify=state_changed,
+    )
 
     def get_can_preview(self) -> bool:
         return bool(self._preview_url)
@@ -271,6 +304,7 @@ class ConfiguredPlotResultsController(QObject):
             self.state_changed.emit()
             return False
         self.export_succeeded.emit(str(image_path), str(sidecar_path))
+        self.exportSucceeded.emit(str(image_path), str(sidecar_path))
         return True
 
     @Slot(result=bool, name="openSelectedPdf")

@@ -48,10 +48,14 @@ The desktop has two frontend implementations during the GUI-2 migration:
   over it;
 - configured plot-evidence projection is owned by one
   `ConfiguredPlotResultsController`, while inspected-data plot editing and
-  rendering are owned by one `SessionPlotController`; the public Widgets Plot
-  page is a temporary view adapter over the latter;
-- QML plot-result viewing and exploration, the QML Activity page, launcher
-  migration, and Widgets retirement belong to the remaining Stage 3 steps.
+  rendering are owned by one `SessionPlotController`; the QML Visualization
+  page binds both, and the public Widgets Plot page is a temporary narrow view
+  adapter over the latter;
+- the QML Visualization page exposes record-driven configured outcomes and
+  explicit inspected-data session rendering, including verified preview,
+  focus, PDF-open, and image-plus-sidecar export actions;
+- the QML Activity page, end-to-end navigation/close parity, launcher migration,
+  and Widgets retirement belong to the remaining Stage 3 steps.
 
 The development version is `0.1.0a4.dev0`. The two public launchers switch to
 QML only after Stage 3 reaches tested GUI-1 parity; Carnopy will not ship two
@@ -325,14 +329,33 @@ typed field and row. Worker failures retain the draft and expose their
 structured category/code/message; field focus occurs only when a structured
 field exists. Cancel returns to the prior committed result. Session edits are
 transient, not YAML dirty: they block source/workspace replacement and
-shutdown, but do not block unrelated Dataset edits or Save.
+shutdown, but do not block unrelated Dataset edits or Save. Native close and
+SIGINT surface an explicit **Cancel edit and close** decision instead of
+silently ignoring shutdown; accepting it cancels only temporary plot-edit
+state and then re-enters the ordinary dirty and busy shutdown guards.
 
 Both controllers use `carnopy.visualization.requests` for lightweight canonical
 request identity. They do not import visualization configuration/models,
 renderers, source inspection, table readers, pandas, PyArrow, NumPy, CoolProp,
-or Matplotlib. The temporary Widgets Plot page consumes
-`SessionPlotController`; Stage 3 Step 8 will bind these same controllers into
-QML.
+or Matplotlib. The QML Visualization page binds both controllers. Configured
+result selection never scans figure directories, and session rendering starts
+only from the explicit Render action. PNG and SVG are exposed through opaque,
+cache-disabled verified-preview URLs and an in-app focus mode. PDF opens only
+after immediate revalidation. Both configured and session exports use the same
+no-overwrite image-plus-rewritten-sidecar operation below QML. The temporary
+Widgets Plot page continues consuming `SessionPlotController` only as a narrow
+parity adapter.
+
+Worker-owned sampled-series rendering preserves emitted coordinates and splits
+connected lines at observed phase-label changes rather than joining across an
+unsampled phase interval. Sidecars report these deliberate transitions as
+`phase_break_count` independently from invalid or missing `gap_count`. Dense
+numeric curve families use one shared continuous colorbar across fluid facets;
+smaller or categorical families retain discrete legends. This presentation is
+shared by p–v, T–s, custom X–Y, and property-curve renderers and never adds a
+saturation dome, thermodynamic cycle, process path, interpolation, or backend
+call. The QML process still receives only the worker-produced artifact and
+provenance sidecar.
 
 ### `WorkerClient`
 
@@ -530,9 +553,9 @@ to navigate. Widgets keep the established modal dialog over the same draft and
 lifecycle.
 
 Stage 2 edits configured plot requests but intentionally does not render them.
-Stage 3 Step 7 extracts configured-result evidence and session-only manual
-plotting into authoritative controllers while preserving the worker-only
-rendering boundary. Step 8 will expose both workflows through QML Visualization;
+Stage 3 Steps 7 and 8 extract configured-result evidence and session-only
+manual plotting into authoritative controllers, then expose both workflows
+through QML Visualization while preserving the worker-only rendering boundary.
 Inspect remains the source-selection and table/diagnostic workbench.
 
 The QML YAML Preview page is a read-only projection of the complete document.

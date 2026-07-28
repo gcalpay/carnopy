@@ -220,6 +220,38 @@ def test_qml_shutdown_refuses_an_active_worker_without_closing(
     assert desktop.shutdown()
 
 
+def test_qml_shutdown_explicitly_cancels_transient_plot_edits_before_close(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    confirmations: list[str] = []
+    close_requests: list[str] = []
+    cancellations: list[str] = []
+    desktop.transientEditShutdownConfirmationRequested.connect(confirmations.append)
+    desktop.closeWindowRequested.connect(lambda: close_requests.append("close"))
+    monkeypatch.setattr(desktop, "get_has_active_plot_edit", lambda: False)
+    monkeypatch.setattr(desktop, "get_has_session_plot_edit", lambda: True)
+    monkeypatch.setattr(
+        desktop.session_plot_controller,
+        "cancel_edit",
+        lambda: cancellations.append("session") or True,
+    )
+
+    assert not desktop.request_shutdown()
+    assert confirmations == [
+        "A session plot edit is still open. Cancel the edit and close Carnopy?"
+    ]
+    assert not desktop.confirm_transient_edit_shutdown(False)
+    assert cancellations == []
+    assert close_requests == []
+    assert desktop.confirm_transient_edit_shutdown(True)
+    assert cancellations == ["session"]
+    assert close_requests == ["close"]
+
+
 def test_configuration_attention_facade_accepts_only_stable_sections(
     tmp_path: Path,
     application: QCoreApplication,

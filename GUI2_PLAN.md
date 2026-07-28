@@ -1337,8 +1337,13 @@ Stage 3 remains on `0.1.0a4.dev0`. The final version change and publication are
 a separate `0.1.0a4` release branch and pull request after Stage 3 merges.
 `carnopy-gui` becomes the canonical desktop command. `carnopy-app` remains a
 thin QML compatibility alias for the documented `0.1.0a4` deprecation window.
+Private GUI records and settings created before `0.1.0a4`, and presentation
+details of the soon-retired Widgets frontend, carry no additional compatibility
+guarantee. Existing narrow migration adapters remain only until tested QML
+parity and receive no new features. This does not relax public YAML, generated
+dataset, provenance, artifact-integrity, CLI, or scientific contracts.
 
-Current implementation status as of 2026-07-26:
+Current implementation status as of 2026-07-28:
 
 | Step | Tracked state | Verification and remaining boundary |
 | --- | --- | --- |
@@ -1348,8 +1353,9 @@ Current implementation status as of 2026-07-26:
 | 4. Extract inspection state | Implemented and committed | Focused checks pass. Its remote run exposed the page-loader/delegate-incubation race recorded below. |
 | 5. Add QML Inspect | Implemented and committed | Focused and native checks pass. Its remote run reproduced the same race rather than introducing a second Desktop-app failure. |
 | 6. Extract Activity and Recovery | Implemented and committed | Focused and remote checks pass, including the corrective page-lifecycle regression. |
-| 7. Extract plot-result and session state | Implemented locally; human commit and push pending | Focused artifact, controller, Widgets-adapter, import-isolation, packaging, and composition checks pass. No protocol or public-schema change was required. |
-| 8–13 | Planned | Step 8 is the next active implementation boundary; Steps 9–13 are not implemented. |
+| 7. Extract plot-result and session state | Implemented and committed | Focused artifact, controller, Widgets-adapter, import-isolation, packaging, and composition checks pass. The branch's remote checks passed. No protocol or public-schema change was required. |
+| 8. Complete QML Visualization | Implemented locally; human commit and push pending | QML binds both Step 7 controllers, and focused QML, artifact, export, runtime, packaging, composition, and scientific rendering checks pass. Page and tab entry remain worker-idle. Native review found and corrected dense-series legend crowding without changing emitted states. |
+| 9–13 | Planned | Step 9 is the next implementation boundary after Step 8 is committed; Steps 9–13 are not implemented. |
 
 Two earlier failed remote runs exposed a real QML lifecycle warning, not a
 scientific, worker, inspection, or packaging failure. Rapid Dataset-to-Run
@@ -2313,7 +2319,7 @@ identity, and image. Export revalidates and rewrites only destination paths in
 the copied sidecar. The session controller owns one transient edit and preserves
 the last committed result across a failed retry. The temporary Widgets Plot
 page is a narrow adapter, and clean-process tests enforce the GUI heavy-import
-boundary. Step 8 is the next active implementation boundary.
+boundary.
 
 #### Step 8 — Complete QML Visualization
 
@@ -2327,6 +2333,42 @@ Add Configured plots and Explore inspected data, deterministic outcome cards,
 lazy previews, inline session editing, explicit Render, focus mode, Export/Open
 actions, and render-another-format flow. Page entry and tab changes start no
 worker.
+
+Implemented locally on 2026-07-26 without a worker-protocol, public-schema,
+scientific-algorithm, or dependency change. The QML page now has explicit
+**Configured plots** and **Explore inspected data** views. Configured results
+are selected from successful persisted generation records and display only the
+verified ordered report outcomes. PNG and SVG use opaque, cache-disabled image
+provider URLs and an in-app focus mode; PDF remains an explicitly revalidated
+external-open action. Export routes through the composition façade and the
+Step 7 no-overwrite image-plus-rewritten-sidecar operation.
+
+Session exploration binds the one authoritative `SessionPlotController` and
+its temporary `PlotDraft`. Creating an edit is explicit, Render is the only
+worker-starting action, local and worker failures retain the edit, Cancel
+returns to the last committed result, and Render another format starts another
+explicit edit. Native close and SIGINT offer an explicit **Cancel edit and
+close** decision for unresolved configured or session edits; accepting it
+cancels only transient edit state before re-entering the ordinary dirty and
+busy guards. Hidden editor instances are not retained, preventing duplicate
+focus targets. Focused interaction tests prove that entering Visualization,
+switching either subview, and beginning or cancelling an edit starts no worker.
+
+Native review on 2026-07-28 exposed an unusable 41-entry legend in a two-fluid
+T–s emitted-state result. The underlying separated liquid and gas branches were
+scientifically correct: the generated property-table grid contains no emitted
+states across the intervening phase interval, and the renderer already refused
+to interpolate through the phase-label transition. The corrective renderer
+presentation keeps every emitted state and every deliberate break, labels p–v
+and T–s as emitted-state diagrams, uses one shared continuous colorbar for a
+dense numeric series field instead of a per-facet legend, and records
+`phase_break_count` separately from invalid-row `gap_count`. The same
+high-cardinality presentation is shared by existing property curves. It does
+not construct a saturation dome, cycle, process path, or backend-derived state.
+Focused tests compare plotted finite coordinates exactly with emitted rows and
+cover both the dense color scale and phase-break provenance.
+
+Step 9 is next after human review, commit, push, and remote verification.
 
 #### Step 9 — Add QML Activity and Recovery
 

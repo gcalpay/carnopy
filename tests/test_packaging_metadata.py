@@ -71,6 +71,7 @@ def test_qml_runtime_is_private_and_resources_live_in_the_app_package() -> None:
         "qml/Carnopy/components/MappingEditor.qml",
         "qml/Carnopy/components/OperationFeedback.qml",
         "qml/Carnopy/components/PlotEditor.qml",
+        "qml/Carnopy/components/VerifiedPlotView.qml",
         "qml/Carnopy/components/RunContextInspector.qml",
         "qml/Carnopy/qmldir",
         "resources/third-party-resources.json",

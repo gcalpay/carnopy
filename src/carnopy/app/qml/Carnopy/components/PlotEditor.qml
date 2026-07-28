@@ -9,6 +9,11 @@ Item {
     id: root
 
     required property var draft
+    property string attentionField: ""
+    property int attentionRow: -1
+    property int attentionSerial: 0
+    property string cancelActionText: qsTr("Cancel")
+    property string primaryActionText: qsTr("Commit plot")
 
     signal cancelRequested
     signal commitRequested
@@ -45,6 +50,10 @@ Item {
         else
             commitButton.forceActiveFocus();
     }
+
+    onAttentionSerialChanged: Qt.callLater(function () {
+        root.focusField(root.attentionField, root.attentionRow);
+    })
 
     implicitHeight: content.implicitHeight
 
@@ -387,7 +396,7 @@ Item {
             AppButton {
                 objectName: "plotCancelButton"
                 onClicked: root.cancelRequested()
-                text: qsTr("Cancel")
+                text: root.cancelActionText
             }
 
             AppButton {
@@ -395,7 +404,7 @@ Item {
 
                 objectName: "plotCommitButton"
                 onClicked: root.commitRequested()
-                text: qsTr("Commit plot")
+                text: root.primaryActionText
                 tone: "primary"
             }
         }

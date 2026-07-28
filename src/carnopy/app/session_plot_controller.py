@@ -5,13 +5,16 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, cast
 
-from PySide6.QtCore import Property, QObject, Signal, Slot
+from PySide6.QtCore import Property, QObject, QUrl, Signal, Slot
+from PySide6.QtGui import QDesktopServices
 
 from carnopy.app.export_cleanup import ImageExportFinalizer
 from carnopy.app.inspection_controller import InspectionController
 from carnopy.app.plot_artifacts import (
     PlotArtifactError,
     VerifiedPlotArtifact,
+    export_verified_plot_bundle,
+    validated_plot_bytes,
     verify_session_plot_result,
 )
 from carnopy.app.plot_draft import PlotDraft
@@ -33,6 +36,8 @@ class SessionPlotController(QObject):
     active_edit_changed = Signal()
     render_finished = Signal(object)
     attention_requested = Signal(str, int)
+    export_succeeded = Signal(str, str)
+    exportSucceeded = Signal(str, str)
 
     def __init__(
         self,
@@ -141,6 +146,46 @@ class SessionPlotController(QObject):
         return self._preview_url
 
     previewUrl = Property(str, get_preview_url, notify=state_changed)
+
+    def get_result_name(self) -> str:
+        return "" if self._artifact is None else self._artifact.name
+
+    resultName = Property(str, get_result_name, notify=state_changed)
+
+    def get_result_kind(self) -> str:
+        return "" if self._artifact is None else self._artifact.kind
+
+    resultKind = Property(str, get_result_kind, notify=state_changed)
+
+    def get_result_format(self) -> str:
+        return "" if self._artifact is None else self._artifact.image_format
+
+    resultFormat = Property(str, get_result_format, notify=state_changed)
+
+    def get_valid_sample_count(self) -> int:
+        return 0 if self._artifact is None else self._artifact.valid_sample_count
+
+    validSampleCount = Property(int, get_valid_sample_count, notify=state_changed)
+
+    def get_excluded_sample_count(self) -> int:
+        return 0 if self._artifact is None else self._artifact.excluded_sample_count
+
+    excludedSampleCount = Property(int, get_excluded_sample_count, notify=state_changed)
+
+    def get_can_preview(self) -> bool:
+        return bool(self._preview_url)
+
+    canPreview = Property(bool, get_can_preview, notify=state_changed)
+
+    def get_can_open_pdf(self) -> bool:
+        return self._artifact is not None and self._artifact.image_format == "pdf"
+
+    canOpenPdf = Property(bool, get_can_open_pdf, notify=state_changed)
+
+    def get_can_export(self) -> bool:
+        return self._artifact is not None
+
+    canExport = Property(bool, get_can_export, notify=state_changed)
 
     def get_can_begin_edit(self) -> bool:
         return (
@@ -291,6 +336,46 @@ class SessionPlotController(QObject):
             self._phase = "Force-stopping plot worker"
             self.state_changed.emit()
         return stopped
+
+    @Slot(str, result=bool, name="exportResult")
+    def export_result(self, destination: str) -> bool:
+        artifact = self._fresh_artifact()
+        if artifact is None:
+            return False
+        try:
+            image_path, sidecar_path = export_verified_plot_bundle(
+                artifact,
+                Path(destination),
+            )
+        except (OSError, PlotArtifactError) as exc:
+            self._issue_category = "integrity"
+            self._issue_code = "plot_export_failed"
+            self._issue = str(exc)
+            self.state_changed.emit()
+            return False
+        self.export_succeeded.emit(str(image_path), str(sidecar_path))
+        self.exportSucceeded.emit(str(image_path), str(sidecar_path))
+        return True
+
+    @Slot(result=bool, name="openResultPdf")
+    def open_result_pdf(self) -> bool:
+        artifact = self._fresh_artifact()
+        if artifact is None or artifact.image_format != "pdf":
+            return False
+        try:
+            validated_plot_bytes(
+                artifact.figures_root,
+                artifact.image_path,
+                "pdf",
+                artifact.image_sha256,
+            )
+        except PlotArtifactError as exc:
+            self._issue_category = "integrity"
+            self._issue_code = "plot_evidence_mismatch"
+            self._issue = str(exc)
+            self.state_changed.emit()
+            return False
+        return QDesktopServices.openUrl(QUrl.fromLocalFile(str(artifact.image_path)))
 
     def committed_result_payload(self) -> dict[str, Any] | None:
         return None if self._result is None else copy.deepcopy(self._result)
@@ -448,6 +533,31 @@ class SessionPlotController(QObject):
             verification_revision=self._verification_revision,
         )
         self._preview_url = self.previews.url(self._preview_token)
+
+    def _fresh_artifact(self) -> VerifiedPlotArtifact | None:
+        workspace = self.workspace
+        source = self._source_path
+        result = self._result
+        if self._artifact is None or workspace is None or source is None or result is None:
+            return None
+        try:
+            artifact, revision = verify_session_plot_result(
+                workspace,
+                source_path=source,
+                inspection_revision=self._source_revision,
+                result=result,
+            )
+        except PlotArtifactError as exc:
+            self._issue_category = "integrity"
+            self._issue_code = "plot_evidence_mismatch"
+            self._issue = str(exc)
+            self.state_changed.emit()
+            return None
+        self._artifact = artifact
+        self._verification_revision = revision
+        self._replace_preview_token()
+        self.state_changed.emit()
+        return artifact
 
     def _clear_result(self) -> None:
         if self._preview_token:

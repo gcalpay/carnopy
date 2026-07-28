@@ -246,6 +246,11 @@ def test_configured_results_controller_projects_only_activity_records(
     assert controller.select_generation("request-id")
     assert controller.get_evidence_label() == "Recorded provenance consistent"
     assert controller.outcomes_model.get(0)["name"] == "density"
+    assert controller.get_selected_name() == "density"
+    assert controller.get_selected_kind() == "property_curves"
+    assert controller.get_selected_format() == "png"
+    assert controller.get_selected_valid_sample_count() == 4
+    assert controller.get_selected_excluded_sample_count() == 0
     assert controller.get_preview_url().startswith("image://carnopy-plots/")
     assert controller.get_result_matches_current_saved_baseline()
 

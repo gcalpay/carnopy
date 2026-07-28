@@ -272,6 +272,20 @@ def test_session_plot_success_commits_result_and_destroys_edit(
     assert not controller.get_has_active_edit()
     assert controller.get_committed_request()["name"] == "session-plot"
     assert controller.get_preview_url().startswith("image://carnopy-plots/")
+    assert controller.get_result_name() == "session-plot"
+    assert controller.get_result_kind() == "property_curves"
+    assert controller.get_result_format() == "png"
+    assert controller.get_valid_sample_count() == 4
+    assert controller.get_excluded_sample_count() == 0
+
+    exported = tmp_path / "exported-session.png"
+    assert controller.export_result(str(exported))
+    exported_sidecar = exported.with_suffix(".plot.json")
+    assert exported.read_bytes() == b"png"
+    exported_payload = json.loads(exported_sidecar.read_text(encoding="utf-8"))
+    assert exported_payload["image"]["path"] == str(exported.resolve())
+    assert exported_payload["image"]["sidecar_path"] == str(exported_sidecar.resolve())
+    assert exported_payload["image"]["sha256"] == digest
 
     assert controller.begin_edit("svg")
     assert controller.render()
