@@ -673,9 +673,9 @@ def inspect_wheel(path: Path, expected_version: str) -> None:
         entry_points = reader.read(entry_point_names[0]).decode("utf-8")
         if "carnopy = carnopy.__main__:main" not in entry_points:
             raise ValueError("wheel does not contain the carnopy console entry point")
-        if "carnopy-app = carnopy.app.launcher:main" not in entry_points:
+        if "carnopy-app = carnopy.app.qml_launcher:main_app" not in entry_points:
             raise ValueError("wheel does not contain the carnopy-app console entry point")
-        if "carnopy-gui = carnopy.app.launcher:main_gui" not in entry_points:
+        if "carnopy-gui = carnopy.app.qml_launcher:main_gui" not in entry_points:
             raise ValueError("wheel does not contain the carnopy-gui console entry point")
 
 

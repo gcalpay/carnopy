@@ -42,20 +42,20 @@ def test_desktop_extra_and_launcher_are_declared() -> None:
     assert (
         "PySide6-Essentials>=6.11.1,<6.12" in pyproject["project"]["optional-dependencies"]["all"]
     )
-    assert pyproject["project"]["scripts"]["carnopy-app"] == "carnopy.app.launcher:main"
-    assert pyproject["project"]["scripts"]["carnopy-gui"] == "carnopy.app.launcher:main_gui"
+    assert pyproject["project"]["scripts"]["carnopy-app"] == "carnopy.app.qml_launcher:main_app"
+    assert pyproject["project"]["scripts"]["carnopy-gui"] == "carnopy.app.qml_launcher:main_gui"
     assert "PySide6 Essentials 6.11.1 or later within the 6.11 release line" in readme
     assert "native bridge remains qualified against exactly Qt 6.11.1" in readme
 
 
-def test_qml_runtime_is_private_and_resources_live_in_the_app_package() -> None:
+def test_qml_runtime_is_public_and_resources_live_in_the_app_package() -> None:
     root = Path(__file__).resolve().parents[1]
     pyproject: dict[str, Any] = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
     scripts = pyproject["project"]["scripts"]
     assert scripts == {
         "carnopy": "carnopy.__main__:main",
-        "carnopy-app": "carnopy.app.launcher:main",
-        "carnopy-gui": "carnopy.app.launcher:main_gui",
+        "carnopy-app": "carnopy.app.qml_launcher:main_app",
+        "carnopy-gui": "carnopy.app.qml_launcher:main_gui",
     }
     app_root = root / "src" / "carnopy" / "app"
     for relative_path in (

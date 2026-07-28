@@ -110,9 +110,11 @@ feature. The active GUI-2 source line reports `0.1.0a4.dev0`, while the
 published install commands above remain pinned to `0.1.0a3`. Stage 1
 controller extraction is complete. The active GUI-2 `app` extra requires
 PySide6 Essentials 6.11.1 or later within the 6.11 release line; the private
-native bridge remains qualified against exactly Qt 6.11.1. During Stage 2 QML
-workflow development, both desktop launchers continue to use the released
-Widgets frontend as the parity baseline.
+native bridge remains qualified against exactly Qt 6.11.1. On the active
+`0.1.0a4.dev0` source line, `carnopy-gui` launches the modern QML application
+and `carnopy-app` is a compatibility alias for that same application. The
+Widgets implementation remains in the source tree only as a temporary parity
+oracle until its dedicated retirement step.
 
 ## Quick start
 
@@ -166,14 +168,13 @@ omit the option or use `auto` for native platform detection outside WSLg and
 the guarded XCB selection on WSLg. An existing `QT_QPA_PLATFORM` environment
 override remains authoritative.
 
-GUI-1 currently provides workspace lifecycle, a worker-validated editor for all
-three dataset configuration modes, dataset validation and generation, output
-inspection, bounded table previews, job diagnostics, guarded staging recovery,
-and manual plot rendering with immediate confirmed force-stop. Plot rendering
-uses Matplotlib only in a short-lived worker and writes a no-overwrite-safe
-image plus `.plot.json` sidecar. PNG and SVG exports preview automatically in
-Qt with fit, zoom, 100%, and panning controls. PDF exports open only after an
-explicit user action.
+The current QML development application provides workspace lifecycle, a
+worker-validated editor for all three dataset modes, deterministic YAML and
+Save flows, exact-saved-configuration generation, bounded source and table
+inspection, configured and session plot workflows, private Run activity, and
+guarded staging recovery. Scientific generation, inspection, and Matplotlib
+rendering remain in short-lived workers. PNG and SVG use verified in-app
+previews; PDF opens only after explicit revalidation and user action.
 
 ## Guide
 
@@ -1075,10 +1076,12 @@ exported. Modifying it does not update the image or provenance sidecar.
 
 ## Desktop GUI
 
-The Linux-first desktop frontend is an optional PySide6 Qt Widgets application
-over the same Carnopy Python pipelines used by the CLI. Widgets do not parse or
-invoke CLI output. Scientific validation and execution run in a short-lived
-worker process through a private, versioned JSON Lines protocol.
+The desktop frontend is optional through `carnopy[app]`. The published
+`0.1.0a3` release uses Qt Widgets. The active `0.1.0a4.dev0` source line routes
+both `carnopy-gui` and the compatibility alias `carnopy-app` to the modern QML
+application. Neither frontend parses or invokes CLI output; scientific
+validation and execution run in short-lived workers through a private,
+versioned JSON Lines protocol.
 
 See [Desktop architecture and evolution](DESKTOP_ARCHITECTURE.md) for the
 implemented controller ownership, process boundary, frontend migration status,
@@ -1158,10 +1161,10 @@ The graph is an aid for navigation and review, not a source of scientific
 truth. Verify exact behavior against the source files and tests before making
 changes.
 
-The currently committed graph predates the packaged GUI-2 QML runtime and is
-hard-stale for current desktop work. Do not use it to navigate the active Stage
-2 implementation. The computed freshness policy and current source revision are
-recorded in
+The currently committed graph predates active Stage 3 parity work and is
+hard-stale for current desktop work. Do not use it to navigate the remaining
+frontend migration. The computed freshness policy and current source revision
+are recorded in
 [`DESKTOP_ARCHITECTURE.md`](DESKTOP_ARCHITECTURE.md#maintenance-posture-and-navigation-freshness).
 
 ## Scientific limitations
@@ -1298,11 +1301,14 @@ quality. Saturated liquid alone is not a pump cavitation margin; NPSH may be
 reported only when sufficient hydraulic-system and pump data are supplied.
 
 The active `0.1.0a4.dev0` application development line targets a cross-platform
-modern QML presentation layer with tested GUI-1 capability parity. Optional
-native VTK exact-grid 3D visualization belongs to a later GUI-2 alpha milestone
-and is not required for `0.1.0a4`. GUI-2 uses the same worker and core Python
-boundaries rather than duplicating scientific logic. TFC screening, mixtures,
-additional backends, and standalone desktop installers remain deferred.
+modern QML presentation layer with tested GUI-1 capability parity. Both source
+checkout desktop commands now launch that one QML frontend; the obsolete
+Widgets presentation remains only until its next, separately verified removal
+step. Optional native VTK exact-grid 3D visualization belongs to a later GUI-2
+alpha milestone and is not required for `0.1.0a4`. GUI-2 uses the same worker
+and core Python boundaries rather than duplicating scientific logic. TFC
+screening, mixtures, additional backends, and standalone desktop installers
+remain deferred.
 
 Use [GitHub issues](https://github.com/gcalpay/carnopy/issues) for bug reports,
 scientific discrepancies, and focused feature requests. See

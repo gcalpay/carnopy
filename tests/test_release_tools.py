@@ -363,7 +363,7 @@ def test_distribution_checker_requires_model_sweep_artifacts() -> None:
     )
 
 
-def test_installed_smoke_invokes_the_private_qml_entrypoint(
+def test_installed_smoke_invokes_both_public_qml_entrypoints(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -384,14 +384,16 @@ def test_installed_smoke_invokes_the_private_qml_entrypoint(
         return subprocess.CompletedProcess(arguments, 0, "", "")
 
     monkeypatch.setattr(smoke_installed.subprocess, "run", fake_run)
-    smoke_installed.smoke_qml_app(tmp_path)
+    smoke_installed.smoke_public_qml_apps(tmp_path)
 
-    assert len(observed) == 1
-    arguments, cwd, environment, timeout = observed[0]
-    assert arguments == [sys.executable, "-m", "carnopy.app.qml_launcher", "--smoke-test"]
-    assert cwd == tmp_path
-    assert environment["QT_QPA_PLATFORM"] == "offscreen"
-    assert timeout == 30
+    assert [arguments for arguments, _cwd, _environment, _timeout in observed] == [
+        [str(Path(sys.executable).with_name("carnopy-gui")), "--smoke-test"],
+        [str(Path(sys.executable).with_name("carnopy-app")), "--smoke-test"],
+    ]
+    for _arguments, cwd, environment, timeout in observed:
+        assert cwd == tmp_path
+        assert environment["QT_QPA_PLATFORM"] == "offscreen"
+        assert timeout == 30
 
 
 def test_installed_smoke_plot_arguments_use_current_cli_contract(tmp_path: Path) -> None:

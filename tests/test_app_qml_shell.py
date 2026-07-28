@@ -657,14 +657,14 @@ if not runtime.close():
         assert completed.returncode == 0, completed.stdout + completed.stderr
 
 
-def test_public_launchers_still_resolve_to_widgets() -> None:
-    from carnopy.app import launcher
+def test_public_launchers_resolve_directly_to_qml() -> None:
+    from carnopy.app import qml_launcher
 
-    assert launcher.main.__module__ == "carnopy.app.launcher"
-    assert launcher.main_gui.__module__ == "carnopy.app.launcher"
-    source = (ROOT / "src/carnopy/app/launcher.py").read_text(encoding="utf-8")
-    assert "from carnopy.app.window import run_application" in source
-    assert "qml_runtime" not in source
+    assert qml_launcher.main_app.__module__ == "carnopy.app.qml_launcher"
+    assert qml_launcher.main_gui.__module__ == "carnopy.app.qml_launcher"
+    source = (ROOT / "src/carnopy/app/qml_launcher.py").read_text(encoding="utf-8")
+    assert "from carnopy.app.qml_runtime import QmlStartupError, run_qml_application" in source
+    assert "carnopy.app.window" not in source
 
 
 def test_shell_imports_remain_scientifically_isolated() -> None:

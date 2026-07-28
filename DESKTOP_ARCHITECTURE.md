@@ -19,12 +19,17 @@ guidance stale.
 
 ## Current state
 
-The desktop has two frontend implementations during the GUI-2 migration:
+The source tree temporarily has two frontend implementations during the GUI-2
+migration, but only QML is publicly launched:
 
-- `carnopy-app` and `carnopy-gui` still launch the completed Qt Widgets
-  application from the `0.1.0a3` line;
-- `python -m carnopy.app.qml_launcher` launches the private GUI-2 QML
-  application used for development and qualification;
+- `carnopy-gui` launches the QML application and is the canonical desktop
+  command;
+- `carnopy-app` launches the same QML application as the documented
+  `0.1.0a4` compatibility alias;
+- `python -m carnopy.app.qml_launcher` remains an internal module-level smoke
+  entry;
+- the Qt Widgets implementation remains temporarily in source as the parity
+  oracle for the next deletion step, but no project script selects it;
 - both frontends reuse the same authoritative QtCore controllers and private
   worker boundary;
 - the QML application currently implements the responsive shell, Workspace,
@@ -36,32 +41,33 @@ The desktop has two frontend implementations during the GUI-2 migration:
   shutdown decisions are shared with the authoritative controllers rather than
   reimplemented in QML;
 - saved-config validation and generation state are owned by one
-  `DatasetExecutionController`; both the private QML Run workflow and the
-  public Widgets Run page are view adapters over it;
+  `DatasetExecutionController`; both the public QML Run workflow and the
+  temporary Widgets Run page are view adapters over it;
 - source discovery, worker inspection, typed source summaries, logical-array
   metadata, table selection, and bounded preview state are owned by one
-  `InspectionController`; the private QML Inspect workbench and public Widgets
-  Inspect/source pages are view adapters over it;
+  `InspectionController`; the public QML Inspect workbench and temporary
+  Widgets Inspect/source pages are view adapters over it;
 - private Run-activity loading, typed projection, record-only removal,
   interrupted-state projection, and identity-checked staging recovery are owned
-  by one `ActivityController`; the public Widgets Jobs page is a view adapter
-  over it;
+  by one `ActivityController`; the temporary Widgets Jobs page is a view
+  adapter over it;
 - configured plot-evidence projection is owned by one
   `ConfiguredPlotResultsController`, while inspected-data plot editing and
   rendering are owned by one `SessionPlotController`; the QML Visualization
-  page binds both, and the public Widgets Plot page is a temporary narrow view
-  adapter over the latter;
+  page binds both, and the temporary Widgets Plot page is a narrow view adapter
+  over the latter;
 - the QML Visualization page exposes record-driven configured outcomes and
   explicit inspected-data session rendering, including verified preview,
   focus, PDF-open, and image-plus-sidecar export actions;
-- the QML Activity page and guarded end-to-end cross-page/close parity are
-  implemented; launcher migration and Widgets retirement belong to the
+- the QML Activity page, guarded end-to-end cross-page/close parity, and public
+  launcher migration are implemented; Widgets retirement belongs to the
   remaining Stage 3 steps.
 
-The development version is `0.1.0a4.dev0`. The two public launchers switch to
-QML only after Stage 3 reaches tested GUI-1 parity; Carnopy will not ship two
-normal desktop applications or a frontend selector. The resulting QML parity
-application is the planned `0.1.0a4` alpha checkpoint. Later sweep,
+The development version is `0.1.0a4.dev0`. Both public launchers now select the
+tested QML parity application; Carnopy will not ship two normal desktop
+applications or a frontend selector. Widgets remains only until its dedicated
+source deletion step. The resulting QML application is the planned `0.1.0a4`
+alpha checkpoint. Later sweep,
 preparation, and native-3D stages are not prerequisites for that release.
 
 ## Authority map
@@ -114,7 +120,7 @@ not a second scientific implementation.
 ## Runtime topology
 
 ```text
-Public Widgets frontend               Private QML frontend
+Temporary Widgets parity frontend     Public QML frontend
 MainWindow + page adapters            QQmlApplicationEngine + QML views
              |                                      |
              +---------------+----------------------+
@@ -585,10 +591,10 @@ underlying workflow.
 
 ## Frontends
 
-### Public Qt Widgets frontend
+### Temporary Qt Widgets parity frontend
 
-`carnopy.app.window.MainWindow` remains the public frontend during the Stage 3
-parity migration.
+`carnopy.app.window.MainWindow` remains temporarily available in source during
+the Stage 3 parity migration, but no public project script launches it.
 Widgets pages are adapters over shared controllers for workspace,
 configuration, execution, sources, jobs, recovery, plot requests, and image
 preview. The Run page now consumes `DatasetExecutionController`; it no longer
@@ -597,7 +603,8 @@ starts workers or emits persistence events. The Jobs page consumes
 owns staging recovery. The Inspect and generated-source pages project the shared
 `InspectionController`; they no longer start inspection or preview sessions,
 discover sources, or retain authoritative table state. Widgets retain native
-file dialogs and existing manual workflows as a parity oracle until Stage 3.
+file dialogs and existing manual workflows only as a parity oracle until their
+Step 12 deletion.
 The Plot page now projects `SessionPlotController`; it no longer owns the
 temporary plot draft, worker session, committed result, or artifact evidence.
 
@@ -605,11 +612,15 @@ Widgets must not regain shadow draft state while QML is added. A behavior fix
 at a shared boundary must be reflected in both frontends, as with safe sampler
 unit changes and composition-owned workspace operations.
 
-### Private QML frontend
+### Public QML frontend
 
-`carnopy.app.qml_launcher` is intentionally not a project entry point yet. It
-loads the packaged `Carnopy` QML module for development, installed-resource
-smoke testing, and native acceptance.
+`carnopy.app.qml_launcher` is the lightweight public command module. The
+canonical `carnopy-gui` entry point calls `main_gui`; the compatibility
+`carnopy-app` entry point calls `main_app`. Both load the same packaged
+`Carnopy` QML module. Their parser and version handling import no PySide6
+module, so help, version, and missing-extra behavior remain available at the
+optional-dependency boundary. The module's `main` remains an internal smoke
+entry rather than another user-facing application.
 
 Startup ordering is deliberate:
 
@@ -760,7 +771,7 @@ and fits the still-hidden native window to that monitor before showing or
 maximizing it, avoiding a compositor-visible cross-screen remap on a restored
 launch. A versioned migration discards placement state written by the retired
 restoration path once, then subsequent clean closes again remember the actual
-monitor. The private QML launcher also holds a per-user runtime lock so two
+monitor. The QML launcher also holds a per-user runtime lock so two
 CPU-rendered native shells cannot overlap and race on the same settings.
 
 The stable QSettings identity preserves GUI-1 recent workspaces. New settings
@@ -797,7 +808,8 @@ Dark is the default for missing or invalid stored state. System resolves live
 to Light or Dark without creating another serialized mode. The running QML
 window and Qt fallback controls change in the same event turn; the QML runtime
 owns that application-palette override and restores the prior `QPalette` during
-teardown, so the still-public Widgets launchers do not inherit QML styling.
+teardown, so the temporary Widgets parity frontend does not inherit QML
+styling.
 Warm uses an amber canvas and surface scale that remains visibly distinct from
 Light while retaining the same semantic green, warning, and error roles.
 The wide header places the first-party sun, sunset, and moon controls on the
@@ -853,7 +865,7 @@ Desktop verification is layered:
 | `tests/test_app_*.py` | Controller, draft, Widgets, QML engine, and interaction contracts |
 | `scripts/check_qml.py` | Non-writing QML format, import, and lint checks |
 | dedicated Linux app CI job | App-extra typing and desktop tests under Qt offscreen execution |
-| installed smoke tests | Public Widgets launchers plus private packaged-QML startup, responsive state, YAML-page creation, one controller interaction, teardown, and resource checks |
+| installed smoke tests | Both public QML command aliases plus packaged-QML responsive state, YAML-page creation, one controller interaction, teardown, and resource checks |
 | distribution checker | Exact wheel/sdist module, QML, font, icon, license, and provenance inventories |
 | manual native acceptance | File dialogs, monitor/DPI behavior, themes, keyboard use, and perceived interaction |
 | native qualification workflow | Explicit Qt Quick/VTK bridge qualification, not a routine PR requirement |
@@ -942,8 +954,8 @@ workaround.
 
 ## Known current limitations
 
-- The public desktop experience is still Widgets; the modern QML launcher is a
-  private development entry point.
+- Both public desktop commands launch QML. The Widgets implementation remains
+  temporarily in source only for its Step 12 retirement boundary.
 - The QML application can configure and save YAML and can validate or generate
   from the exact saved configuration through the authoritative execution
   controller. It can also explicitly inspect workspace or external dataset,
@@ -951,9 +963,8 @@ workaround.
   arrays, diagnostics, and bounded tables. It also presents configured plot
   evidence, explicit session rendering, private Run activity, and guarded
   staging recovery.
-- Cross-page end-to-end parity, public-launcher migration, Widgets retirement,
-  sweep creation, preparation creation, and 3D presentation are not
-  implemented.
+- Widgets retirement, sweep creation, preparation creation, and 3D
+  presentation are not implemented.
 - Native folder dialogs and compositor behavior require human acceptance;
   headless tests do not automate them.
 - The current WSLg development host can use CPU rendering through Mesa

@@ -171,6 +171,13 @@ jobs:
           if [[ "$RUNNER_OS" == "Windows" ]]; then
             SMOKE_PYTHON="$RUNNER_TEMP/carnopy-qml-smoke/Scripts/python.exe"
           fi
+          SMOKE_BIN="$(dirname "$SMOKE_PYTHON")"
+          GUI_LAUNCHER="$SMOKE_BIN/carnopy-gui"
+          APP_LAUNCHER="$SMOKE_BIN/carnopy-app"
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            GUI_LAUNCHER="$GUI_LAUNCHER.exe"
+            APP_LAUNCHER="$APP_LAUNCHER.exe"
+          fi
           WHEEL_URI="$("$SMOKE_PYTHON" -c \
             'from pathlib import Path; import sys; wheels = list(Path(sys.argv[1]).glob("*.whl")); assert len(wheels) == 1, wheels; print(wheels[0].resolve().as_uri())' \
             "$PWD/qml-smoke-dist")"
@@ -179,7 +186,9 @@ jobs:
             "carnopy[app] @ ${WHEEL_URI}"
           "$SMOKE_PYTHON" -m pip check
           QT_QPA_PLATFORM=offscreen \
-          "$SMOKE_PYTHON" -m carnopy.app.qml_launcher --smoke-test
+          "$GUI_LAUNCHER" --smoke-test
+          QT_QPA_PLATFORM=offscreen \
+          "$APP_LAUNCHER" --smoke-test
 
   build:
     name: Build distributions once

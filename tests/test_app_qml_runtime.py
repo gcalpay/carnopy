@@ -478,7 +478,7 @@ for name in ("CoolProp", "numpy", "pandas", "pyarrow", "matplotlib"):
     assert completed.returncode == 0, completed.stdout + completed.stderr
 
 
-def test_private_qml_launcher_smoke_exits_cleanly() -> None:
+def test_module_qml_launcher_smoke_exits_cleanly() -> None:
     environment = os.environ.copy()
     environment["QT_QPA_PLATFORM"] = "offscreen"
     completed = subprocess.run(

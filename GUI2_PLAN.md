@@ -16,7 +16,8 @@ for unfinished GUI-2 work and stage acceptance.
   GUI-1 application.
 - The first GUI-2 release line uses `0.1.0a4.dev0` during development and
   `0.1.0a4` for the post-Stage-3 alpha release.
-- `carnopy-gui` and `carnopy-app` will both launch one QML application in
+- `carnopy-gui` and `carnopy-app` now both launch one QML application;
+  `carnopy-gui` is canonical and `carnopy-app` is the compatibility alias for
   `0.1.0a4`.
 - Widgets remain temporarily as a parity oracle, then are removed before the
   release. GUI-2 will not ship a frontend selector or two desktop applications.
@@ -273,8 +274,9 @@ Current implementation status as of 2026-07-28:
 | 7. Extract plot-result and session state | Implemented and committed | Focused artifact, controller, Widgets-adapter, import-isolation, packaging, and composition checks pass. The branch's remote checks passed. No protocol or public-schema change was required. |
 | 8. Complete QML Visualization | Implemented and committed | QML binds both Step 7 controllers, and focused QML, artifact, export, runtime, packaging, composition, and scientific rendering checks plus the branch's remote checks pass. Page and tab entry remain worker-idle. Native review found and corrected dense-series legend crowding without changing emitted states. |
 | 9. Add QML Activity and Recovery | Implemented and committed | The two-tab Activity page binds the existing typed models, routes destructive and cross-page actions through the composition façade, and keeps record/artifact ownership and identity-checked recovery unchanged. Focused controller, QML, runtime, packaging, and native delegate-click checks pass. |
-| 10. Complete guarded workflow parity | Implemented locally | The six exact cross-page paths, record-driven configured empty state, explicit inspected-data exploration, and operation-specific busy-close decisions are implemented. Focused QML, controller, lifecycle, and warning checks pass; human commit and remote checks remain. |
-| 11–13 | Planned | Step 11 is the next implementation boundary after Step 10 is committed and its remote checks pass. |
+| 10. Complete guarded workflow parity | Implemented and committed | The six exact cross-page paths, record-driven configured empty state, explicit inspected-data exploration, and operation-specific busy-close decisions are implemented. Focused QML, controller, lifecycle, and warning checks pass. |
+| 11. Make QML the public desktop frontend | Implemented | Both package entry points resolve directly to the lightweight QML launcher; source and installed-distribution checks pass locally. Remote checks remain before Widgets retirement. |
+| 12–13 | Planned | Widgets retirement begins only after Step 11 is committed and its remote installed-QML checks pass. |
 
 Two earlier failed remote runs exposed a real QML lifecycle warning, not a
 scientific, worker, inspection, or packaging failure. Rapid Dataset-to-Run
@@ -300,7 +302,7 @@ remote checks pass.
   four writes per second while phase and terminal changes persist immediately.
 - The temporary Widgets Run page is now a view adapter over that controller,
   and the Jobs page no longer creates or updates execution records.
-- Step 3 is implemented. The private QML frontend exposes the authoritative
+- Step 3 is implemented. The QML frontend exposes the authoritative
   saved-configuration Run workflow through a numbered responsive page and a
   Run-specific inspector. Validate, Generate, cooperative Cancel, and delayed
   Force Stop cross the root runtime bridge through queued composition-facade
@@ -328,7 +330,7 @@ remote checks pass.
   and source-list pages are presentation adapters over the controller. The
   temporary Widgets Plot page now consumes the Step 7 session controller rather
   than owning copied inspection or render state.
-- Step 5 is implemented. The private QML frontend now exposes the bounded
+- Step 5 is implemented. The QML frontend now exposes the bounded
   workspace source list, explicit external file/folder choices,
   Summary/Tables/Arrays/Diagnostics views, a virtualized 100-row table page,
   automatic first preview after explicit inspection, local paging, Focus
@@ -413,7 +415,7 @@ remote checks pass.
   View Plots selects the exact generation request and opens the configured
   subview without inspection or rendering. Neither public launcher has
   migrated.
-- Step 10 is implemented locally. Run-result, Activity-record, Inspect, and
+- Step 10 is implemented and committed. Run-result, Activity-record, Inspect, and
   configured-empty-state actions now share composition-owned helpers rather
   than duplicating navigation logic in QML. **Inspect Run** submits the exact
   generated output directory and navigates to Inspect when the request is
@@ -429,6 +431,18 @@ remote checks pass.
   and preview requests without safe cancellation remain wait-only. Existing
   configured/session transient-edit, dirty-document, workspace, and source
   replacement guards remain authoritative below QML.
+- Step 11 is implemented. `carnopy-gui` now resolves directly to
+  `carnopy.app.qml_launcher:main_gui`, and `carnopy-app` resolves to the same
+  runtime through `carnopy.app.qml_launcher:main_app`. Argument parsing,
+  `--help`, and `--version` remain lightweight and import no PySide6 module.
+  Both commands preserve `--workspace`, `--qt-platform`, the stable
+  `.carnopy-gui` workspace marker, and the existing `QSettings` identity.
+- Installed-distribution smoke now starts both public command aliases rather
+  than treating the module launcher as a private substitute. Linux, Windows,
+  and macOS QML workflow jobs likewise execute the generated console scripts,
+  including explicit Windows executable paths. The Widgets implementation and
+  its controller-parity tests remain present but unreferenced by package entry
+  points until Step 12.
 
 ### Permanent scientific and process boundaries
 
@@ -1322,10 +1336,9 @@ not construct a saturation dome, cycle, process path, or backend-derived state.
 Focused tests compare plotted finite coordinates exactly with emitted rows and
 cover both the dense color scale and phase-break provenance.
 
-Step 9 is implemented and committed with focused verification and native human
-review complete. The corrective queued delegate-interaction regression is part
-of that accepted boundary. Step 10 is implemented locally with focused
-verification; human commit and remote checks remain before Step 11 begins.
+Steps 9 and 10 are implemented and committed with focused verification. Native
+human review covers Step 9, and the corrective queued delegate-interaction
+regression is part of that accepted boundary.
 
 #### Step 9 — Add QML Activity and Recovery
 
@@ -1371,7 +1384,7 @@ Cover workspace/source replacement, both transient edit types, busy close,
 cleanup refusal, repeated launch/close, and warning-free teardown. Do not
 migrate launchers before this boundary is green.
 
-Implemented locally on 2026-07-28. All six approved paths cross queued root
+Implemented and committed on 2026-07-28. All six approved paths cross queued root
 signals into `DesktopController` and reuse the exact typed run/output identity:
 
 ```text
@@ -1398,6 +1411,9 @@ cover exact routing, no automatic render, cancellation-to-close, cleanup
 refusal, and the existing warning-free runtime boundary. No protocol, public
 schema, scientific behavior, dependency, or launcher change is included.
 
+Committed before Step 11 began. The public launcher migration does not alter
+these lifecycle or cross-page contracts.
+
 #### Step 11 — Make QML the public desktop frontend
 
 Recommended commit:
@@ -1411,6 +1427,16 @@ launcher. Preserve `--workspace`, `--qt-platform`, `--help`, `--version`, the
 existing `.carnopy-gui` workspace/settings identity, lightweight help/version,
 installed smokes, and missing-extra guidance. Update package inventories and
 README migration wording.
+
+Implemented on 2026-07-28. Both project scripts point directly at the
+lightweight `qml_launcher` module and select the same QML runtime with their
+own stable program names. Help and version exit before PySide6 is imported;
+missing-`app` guidance is unchanged; workspace and Qt-platform arguments reach
+the existing runtime unchanged. The module entry point remains available for
+internal smoke use, but distribution and cross-platform CI now prove both
+installed public commands. No dependency, lock, scientific, worker, protocol,
+workspace-marker, or settings-identity change is included. Widgets source is
+retained solely for the separately verified Step 12 deletion.
 
 #### Step 12 — Retire the Widgets presentation layer
 

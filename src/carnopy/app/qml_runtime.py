@@ -116,7 +116,7 @@ QML_PALETTE_COLORS: dict[str, dict[str, str]] = {
 
 
 class QmlStartupError(RuntimeError):
-    """Raised when the private QML application cannot start cleanly."""
+    """Raised when the QML desktop application cannot start cleanly."""
 
 
 def qml_application_palette(mode: str) -> QPalette:
@@ -298,7 +298,7 @@ class QmlWarningCapture(QObject):
 
 
 class QmlApplicationRuntime:
-    """Own the private Stage 2 QML engine and its authoritative controllers."""
+    """Own the public QML engine and its authoritative controllers."""
 
     def __init__(
         self,

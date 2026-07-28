@@ -11,12 +11,12 @@ from types import SimpleNamespace
 import pytest
 
 from carnopy._version import __version__
-from carnopy.app import launcher
+from carnopy.app import qml_launcher
 
 
 @pytest.mark.parametrize(
     ("entrypoint", "program"),
-    [("main", "carnopy-app"), ("main_gui", "carnopy-gui")],
+    [("main_app", "carnopy-app"), ("main_gui", "carnopy-gui")],
 )
 @pytest.mark.parametrize("argument", ["--help", "--version"])
 def test_launcher_help_and_version_do_not_import_pyside(
@@ -26,7 +26,7 @@ def test_launcher_help_and_version_do_not_import_pyside(
 ) -> None:
     code = f"""
 import sys
-from carnopy.app.launcher import {entrypoint}
+from carnopy.app.qml_launcher import {entrypoint}
 try:
     {entrypoint}([{argument!r}])
 except SystemExit as exc:
@@ -60,49 +60,62 @@ def test_launcher_reports_exact_missing_app_extra(
         fromlist: tuple[str, ...] = (),
         level: int = 0,
     ) -> object:
-        if name == "carnopy.app.window":
+        if name == "carnopy.app.qml_runtime":
             raise ModuleNotFoundError("No module named 'PySide6'", name="PySide6")
         return original_import(name, globals, locals, fromlist, level)
 
     monkeypatch.setattr(builtins, "__import__", missing_pyside)
 
-    assert launcher.main([]) == 1
+    assert qml_launcher.main_app([]) == 1
     captured = capsys.readouterr()
     assert captured.out == ""
-    assert captured.err == launcher.MISSING_APP_EXTRA
+    assert captured.err == qml_launcher.MISSING_APP_EXTRA
 
 
 @pytest.mark.skipif(
     importlib.util.find_spec("PySide6") is None, reason="app extra is not installed"
 )
-def test_launcher_passes_workspace_to_application(
+@pytest.mark.parametrize("entrypoint", [qml_launcher.main_app, qml_launcher.main_gui])
+def test_launcher_passes_workspace_to_qml_application(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    entrypoint: object,
 ) -> None:
-    import carnopy.app.window
+    import carnopy.app.qml_runtime
 
-    received: list[Path | None] = []
+    received: list[tuple[Path | None, bool]] = []
     monkeypatch.setattr(
-        carnopy.app.window,
-        "run_application",
-        lambda workspace: received.append(workspace) or 0,
+        carnopy.app.qml_runtime,
+        "run_qml_application",
+        lambda workspace, *, smoke_test: received.append((workspace, smoke_test)) or 0,
     )
 
-    assert launcher.main(["--workspace", str(tmp_path)]) == 0
-    assert received == [tmp_path]
+    assert callable(entrypoint)
+    assert entrypoint(["--workspace", str(tmp_path)]) == 0
+    assert received == [(tmp_path, False)]
 
 
 @pytest.mark.skipif(
     importlib.util.find_spec("PySide6") is None, reason="app extra is not installed"
 )
-def test_installed_app_smoke_waits_for_startup_request(tmp_path: Path) -> None:
-    script = Path(__file__).resolve().parents[1] / "scripts" / "smoke_installed.py"
-    spec = importlib.util.spec_from_file_location("carnopy_test_smoke_installed", script)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+@pytest.mark.parametrize("entrypoint", ["main_gui", "main_app"])
+def test_public_qml_launcher_smoke_exits_cleanly(entrypoint: str) -> None:
+    code = f"""
+from carnopy.app.qml_launcher import {entrypoint}
+raise SystemExit({entrypoint}(["--smoke-test"]))
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", code],
+        check=False,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "QT_QPA_PLATFORM": "offscreen"},
+        timeout=30,
+    )
 
-    module.smoke_app(tmp_path)
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert completed.stdout == ""
+    assert completed.stderr == ""
 
 
 @pytest.mark.parametrize(
@@ -129,15 +142,18 @@ def test_launcher_applies_explicit_platform_before_importing_pyside(
         fromlist: tuple[str, ...] = (),
         level: int = 0,
     ) -> object:
-        if name == "carnopy.app.window":
+        if name == "carnopy.app.qml_runtime":
             observed.append(os.environ.get("QT_QPA_PLATFORM"))
-            return SimpleNamespace(run_application=lambda _workspace: 0)
+            return SimpleNamespace(
+                QmlStartupError=RuntimeError,
+                run_qml_application=lambda _workspace, *, smoke_test: 0,
+            )
         return original_import(name, globals, locals, fromlist, level)
 
     monkeypatch.setenv("QT_QPA_PLATFORM", initial)
     monkeypatch.setattr(builtins, "__import__", inspect_platform)
 
-    assert launcher.main(["--qt-platform", argument]) == 0
+    assert qml_launcher.main_app(["--qt-platform", argument]) == 0
     assert observed == [expected]
 
 
@@ -150,7 +166,7 @@ def test_auto_platform_prefers_xcb_for_wslg_native_dialogs(
     monkeypatch.setenv("DISPLAY", ":0")
     monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
 
-    launcher.configure_qt_platform("auto")
+    qml_launcher.configure_qt_platform("auto")
 
     assert os.environ["QT_QPA_PLATFORM"] == "xcb"
 
@@ -164,7 +180,7 @@ def test_auto_platform_preserves_explicit_environment_on_wslg(
     monkeypatch.setenv("DISPLAY", ":0")
     monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
 
-    launcher.configure_qt_platform("auto")
+    qml_launcher.configure_qt_platform("auto")
 
     assert os.environ["QT_QPA_PLATFORM"] == "wayland"
 
@@ -179,6 +195,6 @@ def test_auto_platform_leaves_native_linux_selection_unset(
     monkeypatch.setenv("DISPLAY", ":0")
     monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
 
-    launcher.configure_qt_platform("auto")
+    qml_launcher.configure_qt_platform("auto")
 
     assert "QT_QPA_PLATFORM" not in os.environ
