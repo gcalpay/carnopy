@@ -90,6 +90,34 @@ def test_qml_runtime_is_public_and_resources_live_in_the_app_package() -> None:
         assert (app_root / relative_path).is_file()
 
 
+def test_widgets_presentation_modules_are_retired() -> None:
+    app_root = Path(__file__).resolve().parents[1] / "src" / "carnopy" / "app"
+    retired_modules = {
+        "config_editor.py",
+        "config_form.py",
+        "config_widgets.py",
+        "execution_page.py",
+        "inspection_page.py",
+        "jobs_page.py",
+        "launcher.py",
+        "plot_page.py",
+        "plot_preview.py",
+        "plot_request_dialog.py",
+        "sources_page.py",
+        "visualization_editor.py",
+        "visualization_widgets.py",
+        "window.py",
+    }
+
+    assert not {path.name for path in app_root.iterdir()} & retired_modules
+    qtwidgets_importers = {
+        path.name
+        for path in app_root.glob("*.py")
+        if "PySide6.QtWidgets" in path.read_text(encoding="utf-8")
+    }
+    assert qtwidgets_importers == {"qml_runtime.py"}
+
+
 def test_manifest_hashed_resources_disable_checkout_byte_rewriting() -> None:
     root = Path(__file__).resolve().parents[1]
     attributes = (root / ".gitattributes").read_text(encoding="utf-8").splitlines()

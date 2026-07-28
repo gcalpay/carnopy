@@ -116,11 +116,14 @@ def smoke_app_plot(work_directory: Path, source: Path) -> None:
 import hashlib
 import sys
 from pathlib import Path
-from PySide6.QtCore import QEventLoop, QTimer
+from PySide6.QtCore import QEventLoop, QSize, QTimer
 from PySide6.QtWidgets import QApplication
 from carnopy.app.client import WorkerClient
 from carnopy.app.export_cleanup import ImageExportFinalizer
-from carnopy.app.plot_preview import PlotPreview
+from carnopy.app.plot_preview_provider import (
+    VerifiedPlotImageProvider,
+    VerifiedPlotPreviewRegistry,
+)
 from carnopy.app.plot_staging import create_plot_staging
 from carnopy.app.request_coordinator import DesktopRequestCoordinator
 from carnopy.app.workspace import initialize_workspace
@@ -198,11 +201,20 @@ for path, expected in (
 ):
     if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != expected:
         raise SystemExit(f"desktop plot artifact failed verification: {path}")
-preview = PlotPreview()
-preview.load_export(workspace.figures, image, "png", rendered["image_sha256"])
-app.processEvents()
-if not preview.has_graphic:
-    raise SystemExit("desktop plot preview did not load the rendered PNG")
+registry = VerifiedPlotPreviewRegistry()
+token = registry.issue(
+    workspace_identity=str(workspace.root),
+    figures_root=workspace.figures,
+    image_path=image,
+    image_sha256=rendered["image_sha256"],
+    image_format="png",
+    verification_revision=rendered["sidecar_sha256"],
+)
+provider = VerifiedPlotImageProvider(registry)
+decoded_size = QSize()
+decoded = provider.requestImage(token, decoded_size, QSize())
+if decoded.isNull() or decoded_size.isEmpty():
+    raise SystemExit("QML plot preview provider did not decode the rendered PNG")
 for name in (
     "matplotlib",
     "carnopy.visualization.plots",
@@ -211,7 +223,6 @@ for name in (
 ):
     if name in sys.modules:
         raise SystemExit(f"GUI parent imported worker rendering module: {name}")
-preview.close()
 """
     completed = subprocess.run(
         [sys.executable, "-c", code, str(work_directory / "app-plot"), str(source)],

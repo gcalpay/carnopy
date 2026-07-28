@@ -2,101 +2,18 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 from pathlib import Path
 
 import pandas as pd
 import pytest
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-pytest.importorskip("PySide6")
-
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QHeaderView
-
-from carnopy.app.client import WorkerClient
-from carnopy.app.inspection_controller import InspectionController
-from carnopy.app.inspection_page import InspectionPage
-from carnopy.app.request_coordinator import DesktopRequestCoordinator
 from carnopy.app.source_inspection import inspect_for_app, resolve_table
-from carnopy.app.sources_page import discover_workspace_sources
 from carnopy.inspection import inspect_source
 from carnopy.visualization.models import VisualizationError
 
 
 def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-@pytest.fixture(scope="module")
-def application() -> QApplication:
-    existing = QApplication.instance()
-    app = existing if isinstance(existing, QApplication) else QApplication([])
-    yield app
-
-
-def test_inspection_page_can_focus_resizable_unsorted_table(
-    application: QApplication,
-) -> None:
-    del application
-    client = WorkerClient()
-    coordinator = DesktopRequestCoordinator(client)
-    controller = InspectionController(coordinator)
-    page = InspectionPage(controller)
-    page.table_model.set_block(
-        {
-            "columns": [{"name": "temperature", "dtype": "float64", "unit": "K"}],
-            "rows": [[300.0]],
-            "total_row_count": 1,
-            "block_offset": 0,
-        },
-        page_offset=0,
-    )
-
-    assert page.splitter.orientation() == Qt.Orientation.Vertical
-    assert not page.table_view.isSortingEnabled()
-    assert (
-        page.table_view.horizontalHeader().sectionResizeMode(0)
-        == QHeaderView.ResizeMode.Interactive
-    )
-    assert not page.details_widget.isHidden()
-
-    page.focus_table_button.click()
-    assert page.details_widget.isHidden()
-    assert page.focus_table_button.text() == "Show Details"
-
-    page.focus_table_button.click()
-    assert not page.details_widget.isHidden()
-    assert page.focus_table_button.text() == "Focus Table"
-    page.close()
-    coordinator.shutdown()
-
-
-def test_workspace_source_discovery_is_direct_and_lightweight(tmp_path: Path) -> None:
-    outputs = tmp_path / "outputs"
-    outputs.mkdir()
-    (outputs / "standalone.csv").write_text("value\n1\n", encoding="utf-8")
-    run = outputs / "run"
-    run.mkdir()
-    (run / "metadata.json").write_text("{}\n", encoding="utf-8")
-    broken = outputs / "broken-preparation"
-    broken.mkdir()
-    (broken / "preparation.normalized.json").write_text("{}\n", encoding="utf-8")
-    unknown = outputs / "unknown"
-    unknown.mkdir()
-    nested = unknown / "nested.csv"
-    nested.write_text("value\n1\n", encoding="utf-8")
-    os.utime(outputs / "standalone.csv", ns=(1, 1))
-    os.utime(run, ns=(2, 2))
-    os.utime(broken, ns=(3, 3))
-
-    candidates = discover_workspace_sources(outputs)
-
-    assert [(item.path.name, item.kind_hint) for item in candidates] == [
-        ("broken-preparation", "preparation bundle"),
-        ("run", "dataset run"),
-        ("standalone.csv", "CSV"),
-    ]
 
 
 def test_dataset_app_inspection_returns_stable_descriptor_and_revision(tmp_path: Path) -> None:

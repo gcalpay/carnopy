@@ -19,14 +19,13 @@ for unfinished GUI-2 work and stage acceptance.
 - `carnopy-gui` and `carnopy-app` now both launch one QML application;
   `carnopy-gui` is canonical and `carnopy-app` is the compatibility alias for
   `0.1.0a4`.
-- Widgets remain temporarily as a parity oracle, then are removed before the
-  release. GUI-2 will not ship a frontend selector or two desktop applications.
-- Stage 2 completion is not the `0.1.0a4` release boundary. Step 19 activates
-  Stage 3 while both public launchers still use Widgets. `0.1.0a4` is planned
-  after Stage 3 reaches tested GUI-1 capability parity, switches both public
-  launchers to QML, removes the obsolete Widgets presentation, and passes the
-  bounded alpha-release gate recorded below. It does not wait for Stages 4
-  through 8. No calendar date is committed.
+- The obsolete Widgets presentation has been removed after tested QML parity
+  and public-launcher migration. GUI-2 does not ship a frontend selector or two
+  desktop applications.
+- Stage 2 completion was not the `0.1.0a4` release boundary. Step 19 activated
+  Stage 3 while both public launchers still used Widgets. `0.1.0a4` is planned
+  after Stage 3 passes the bounded alpha-release gate recorded below. It does
+  not wait for Stages 4 through 8. No calendar date is committed.
 - `0.1.0a4` deliberately contains the existing `0.1.0a3` desktop workflows in
   the modern QML application; it does not promise the later sweep/preparation
   expansion or native 3D. Stages 4 through 8 belong to later alpha release
@@ -275,8 +274,9 @@ Current implementation status as of 2026-07-28:
 | 8. Complete QML Visualization | Implemented and committed | QML binds both Step 7 controllers, and focused QML, artifact, export, runtime, packaging, composition, and scientific rendering checks plus the branch's remote checks pass. Page and tab entry remain worker-idle. Native review found and corrected dense-series legend crowding without changing emitted states. |
 | 9. Add QML Activity and Recovery | Implemented and committed | The two-tab Activity page binds the existing typed models, routes destructive and cross-page actions through the composition façade, and keeps record/artifact ownership and identity-checked recovery unchanged. Focused controller, QML, runtime, packaging, and native delegate-click checks pass. |
 | 10. Complete guarded workflow parity | Implemented and committed | The six exact cross-page paths, record-driven configured empty state, explicit inspected-data exploration, and operation-specific busy-close decisions are implemented. Focused QML, controller, lifecycle, and warning checks pass. |
-| 11. Make QML the public desktop frontend | Implemented | Both package entry points resolve directly to the lightweight QML launcher; source and installed-distribution checks pass locally. Remote checks remain before Widgets retirement. |
-| 12–13 | Planned | Widgets retirement begins only after Step 11 is committed and its remote installed-QML checks pass. |
+| 11. Make QML the public desktop frontend | Implemented and committed | Both package entry points resolve directly to the lightweight QML launcher; source, installed-distribution, and remote checks pass. |
+| 12. Retire the Widgets presentation layer | Implemented locally | Fourteen obsolete source modules, five implementation-specific test modules, and obsolete mixed-test UI coverage are removed. Focused structural and QML parity verification passes; remote checks remain after commit and push. |
+| 13. Accept and complete Stage 3 | Planned | Begins only after Step 12 is committed, its remote checks pass, and the maintainer completes the recorded native acceptance. |
 
 Two earlier failed remote runs exposed a real QML lifecycle warning, not a
 scientific, worker, inspection, or packaging failure. Rapid Dataset-to-Run
@@ -300,8 +300,8 @@ remote checks pass.
   schema-version-1 record persistence, and worker start occur synchronously
   without an event-loop handoff. Progress persistence is coalesced to at most
   four writes per second while phase and terminal changes persist immediately.
-- The temporary Widgets Run page is now a view adapter over that controller,
-  and the Jobs page no longer creates or updates execution records.
+- The former Widgets Run and Jobs adapters were removed in Step 12 after QML
+  parity and public-launcher migration.
 - Step 3 is implemented. The QML frontend exposes the authoritative
   saved-configuration Run workflow through a numbered responsive page and a
   Run-specific inspector. Validate, Generate, cooperative Cancel, and delayed
@@ -326,10 +326,8 @@ remote checks pass.
   unavailable projection.
 - `carnopy.app.source_inspection` and `carnopy.app.table_preview` remain
   worker-only. Importing the controller and Qt models does not load them or
-  pandas, PyArrow, NumPy, CoolProp, or Matplotlib. The temporary Widgets Inspect
-  and source-list pages are presentation adapters over the controller. The
-  temporary Widgets Plot page now consumes the Step 7 session controller rather
-  than owning copied inspection or render state.
+  pandas, PyArrow, NumPy, CoolProp, or Matplotlib. The former Widgets Inspect,
+  source-list, and Plot adapters were removed in Step 12 after QML parity.
 - Step 5 is implemented. The QML frontend now exposes the bounded
   workspace source list, explicit external file/folder choices,
   Summary/Tables/Arrays/Diagnostics views, a virtualized 100-row table page,
@@ -367,9 +365,9 @@ remote checks pass.
   runs and figures untouched. Recovery rescans selected direct-child staging
   paths, compares path/device/inode identity, and then reuses the existing
   containment, type, symlink, and identity checks before deletion.
-- The temporary Widgets Jobs page is a narrow adapter over the controller, and
-  importing the controller remains free of worker inspection and heavy
-  scientific/data/rendering modules.
+- Importing the controller remains free of worker inspection and heavy
+  scientific/data/rendering modules. The former Widgets Jobs adapter was
+  removed in Step 12.
 - Step 7 is implemented. `ConfiguredPlotResultsController` discovers
   configured results only from successful persisted generation records and
   their exact recorded report paths. `plot_artifacts.py` checks workspace
@@ -392,8 +390,7 @@ remote checks pass.
 - Plot-result controllers and the preview provider import only the lightweight
   request-identity path and do not load source inspection, table readers,
   pandas, PyArrow, NumPy, CoolProp, Matplotlib, or visualization renderer/model
-  modules. The temporary Widgets Plot page is a view adapter over the shared
-  session controller.
+  modules. The former Widgets Plot adapter was removed in Step 12.
 - Step 8 is implemented. QML Visualization now presents the configured editor,
   record-driven configured-result evidence, opaque PNG/SVG previews, explicit
   PDF opening, provenance-preserving export, and session-only rendering over
@@ -437,12 +434,28 @@ remote checks pass.
   `--help`, and `--version` remain lightweight and import no PySide6 module.
   Both commands preserve `--workspace`, `--qt-platform`, the stable
   `.carnopy-gui` workspace marker, and the existing `QSettings` identity.
-- Installed-distribution smoke now starts both public command aliases rather
+- Installed-distribution smoke starts both public command aliases rather
   than treating the module launcher as a private substitute. Linux, Windows,
   and macOS QML workflow jobs likewise execute the generated console scripts,
-  including explicit Windows executable paths. The Widgets implementation and
-  its controller-parity tests remain present but unreferenced by package entry
-  points until Step 12.
+  including explicit Windows executable paths.
+- Step 12 is implemented locally. Fourteen obsolete QWidget presentation
+  modules are removed: the legacy launcher and main window; configuration,
+  execution, inspection, source, activity, plot, and visualization pages;
+  dialogs and form/widget helpers; and the old image-preview widget. Five
+  implementation-specific test modules are removed, while worker-side source
+  inspection coverage remains in its mixed test file.
+- The installed plot smoke now decodes a worker-produced artifact through the
+  QML verified-preview registry and image provider rather than constructing the
+  deleted QWidget preview. Distribution inventories reject the retired modules,
+  and packaging tests enforce that `qml_runtime.py` is the only remaining app
+  root module importing `PySide6.QtWidgets` for native dialogs and
+  `QApplication` integration.
+- The deletion removes 3,407 source lines, 2,487 lines from the five deleted
+  implementation-specific test modules, and 83 obsolete QWidget/duplicate
+  discovery lines from the retained source-inspection test. These figures are
+  historical evidence of removed frontend overlap, not a quality metric. No
+  public schema, worker protocol, scientific behavior, dependency, or lock
+  change is included.
 
 ### Permanent scientific and process boundaries
 
@@ -464,9 +477,9 @@ remote checks pass.
   `xy`, `pv`, and `ts`. Do not add interpolation, formulas, inferred states,
   contours, phase envelopes, thermodynamic cycles, or new plot schemas during
   parity.
-- Temporary Widgets adapters consume extracted controllers only far enough to
-  preserve GUI-1 behavior and parity tests. Do not backport new QML-only
-  presentation behavior to a frontend deleted later in this Stage.
+- The obsolete Widgets adapters were removed only after equivalent QML paths
+  and both public launchers were verified. Do not recreate a second desktop
+  presentation without an explicitly approved product boundary.
 
 ### Controller ownership
 
@@ -1435,8 +1448,9 @@ missing-`app` guidance is unchanged; workspace and Qt-platform arguments reach
 the existing runtime unchanged. The module entry point remains available for
 internal smoke use, but distribution and cross-platform CI now prove both
 installed public commands. No dependency, lock, scientific, worker, protocol,
-workspace-marker, or settings-identity change is included. Widgets source is
-retained solely for the separately verified Step 12 deletion.
+workspace-marker, or settings-identity change is included. Widgets source was
+retained solely for the separately verified Step 12 deletion and is now
+removed.
 
 #### Step 12 — Retire the Widgets presentation layer
 
@@ -1461,6 +1475,25 @@ The Stage 2 graph is already hard-stale under the tracked six-commit cutoff and
 must not be queried during Steps 10 through 12. After this structural deletion
 settles, refresh only the three public graph artifacts in a separate
 `docs(graph)` commit before final acceptance.
+
+Implemented locally on 2026-07-28 after Step 11 and its remote checks passed.
+The obsolete `launcher`, `window`, configuration form/editor/widget, execution,
+inspection/source, activity, plot dialog/page/preview, and visualization
+editor/widget modules are deleted. Their five presentation-specific test
+modules are deleted; the worker-side cases in the mixed source-inspection test
+remain. This removes 14 source modules and 3,407 source lines, five complete
+test modules and 2,487 test lines, plus 83 obsolete QWidget/duplicate-discovery
+lines from the retained inspection test. The counts are historical evidence,
+not an acceptance metric.
+
+The QML runtime remains the one intentional app-root user of `QtWidgets` for
+`QApplication`, native file dialogs, and fallback message boxes. Installed plot
+smoke now verifies a worker-rendered image through the opaque-token QML preview
+provider. Package inventories and metadata tests reject the retired modules.
+QtCore controllers, drafts, models, worker/protocol boundaries, filesystem and
+artifact safety, QML resources, native-dialog integration, and all controller,
+scientific, protocol, and QML tests remain. No public schema, worker protocol,
+scientific behavior, dependency, or lock change is included.
 
 #### Step 13 — Accept and complete Stage 3
 
