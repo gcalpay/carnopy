@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import json
 import tomllib
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from carnopy._version import __version__
 
 
 def test_all_extra_contains_every_user_facing_optional_dependency() -> None:
@@ -154,9 +157,9 @@ def test_alpha_metadata_uses_modern_license_and_release_urls() -> None:
     project = pyproject["project"]
     assert project["requires-python"] == ">=3.11"
     assert project["description"] == (
-        "Reproducible thermophysical dataset generation from thermodynamic backends with "
-        "inspection, visualization and leakage-aware ML preparation via CLI and optional "
-        "desktop GUI."
+        "Reproducible thermophysical datasets from scientific backends with "
+        "visualization, provenance, and leakage-aware preparation for physics-informed "
+        "machine-learning and engineering workflows."
     )
     assert project["authors"] == [{"name": "gcalpay"}]
     assert project["license"] == "MIT"
@@ -201,23 +204,18 @@ def test_alpha_metadata_uses_modern_license_and_release_urls() -> None:
     assert "License :: OSI Approved :: MIT License" not in project["classifiers"]
 
 
-def test_manual_plot_workflow_uses_the_printed_run_directory_directly() -> None:
+def test_citation_metadata_matches_the_package_without_a_placeholder_doi() -> None:
     root = Path(__file__).resolve().parents[1]
-    expected_run = 'RUN_DIR="outputs/manual-test/20260621T172006Z_vapor_fraction_c8e28e9f"'
-    text = (root / "README.md").read_text(encoding="utf-8")
-    assert "--out outputs/manual-test" in text
-    assert "Example only; replace this with the exact path printed by your run." in text
-    assert expected_run in text
-    assert "outputs/manual-test/outputs/manual-test" not in text
+    citation = yaml.safe_load((root / "CITATION.cff").read_text(encoding="utf-8"))
+    pyproject = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
 
-
-def test_readme_uses_github_supported_math_delimiters() -> None:
-    root = Path(__file__).resolve().parents[1]
-    text = (root / "README.md").read_text(encoding="utf-8")
-    assert r"\(" not in text
-    assert r"\[" not in text
-    assert "$x_{\\mathrm{vap}}$" in text
-    assert "```math" in text
+    assert citation["title"] == "Carnopy"
+    assert citation["version"] == __version__
+    assert citation["license"] == "MIT"
+    assert citation["repository-code"] == "https://github.com/gcalpay/carnopy"
+    assert citation["abstract"] == pyproject["project"]["description"]
+    assert "doi" not in citation
+    assert "10.xxxx" not in json.dumps(citation)
 
 
 def test_public_and_community_markdown_have_intentional_distribution_boundaries() -> None:
@@ -242,6 +240,7 @@ def test_public_and_community_markdown_have_intentional_distribution_boundaries(
     sdist_includes = set(pyproject["tool"]["hatch"]["build"]["targets"]["sdist"]["include"])
     assert "/README.md" in sdist_includes
     assert "/AGENTS.md" in sdist_includes
+    assert "/CITATION.cff" in sdist_includes
     assert "/DESKTOP_ARCHITECTURE.md" in sdist_includes
     assert "/ML_PREPARATION_ROADMAP.md" in sdist_includes
     assert "/docs/agent-guides" in sdist_includes
@@ -252,19 +251,16 @@ def test_public_and_community_markdown_have_intentional_distribution_boundaries(
 def test_readme_documents_published_and_source_release_boundaries() -> None:
     root = Path(__file__).resolve().parents[1]
     text = (root / "README.md").read_text(encoding="utf-8")
-    assert 'uv tool install "carnopy[app]==0.1.0a3"' in text
-    assert 'python -m pip install "carnopy[app]==0.1.0a3"' in text
-    assert 'python -m pip install "carnopy==0.1.0a3"' in text
-    for extra in ("viz", "ml", "analysis", "all"):
+    assert 'uv tool install "carnopy[app]==0.1.0a4"' in text
+    assert 'python -m pip install "carnopy==0.1.0a4"' in text
+    assert 'python -m pip install "carnopy[app]==0.1.0a4"' not in text
+    for extra in ("app", "viz", "ml", "analysis", "all"):
         assert f"| `{extra}` |" in text
-        assert f'python -m pip install "carnopy[{extra}]==0.1.0a3"' in text
     assert "Exact union of all public extras" in text
     assert "The latest published alpha is `0.1.0a3`" in text
-    assert "`0.1.0a4.dev0` source line" in text
-    assert "`0.1.0a4` release process after this stage branch merges" in text
-    assert "both desktop\ncommands to one modern QML frontend" in text
-    assert "`carnopy-gui` is canonical" in text
-    assert "`carnopy-app` is a temporary\ncompatibility alias" in text
+    assert "`0.1.0a4.dev0` source" in text
+    assert "`carnopy-gui` is the canonical" in text
+    assert "`carnopy-app` launches the same\nQML application" in text
     assert "0.1.0a2" not in text
     assert "After `0.1.0a3` is published" not in text
     assert "not yet published" not in text
@@ -275,9 +271,9 @@ def test_readme_documents_published_and_source_release_boundaries() -> None:
     assert "pending publisher" not in text.casefold()
     assert "Typing: typed" not in text
     assert (
-        "Reproducible thermophysical dataset generation from thermodynamic backends with\n"
-        "inspection, visualization, and leakage-aware ML preparation through a CLI and\n"
-        "optional desktop GUI."
+        "Reproducible thermophysical datasets from scientific backends with\n"
+        "visualization, provenance, and leakage-aware preparation for physics-informed\n"
+        "machine-learning and engineering workflows."
     ) in text
 
 

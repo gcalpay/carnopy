@@ -45,6 +45,44 @@ def test_dataset_app_inspection_returns_stable_descriptor_and_revision(tmp_path:
         resolve_table(dataset, "dataset", inspected.revision)
 
 
+def test_dataset_run_without_generator_metadata_remains_inspectable(tmp_path: Path) -> None:
+    run = tmp_path / "legacy-run"
+    run.mkdir()
+    dataset = run / "dataset.parquet"
+    pd.DataFrame(
+        {
+            "run_id": ["legacy"],
+            "case_id": [0],
+            "mode": ["property_table"],
+            "fluid": ["Propane"],
+            "backend": ["coolprop"],
+            "backend_version": ["8.0.0"],
+            "phase": ["gas"],
+            "valid": [True],
+            "temperature_K": [300.0],
+            "pressure_Pa": [100000.0],
+        }
+    ).to_parquet(dataset, index=False)
+    (run / "metadata.json").write_text(
+        json.dumps(
+            {
+                "metadata_schema_version": 1,
+                "carnopy_version": "0.1.0a3",
+                "canonical_units": {"temperature_K": "K", "pressure_Pa": "Pa"},
+                "artifact_hashes": {"dataset.parquet": _sha(dataset)},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    inspected = inspect_for_app(run)
+    resolved = resolve_table(run, "dataset", inspected.revision)
+
+    assert inspected.source_kind == "dataset"
+    assert resolved.path == dataset
+    assert resolved.units == {"temperature_K": "K", "pressure_Pa": "Pa"}
+
+
 def _write_malicious_preparation(
     root: Path,
     *,

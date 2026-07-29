@@ -9,7 +9,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from carnopy.domain.failures import OutputError
-from carnopy.provenance import DATASET_SCHEMA_VERSION, sha256_file
+from carnopy.provenance import DATASET_SCHEMA_VERSION, generator_metadata, sha256_file
 
 
 class _ParquetWriter(Protocol):
@@ -49,10 +49,17 @@ def write_dataset_formats(
         if "parquet" in dataset_formats:
             table = pa.Table.from_pandas(frame, preserve_index=False)
             metadata = dict(table.schema.metadata or {})
+            generator = generator_metadata()
             metadata[b"carnopy.dataset_schema_version"] = str(DATASET_SCHEMA_VERSION).encode()
             metadata[b"carnopy.units"] = json.dumps(
                 unit_map, sort_keys=True, separators=(",", ":")
             ).encode()
+            metadata[b"carnopy.name"] = generator["name"].encode("utf-8")
+            metadata[b"carnopy.version"] = generator["version"].encode("utf-8")
+            metadata[b"carnopy.repository"] = generator["repository"].encode("utf-8")
+            metadata[b"carnopy.software_license"] = generator["license"].encode("utf-8")
+            if doi := generator.get("doi"):
+                metadata[b"carnopy.software_doi"] = doi.encode("utf-8")
             _PARQUET_WRITER.write_table(
                 table.replace_schema_metadata(metadata),
                 directory / "dataset.parquet",

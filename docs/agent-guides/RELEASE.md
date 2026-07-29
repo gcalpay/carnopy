@@ -42,13 +42,25 @@ requires a new version. Never use `skip-existing` to repair a partial release.
 
 For each release:
 
-1. update the source version and user-facing installation examples;
+1. update the source version, tracked `CITATION.cff`, and user-facing
+   installation examples;
 2. run the complete source and distribution gates;
 3. commit and push, then require green CI on `main`;
 4. create one annotated `v<version>` tag;
 5. push only that tag and approve the protected `pypi` environment;
 6. verify the published release and create a matching GitHub pre-release while
-   Carnopy remains alpha.
+   Carnopy remains alpha;
+7. wait for the enabled Zenodo GitHub integration to archive that GitHub
+   release and issue its real DOI;
+8. add the issued DOI to the GitHub release and then to the tracked citation
+   metadata and README on `main`. The DOI enters generated artifacts and PyPI
+   metadata only in a later version unless a separate, explicitly reviewed
+   pre-release DOI-reservation workflow was completed before building.
+
+Do not place a placeholder DOI in `CITATION.cff`, generated metadata, Parquet
+schema metadata, or package metadata. A GitHub-release DOI normally becomes
+available only after the byte-identical PyPI distributions have already been
+published, and those uploaded distributions must not be replaced.
 
 Do not move or reuse a published version tag. After stable `0.1.0`, use ordinary
 release versions unless a deliberate prerelease is needed.
@@ -68,4 +80,3 @@ the build backend. Use the ignored, repository-local `prerelease/` directory
 for non-destructive rehearsal builds when an existing `dist/` must be
 preserved. Final release artifacts belong in `dist/`. Do not write Carnopy
 build artifacts outside the repository.
-

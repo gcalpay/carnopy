@@ -276,7 +276,7 @@ Current implementation status as of 2026-07-29:
 | 10. Complete guarded workflow parity | Implemented and committed | The six exact cross-page paths, record-driven configured empty state, explicit inspected-data exploration, and operation-specific busy-close decisions are implemented. Focused QML, controller, lifecycle, and warning checks pass. |
 | 11. Make QML the public desktop frontend | Implemented and committed | Both package entry points resolve directly to the lightweight QML launcher; source, installed-distribution, and remote checks pass. |
 | 12. Retire the Widgets presentation layer | Implemented and committed | Fourteen obsolete source modules, five implementation-specific test modules, and obsolete mixed-test UI coverage are removed. Focused structural and QML parity verification and the branch's remote checks pass. |
-| 13. Accept and complete Stage 3 | Native acceptance in progress | Step 12 and its remote checks pass. Native review rejected the first presentation capture and exposed the configured-result alignment, focus-preview, active-workspace navigation, Activity-card geometry, and QtSvg compatibility defects recorded below. Corrections pass focused checks; Stage 3 remains incomplete until native review accepts them and a representative capture replaces the rejected draft. |
+| 13. Accept and complete Stage 3 | Native acceptance in progress | Step 12 and its remote checks pass. Native review rejected the first presentation capture and exposed the configured-result alignment, focus-preview, active-workspace navigation, Activity-card geometry, and QtSvg compatibility defects recorded below. Corrections pass focused checks. Release-facing README and metadata are simplified to two primary installation paths and one canonical description; tracked citation and generated-software provenance are prepared without a placeholder DOI. Stage 3 remains incomplete until native review accepts the workflow, a representative capture is approved, and the final gates pass. |
 
 Two earlier failed remote runs exposed a real QML lifecycle warning, not a
 scientific, worker, inspection, or packaging failure. Rapid Dataset-to-Run
@@ -1538,8 +1538,8 @@ end-to-end acceptance, and explicit maintainer approval.
 - Update README around deterministic thermophysical datasets, explicit
   backend/model provenance, reproducible YAML, retained row diagnostics, the
   real QML workflow, CLI automation, and contribution.
-- Present three primary installation paths and one compact advanced-extras
-  table.
+- Present two primary installation paths—isolated desktop through `uv tool`
+  and base CLI/library through `pip`—plus one compact optional-extras table.
 - Mark Stage 3 complete and Stage 4 active without implementing Stage 4.
 
 Do not add another architecture Markdown file. GitHub Issues is a human-owned
@@ -1641,10 +1641,9 @@ remain human-only. Do not pull Stage 4 through 8 work into this release. Native
 VTK is not part of the `0.1.0a4` gate.
 
 The release-facing README must use an honest shipped screenshot, lead with the
-real scientific and desktop value, present isolated desktop through `uv`,
-desktop plus CLI/library through `pip`, and lightweight base CLI/library as the
-three main installation paths, and place `viz`, `ml`, `analysis`, and `all` in
-one compact reference table.
+real scientific and desktop value, present isolated desktop through `uv tool`
+and base CLI/library through `pip` as the two primary installation paths, and
+place `app`, `viz`, `ml`, `analysis`, and `all` in one compact reference table.
 
 ### Stage 3 stop conditions and assumptions
 

@@ -359,6 +359,15 @@ metadata.json
 report.json
 ```
 
+`metadata.json` records Carnopy as the software generator with its installed
+version, repository, and MIT license while retaining the top-level
+`carnopy_version` field. Parquet schema metadata records the same software
+identity alongside the existing dataset-schema and unit metadata. A software
+DOI is omitted unless a real DOI has been assigned; placeholders, empty
+strings, and null DOI values are forbidden. These optional additive fields do
+not make older metadata-schema-version-1 runs unreadable and do not alter CSV
+contents or scientific identity.
+
 `config.reference.yaml` is the mode-specific full commented template produced
 from the same authoritative packaged source as `carnopy init MODE OUTPUT
 --full`. Write it only into the fresh staging directory, include it in artifact

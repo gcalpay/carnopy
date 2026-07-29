@@ -13,9 +13,9 @@ from typing import Protocol
 
 PROJECT_NAME = "carnopy"
 PROJECT_SUMMARY = (
-    "Reproducible thermophysical dataset generation from thermodynamic backends with "
-    "inspection, visualization and leakage-aware ML preparation via CLI and optional "
-    "desktop GUI."
+    "Reproducible thermophysical datasets from scientific backends with visualization, "
+    "provenance, and leakage-aware preparation for physics-informed machine-learning "
+    "and engineering workflows."
 )
 PROJECT_KEYWORDS = {
     "chemical-engineering",
@@ -196,6 +196,7 @@ WHEEL_REQUIRED = {
 }
 SDIST_REQUIRED = {
     "AGENTS.md",
+    "CITATION.cff",
     "DESKTOP_ARCHITECTURE.md",
     "docs/agent-guides/DELEGATION.md",
     "docs/agent-guides/DEVELOPMENT.md",

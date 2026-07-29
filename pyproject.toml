@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "carnopy"
 dynamic = ["version"]
-description = "Reproducible thermophysical dataset generation from thermodynamic backends with inspection, visualization and leakage-aware ML preparation via CLI and optional desktop GUI."
+description = "Reproducible thermophysical datasets from scientific backends with visualization, provenance, and leakage-aware preparation for physics-informed machine-learning and engineering workflows."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
@@ -119,6 +119,7 @@ packages = ["src/carnopy"]
 [tool.hatch.build.targets.sdist]
 include = [
   "/AGENTS.md",
+  "/CITATION.cff",
   "/DESKTOP_ARCHITECTURE.md",
   "/docs/agent-guides",
   "/LICENSE",
