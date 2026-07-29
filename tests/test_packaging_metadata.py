@@ -249,25 +249,22 @@ def test_public_and_community_markdown_have_intentional_distribution_boundaries(
     assert "/docs" not in sdist_includes
 
 
-def test_readme_documents_the_0_1_0a3_release_boundary() -> None:
+def test_readme_documents_published_and_source_release_boundaries() -> None:
     root = Path(__file__).resolve().parents[1]
     text = (root / "README.md").read_text(encoding="utf-8")
-    for package in (
-        "carnopy",
-        "carnopy[viz]",
-        "carnopy[ml]",
-        "carnopy[analysis]",
-        "carnopy[app]",
-        "carnopy[all]",
-    ):
-        assert f'python -m pip install "{package}==0.1.0a3"' in text
-    assert 'uv tool install "carnopy==0.1.0a3"' in text
-    assert 'uv tool install "carnopy[all]==0.1.0a3"' in text
-    assert "The `all` extra is the dependency union of `viz`,\n" in text
-    assert "`ml`, `analysis`, and `app`" in text
-    assert "Version `0.1.0a3` includes GUI-1" in text
-    assert "active GUI-2 source line reports `0.1.0a4.dev0`" in text
-    assert "active `0.1.0a4.dev0` application development line" in text
+    assert 'uv tool install "carnopy[app]==0.1.0a3"' in text
+    assert 'python -m pip install "carnopy[app]==0.1.0a3"' in text
+    assert 'python -m pip install "carnopy==0.1.0a3"' in text
+    for extra in ("viz", "ml", "analysis", "all"):
+        assert f"| `{extra}` |" in text
+        assert f'python -m pip install "carnopy[{extra}]==0.1.0a3"' in text
+    assert "Exact union of all public extras" in text
+    assert "The latest published alpha is `0.1.0a3`" in text
+    assert "`0.1.0a4.dev0` source line" in text
+    assert "`0.1.0a4` release process after this stage branch merges" in text
+    assert "both desktop\ncommands to one modern QML frontend" in text
+    assert "`carnopy-gui` is canonical" in text
+    assert "`carnopy-app` is a temporary\ncompatibility alias" in text
     assert "0.1.0a2" not in text
     assert "After `0.1.0a3` is published" not in text
     assert "not yet published" not in text

@@ -238,7 +238,7 @@ def test_dirty_close_configuration_uses_qml_decision_and_facade(
     dialog.accept()
     _process_events()
     assert not desktop.dataset_config_controller.get_has_document()
-    assert root.property("currentPage") == "workspace"
+    assert root.property("currentPage") == "dataset"
 
 
 def test_qml_save_command_keeps_worker_validation_and_reformat_authoritative(
