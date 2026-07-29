@@ -121,14 +121,20 @@ Item {
                 }
 
                 GridLayout {
+                    id: activitySummaryGrid
+
                     Layout.fillWidth: true
                     columnSpacing: Theme.spacingMedium
                     columns: root.width >= 920 ? 2 : 1
                     rowSpacing: Theme.spacingMedium
+                    uniformCellHeights: columns > 1
+                    uniformCellWidths: columns > 1
 
                     Card {
+                        Layout.fillHeight: activitySummaryGrid.columns > 1
                         Layout.fillWidth: true
                         Layout.minimumWidth: 300
+                        objectName: "activityRecordsCard"
                         subtitle: qsTr(
                                       "Newest persisted records appear first. Running records without a matching live request are shown as interrupted.")
                         title: qsTr("Run records")
@@ -180,6 +186,7 @@ Item {
                     }
 
                     Card {
+                        Layout.fillHeight: activitySummaryGrid.columns > 1
                         Layout.fillWidth: true
                         Layout.minimumWidth: 300
                         meta: root.activityController.selectedRecordState.length > 0
@@ -191,6 +198,7 @@ Item {
                                   ? root.activityController.selectedRecordId : qsTr(
                                         "Select a record to review its typed summary and exact actions.")
                         title: qsTr("Selected record")
+                        objectName: "activitySelectedRecordCard"
 
                         Label {
                             Layout.fillWidth: true

@@ -10,6 +10,7 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
+from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication
 
 from carnopy.app.activity_controller import ActivityController
@@ -23,7 +24,10 @@ from carnopy.app.plot_artifacts import (
     export_verified_plot_bundle,
     verify_configured_plot_record,
 )
-from carnopy.app.plot_preview_provider import VerifiedPlotPreviewRegistry
+from carnopy.app.plot_preview_provider import (
+    VerifiedPlotPreviewRegistry,
+    _qt_compatible_svg_preview,
+)
 from carnopy.app.request_coordinator import DesktopRequestCoordinator
 from carnopy.app.workspace import Workspace, initialize_workspace
 from carnopy.visualization.requests import PlotRequest, request_id
@@ -286,3 +290,26 @@ def test_preview_tokens_revalidate_bytes_and_can_be_revoked(tmp_path: Path) -> N
     registry.revoke(token)
     with pytest.raises(PlotArtifactError, match="token is unavailable"):
         registry.read(token)
+
+
+def test_svg_preview_removes_only_empty_glyph_definitions_and_uses() -> None:
+    svg = b"""\
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:xlink="http://www.w3.org/1999/xlink" width="20" height="20">
+  <defs>
+    <path id="empty-space" transform="scale(0.015625)"/>
+    <path id="visible-mark" d="M 1 1 L 19 19"/>
+  </defs>
+  <g>
+    <use xlink:href="#empty-space"/>
+    <use xlink:href="#visible-mark"/>
+  </g>
+</svg>
+"""
+
+    preview = _qt_compatible_svg_preview(svg)
+
+    assert b"empty-space" not in preview
+    assert b"visible-mark" in preview
+    image = QImage.fromData(preview)
+    assert not image.isNull()

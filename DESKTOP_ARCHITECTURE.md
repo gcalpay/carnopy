@@ -319,8 +319,10 @@ The resulting UI label is limited to recorded-provenance consistency; it is not
 independent scientific validation. PNG and SVG previews receive opaque tokens
 bound to workspace identity, canonical path, expected image hash, format, and
 verification revision. The QML image provider resolves only those tokens and
-revalidates bytes on each read. PDF is revalidated immediately before an
-explicit external open.
+revalidates bytes on each read. For QtSvg compatibility it removes empty
+Matplotlib glyph definitions and their no-op references from the in-memory SVG
+preview only; recorded artifact bytes, hashes, sidecars, and exports remain
+unchanged. PDF is revalidated immediately before an explicit external open.
 
 A completed generation remains selectable when it has no configured
 visualization report. That state is explicit evidence absence, not an inferred
@@ -643,12 +645,14 @@ normalizes `file:` URLs before inspection. Workspace-source rows are the normal
 path for generated outputs; the external actions intentionally accept sources
 outside the active workspace.
 
-Run navigation requires the execution controller's exact saved snapshot,
-whereas Inspect requires only an active workspace so historical outputs remain
-available without a current configuration. Dataset draft validation and Run
-saved-snapshot validation are optional diagnostics. Neither authorizes Save or
-generation; those operations retain their own fresh worker-authoritative
-validation at the existing trust boundaries.
+Dataset, Run, Inspect, Visualization, and Activity navigation require only an
+active workspace and present their own prerequisite states. YAML Preview alone
+requires an open document. This keeps historical inspection, configured-result
+review, and session plotting reachable without inventing a current
+configuration. Dataset draft validation and Run saved-snapshot validation are
+optional diagnostics. Neither authorizes Save or generation; those operations
+retain their own fresh worker-authoritative validation at the existing trust
+boundaries.
 
 The QML Visualization page projects both plot controllers without importing or
 running rendering code in the GUI process. Configured results start from a

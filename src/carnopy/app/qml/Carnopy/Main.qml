@@ -436,13 +436,12 @@ ApplicationWindow {
             collapsed: root.railEffectiveCollapsed
             currentPage: root.currentPage
             activityAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
-            datasetAvailable: root.controllerAvailable && root.desktopController.workspaceState
-                              === "editing"
+            datasetAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
             inspectAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
-            runAvailable: root.executionController !== null
-                          && root.executionController.snapshotAvailable
-            visualizationAvailable: datasetAvailable
-            yamlAvailable: datasetAvailable
+            runAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
+            visualizationAvailable: root.controllerAvailable
+                                    && root.desktopController.workspaceAvailable
+            yamlAvailable: root.configController !== null && root.configController.hasDocument
             objectName: "persistentNavigationRail"
             onCollapseRequested: root.requestRailToggle(persistentRail.collapseControl)
             onPageRequested: pageKey => root.routeTo(pageKey)
@@ -841,13 +840,12 @@ ApplicationWindow {
             collapsed: false
             currentPage: root.currentPage
             activityAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
-            datasetAvailable: root.controllerAvailable && root.desktopController.workspaceState
-                              === "editing"
+            datasetAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
             inspectAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
-            runAvailable: root.executionController !== null
-                          && root.executionController.snapshotAvailable
-            visualizationAvailable: datasetAvailable
-            yamlAvailable: datasetAvailable
+            runAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
+            visualizationAvailable: root.controllerAvailable
+                                    && root.desktopController.workspaceAvailable
+            yamlAvailable: root.configController !== null && root.configController.hasDocument
             onPageRequested: pageKey => root.routeTo(pageKey)
         }
     }
@@ -1163,16 +1161,14 @@ ApplicationWindow {
         }
 
         function onWorkspaceStateChanged() {
-            if ((root.currentPage === "dataset" || root.currentPage === "visualization"
-                 || root.currentPage === "yaml") && root.desktopController.workspaceState
-                    !== "editing")
+            const workspaceAvailable = root.desktopController.workspaceAvailable;
+            if ((root.currentPage === "dataset" || root.currentPage === "run" || root.currentPage
+                 === "inspect" || root.currentPage === "visualization" || root.currentPage
+                 === "activity") && !workspaceAvailable)
                 root.routeTo("workspace");
-            if (root.currentPage === "run" && !root.desktopController.workspaceAvailable)
-                root.routeTo("workspace");
-            if (root.currentPage === "inspect" && !root.desktopController.workspaceAvailable)
-                root.routeTo("workspace");
-            if (root.currentPage === "activity" && !root.desktopController.workspaceAvailable)
-                root.routeTo("workspace");
+            if (root.currentPage === "yaml" && (root.configController === null ||
+                                                !root.configController.hasDocument))
+                root.routeTo(workspaceAvailable ? "dataset" : "workspace");
         }
 
         target: root.controllerAvailable ? root.desktopController : null

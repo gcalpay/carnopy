@@ -146,7 +146,7 @@ def test_run_page_exposes_saved_snapshot_prerequisite_and_responsive_layout(
     assert runtime.warning_capture.runtime_warnings == ()
 
 
-def test_run_navigation_requires_a_saved_snapshot_but_inspection_only_requires_workspace(
+def test_workspace_pages_remain_navigable_before_a_saved_snapshot(
     runtime: QmlApplicationRuntime,
 ) -> None:
     root = runtime.engine.rootObjects()[0]
@@ -156,13 +156,18 @@ def test_run_navigation_requires_a_saved_snapshot_but_inspection_only_requires_w
 
     run_navigation = _visible_item(root, "nav-run")
     inspect_navigation = _visible_item(root, "nav-inspect")
-    assert not run_navigation.isEnabled()
+    visualization_navigation = _visible_item(root, "nav-visualization")
+    yaml_navigation = _visible_item(root, "nav-yaml")
+    assert run_navigation.isEnabled()
     assert inspect_navigation.isEnabled()
+    assert visualization_navigation.isEnabled()
+    assert not yaml_navigation.isEnabled()
 
     _save_saturation_configuration(runtime)
     _process_events()
     assert runtime.controller.execution_controller.get_snapshot_available()
     assert run_navigation.isEnabled()
+    assert yaml_navigation.isEnabled()
 
 
 def test_rapid_dataset_to_run_navigation_retains_the_loaded_dataset_page(

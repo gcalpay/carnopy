@@ -276,7 +276,7 @@ Current implementation status as of 2026-07-29:
 | 10. Complete guarded workflow parity | Implemented and committed | The six exact cross-page paths, record-driven configured empty state, explicit inspected-data exploration, and operation-specific busy-close decisions are implemented. Focused QML, controller, lifecycle, and warning checks pass. |
 | 11. Make QML the public desktop frontend | Implemented and committed | Both package entry points resolve directly to the lightweight QML launcher; source, installed-distribution, and remote checks pass. |
 | 12. Retire the Widgets presentation layer | Implemented and committed | Fourteen obsolete source modules, five implementation-specific test modules, and obsolete mixed-test UI coverage are removed. Focused structural and QML parity verification and the branch's remote checks pass. |
-| 13. Accept and complete Stage 3 | Native acceptance in progress | Step 12 and its remote checks pass. Native review rejected the first presentation capture and exposed the configured-result alignment and focus-preview defects recorded below; Stage 3 remains incomplete until the corrected workflow is accepted and a representative capture replaces the rejected draft. |
+| 13. Accept and complete Stage 3 | Native acceptance in progress | Step 12 and its remote checks pass. Native review rejected the first presentation capture and exposed the configured-result alignment, focus-preview, active-workspace navigation, Activity-card geometry, and QtSvg compatibility defects recorded below. Corrections pass focused checks; Stage 3 remains incomplete until native review accepts them and a representative capture replaces the rejected draft. |
 
 Two earlier failed remote runs exposed a real QML lifecycle warning, not a
 scientific, worker, inspection, or packaging failure. Rapid Dataset-to-Run
@@ -340,11 +340,12 @@ remote checks pass.
   External CSV/Parquet and run/bundle dialogs are explicitly for sources not
   selected from that list, and QML `file:` URLs are normalized by the
   composition facade before worker inspection.
-- Run navigation is available only when the execution controller has an exact
-  saved snapshot; Inspect remains available for an open workspace so historical
-  outputs can be inspected without a current configuration. The Dataset draft
-  check and Run saved-snapshot check are labeled as optional diagnostics.
-  Generation still performs its own mandatory fresh worker validation.
+- Dataset, Run, Inspect, Visualization, and Activity navigation are available
+  for an active workspace and show their own prerequisite states. YAML Preview
+  alone requires an open document. Historical outputs and session plots remain
+  reachable without fabricating a current configuration. The Dataset draft
+  check and Run saved-snapshot check are labeled as optional diagnostics;
+  generation still performs its own mandatory fresh worker validation.
 - The QML runtime now applies the selected application palette before creating
   the QML engine, preventing fallback file dialogs from caching the platform
   highlight until the first theme change. Inspection fact layouts no longer
@@ -1360,6 +1361,18 @@ scaling. Geometry and interaction regressions cover unequal selector counts and
 a source image larger than the focus viewport. This is presentation-only: it
 does not change plot bytes, preview-token verification, export provenance, or
 worker rendering.
+
+The same native pass exposed a shell-availability mismatch: Visualization and
+Run were visually disabled without a document even though their prerequisite
+states and historical workflows require only an active workspace. A shared
+`workspaceState` reaction also routed Visualization back to Workspace when a
+session-render request changed global busy state. The correction aligns both
+rail instances and page retention with the locked navigation contract while
+leaving YAML Preview document-gated. The wide Activity summary grid now gives
+**Run records** and **Selected record** equal cells. QtSvg preview decoding also
+receives an in-memory compatibility copy with only Matplotlib's empty glyph
+definitions and their no-op uses removed; the verified SVG artifact, recorded
+hash, sidecar, export bytes, and scientific content are untouched.
 
 Steps 9 and 10 are implemented and committed with focused verification. Native
 human review covers Step 9, and the corrective queued delegate-interaction

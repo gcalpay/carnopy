@@ -62,7 +62,7 @@ Control {
             title: qsTr("Dataset")
             iconName: "database"
             available: true
-            unavailableReason: qsTr("Create or import a dataset configuration first.")
+            unavailableReason: qsTr("Open a workspace before configuring a dataset.")
         }
         ListElement {
             pageKey: "yaml"
@@ -76,7 +76,7 @@ Control {
             title: qsTr("Run")
             iconName: "play"
             available: true
-            unavailableReason: qsTr("Save or open a valid configuration before using Run.")
+            unavailableReason: qsTr("Open a workspace before using Run.")
         }
         ListElement {
             pageKey: "inspect"
@@ -90,7 +90,7 @@ Control {
             title: qsTr("Visualization")
             iconName: "chart-spline"
             available: true
-            unavailableReason: qsTr("Create or import a dataset configuration first.")
+            unavailableReason: qsTr("Open a workspace before reviewing visualization results.")
         }
         ListElement {
             pageKey: "activity"

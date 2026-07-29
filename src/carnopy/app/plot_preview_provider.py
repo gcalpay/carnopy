@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import secrets
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from PySide6.QtCore import QObject, QSize, Qt
 from PySide6.QtGui import QImage
@@ -11,6 +13,8 @@ from PySide6.QtQuick import QQuickImageProvider
 from carnopy.app.plot_artifacts import PlotArtifactError, validated_plot_bytes
 
 PLOT_PREVIEW_PROVIDER = "carnopy-plots"
+_SVG_NAMESPACE = "http://www.w3.org/2000/svg"
+_XLINK_NAMESPACE = "http://www.w3.org/1999/xlink"
 
 
 @dataclass(frozen=True)
@@ -93,8 +97,10 @@ class VerifiedPlotImageProvider(QQuickImageProvider):
         requested_size: QSize,
     ) -> QImage:
         try:
-            data, _image_format = self.registry.read(image_id)
-        except PlotArtifactError:
+            data, image_format = self.registry.read(image_id)
+            if image_format == "svg":
+                data = _qt_compatible_svg_preview(data)
+        except (ET.ParseError, PlotArtifactError):
             return QImage()
         image = QImage.fromData(data)
         if image.isNull():
@@ -108,3 +114,31 @@ class VerifiedPlotImageProvider(QQuickImageProvider):
         size.setWidth(image.width())
         size.setHeight(image.height())
         return image
+
+
+def _qt_compatible_svg_preview(data: bytes) -> bytes:
+    """Remove empty Matplotlib glyphs that QtSvg rejects from preview bytes only."""
+    root = ET.fromstring(data)
+    path_tag = f"{{{_SVG_NAMESPACE}}}path"
+    use_tag = f"{{{_SVG_NAMESPACE}}}use"
+    href_key = f"{{{_XLINK_NAMESPACE}}}href"
+    empty_path_ids = {
+        element.attrib["id"]
+        for element in root.iter(path_tag)
+        if element.attrib.get("id") and not element.attrib.get("d", "").strip()
+    }
+    if not empty_path_ids:
+        return data
+    for parent in root.iter():
+        for child in tuple(parent):
+            if child.tag == path_tag and child.attrib.get("id") in empty_path_ids:
+                parent.remove(child)
+                continue
+            if child.tag != use_tag:
+                continue
+            href = child.attrib.get(href_key, child.attrib.get("href", ""))
+            if href.removeprefix("#") in empty_path_ids:
+                parent.remove(child)
+    ET.register_namespace("", _SVG_NAMESPACE)
+    ET.register_namespace("xlink", _XLINK_NAMESPACE)
+    return cast(bytes, ET.tostring(root, encoding="utf-8", xml_declaration=True))

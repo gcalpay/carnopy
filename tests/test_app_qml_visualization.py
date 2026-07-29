@@ -290,7 +290,7 @@ def test_active_qml_plot_edit_blocks_replacement_and_cancel_is_non_durable(
     assert not desktop.get_has_active_plot_edit()
     assert desktop.request_close_configuration(discard_confirmed=True)
     _process_events()
-    assert root.property("currentPage") == "workspace"
+    assert root.property("currentPage") == "visualization"
     assert runtime.warning_capture.runtime_warnings == ()
 
 
@@ -332,6 +332,29 @@ def test_visualization_tabs_do_not_render_and_session_edit_is_explicit(
     _click(root, cancel_button)
     assert not desktop.session_plot_controller.get_has_active_edit()
     assert not desktop.request_coordinator.is_busy
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_historical_visualization_stays_open_without_a_configuration(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    desktop = runtime.controller
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    assert not desktop.dataset_config_controller.get_has_document()
+    source = desktop.workspace_controller.workspace.outputs / "historical.parquet"
+    source.write_bytes(b"source")
+    desktop.session_plot_controller._inspection_changed(_session_plot_context(source))
+    assert root.setProperty("currentPage", "visualization")
+    _process_events()
+
+    desktop.workspace_state_changed.emit()
+    desktop.request_coordinator.busy_changed.emit(True)
+    _process_events()
+
+    assert root.property("currentPage") == "visualization"
+    assert _item(root, "nav-visualization").isEnabled()
+    assert _item(root, "sessionPlotBeginButton").isEnabled()
     assert runtime.warning_capture.runtime_warnings == ()
 
 

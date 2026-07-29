@@ -100,8 +100,8 @@ def test_activity_page_projects_records_details_and_diagnostics(
 ) -> None:
     root = runtime.engine.rootObjects()[0]
     assert not runtime.controller.request_coordinator.is_busy
-    assert root.setProperty("width", 1440)
-    assert root.setProperty("height", 900)
+    assert root.setProperty("width", 1920)
+    assert root.setProperty("height", 1080)
     assert root.setProperty("currentPage", "activity")
     _process_events()
 
@@ -128,6 +128,10 @@ def test_activity_page_projects_records_details_and_diagnostics(
     assert controller.get_selected_record_id() == row["recordId"]
     assert controller.get_can_inspect_run()
     assert controller.get_can_view_plots()
+    records_card = _visible_item(root, "activityRecordsCard")
+    selected_card = _visible_item(root, "activitySelectedRecordCard")
+    assert records_card.width() == pytest.approx(selected_card.width(), abs=1)
+    assert records_card.height() == pytest.approx(selected_card.height(), abs=1)
     assert page.setProperty("diagnosticExpanded", True)
     _process_events()
     diagnostic = _visible_item(root, "activityDiagnosticText")
