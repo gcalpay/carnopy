@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -485,6 +486,34 @@ def test_sampler_qml_mutations_update_the_authoritative_draft(
     assert runtime.warning_capture.runtime_warnings == ()
 
 
+def test_sampler_qml_distinguishes_points_intervals_and_spacing(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    assert runtime.controller.request_new_dataset("property_table")
+    root.setWidth(1440)
+    root.setHeight(2200)
+    _process_events()
+
+    temperature = runtime.controller.dataset_draft.sampler("temperature")
+    assert temperature is not None
+    derived = _visual_item(root, "samplerDerived-temperature")
+
+    assert derived.property("visible") is True
+    assert derived.property("text") == "Spacing 1 degC · 100 intervals"
+
+    temperature.set_text("num", "100")
+    _process_events()
+    assert derived.property("text") == ("Spacing 1.01010101010101 degC · 99 intervals")
+
+    temperature.set_kind("stepspace")
+    temperature.set_text("step", "1")
+    _process_events()
+    assert derived.property("text") == "100 intervals · 101 sampled points"
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
 def test_mode_and_coordinate_replacements_use_composition_decision_facade(
     runtime: QmlApplicationRuntime,
 ) -> None:
@@ -586,8 +615,8 @@ def test_qml_uses_child_drafts_only_for_local_edits() -> None:
     assert "signal newDatasetRequested" in workspace_source
     assert "signal importDatasetRequested" in workspace_source
     assert "unitChangeRequested" in sampler_source
-    assert "draft.unit =" not in sampler_source
-    assert "draft.kind =" not in sampler_source
+    assert re.search(r"\bdraft\.unit\s*=(?!=)", sampler_source) is None
+    assert re.search(r"\bdraft\.kind\s*=(?!=)", sampler_source) is None
     assert "draft.setText" not in sampler_source
 
 

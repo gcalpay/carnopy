@@ -250,17 +250,17 @@ Card {
                 color: Theme.textMuted
                 font.family: Theme.sansFamily
                 font.pixelSize: 11
-                text: qsTr("Step")
+                text: qsTr("Step size")
             }
 
             TextField {
                 id: stepField
 
-                Accessible.name: root.draft.axis + qsTr(" step")
+                Accessible.name: root.draft.axis + qsTr(" step size")
                 Layout.fillWidth: true
                 objectName: "samplerField-" + String(root.draft.axis) + "-step"
                 onTextEdited: root.textChangeRequested(root.draft, "step", text)
-                placeholderText: qsTr("Step")
+                placeholderText: qsTr("Step size")
             }
         }
 
@@ -352,6 +352,27 @@ Card {
                 placeholderText: qsTr("Base")
             }
         }
+    }
+
+    Label {
+        Accessible.name: root.draft.kind === "linspace" ? root.draft.axis + qsTr(
+                                                              " derived spacing and interval count") :
+                                                          root.draft.axis + qsTr(
+                                                              " derived interval and point count")
+        Layout.fillWidth: true
+        color: Theme.success
+        font.family: Theme.monoFamily
+        font.pixelSize: 11
+        objectName: "samplerDerived-" + String(root.draft.axis)
+        text: root.draft.kind === "linspace" ? qsTr("Spacing %1 %2 · %3 intervals").arg(
+                                                   root.draft.spacingText).arg(root.draft.unit).arg(
+                                                   root.draft.intervalCount) : qsTr(
+                                                   "%1 intervals · %2 sampled points").arg(
+                                                   root.draft.intervalCount).arg(
+                                                   root.draft.sampleCount)
+        visible: root.draft.valid && (root.draft.kind === "linspace" || root.draft.kind
+                                      === "stepspace")
+        wrapMode: Text.Wrap
     }
 
     ValidationIssue {

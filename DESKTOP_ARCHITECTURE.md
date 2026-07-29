@@ -539,6 +539,12 @@ materialize grids in the GUI process. Production rejects an oversized request
 before allocating a grid. Projection state is transient, nonserialized, and
 excluded from configuration identity and dirtiness.
 
+The draft also projects inclusive interval count for valid linear and step-
+spaced samplers plus the signed declared-unit `linspace` spacing. These values
+are explanatory UI state only: `linspace` still serializes its point count,
+`stepspace` still serializes its step field, and neither projection changes the
+worker-materialized grid.
+
 Dataset property rows add presentation-only label, symbol, and unit roles over
 the existing canonical token. Trusted static symbols deliberately use styled
 text for scientific subscripts; user input is never interpreted as markup.

@@ -297,6 +297,35 @@ def test_sampler_exposes_exact_lightweight_point_count(
     assert draft.get_sample_count() == expected
 
 
+def test_sampler_exposes_inclusive_intervals_and_linspace_spacing(
+    application: QApplication,
+) -> None:
+    del application
+    draft = SamplerDraft("temperature")
+    draft.load_payload(
+        {"kind": "linspace", "start": -50.0, "stop": 50.0, "num": 101, "unit": "degC"},
+        available_units=["K", "degC"],
+    )
+
+    assert draft.get_sample_count() == 101
+    assert draft.get_interval_count() == 100
+    assert draft.get_spacing_text() == "1"
+
+    draft.set_text("num", "100")
+
+    assert draft.get_sample_count() == 100
+    assert draft.get_interval_count() == 99
+    assert draft.get_spacing_text() == "1.01010101010101"
+
+    draft.set_kind("stepspace")
+    draft.set_text("step", "1")
+
+    assert draft.get_valid()
+    assert draft.get_sample_count() == 101
+    assert draft.get_interval_count() == 100
+    assert draft.get_spacing_text() == ""
+
+
 def test_unreachable_stepspace_is_locally_invalid_without_materialization(
     application: QApplication,
 ) -> None:

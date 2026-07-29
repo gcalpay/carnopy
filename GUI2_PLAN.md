@@ -1385,6 +1385,14 @@ identity summary. Configuration selection remains explicit because a workspace
 may contain multiple YAML documents. This changes no workspace, backend,
 configuration, or scientific contract.
 
+Sampler review clarified inclusive point semantics without changing any YAML
+field. Valid `linspace` editors now show the signed declared-unit spacing and
+the number of intervals implied by their point count. Valid `stepspace`
+editors label the existing `step` field as **Step size** and show both the
+derived interval and sampled-point counts. The projections reuse the
+lightweight sampler validation and reachability rules, import no NumPy, and
+remain transient presentation state outside dirty and scientific identity.
+
 Steps 9 and 10 are implemented and committed with focused verification. Native
 human review covers Step 9, and the corrective queued delegate-interaction
 regression is part of that accepted boundary.
