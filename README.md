@@ -12,6 +12,13 @@ optional desktop GUI.
 > Alpha software: public interfaces and generated schemas may still change
 > before the stable `0.1.0` release.
 
+![Carnopy QML desktop showing a worker-generated configured plot with consistent recorded provenance](docs/assets/carnopy-qml-workflow-dark.png)
+
+_Current `0.1.0a4.dev0` source: a real 1920×1080 Dark-mode workflow backed by
+8,282 generated thermophysical rows. The dataset and figure are not committed;
+the application revalidated the recorded run, report, request, sidecar, and
+image hash before displaying the plot._
+
 Carnopy is not a thermodynamic property model. It orchestrates configured
 property backends, validates deterministic sampling, preserves failed states as
 diagnostics, and emits stable tabular data with provenance. Generated values are
@@ -24,73 +31,62 @@ Milestone 1 supports pure fluids through CoolProp and three modes:
 - `saturation_table`: saturated-liquid and saturated-vapor endpoint rows;
 - `vapor_mass_fraction_table`: two-phase states over vapor mass fraction.
 
-Carnopy has two user interfaces:
-
-- **Command-line interface:** version `0.1.0a3` provides the complete dataset,
-  sweep, inspection, plotting, and preparation workflow.
-- **Desktop GUI:** version `0.1.0a3` provides an optional Linux-first PySide6
-  application for dataset configuration, generation, inspection, and plotting.
+Carnopy offers the same scientific workflow through an automation-friendly CLI
+and an optional desktop application. The current source routes both desktop
+commands to one modern QML frontend; scientific generation, inspection, and
+Matplotlib rendering remain isolated in short-lived workers.
 
 ## Installation
 
-### Version `0.1.0a3`
+The latest published alpha is `0.1.0a3`. The modern QML frontend shown above is
+complete on the `0.1.0a4.dev0` source line and will ship through the separate
+`0.1.0a4` release process after this stage branch merges.
 
-Install the CLI-first base package:
+### Isolated desktop application
 
-```bash
-python -m pip install "carnopy==0.1.0a3"
-```
-
-Add Matplotlib plotting support:
+Use `uv` to keep the desktop application and its dependencies isolated:
 
 ```bash
-python -m pip install "carnopy[viz]==0.1.0a3"
+uv tool install "carnopy[app]==0.1.0a3"
+carnopy-gui
 ```
 
-Add SafeTensors preparation exports:
+The published `0.1.0a3` command still opens the earlier Widgets frontend. The
+same command opens QML from the current source and from `0.1.0a4` onward.
 
-```bash
-python -m pip install "carnopy[ml]==0.1.0a3"
-```
+### Desktop, CLI, and Python library
 
-Add optional scikit-learn preparation diagnostics:
-
-```bash
-python -m pip install "carnopy[analysis]==0.1.0a3"
-```
-
-Add the desktop application:
+Install the desktop extra into an environment where Carnopy will also be used
+as a CLI or imported as a library:
 
 ```bash
 python -m pip install "carnopy[app]==0.1.0a3"
+carnopy-gui
 ```
 
-Install every optional capability:
+### Lightweight CLI and Python library
+
+Install the base package when no desktop or plotting dependencies are needed:
 
 ```bash
-python -m pip install "carnopy[all]==0.1.0a3"
+python -m pip install "carnopy==0.1.0a3"
+carnopy --help
 ```
 
-For an isolated CLI installation:
+Advanced extras remain explicit:
 
-```bash
-uv tool install "carnopy==0.1.0a3"
-```
+| Extra | Adds | Example |
+| --- | --- | --- |
+| `viz` | Matplotlib plotting | `python -m pip install "carnopy[viz]==0.1.0a3"` |
+| `ml` | SafeTensors preparation export | `python -m pip install "carnopy[ml]==0.1.0a3"` |
+| `analysis` | Optional scikit-learn preparation diagnostics | `python -m pip install "carnopy[analysis]==0.1.0a3"` |
+| `all` | Exact union of all public extras | `python -m pip install "carnopy[all]==0.1.0a3"` |
 
-To include every optional capability:
-
-```bash
-uv tool install "carnopy[all]==0.1.0a3"
-```
-
-The `0.1.0a3` base install remains CLI-first and does not install Matplotlib,
-SafeTensors, scikit-learn, or PySide6. Its lightweight `carnopy-app --help`,
-`carnopy-gui --help`, and version entry points remain available, while opening
-the desktop requires the `app` extra. The `app` extra installs PySide6
-Essentials and Matplotlib. The `all` extra is the dependency union of `viz`,
-`ml`, `analysis`, and `app`. The desktop launchers remain separate from the CLI
-as `carnopy-app` and `carnopy-gui`. PyArrow remains a core dependency because
-Parquet is a first-class output format.
+The base install does not install Matplotlib, SafeTensors, scikit-learn, or
+PySide6. Lightweight help and version entry points remain available without the
+desktop extra. `carnopy-gui` is canonical; `carnopy-app` is a temporary
+compatibility alias for the same QML application in `0.1.0a4`. PyArrow remains
+a core dependency because Parquet is a first-class output format.
 
 ### Development checkout
 
@@ -1086,40 +1082,35 @@ See [Desktop architecture and evolution](DESKTOP_ARCHITECTURE.md) for the
 implemented controller ownership, process boundary, frontend migration status,
 verification layers, and GUI-1/GUI-2 evolution record.
 
-The prepared `0.1.0a3` source implementation includes:
+The QML workbench follows one explicit workflow:
 
-- explicit workspace creation, initialization, and reopening;
-- workspace-local `configs/`, `outputs/`, and `figures/` directories;
-- structured editing for HEOS, PR, and SRK dataset configurations;
-- all three dataset modes, current samplers, units, properties, and output
-  formats;
-- guided configured-visualization requests for every current plot kind;
-- deterministic read-only YAML preview;
-- worker validation before Import or Save;
-- exclusive Save As, atomic normal Save, dirty-state prompts, and external-file
-  modification detection;
-- optional explicit validation and independent generation of the exact saved
-  configuration, with phases, row progress, cooperative cancellation, and an
-  informational equivalent CLI command;
-- direct-child workspace source discovery plus read-only external browsing;
-- structured inspection of dataset runs, standalone CSV/Parquet files,
-  model-sweep bundles, and preparation bundles;
-- order-preserving table previews fetched in bounded 500-row worker blocks and
-  presented as local 100-row pages;
-- workspace-local Validate/Generate job diagnostics and confirmed, guarded
-  cleanup of recognized stale staging directories;
-- inspection-driven, session-only plot-request editing for dataset sources;
-- a private worker plot-rendering contract that uses existing visualization
-  logic without thermodynamic backend calls;
-- guarded no-overwrite promotion of one image and provenance sidecar into a
-  worker-derived directory under the workspace `figures/` root;
-- Plot-page format selection, manual Render controls, row/advisory reporting,
-  and an informational equivalent CLI command;
-- immediate confirmed force-stop with parent-owned staging cleanup and guarded
-  close behavior;
-- validated Qt-only PNG/SVG previews with fit, zoom, 100%, and panning
-  controls; and
-- explicit PDF opening through the system viewer.
+```text
+Workspace → Dataset → YAML Preview → Run → Inspect → Visualization
+          → Activity and Recovery
+```
+
+- **Dataset** edits HEOS, PR, or SRK configurations for all three supported
+  dataset modes and projects row counts without importing the scientific stack
+  into the GUI process.
+- **YAML Preview** shows the deterministic complete document; Save and Save As
+  freshly validate those exact bytes in a worker before writing.
+- **Run** validates and generates an exact clean saved snapshot, reports
+  progress, and records the request before worker startup.
+- **Inspect** presents typed provenance, diagnostics, logical arrays, and
+  order-preserving table pages from bounded worker responses.
+- **Visualization** verifies recorded configured-plot evidence and supports
+  explicit session rendering. PNG and SVG use hash-bound in-app previews; PDF
+  is revalidated before explicit external opening.
+- **Activity and Recovery** projects private request records and removes only
+  explicitly selected, rescanned staging artifacts. It never owns generated
+  scientific outputs.
+
+Every generated run records the configuration hash, backend and model, backend
+version, reference-state policy, sampler definitions, row failures, and output
+hashes. Failed thermodynamic states remain diagnostics rather than silently
+disappearing. Desktop actions use the same core configuration and worker
+contracts as CLI automation; the QML process does not import CoolProp, NumPy,
+pandas, PyArrow, or Matplotlib.
 
 Imported invalid YAML files remain untouched and must be repaired in a text
 editor before import. Imported valid files also remain untouched until saved
@@ -1128,18 +1119,13 @@ levels remain explicit inputs; finite choices such as fields, fluids,
 categorical values, units, formats, scales, and valid series dimensions are
 provided by the editor.
 
-Sweep and preparation creation remain reserved for GUI-2; GUI-1 inspects their
-completed bundles read-only. NumPy and SafeTensors outputs are listed from the
-preparation manifest but are not rendered as matrices. The Plot page can build
-a compatible request from inspection results and render PNG, SVG, or PDF through
-the worker. PNG and SVG exports preview automatically after containment,
-symlink, regular-file, suffix, and SHA-256 checks. PDF exports remain closed
-until the user selects **Open PDF** and the file passes the same checks again.
-Preview failures do not remove successful image or sidecar exports.
+Sweep and preparation creation remain later desktop work; completed bundles can
+already be inspected read-only. NumPy and SafeTensors arrays are described from
+recorded metadata and are never materialized in the QML process.
 
 Qt/PySide6 is an optional third-party dependency with its own
 LGPL/GPL/commercial licensing terms. Carnopy remains MIT licensed, does not
-vendor Qt, and does not distribute standalone desktop installers in GUI-1.
+vendor Qt, and does not yet distribute standalone desktop installers.
 Downstream redistributors should review the official
 [Qt for Python package details](https://doc.qt.io/qtforpython-6/package_details.html)
 and [Qt licensing terms](https://doc.qt.io/qt-6/licensing.html). This is not
@@ -1160,10 +1146,10 @@ The graph is an aid for navigation and review, not a source of scientific
 truth. Verify exact behavior against the source files and tests before making
 changes.
 
-The currently committed graph predates active Stage 3 parity work and is
-hard-stale for current desktop work. Do not use it to navigate the remaining
-frontend migration. The computed freshness policy and current source revision
-are recorded in
+The currently committed graph predates Stage 3 parity and Widgets retirement,
+so it is hard-stale for current desktop work. Do not query it until an
+intentional atomic refresh records the post-Stage-3 architecture. The computed
+freshness policy and current source revision are recorded in
 [`DESKTOP_ARCHITECTURE.md`](DESKTOP_ARCHITECTURE.md#maintenance-posture-and-navigation-freshness).
 
 ## Scientific limitations
@@ -1299,14 +1285,15 @@ efficiencies, critical-point and operating limits, and minimum turbine-exhaust
 quality. Saturated liquid alone is not a pump cavitation margin; NPSH may be
 reported only when sufficient hydraulic-system and pump data are supplied.
 
-The active `0.1.0a4.dev0` application development line targets a cross-platform
-modern QML presentation layer with tested GUI-1 capability parity. Both source
-checkout desktop commands launch that one QML frontend, and the obsolete
-Widgets presentation has been removed. Optional native VTK exact-grid 3D
-visualization belongs to a later GUI-2 alpha milestone and is not required for
-`0.1.0a4`. GUI-2 uses the same worker and core Python boundaries rather than
-duplicating scientific logic. TFC screening, mixtures, additional backends,
-and standalone desktop installers remain deferred.
+The `0.1.0a4.dev0` source line has completed tested GUI-1 capability parity in
+one cross-platform QML frontend. Both desktop commands launch it, the obsolete
+Widgets presentation is removed, and Stage 4 is now active for controlled sweep
+and preparation execution. The separately planned `0.1.0a4` release includes
+the completed Dataset, YAML, Run, Inspect, Visualization, Activity, and Recovery
+workflows without waiting for later native 3D stages. GUI-2 reuses the worker
+and core Python boundaries rather than duplicating scientific logic. TFC
+screening, mixtures, additional backends, native VTK 3D, and standalone desktop
+installers remain deferred.
 
 Use [GitHub issues](https://github.com/gcalpay/carnopy/issues) for bug reports,
 scientific discrepancies, and focused feature requests. See
