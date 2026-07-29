@@ -1374,6 +1374,17 @@ receives an in-memory compatibility copy with only Matplotlib's empty glyph
 definitions and their no-op uses removed; the verified SVG artifact, recorded
 hash, sidecar, export bytes, and scientific content are untouched.
 
+Release-candidate review also found that configuration selection opened at an
+unrelated native-dialog location and that the Dataset backend and fluid
+summary did not match the approved workbench hierarchy. The corrective QML
+opens configuration selection in the active workspace's authoritative
+`configs/` directory, explains the `configs/`, `outputs/`, and `figures/`
+roles, presents the current single CoolProp backend through the same selector
+treatment as Model and Mode, and aligns the requested-fluid and canonical-
+identity summary. Configuration selection remains explicit because a workspace
+may contain multiple YAML documents. This changes no workspace, backend,
+configuration, or scientific contract.
+
 Steps 9 and 10 are implemented and committed with focused verification. Native
 human review covers Step 9, and the corrective queued delegate-interaction
 regression is part of that accepted boundary.

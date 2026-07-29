@@ -427,6 +427,13 @@ operations intentionally differ:
 | Initialize Existing | Existing ordinary directory, after explicit confirmation | Adds managed directories and marker without deleting unrelated contents |
 | Open Workspace | Existing initialized Carnopy workspace | Verifies the marker and all required directories, then activates it |
 
+Configuration selection remains explicit because one workspace may contain
+multiple YAML documents. The QML open/import dialog starts in the active
+workspace's authoritative `configs/` directory; the Workspace page identifies
+`configs/` as configuration storage, `outputs/` as immutable generated-run
+storage, and `figures/` as rendered-plot storage. External YAML remains
+importable through the same worker-authoritative workflow.
+
 Preflight is non-writing. Commit revalidates the plan; existing-directory
 operations also recheck device and inode identity after confirmation. The
 composition layer runs lifecycle guards before preflight and again before

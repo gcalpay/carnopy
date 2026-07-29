@@ -910,6 +910,9 @@ ApplicationWindow {
         WorkspacePage {
             desktopController: root.desktopController
             expectedColumns: root.cardColumnCount
+            importFolder: root.controllerAvailable && root.desktopController.workspaceAvailable
+                          ? root.localFileUrl(
+                                root.desktopController.workspaceController.configsPath) : ""
             objectName: "workspacePage"
             onCancelWorkspaceRequested: root.workspaceCancelRequested()
             onCommitWorkspaceRequested: confirmed => root.workspaceCommitRequested(confirmed)

@@ -117,6 +117,7 @@ def test_new_mode_card_opens_real_dataset_page_bound_to_authoritative_draft(
     assert root.property("currentPage") == "dataset"
     assert page.property("datasetDraft") is desktop.dataset_draft
     assert page.property("desktopController") is desktop
+    assert root.findChild(QObject, "datasetBackendChoice") is not None
     assert root.findChild(QObject, "datasetModelChoice") is not None
     assert root.findChild(QObject, "datasetModeChoice") is not None
     assert root.findChild(QObject, "datasetSamplerGrid") is not None
@@ -134,6 +135,38 @@ def test_new_mode_card_opens_real_dataset_page_bound_to_authoritative_draft(
     assert "samplerEditor-pressure" in names
     assert desktop.dataset_config_controller.get_has_document()
     assert desktop.dataset_draft.get_locally_valid()
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_backend_and_fluid_summary_match_the_dataset_workbench_hierarchy(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    assert runtime.controller.request_new_dataset("property_table")
+    root.setWidth(1440)
+    root.setHeight(1200)
+    _process_events()
+
+    backend = _visual_item(root, "datasetBackendChoice")
+    assert backend.property("count") == 1
+    assert backend.property("currentValue") == "coolprop"
+    assert backend.property("displayText") == "CoolProp"
+
+    page = _visual_item(root, "datasetPage")
+    opener = _visual_item(root, "datasetFluidsOpenButton")
+    selected = _visual_item(root, "datasetFluidsSelectedList")
+    canonical_label = _visual_item(root, "datasetFluidsCanonicalLabel")
+    canonical_list = _visual_item(root, "datasetFluidsCanonicalList")
+    opener_position = opener.mapToItem(page, QPointF(0, 0))
+    selected_position = selected.mapToItem(page, QPointF(0, 0))
+    label_position = canonical_label.mapToItem(page, QPointF(0, 0))
+    canonical_position = canonical_list.mapToItem(page, QPointF(0, 0))
+
+    assert selected_position.y() - (opener_position.y() + opener.height()) >= 12
+    label_center = label_position.y() + canonical_label.height() / 2
+    canonical_center = canonical_position.y() + canonical_list.height() / 2
+    assert abs(label_center - canonical_center) <= 1
     assert runtime.warning_capture.runtime_warnings == ()
 
 
@@ -592,6 +625,6 @@ def test_dataset_selectors_share_readable_hover_styling() -> None:
     assert "color: Theme.text" in combo_source
     assert combo_source.count("leftPadding: Theme.spacingSmall") == 2
     assert "rowDelegate.highlighted || rowDelegate.hovered ? Theme.hover" in combo_source
-    assert dataset_source.count("AppComboBox {") == 3
+    assert dataset_source.count("AppComboBox {") == 4
     assert sampler_source.count("AppComboBox {") == 2
     assert choice_source.count("AppComboBox {") == 1

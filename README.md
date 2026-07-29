@@ -173,6 +173,10 @@ To preselect a workspace:
 carnopy-gui --workspace /path/to/workspace
 ```
 
+Each workspace keeps YAML configurations in `configs/`, immutable generated
+runs in `outputs/`, and rendered plots in `figures/`. Opening or importing a
+configuration starts in that workspace's `configs/` folder.
+
 Qt normally detects its platform integration. On WSLg, Carnopy's `auto` mode
 prefers XCB when both display transports are available because native Wayland
 dialogs can detach after selection. Override it only when necessary:
