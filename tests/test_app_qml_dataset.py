@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -117,6 +118,7 @@ def test_new_mode_card_opens_real_dataset_page_bound_to_authoritative_draft(
     assert root.property("currentPage") == "dataset"
     assert page.property("datasetDraft") is desktop.dataset_draft
     assert page.property("desktopController") is desktop
+    assert root.findChild(QObject, "datasetBackendChoice") is not None
     assert root.findChild(QObject, "datasetModelChoice") is not None
     assert root.findChild(QObject, "datasetModeChoice") is not None
     assert root.findChild(QObject, "datasetSamplerGrid") is not None
@@ -134,6 +136,38 @@ def test_new_mode_card_opens_real_dataset_page_bound_to_authoritative_draft(
     assert "samplerEditor-pressure" in names
     assert desktop.dataset_config_controller.get_has_document()
     assert desktop.dataset_draft.get_locally_valid()
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_backend_and_fluid_summary_match_the_dataset_workbench_hierarchy(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    assert runtime.controller.request_new_dataset("property_table")
+    root.setWidth(1440)
+    root.setHeight(1200)
+    _process_events()
+
+    backend = _visual_item(root, "datasetBackendChoice")
+    assert backend.property("count") == 1
+    assert backend.property("currentValue") == "coolprop"
+    assert backend.property("displayText") == "CoolProp"
+
+    page = _visual_item(root, "datasetPage")
+    opener = _visual_item(root, "datasetFluidsOpenButton")
+    selected = _visual_item(root, "datasetFluidsSelectedList")
+    canonical_label = _visual_item(root, "datasetFluidsCanonicalLabel")
+    canonical_list = _visual_item(root, "datasetFluidsCanonicalList")
+    opener_position = opener.mapToItem(page, QPointF(0, 0))
+    selected_position = selected.mapToItem(page, QPointF(0, 0))
+    label_position = canonical_label.mapToItem(page, QPointF(0, 0))
+    canonical_position = canonical_list.mapToItem(page, QPointF(0, 0))
+
+    assert selected_position.y() - (opener_position.y() + opener.height()) >= 12
+    label_center = label_position.y() + canonical_label.height() / 2
+    canonical_center = canonical_position.y() + canonical_list.height() / 2
+    assert abs(label_center - canonical_center) <= 1
     assert runtime.warning_capture.runtime_warnings == ()
 
 
@@ -452,6 +486,34 @@ def test_sampler_qml_mutations_update_the_authoritative_draft(
     assert runtime.warning_capture.runtime_warnings == ()
 
 
+def test_sampler_qml_distinguishes_points_intervals_and_spacing(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    assert runtime.controller.request_new_dataset("property_table")
+    root.setWidth(1440)
+    root.setHeight(2200)
+    _process_events()
+
+    temperature = runtime.controller.dataset_draft.sampler("temperature")
+    assert temperature is not None
+    derived = _visual_item(root, "samplerDerived-temperature")
+
+    assert derived.property("visible") is True
+    assert derived.property("text") == "Spacing 1 degC · 100 intervals"
+
+    temperature.set_text("num", "100")
+    _process_events()
+    assert derived.property("text") == ("Spacing 1.01010101010101 degC · 99 intervals")
+
+    temperature.set_kind("stepspace")
+    temperature.set_text("step", "1")
+    _process_events()
+    assert derived.property("text") == "100 intervals · 101 sampled points"
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
 def test_mode_and_coordinate_replacements_use_composition_decision_facade(
     runtime: QmlApplicationRuntime,
 ) -> None:
@@ -553,8 +615,8 @@ def test_qml_uses_child_drafts_only_for_local_edits() -> None:
     assert "signal newDatasetRequested" in workspace_source
     assert "signal importDatasetRequested" in workspace_source
     assert "unitChangeRequested" in sampler_source
-    assert "draft.unit =" not in sampler_source
-    assert "draft.kind =" not in sampler_source
+    assert re.search(r"\bdraft\.unit\s*=(?!=)", sampler_source) is None
+    assert re.search(r"\bdraft\.kind\s*=(?!=)", sampler_source) is None
     assert "draft.setText" not in sampler_source
 
 
@@ -592,6 +654,6 @@ def test_dataset_selectors_share_readable_hover_styling() -> None:
     assert "color: Theme.text" in combo_source
     assert combo_source.count("leftPadding: Theme.spacingSmall") == 2
     assert "rowDelegate.highlighted || rowDelegate.hovered ? Theme.hover" in combo_source
-    assert dataset_source.count("AppComboBox {") == 3
+    assert dataset_source.count("AppComboBox {") == 4
     assert sampler_source.count("AppComboBox {") == 2
     assert choice_source.count("AppComboBox {") == 1

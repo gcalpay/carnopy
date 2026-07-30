@@ -13,6 +13,10 @@ DATASET_SCHEMA_VERSION = 2
 METADATA_SCHEMA_VERSION = 1
 REPORT_SCHEMA_VERSION = 1
 REFERENCE_STATE_POLICY = "coolprop_DEF"
+SOFTWARE_NAME = "Carnopy"
+SOFTWARE_REPOSITORY = "https://github.com/gcalpay/carnopy"
+SOFTWARE_LICENSE = "MIT"
+SOFTWARE_DOI: str | None = None
 
 
 @dataclass(frozen=True)
@@ -21,6 +25,18 @@ class Identity:
     normalized_config_sha256: str
     spec_id: str
     generation_context_id: str
+
+
+def generator_metadata() -> dict[str, str]:
+    generator = {
+        "name": SOFTWARE_NAME,
+        "version": __version__,
+        "repository": SOFTWARE_REPOSITORY,
+        "license": SOFTWARE_LICENSE,
+    }
+    if SOFTWARE_DOI is not None:
+        generator["doi"] = SOFTWARE_DOI
+    return generator
 
 
 def build_output_request_id(dataset_formats: tuple[str, ...]) -> str:

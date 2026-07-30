@@ -27,11 +27,11 @@ def render_thermodynamic_diagram(
 ) -> RenderedPlot:
     if request.kind == "pv":
         x_field, y_field = "specific_volume", "pressure"
-        title = "Pressure-specific-volume diagram"
+        title = "p–v emitted-state diagram"  # noqa: RUF001 - thermodynamic notation
         reference_dependent = False
     elif request.kind == "ts":
         x_field, y_field = "specific_entropy", "temperature"
-        title = "Temperature-specific-entropy diagram"
+        title = "T–s emitted-state diagram"  # noqa: RUF001 - thermodynamic notation
         reference_dependent = True
     else:
         raise VisualizationError(f"unsupported thermodynamic diagram {request.kind!r}")
@@ -78,6 +78,7 @@ def _thermodynamic_series(
                 ordering_field=ordering_field,
                 split_phase=True,
                 markers_only=False,
+                level_value=level,
             )
             for level in ordered_levels(plot_source, frame, group_field)
         ]
@@ -91,6 +92,7 @@ def _thermodynamic_series(
                 ordering_field=coordinate,
                 split_phase=False,
                 markers_only=False,
+                level_value=endpoint,
             )
             for endpoint in ordered_levels(
                 plot_source,
@@ -117,6 +119,7 @@ def _vapor_quality_series(
             ordering_field="vapor_mass_fraction",
             split_phase=False,
             markers_only=False,
+            level_value=level,
         )
         for level in ordered_levels(plot_source, frame, coordinate)
     ]
@@ -138,6 +141,7 @@ def _vapor_quality_series(
                     ordering_field=coordinate,
                     split_phase=False,
                     markers_only=False,
+                    level_value=quality,
                 )
             )
     return result

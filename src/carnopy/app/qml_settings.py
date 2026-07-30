@@ -89,7 +89,14 @@ def _available_screen_geometries() -> tuple[QRect, ...]:
     application = QGuiApplication.instance()
     if not isinstance(application, QGuiApplication):
         return ()
-    return tuple(screen.availableGeometry() for screen in application.screens())
+    primary = application.primaryScreen()
+    screens = tuple(application.screens())
+    ordered = (
+        (primary, *(screen for screen in screens if screen != primary))
+        if primary is not None
+        else screens
+    )
+    return tuple(screen.availableGeometry() for screen in ordered)
 
 
 class QmlSettingsController(QObject):

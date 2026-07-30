@@ -48,22 +48,22 @@ Milestone 1 supports:
 - configured post-generation visualization;
 - model-sweep bundles comparing emitted values from multiple CoolProp models.
 
-The `0.1.0a3` release line adds a Linux-first PySide6 desktop frontend for
-the existing dataset workflow. The desktop application is a presentation
-frontend, not a new scientific execution layer. GUI-1 includes the worker
-protocol, optional desktop shell, workspace lifecycle, worker-validated dataset
-configuration editor, saved-config execution, workspace-local job diagnostics,
-guarded staging recovery, read-only output/bundle inspection, bounded table
-previews, inspection-driven session plot requests, private worker rendering,
-guarded no-overwrite image/sidecar promotion, desktop Render controls,
-immediate confirmed force-stop, Qt-only PNG/SVG previews, and explicit PDF
-opening.
+The `0.1.0a3` release line established a Linux-first PySide6 Widgets frontend
+for the existing dataset workflow. Current `0.1.0a4.dev0` source has migrated
+those accepted workflows into one QML application and removed the duplicate
+Widgets presentation. The desktop application remains a presentation frontend,
+not a new scientific execution layer. Its permanent boundary includes the
+private worker protocol, workspace lifecycle, worker-validated configuration,
+saved-config execution, private activity and guarded staging recovery,
+read-only source inspection, bounded table previews, configured and session
+plot workflows, guarded no-overwrite image/sidecar promotion, Qt-only PNG/SVG
+previews, and explicit PDF opening.
 
-[GUI2_PLAN.md](GUI2_PLAN.md) is the temporary source of truth for the active
-GUI-2 migration. Read it before changing desktop controllers, QML, native 3D,
-desktop packaging, or Widgets retirement. Delete it only after GUI-2 is complete
-and permanent documentation and Graphify outputs describe the final design.
-[DESKTOP_ARCHITECTURE.md](DESKTOP_ARCHITECTURE.md) is the durable record of the
+[GUI2_PLAN.md](../../GUI2_PLAN.md) is the temporary source of truth for unfinished
+GUI-2 stages. Read it before changing desktop controllers, QML, native 3D, or
+desktop packaging. Delete it only after GUI-2 is complete and permanent
+documentation and Graphify outputs describe the final design.
+[DESKTOP_ARCHITECTURE.md](../../DESKTOP_ARCHITECTURE.md) is the durable record of the
 implemented desktop structure and evolution; update it when accepted work
 changes a major ownership or process boundary.
 
@@ -215,7 +215,7 @@ require one compatible `reference_state_policy`/backend/model context across
 the selected source rows. Mixed incompatible absolute `h`, `s`, or `u` values
 must fail before writing a preparation bundle.
 
-[ML_PREPARATION_ROADMAP.md](ML_PREPARATION_ROADMAP.md) records implemented
+[ML_PREPARATION_ROADMAP.md](../../ML_PREPARATION_ROADMAP.md) records implemented
 preparation behavior separately from future research directions. Read it before
 proposing preparation-quality, feature-engineering, statistical-diagnostic,
 active-learning, or optimization work. Roadmap entries are not implementation
@@ -359,6 +359,15 @@ metadata.json
 report.json
 ```
 
+`metadata.json` records Carnopy as the software generator with its installed
+version, repository, and MIT license while retaining the top-level
+`carnopy_version` field. Parquet schema metadata records the same software
+identity alongside the existing dataset-schema and unit metadata. A software
+DOI is omitted unless a real DOI has been assigned; placeholders, empty
+strings, and null DOI values are forbidden. These optional additive fields do
+not make older metadata-schema-version-1 runs unreadable and do not alter CSV
+contents or scientific identity.
+
 `config.reference.yaml` is the mode-specific full commented template produced
 from the same authoritative packaged source as `carnopy init MODE OUTPUT
 --full`. Write it only into the fresh staging directory, include it in artifact
@@ -384,9 +393,17 @@ Visualization is a reproducible view of emitted columns:
 - never call a thermodynamic backend;
 - never smooth, interpolate, extrapolate, or invent states;
 - preserve invalid and missing gaps;
+- keep p-v and T-s as emitted-state diagrams, split connected series at
+  observed phase-label changes, and never imply a saturation dome, cycle, or
+  process path;
 - derive only `specific_volume = 1 / mass_density`;
 - use semantic scientific labels and units;
 - keep visualization identity separate from dataset identity.
+
+Sampled-series sidecars distinguish invalid or missing `gap_count` from
+deliberate `phase_break_count`. Dense numeric curve families may replace an
+unreadable discrete legend with one shared continuous colorbar across facets,
+but the rendered coordinates and series membership remain the emitted values.
 
 Supported kinds:
 
@@ -468,4 +485,3 @@ Keep focused module boundaries:
 - visualization requests, selection, rendering, and automation;
 - desktop presentation, worker protocol, process control, workspace-local job
   records, safe source descriptors, and bounded table preview.
-

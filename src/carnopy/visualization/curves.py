@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -15,8 +15,12 @@ from carnopy.visualization.models import (
 )
 from carnopy.visualization.render import create_faceted_figure, finish_figure
 from carnopy.visualization.requests import PlotRequest
-
-LINE_STYLES = ("-", "--", "-.", ":")
+from carnopy.visualization.series import (
+    LINE_STYLES,
+    add_continuous_series_colorbar,
+    continuous_series_color_encoding,
+    split_phase_changes,
+)
 
 
 @dataclass(frozen=True)
@@ -26,6 +30,8 @@ class SeriesSpec:
     y_values: np.ndarray[Any, np.dtype[np.float64]]
     sample_count: int
     gap_count: int
+    phase_break_count: int
+    level_value: float | str
 
 
 def render_property_curves(
@@ -44,26 +50,40 @@ def render_property_curves(
     series_unit = effective_display_unit(plot_source, request, series_field)
     property_unit = effective_display_unit(plot_source, request, property_field.name)
     figure, axes = create_faceted_figure(mpl=mpl, fluids=fluids)
-    facet_series: dict[str, list[SeriesSpec]] = {}
-    maximum_series = 0
-    for axis, fluid in zip(axes, fluids, strict=True):
-        fluid_frame = frame.loc[frame["fluid"] == fluid].copy()
-        series = _series_for_fluid(
+    facet_series: dict[str, list[SeriesSpec]] = {
+        fluid: _series_for_fluid(
             plot_source=plot_source,
-            frame=fluid_frame,
+            frame=frame.loc[frame["fluid"] == fluid].copy(),
             x_field=x_field,
             series_field=series_field,
             request=request,
         )
-        facet_series[fluid] = series
-        maximum_series = max(maximum_series, len(series))
-        colors = _series_colors(mpl, len(series))
+        for fluid in fluids
+    }
+    maximum_series = max((len(items) for items in facet_series.values()), default=0)
+    continuous_encoding = continuous_series_color_encoding(
+        mpl,
+        [item.level_value for items in facet_series.values() for item in items],
+        maximum_series=maximum_series,
+    )
+    colors = _series_colors(mpl, maximum_series)
+    for axis, fluid in zip(axes, fluids, strict=True):
+        series = facet_series[fluid]
         for index, item in enumerate(series):
+            color = (
+                continuous_encoding[0][float(cast(Any, item.level_value))]
+                if continuous_encoding is not None
+                else colors[index % len(colors)]
+            )
             axis.plot(
                 item.x_values,
                 item.y_values,
-                color=colors[index % len(colors)],
-                linestyle=LINE_STYLES[(index // len(colors)) % len(LINE_STYLES)],
+                color=color,
+                linestyle=(
+                    "-"
+                    if continuous_encoding is not None
+                    else LINE_STYLES[(index // len(colors)) % len(LINE_STYLES)]
+                ),
                 marker="o",
                 markersize=4.0,
                 linewidth=1.2,
@@ -77,13 +97,20 @@ def render_property_curves(
         axis.grid(True, which="minor", color="0.90", linewidth=0.4, alpha=0.8)
         if request.value_scale == "log":
             axis.set_yscale("log")
-        if series:
+        if continuous_encoding is None and series:
             axis.legend(
                 title=get_field(series_field).label_for_unit(series_unit),
                 fontsize=7,
                 title_fontsize=7,
                 loc="best",
             )
+    if continuous_encoding is not None:
+        add_continuous_series_colorbar(
+            figure,
+            axes,
+            continuous_encoding[1],
+            get_field(series_field).label_for_unit(series_unit),
+        )
     finish_figure(
         figure=figure,
         axes=axes,
@@ -100,6 +127,7 @@ def render_property_curves(
                 "label": item.label,
                 "sample_count": item.sample_count,
                 "gap_count": item.gap_count,
+                "phase_break_count": item.phase_break_count,
                 "markers_only": False,
             }
             for item in items
@@ -119,19 +147,41 @@ def render_property_curves(
             "x": _axis_metadata(x_field, x_unit),
             "y": _axis_metadata(property_field.name, property_unit),
             "series": _axis_metadata(series_field, series_unit),
-            "color": None,
+            "color": (
+                _axis_metadata(series_field, series_unit)
+                if continuous_encoding is not None
+                else None
+            ),
         },
-        scales={"x": "linear", "y": request.value_scale, "color": None},
+        scales={
+            "x": "linear",
+            "y": request.value_scale,
+            "color": "linear" if continuous_encoding is not None else None,
+        },
         settings={
             "figure_size_inches": [6.4 * len(fluids), 4.8],
             "constrained_layout": True,
-            "palette": "tab10" if maximum_series <= 10 else "tab20",
-            "line_styles": list(LINE_STYLES),
+            "palette": (
+                "viridis"
+                if continuous_encoding is not None
+                else "tab10"
+                if maximum_series <= 10
+                else "tab20"
+            ),
+            "series_encoding": (
+                "continuous_colorbar" if continuous_encoding is not None else "discrete_legend"
+            ),
+            "line_styles": ["-"] if continuous_encoding is not None else list(LINE_STYLES),
             "marker": "o",
             "major_grid": True,
             "minor_grid": True,
             "smoothing": False,
             "x_range": [min(finite_x), max(finite_x)] if finite_x else None,
+            "color_range": (
+                [continuous_encoding[2], continuous_encoding[3]]
+                if continuous_encoding is not None
+                else None
+            ),
         },
         series_or_cells={
             "representation": "sampled_series",
@@ -201,13 +251,18 @@ def _series_for_fluid(
             else:
                 y_values.append(float("nan"))
                 phases.append(None)
-        plotted_x, plotted_y = _split_phase_changes(
-            np.asarray(x_display, dtype=float),
-            np.asarray(y_values, dtype=float),
-            phases,
-            enabled=plot_source.mode == "property_table",
-        )
+        if plot_source.mode == "property_table":
+            plotted_x, plotted_y, phase_break_count = split_phase_changes(
+                np.asarray(x_display, dtype=float),
+                np.asarray(y_values, dtype=float),
+                phases,
+            )
+        else:
+            plotted_x = np.asarray(x_display, dtype=float)
+            plotted_y = np.asarray(y_values, dtype=float)
+            phase_break_count = 0
         label = _series_label(plot_source, request, series_field, level)
+        level_value = _display_values(plot_source, request, series_field, [level])[0]
         gap_count = int(np.isnan(np.asarray(y_values, dtype=float)).sum())
         result.append(
             SeriesSpec(
@@ -216,43 +271,11 @@ def _series_for_fluid(
                 y_values=plotted_y,
                 sample_count=sample_count,
                 gap_count=gap_count,
+                phase_break_count=phase_break_count,
+                level_value=level_value,
             )
         )
     return result
-
-
-def _split_phase_changes(
-    x_values: np.ndarray[Any, np.dtype[np.float64]],
-    y_values: np.ndarray[Any, np.dtype[np.float64]],
-    phases: list[str | None],
-    *,
-    enabled: bool,
-) -> tuple[
-    np.ndarray[Any, np.dtype[np.float64]],
-    np.ndarray[Any, np.dtype[np.float64]],
-]:
-    if not enabled or len(x_values) < 2:
-        return x_values, y_values
-    split_x: list[float] = []
-    split_y: list[float] = []
-    previous_phase: str | None = None
-    previous_valid = False
-    for x_value, y_value, phase in zip(x_values, y_values, phases, strict=True):
-        current_valid = bool(np.isfinite(y_value))
-        if (
-            previous_valid
-            and current_valid
-            and previous_phase is not None
-            and phase is not None
-            and phase != previous_phase
-        ):
-            split_x.append(float("nan"))
-            split_y.append(float("nan"))
-        split_x.append(float(x_value))
-        split_y.append(float(y_value))
-        previous_phase = phase
-        previous_valid = current_valid
-    return np.asarray(split_x), np.asarray(split_y)
 
 
 def _ordered_levels(

@@ -67,6 +67,46 @@ def test_job_store_retains_records_and_reports_malformed_records(tmp_path: Path)
     assert len(list(store.directory.glob("*.json"))) == 3
 
 
+def test_job_store_keeps_schema_one_backward_readable_and_records_start_failure(
+    tmp_path: Path,
+) -> None:
+    store = JobStore(tmp_path / ".carnopy-gui")
+    legacy = store.start(
+        request_id="00000000-0000-0000-0000-000000000010",
+        operation="generate",
+        config_relative_path="configs/legacy.yaml",
+        yaml_snapshot="legacy\n",
+        config_sha256="c" * 64,
+    )
+    failed = store.start(
+        request_id="00000000-0000-0000-0000-000000000011",
+        operation="validate",
+        config_relative_path="configs/dataset.yaml",
+        yaml_snapshot="value\n",
+        config_sha256="d" * 64,
+    )
+
+    store.finish_start_failure(
+        failed,
+        request_type="validate_config",
+        category="process",
+        code="worker_start_failed",
+        message="worker could not start",
+    )
+
+    loaded = {item.path.stem: item for item in store.load()}
+    assert loaded[str(legacy["request_id"])].data is not None
+    failed_data = loaded[str(failed["request_id"])].data
+    assert failed_data is not None
+    assert failed_data["job_schema_version"] == 1
+    assert failed_data["status"] == "failed"
+    assert failed_data["summary"] == {
+        "category": "process",
+        "code": "worker_start_failed",
+        "message": "worker could not start",
+    }
+
+
 @pytest.mark.parametrize(
     "slug",
     ["property", "saturation", "vapor_fraction", "model_sweep", "preparation"],

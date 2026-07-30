@@ -15,7 +15,11 @@ from carnopy.sampling.models import (
     Sampler,
     StepspaceSampler,
 )
-from carnopy.sampling.projection import projected_row_count, sampler_point_count
+from carnopy.sampling.projection import (
+    linspace_spacing,
+    projected_row_count,
+    sampler_point_count,
+)
 
 
 def test_stepspace_is_inclusive_and_descending() -> None:
@@ -38,6 +42,27 @@ def test_bounded_samplers_support_descending_order() -> None:
     assert materialize_sampler(linear) == [3.0, 2.0, 1.0]
     assert materialize_sampler(geometric) == [100.0, 10.0, 1.0]
     assert materialize_sampler(logarithmic) == [100.0, 10.0, 1.0]
+
+
+@pytest.mark.parametrize(
+    ("sampler", "expected"),
+    [
+        (LinspaceSampler(kind="linspace", start=-50, stop=50, num=101, unit="degC"), 1.0),
+        (
+            LinspaceSampler(kind="linspace", start=50, stop=-50, num=101, unit="degC"),
+            -1.0,
+        ),
+        (
+            LinspaceSampler(kind="linspace", start=-50, stop=50, num=100, unit="degC"),
+            1.01010101010101,
+        ),
+    ],
+)
+def test_linspace_spacing_is_a_lightweight_signed_projection(
+    sampler: LinspaceSampler,
+    expected: float,
+) -> None:
+    assert linspace_spacing(sampler) == expected
 
 
 def test_equal_bounds_are_rejected() -> None:

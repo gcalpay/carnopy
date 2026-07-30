@@ -46,6 +46,27 @@ ApplicationWindow {
     signal datasetSaveRequested(bool allowReformat)
     signal datasetValidateRequested
     signal datasetReloadRequested(bool discardConfirmed)
+    signal runCancelRequested
+    signal runForceStopRequested
+    signal runGenerateRequested
+    signal runInspectRunRequested
+    signal runValidateRequested
+    signal runViewPlotsRequested
+    signal inspectionExploreRequested
+    signal inspectionInspectRequested(string path)
+    signal inspectionMoreSourcesRequested
+    signal inspectionPreviewPageRequested(int pageOffset)
+    signal inspectionRefreshRequested
+    signal inspectionSourcesRefreshRequested
+    signal inspectionTableRequested(string tableId)
+    signal activityInspectRunRequested
+    signal activityRecordSelectionRequested(string recordId)
+    signal activityRecordsRefreshRequested
+    signal activityRecordRemovalRequested
+    signal activityRecoveryRefreshRequested
+    signal activityRecoveryRemovalRequested
+    signal activityRecoverySelectionRequested(int row, bool selected)
+    signal activityViewPlotsRequested
     signal plotFieldChangeRequested(var draft, string field, string value)
     signal plotFluidSelectionRequested(var draft, string value, bool selected)
     signal visualizationAddPlotRequested
@@ -61,9 +82,23 @@ ApplicationWindow {
     signal visualizationMappingValueChangeRequested(var model, int row, string value)
     signal visualizationMovePlotRequested(int row, int offset)
     signal visualizationRemovePlotRequested(int row)
+    signal configuredPlotGenerationRequested(string requestId)
+    signal configuredPlotOutcomeRequested(int index)
+    signal configuredPlotExportRequested(string path)
+    signal configuredPlotExploreRunRequested
+    signal configuredPlotOpenPdfRequested
+    signal configuredPlotSessionEditRequested(int row)
+    signal sessionPlotBeginEditRequested(string format)
+    signal sessionPlotCancelEditRequested
+    signal sessionPlotRenderRequested
+    signal sessionPlotForceStopRequested
+    signal sessionPlotExportRequested(string path)
+    signal sessionPlotOpenPdfRequested
     signal normalGeometryRememberRequested(int x, int y, int width, int height)
     signal settingsLayoutResetRequested
     signal shutdownConfirmed(bool discardConfirmed)
+    signal busyShutdownConfirmed(bool confirmed)
+    signal transientEditShutdownConfirmed(bool discardConfirmed)
 
     readonly property bool runtimeReady: true
     readonly property string shellMode: width >= 1280 ? "wide" : (width >= 800 ? "compact" :
@@ -86,6 +121,17 @@ ApplicationWindow {
     readonly property bool controllerAvailable: desktopController !== null
     readonly property var configController: controllerAvailable
                                             ? desktopController.datasetConfigController : null
+    readonly property var executionController: controllerAvailable
+                                               ? desktopController.executionController : null
+    readonly property var inspectionController: controllerAvailable
+                                                ? desktopController.inspectionController : null
+    readonly property var activityController: controllerAvailable
+                                              ? desktopController.activityController : null
+    readonly property var configuredPlotResultsController: controllerAvailable
+                                                           ? desktopController.configuredPlotResultsController :
+                                                             null
+    readonly property var sessionPlotController: controllerAvailable
+                                                 ? desktopController.sessionPlotController : null
     readonly property bool hasFake3dViewport: false
     readonly property string effectiveTheme: qmlSettings.effectiveTheme
     readonly property int motionDuration: Theme.durationStandard
@@ -118,6 +164,12 @@ ApplicationWindow {
             return qsTr("Visualization");
         if (pageKey === "yaml")
             return qsTr("YAML Preview");
+        if (pageKey === "run")
+            return qsTr("Run");
+        if (pageKey === "inspect")
+            return qsTr("Inspect");
+        if (pageKey === "activity")
+            return qsTr("Activity");
         return qsTr("Workspace");
     }
 
@@ -188,8 +240,9 @@ ApplicationWindow {
     function requestCommandImport() {
         routeTo("workspace");
         Qt.callLater(function () {
-            if (pageLoader.item !== null && pageLoader.item.openImportDialog !== undefined)
-                pageLoader.item.openImportDialog();
+            if (workspacePageLoader.item !== null && workspacePageLoader.item.openImportDialog
+                    !== undefined)
+                workspacePageLoader.item.openImportDialog();
         });
     }
 
@@ -383,10 +436,13 @@ ApplicationWindow {
             allowCollapse: root.shellMode === "wide"
             collapsed: root.railEffectiveCollapsed
             currentPage: root.currentPage
-            datasetAvailable: root.controllerAvailable && root.desktopController.workspaceState
-                              === "editing"
-            visualizationAvailable: datasetAvailable
-            yamlAvailable: datasetAvailable
+            activityAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
+            datasetAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
+            inspectAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
+            runAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
+            visualizationAvailable: root.controllerAvailable
+                                    && root.desktopController.workspaceAvailable
+            yamlAvailable: root.configController !== null && root.configController.hasDocument
             objectName: "persistentNavigationRail"
             onCollapseRequested: root.requestRailToggle(persistentRail.collapseControl)
             onPageRequested: pageKey => root.routeTo(pageKey)
@@ -440,6 +496,14 @@ ApplicationWindow {
                     showAppearanceSelector: !root.inspectorWideVisible
                     showRailMenu: root.shellMode === "narrow"
                     statusLabel: {
+                        if (root.currentPage === "run" && root.executionController !== null)
+                        return root.executionController.state === "running" ? qsTr("Running") : (
+                                                                                  root.executionController.state
+                                                                                  === "succeeded"
+                                                                                  ? qsTr("Run complete") :
+                                                                                    root.executionController.snapshotAvailable
+                                                                                    ? qsTr("Ready to run") :
+                                                                                      qsTr("Saved configuration required"));
                         if (root.controllerAvailable && root.desktopController.workspaceState
                             === "loading")
                         return qsTr("Loading");
@@ -453,14 +517,32 @@ ApplicationWindow {
                         return qsTr("No workspace");
                     }
                     statusTone: root.controllerAvailable && root.desktopController.workspaceState
-                                === "loading" ? "information" : (root.controllerAvailable
-                                                                 && root.desktopController.workspaceState
-                                                                 === "editing" &&
-                                                                 !root.desktopController.datasetDraft.locallyValid
-                                                                 ? "danger" : (
-                                                                       root.controllerAvailable
-                                                                       && root.desktopController.workspaceAvailable
-                                                                       ? "success" : "neutral"))
+                                === "loading" ? "information" : (root.currentPage === "run"
+                                                                 && root.executionController
+                                                                 !== null ? (
+                                                                                root.executionController.state
+                                                                                === "succeeded"
+                                                                                ? "success" : (
+                                                                                      root.executionController.state
+                                                                                      === "invalid"
+                                                                                      || root.executionController.state
+                                                                                      === "failed"
+                                                                                      ? "danger" : (
+                                                                                            root.executionController.state
+                                                                                            === "running"
+                                                                                            || root.executionController.state
+                                                                                            === "starting"
+                                                                                            ? "information" :
+                                                                                              "neutral"))) :
+                                                                            (root.controllerAvailable
+                                                                             && root.desktopController.workspaceState
+                                                                             === "editing" &&
+                                                                             !root.desktopController.datasetDraft.locallyValid
+                                                                             ? "danger" : (
+                                                                                   root.controllerAvailable
+                                                                                   && root.desktopController.workspaceAvailable
+                                                                                   ? "success" :
+                                                                                     "neutral")))
                     themeMode: root.qmlSettings.themeMode
                 }
 
@@ -536,24 +618,99 @@ ApplicationWindow {
                     title: root.operationFailureTitle
                 }
 
-                Loader {
-                    id: pageLoader
-
+                Item {
                     Layout.fillHeight: true
                     Layout.fillWidth: true
-                    objectName: "workbenchPageLoader"
-                    sourceComponent: {
-                        if (root.currentPage === "settings")
-                        return settingsPage;
-                        if (root.currentPage === "help")
-                        return helpPage;
-                        if (root.currentPage === "dataset")
-                        return datasetPage;
-                        if (root.currentPage === "visualization")
-                        return visualizationPage;
-                        if (root.currentPage === "yaml")
-                        return yamlPage;
-                        return workspacePage;
+                    objectName: "workbenchPageHost"
+
+                    Loader {
+                        id: workspacePageLoader
+
+                        active: root.currentPage === "workspace" || item !== null
+                        anchors.fill: parent
+                        objectName: "workspacePageLoader"
+                        sourceComponent: workspacePage
+                        visible: root.currentPage === "workspace"
+                    }
+
+                    Loader {
+                        id: datasetPageLoader
+
+                        active: root.currentPage === "dataset" || item !== null
+                        anchors.fill: parent
+                        objectName: "datasetPageLoader"
+                        sourceComponent: datasetPage
+                        visible: root.currentPage === "dataset"
+                    }
+
+                    Loader {
+                        id: yamlPageLoader
+
+                        active: root.currentPage === "yaml" || item !== null
+                        anchors.fill: parent
+                        objectName: "yamlPageLoader"
+                        sourceComponent: yamlPage
+                        visible: root.currentPage === "yaml"
+                    }
+
+                    Loader {
+                        id: visualizationPageLoader
+
+                        active: root.currentPage === "visualization" || item !== null
+                        anchors.fill: parent
+                        objectName: "visualizationPageLoader"
+                        sourceComponent: visualizationPage
+                        visible: root.currentPage === "visualization"
+                    }
+
+                    Loader {
+                        id: runPageLoader
+
+                        active: root.currentPage === "run" || item !== null
+                        anchors.fill: parent
+                        objectName: "runPageLoader"
+                        sourceComponent: runPage
+                        visible: root.currentPage === "run"
+                    }
+
+                    Loader {
+                        id: inspectPageLoader
+
+                        active: root.currentPage === "inspect" || item !== null
+                        anchors.fill: parent
+                        objectName: "inspectPageLoader"
+                        sourceComponent: inspectPage
+                        visible: root.currentPage === "inspect"
+                    }
+
+                    Loader {
+                        id: activityPageLoader
+
+                        active: root.currentPage === "activity" || item !== null
+                        anchors.fill: parent
+                        objectName: "activityPageLoader"
+                        sourceComponent: activityPage
+                        visible: root.currentPage === "activity"
+                    }
+
+                    Loader {
+                        id: settingsPageLoader
+
+                        active: root.currentPage === "settings" || item !== null
+                        anchors.fill: parent
+                        objectName: "settingsPageLoader"
+                        sourceComponent: settingsPage
+                        visible: root.currentPage === "settings"
+                    }
+
+                    Loader {
+                        id: helpPageLoader
+
+                        active: root.currentPage === "help" || item !== null
+                        anchors.fill: parent
+                        objectName: "helpPageLoader"
+                        sourceComponent: helpPage
+                        visible: root.currentPage === "help"
                     }
                 }
 
@@ -618,6 +775,7 @@ ApplicationWindow {
             ContextInspector {
                 id: persistentInspector
 
+                activityController: root.activityController
                 blockingField: root.configController !== null ? root.configController.blockingField :
                                                                 ""
                 blockingIssue: root.configController !== null ? root.configController.blockingIssue :
@@ -638,11 +796,15 @@ ApplicationWindow {
                                                          ""
                 datasetValid: root.controllerAvailable
                               && root.desktopController.datasetDraft.locallyValid
+                executionController: root.executionController
+                inspectionController: root.inspectionController
                 objectName: "persistentContextInspector"
                 onAttentionRequested: (section, field, row) => root.configurationAttentionRequested(
                                                                    section, field, row)
                 onCloseRequested: root.requestInspectorToggle(persistentInspector.closeControl)
+                onInspectionExploreRequested: root.inspectionExploreRequested()
                 onValidateRequested: root.datasetValidateRequested()
+                pageKey: root.currentPage
                 workspacePath: root.controllerAvailable ? root.desktopController.workspaceRootPath :
                                                           ""
                 workspaceState: root.controllerAvailable ? root.desktopController.workspaceState :
@@ -678,10 +840,13 @@ ApplicationWindow {
             allowCollapse: false
             collapsed: false
             currentPage: root.currentPage
-            datasetAvailable: root.controllerAvailable && root.desktopController.workspaceState
-                              === "editing"
-            visualizationAvailable: datasetAvailable
-            yamlAvailable: datasetAvailable
+            activityAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
+            datasetAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
+            inspectAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
+            runAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
+            visualizationAvailable: root.controllerAvailable
+                                    && root.desktopController.workspaceAvailable
+            yamlAvailable: root.configController !== null && root.configController.hasDocument
             onPageRequested: pageKey => root.routeTo(pageKey)
         }
     }
@@ -697,6 +862,7 @@ ApplicationWindow {
         width: Math.min(328, root.width * 0.9)
 
         contentItem: ContextInspector {
+            activityController: root.activityController
             blockingField: root.configController !== null ? root.configController.blockingField : ""
             blockingIssue: root.configController !== null ? root.configController.blockingIssue : ""
             blockingRow: root.configController !== null ? root.configController.blockingRow : -1
@@ -711,11 +877,15 @@ ApplicationWindow {
             datasetIssue: root.controllerAvailable ? root.desktopController.datasetDraft.issue : ""
             datasetValid: root.controllerAvailable
                           && root.desktopController.datasetDraft.locallyValid
+            executionController: root.executionController
+            inspectionController: root.inspectionController
             objectName: "drawerContextInspector"
             onAttentionRequested: (section, field, row) => root.configurationAttentionRequested(
                                                                section, field, row)
             onCloseRequested: root.requestInspectorToggle(null)
+            onInspectionExploreRequested: root.inspectionExploreRequested()
             onValidateRequested: root.datasetValidateRequested()
+            pageKey: root.currentPage
             workspacePath: root.controllerAvailable ? root.desktopController.workspaceRootPath : ""
             workspaceState: root.controllerAvailable ? root.desktopController.workspaceState :
                                                        "unavailable"
@@ -741,6 +911,9 @@ ApplicationWindow {
         WorkspacePage {
             desktopController: root.desktopController
             expectedColumns: root.cardColumnCount
+            importFolder: root.controllerAvailable && root.desktopController.workspaceAvailable
+                          ? root.localFileUrl(
+                                root.desktopController.workspaceController.configsPath) : ""
             objectName: "workspacePage"
             onCancelWorkspaceRequested: root.workspaceCancelRequested()
             onCommitWorkspaceRequested: confirmed => root.workspaceCommitRequested(confirmed)
@@ -809,7 +982,9 @@ ApplicationWindow {
             attentionRow: root.pendingAttentionRow
             attentionSerial: root.pendingAttentionSerial
             expectedColumns: root.cardColumnCount
+            configuredResultsController: root.configuredPlotResultsController
             objectName: "visualizationPage"
+            sessionPlotController: root.sessionPlotController
             visualizationDraft: root.desktopController.visualizationDraft
             onAddPlotRequested: root.visualizationAddPlotRequested()
             onCancelPlotRequested: root.visualizationCancelPlotRequested()
@@ -835,6 +1010,77 @@ ApplicationWindow {
                                            => root.plotFluidSelectionRequested(draft, value,
                                                                                selected)
             onRemovePlotRequested: row => root.visualizationRemovePlotRequested(row)
+            onConfiguredGenerationRequested: requestId => root.configuredPlotGenerationRequested(
+                                                              requestId)
+            onConfiguredOutcomeRequested: index => root.configuredPlotOutcomeRequested(index)
+            onConfiguredExportRequested: path => root.configuredPlotExportRequested(path)
+            onConfiguredExploreRunRequested: root.configuredPlotExploreRunRequested()
+            onConfiguredOpenPdfRequested: root.configuredPlotOpenPdfRequested()
+            onConfiguredSessionEditRequested: row => root.configuredPlotSessionEditRequested(row)
+            onSessionBeginEditRequested: format => root.sessionPlotBeginEditRequested(format)
+            onSessionCancelEditRequested: root.sessionPlotCancelEditRequested()
+            onSessionRenderRequested: root.sessionPlotRenderRequested()
+            onSessionForceStopRequested: root.sessionPlotForceStopRequested()
+            onSessionExportRequested: path => root.sessionPlotExportRequested(path)
+            onSessionOpenPdfRequested: root.sessionPlotOpenPdfRequested()
+            onPlotExportCompleted: (imagePath, sidecarPath) => toastHost.showMessage(qsTr(
+                                                                                         "Exported %1 and its provenance sidecar.").arg(
+                                                                                         imagePath),
+                                                                                     "success")
+        }
+    }
+
+    Component {
+        id: runPage
+
+        RunPage {
+            configuredPlotsAvailable: executionController !== null && executionController.operation
+                                      === "generate" && executionController.state === "succeeded"
+                                      && executionController.resultRequestId.length > 0
+            executionController: root.executionController
+            expectedColumns: root.shellMode === "narrow" ? 1 : root.cardColumnCount
+            inspectRunAvailable: configuredPlotsAvailable
+                                 && executionController.resultOutputDirectory.length > 0
+            objectName: "runPage"
+            onCancelRequested: root.runCancelRequested()
+            onForceStopRequested: root.runForceStopRequested()
+            onGenerateRequested: root.runGenerateRequested()
+            onInspectRunRequested: root.runInspectRunRequested()
+            onValidateRequested: root.runValidateRequested()
+            onViewPlotsRequested: root.runViewPlotsRequested()
+        }
+    }
+
+    Component {
+        id: inspectPage
+
+        InspectPage {
+            inspectionController: root.inspectionController
+            objectName: "inspectPage"
+            onInspectSourceRequested: path => root.inspectionInspectRequested(path)
+            onMoreSourcesRequested: root.inspectionMoreSourcesRequested()
+            onPreviewPageRequested: pageOffset => root.inspectionPreviewPageRequested(pageOffset)
+            onRefreshRequested: root.inspectionRefreshRequested()
+            onRefreshSourcesRequested: root.inspectionSourcesRefreshRequested()
+            onSelectTableRequested: tableId => root.inspectionTableRequested(tableId)
+        }
+    }
+
+    Component {
+        id: activityPage
+
+        ActivityPage {
+            activityController: root.activityController
+            objectName: "activityPage"
+            onInspectRunRequested: root.activityInspectRunRequested()
+            onRecordSelectionRequested: recordId => root.activityRecordSelectionRequested(recordId)
+            onRecordsRefreshRequested: root.activityRecordsRefreshRequested()
+            onRecoveryRefreshRequested: root.activityRecoveryRefreshRequested()
+            onRecoverySelectionRequested: (row, selected) => root.activityRecoverySelectionRequested(
+                                                                 row, selected)
+            onRemoveRecordRequested: root.activityRecordRemovalRequested()
+            onRemoveRecoveryRequested: root.activityRecoveryRemovalRequested()
+            onViewPlotsRequested: root.activityViewPlotsRequested()
         }
     }
 
@@ -863,6 +1109,18 @@ ApplicationWindow {
     }
 
     Connections {
+        function onActivityActionFailed(title, message) {
+            toastHost.showMessage(title + ": " + message, "danger");
+        }
+
+        function onBusyShutdownConfirmationRequested(mode, message) {
+            busyShutdownDialog.busyMode = mode;
+            busyShutdownDialog.bodyText = message;
+            busyShutdownDialog.acceptText = mode === "cancel_generation" ? qsTr("Cancel and close") :
+                                                                           qsTr("Force stop and close");
+            busyShutdownDialog.open();
+        }
+
         function onAttentionRequested(section, field, row) {
             if (section !== "dataset" && section !== "visualization")
                 return;
@@ -884,15 +1142,38 @@ ApplicationWindow {
             root.routeTo("dataset");
         }
 
+        function onNavigationRequested(pageKey, detail) {
+            root.routeTo(pageKey);
+            if (pageKey === "visualization" && detail === "configured")
+                Qt.callLater(function () {
+                    if (visualizationPageLoader.item !== null)
+                        visualizationPageLoader.item.showConfiguredPlots();
+                });
+            else if (pageKey === "visualization" && detail === "explore")
+                Qt.callLater(function () {
+                    if (visualizationPageLoader.item !== null)
+                        visualizationPageLoader.item.showExploreInspectedData();
+                });
+        }
+
         function onShutdownConfirmationRequested() {
             shutdownDiscardDialog.open();
         }
 
+        function onTransientEditShutdownConfirmationRequested(message) {
+            transientEditShutdownDialog.bodyText = message;
+            transientEditShutdownDialog.open();
+        }
+
         function onWorkspaceStateChanged() {
-            if ((root.currentPage === "dataset" || root.currentPage === "visualization"
-                 || root.currentPage === "yaml") && root.desktopController.workspaceState
-                    !== "editing")
+            const workspaceAvailable = root.desktopController.workspaceAvailable;
+            if ((root.currentPage === "dataset" || root.currentPage === "run" || root.currentPage
+                 === "inspect" || root.currentPage === "visualization" || root.currentPage
+                 === "activity") && !workspaceAvailable)
                 root.routeTo("workspace");
+            if (root.currentPage === "yaml" && (root.configController === null ||
+                                                !root.configController.hasDocument))
+                root.routeTo(workspaceAvailable ? "dataset" : "workspace");
         }
 
         target: root.controllerAvailable ? root.desktopController : null
@@ -1020,6 +1301,33 @@ ApplicationWindow {
         onRejected: root.shutdownConfirmed(false)
         rejectText: qsTr("Cancel")
         title: qsTr("Close Carnopy?")
+    }
+
+    DecisionDialog {
+        id: transientEditShutdownDialog
+
+        acceptText: qsTr("Cancel edit and close")
+        bodyText: ""
+        objectName: "transientEditShutdownDialog"
+        onAccepted: root.transientEditShutdownConfirmed(true)
+        onRejected: root.transientEditShutdownConfirmed(false)
+        rejectText: qsTr("Keep open")
+        title: qsTr("Unfinished plot edit")
+    }
+
+    DecisionDialog {
+        id: busyShutdownDialog
+
+        property string busyMode: ""
+
+        acceptText: qsTr("Cancel and close")
+        bodyText: ""
+        objectName: "busyShutdownDialog"
+        onAccepted: root.busyShutdownConfirmed(true)
+        onRejected: root.busyShutdownConfirmed(false)
+        rejectText: qsTr("Keep open")
+        title: busyMode === "force_stop_plot" ? qsTr("Stop plot render and close?") : qsTr(
+                                                    "Cancel generation and close?")
     }
 
     FileDialog {

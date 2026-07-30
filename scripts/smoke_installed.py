@@ -87,83 +87,24 @@ def run_gui_command(
     return completed
 
 
-def smoke_app(work_directory: Path) -> None:
+def smoke_public_qml_apps(work_directory: Path) -> None:
     environment = os.environ.copy()
     environment["QT_QPA_PLATFORM"] = "offscreen"
-    code = """
-import sys
-from pathlib import Path
-from PySide6.QtCore import QEventLoop, QSettings, QTimer
-from PySide6.QtSvgWidgets import QGraphicsSvgItem
-from PySide6.QtWidgets import QApplication
-from carnopy.app.plot_preview import PlotPreview
-from carnopy.app.window import MainWindow
-from carnopy.app.workspace import initialize_workspace
-
-root = Path(sys.argv[1])
-workspace = initialize_workspace(root / "workspace")
-app = QApplication([])
-window = MainWindow(
-    settings=QSettings(str(root / "settings.ini"), QSettings.Format.IniFormat),
-    initial_workspace=workspace.root,
-)
-window.show()
-app.processEvents()
-if window.workspace != workspace or not window.isVisible():
-    raise SystemExit("desktop shell did not open its workspace")
-if window.coordinator.is_busy:
-    loop = QEventLoop()
-    window.coordinator.busy_changed.connect(lambda busy: None if busy else loop.quit())
-    QTimer.singleShot(15_000, loop.quit)
-    loop.exec()
-    app.processEvents()
-if window.coordinator.is_busy:
-    raise SystemExit("desktop startup worker did not become idle")
-if window.dataset_config_controller.capabilities is None:
-    raise SystemExit("desktop capabilities did not load")
-preview = PlotPreview()
-svg_item = QGraphicsSvgItem()
-if preview.has_graphic or svg_item.renderer() is None:
-    raise SystemExit("desktop plot preview did not initialize")
-preview.close()
-if not window.close():
-    raise SystemExit("desktop shell refused an idle close")
-app.processEvents()
-if window.isVisible():
-    raise SystemExit("desktop shell remained visible after close")
-"""
-    completed = subprocess.run(
-        [sys.executable, "-c", code, str(work_directory / "app-smoke")],
-        cwd=work_directory,
-        env=environment,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if completed.returncode != 0:
-        raise RuntimeError(
-            "offscreen desktop smoke test failed\n"
-            f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+    for command_name in ("carnopy-gui", "carnopy-app"):
+        completed = subprocess.run(
+            [str(Path(sys.executable).with_name(command_name)), "--smoke-test"],
+            cwd=work_directory,
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
         )
-
-
-def smoke_qml_app(work_directory: Path) -> None:
-    environment = os.environ.copy()
-    environment["QT_QPA_PLATFORM"] = "offscreen"
-    completed = subprocess.run(
-        [sys.executable, "-m", "carnopy.app.qml_launcher", "--smoke-test"],
-        cwd=work_directory,
-        env=environment,
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=30,
-    )
-    if completed.returncode != 0:
-        raise RuntimeError(
-            "offscreen private QML smoke test failed\n"
-            f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
-        )
+        if completed.returncode != 0:
+            raise RuntimeError(
+                f"offscreen {command_name} QML smoke test failed\n"
+                f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+            )
 
 
 def smoke_app_plot(work_directory: Path, source: Path) -> None:
@@ -175,11 +116,14 @@ def smoke_app_plot(work_directory: Path, source: Path) -> None:
 import hashlib
 import sys
 from pathlib import Path
-from PySide6.QtCore import QEventLoop, QTimer
+from PySide6.QtCore import QEventLoop, QSize, QTimer
 from PySide6.QtWidgets import QApplication
 from carnopy.app.client import WorkerClient
 from carnopy.app.export_cleanup import ImageExportFinalizer
-from carnopy.app.plot_preview import PlotPreview
+from carnopy.app.plot_preview_provider import (
+    VerifiedPlotImageProvider,
+    VerifiedPlotPreviewRegistry,
+)
 from carnopy.app.plot_staging import create_plot_staging
 from carnopy.app.request_coordinator import DesktopRequestCoordinator
 from carnopy.app.workspace import initialize_workspace
@@ -257,11 +201,20 @@ for path, expected in (
 ):
     if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != expected:
         raise SystemExit(f"desktop plot artifact failed verification: {path}")
-preview = PlotPreview()
-preview.load_export(workspace.figures, image, "png", rendered["image_sha256"])
-app.processEvents()
-if not preview.has_graphic:
-    raise SystemExit("desktop plot preview did not load the rendered PNG")
+registry = VerifiedPlotPreviewRegistry()
+token = registry.issue(
+    workspace_identity=str(workspace.root),
+    figures_root=workspace.figures,
+    image_path=image,
+    image_sha256=rendered["image_sha256"],
+    image_format="png",
+    verification_revision=rendered["sidecar_sha256"],
+)
+provider = VerifiedPlotImageProvider(registry)
+decoded_size = QSize()
+decoded = provider.requestImage(token, decoded_size, QSize())
+if decoded.isNull() or decoded_size.isEmpty():
+    raise SystemExit("QML plot preview provider did not decode the rendered PNG")
 for name in (
     "matplotlib",
     "carnopy.visualization.plots",
@@ -270,7 +223,6 @@ for name in (
 ):
     if name in sys.modules:
         raise SystemExit(f"GUI parent imported worker rendering module: {name}")
-preview.close()
 """
     completed = subprocess.run(
         [sys.executable, "-c", code, str(work_directory / "app-plot"), str(source)],
@@ -484,8 +436,7 @@ def main() -> int:
     if arguments.with_app:
         if not pyside_available:
             raise RuntimeError("desktop application smoke test requires PySide6")
-        smoke_app(work_directory)
-        smoke_qml_app(work_directory)
+        smoke_public_qml_apps(work_directory)
     else:
         if pyside_available:
             raise RuntimeError("distribution unexpectedly includes PySide6")

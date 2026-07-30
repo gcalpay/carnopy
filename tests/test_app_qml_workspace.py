@@ -345,3 +345,34 @@ def test_open_folder_acceptance_waits_for_native_dialog_to_hide(
     assert visible_when_requested == [False]
     assert runtime.controller.get_workspace_root_path() == str(target.root)
     assert runtime.engine.rootObjects() == [root]
+
+
+def test_import_dialog_starts_in_active_workspace_configs_folder(
+    tmp_path: Path,
+    runtime: QmlApplicationRuntime,
+) -> None:
+    workspace = initialize_workspace(tmp_path / "existing")
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+
+    root.workspaceOpenRequested.emit(str(workspace.root))
+    QTest.qWait(100)
+    _wait_for_idle(runtime)
+    _process_events()
+    root.setWidth(1440)
+    root.setHeight(1600)
+    _process_events()
+
+    import_button = _visual_item(root, "importDatasetButton")
+    import_dialog = root.findChild(QObject, "importConfigurationDialog")
+    assert import_dialog is not None
+
+    _click(root, import_button)
+
+    current_folder = import_dialog.property("currentFolder")
+    assert isinstance(current_folder, QUrl)
+    assert Path(current_folder.toLocalFile()) == workspace.configs
+    assert import_dialog.property("visible") is True
+    import_dialog.reject()
+    _process_events()
+    assert runtime.warning_capture.runtime_warnings == ()

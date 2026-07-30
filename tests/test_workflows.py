@@ -148,7 +148,14 @@ def test_installed_qml_smoke_covers_three_platforms_without_native_dialogs() -> 
             assert "actions/download-artifact@" in job
             assert "name: candidate-distributions" in job
         assert '"carnopy[app] @ ${WHEEL_URI}"' in job
-        assert "-m carnopy.app.qml_launcher --smoke-test" in job
+        assert 'SMOKE_BIN="$(dirname "$SMOKE_PYTHON")"' in job
+        assert 'GUI_LAUNCHER="$SMOKE_BIN/carnopy-gui"' in job
+        assert 'APP_LAUNCHER="$SMOKE_BIN/carnopy-app"' in job
+        assert 'GUI_LAUNCHER="$GUI_LAUNCHER.exe"' in job
+        assert 'APP_LAUNCHER="$APP_LAUNCHER.exe"' in job
+        assert '"$GUI_LAUNCHER" --smoke-test' in job
+        assert '"$APP_LAUNCHER" --smoke-test' in job
+        assert "-m carnopy.app.qml_launcher --smoke-test" not in job
         assert "QT_QPA_PLATFORM=offscreen" in job
         assert "FileDialog" not in job
         assert "FolderDialog" not in job

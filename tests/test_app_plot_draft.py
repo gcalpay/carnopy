@@ -196,6 +196,24 @@ def test_configured_and_manual_drafts_are_workflow_local() -> None:
     assert "format" not in manual.payload()
 
 
+def test_plot_kind_labels_and_emitted_state_help_are_presentation_only() -> None:
+    draft = PlotDraft(capabilities(inspected=True), dataset())
+
+    assert "other coordinate becomes the curve series" in draft.get_kind_help()
+
+    draft.set_kind("pv")
+    assert draft.get_kind_display() == "p\N{EN DASH}v emitted-state diagram"
+    assert "specific_volume = 1 / mass_density" in draft.get_kind_help()
+    assert "does not construct a cycle" in draft.get_kind_help()
+    assert draft.kind_choices.items[3].display == "p\N{EN DASH}v emitted-state diagram"
+
+    draft.set_kind("ts")
+    assert draft.get_kind_display() == "T\N{EN DASH}s emitted-state diagram"
+    assert "specific entropy" in draft.get_kind_help()
+    assert "saturation dome" in draft.get_kind_help()
+    assert draft.get_kind() == "ts"
+
+
 def test_configured_context_does_not_require_inspection_extensions() -> None:
     draft = PlotDraft(capabilities(), dataset(), curves_plot())
 

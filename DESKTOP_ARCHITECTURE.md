@@ -19,29 +19,53 @@ guidance stale.
 
 ## Current state
 
-The desktop has two frontend implementations during the GUI-2 migration:
+The source tree has one desktop presentation implementation:
 
-- `carnopy-app` and `carnopy-gui` still launch the completed Qt Widgets
-  application from the `0.1.0a3` line;
-- `python -m carnopy.app.qml_launcher` launches the private GUI-2 QML
-  application used for development and qualification;
-- both frontends reuse the same authoritative QtCore controllers and private
-  worker boundary;
+- `carnopy-gui` launches the QML application and is the canonical desktop
+  command;
+- `carnopy-app` launches the same QML application as the documented
+  `0.1.0a4` compatibility alias;
+- `python -m carnopy.app.qml_launcher` remains an internal module-level smoke
+  entry;
+- the obsolete Qt Widgets presentation modules have been removed after tested
+  QML parity and public-launcher migration;
+- the QML frontend uses the authoritative QtCore controllers and private worker
+  boundary;
 - the QML application currently implements the responsive shell, Workspace,
-  Dataset, Visualization, YAML Preview, Settings, and Help surfaces, including
-  worker-validated Save and Save As;
+  Dataset, Visualization, YAML Preview, Run, Inspect, Settings, and Help surfaces,
+  including worker-validated Save and Save As plus exact-saved-configuration
+  validation and generation;
 - typed blocking state, revision-bound standalone validation, operation
   feedback, exact Dataset row projections, and composition-owned document and
   shutdown decisions are shared with the authoritative controllers rather than
   reimplemented in QML;
-- generation, inspection, table preview, plotting, jobs, recovery, and Widgets
-  retirement belong to later GUI-2 stages.
+- saved-config validation and generation state are owned by one
+  `DatasetExecutionController`; the public QML Run workflow is its view;
+- source discovery, worker inspection, typed source summaries, logical-array
+  metadata, table selection, and bounded preview state are owned by one
+  `InspectionController`; the public QML Inspect workbench is its view;
+- private Run-activity loading, typed projection, record-only removal,
+  interrupted-state projection, and identity-checked staging recovery are owned
+  by one `ActivityController`; the public QML Activity page is its view;
+- configured plot-evidence projection is owned by one
+  `ConfiguredPlotResultsController`, while inspected-data plot editing and
+  rendering are owned by one `SessionPlotController`; the QML Visualization
+  page binds both;
+- the QML Visualization page exposes record-driven configured outcomes and
+  explicit inspected-data session rendering, including verified preview,
+  focus, PDF-open, and image-plus-sidecar export actions;
+- the QML Activity page, guarded end-to-end cross-page/close parity, public
+  launcher migration, and Widgets retirement are implemented.
 
-The development version is `0.1.0a4.dev0`. The two public launchers switch to
-QML only after Stage 3 reaches tested GUI-1 parity; Carnopy will not ship two
-normal desktop applications or a frontend selector. The resulting QML parity
-application is the planned `0.1.0a4` alpha checkpoint. Later sweep,
-preparation, and native-3D stages are not prerequisites for that release.
+The development version is `0.1.0a4.dev0`. Both public launchers select the
+tested QML parity application; Carnopy does not ship two normal desktop
+applications or a frontend selector. The resulting QML application is the
+planned `0.1.0a4` alpha checkpoint. Later sweep, preparation, and native-3D
+stages are not prerequisites for that release. Stage 3 implementation, remote
+CI, the complete local gate, and native acceptance passed on 2026-07-30. Its
+accepted screenshot and historical implementation index are tracked under
+`docs/`. The public Graphify artifacts now represent this accepted Stage 3
+architecture and remain governed by the repository freshness gate.
 
 ## Authority map
 
@@ -78,8 +102,8 @@ not a second scientific implementation.
    feedback. Import, Save, Save As, generation, inspection, and rendering retain
    worker-side validation at their established trust boundaries.
 5. **Portable configuration.** YAML remains the portable configuration
-   authority. QML and Widgets edit the same drafts and deterministic document;
-   neither owns a private configuration copy.
+   authority. QML edits the shared drafts and deterministic document rather
+   than owning a private configuration copy.
 6. **Immutable scientific output.** Finalized run directories remain immutable.
    Desktop staging and promotion preserve the existing no-overwrite, integrity,
    and provenance rules.
@@ -93,10 +117,8 @@ not a second scientific implementation.
 ## Runtime topology
 
 ```text
-Public Widgets frontend               Private QML frontend
-MainWindow + page adapters            QQmlApplicationEngine + QML views
-             |                                      |
-             +---------------+----------------------+
+                     Public QML frontend
+                QQmlApplicationEngine + QML views
                              |
                     DesktopController
                    composition and facade
@@ -106,6 +128,10 @@ MainWindow + page adapters            QQmlApplicationEngine + QML views
  WorkspaceController  DatasetConfigController  QmlSettingsController
           |                  |
           |          DatasetDraft + VisualizationDraft
+          |                  |
+          +------- DatasetExecutionController
+          |
+          +------------ InspectionController
           |                  |
           +---------- DesktopRequestCoordinator
                              |
@@ -137,14 +163,27 @@ cross-controller facade. One instance owns:
 - `DesktopRequestCoordinator`;
 - `WorkspaceController`;
 - `DatasetDraft`;
-- `VisualizationDraft`; and
-- `DatasetConfigController`.
+- `VisualizationDraft`;
+- `DatasetConfigController`;
+- `DatasetExecutionController`;
+- `InspectionController`;
+- `ActivityController`;
+- `ConfiguredPlotResultsController`;
+- `SessionPlotController`; and
+- the shared verified-plot preview registry.
 
 It binds workspace activation to configuration context exactly once. QML may
 edit a child draft through explicit local-edit requests, but workspace changes,
 document replacement, mode or coordinate replacement, Save, and shutdown must
 pass through composition-level decisions and guards. This prevents a view from
 bypassing dirty-state, active-edit, or worker-busy rules.
+
+Cross-page workflow actions are also composition-owned. Run-result and Activity
+actions reuse the same helpers for exact-output inspection and exact-generation
+configured-result selection. Inspected-data exploration starts only after an
+explicit inspection of the requested source succeeds; the view never infers a
+source, performs hidden inspection, or starts rendering as a navigation side
+effect.
 
 ### `DesktopRequestCoordinator`
 
@@ -163,6 +202,207 @@ cancellation becomes available only when the worker reports a cancellable
 phase. Force stop is explicit and remains distinguishable in the terminal
 envelope.
 
+Execution startup has an additional private reservation boundary. Reserving a
+UUID prevents another request from starting but does not advertise global busy
+state. `DatasetExecutionController` atomically writes the initial Run-activity
+record, then promotes that exact UUID into an active worker session in the same
+Qt call stack. Failure before promotion abandons the reservation and starts no
+worker. Other workflows continue to use the coordinator's ordinary
+`start_request()` convenience path.
+
+### `DatasetExecutionController`
+
+`DatasetExecutionController` is the authoritative saved-configuration
+execution workflow. It owns:
+
+- the exact clean `SavedConfigSnapshot` submitted to the worker;
+- validation-only and dataset-generation request startup;
+- phase, progress, cooperative cancellation, and explicit force-stop state;
+- typed terminal result and failure projections;
+- the relationship between a result and the current saved configuration
+  baseline; and
+- schema-version-1-compatible Run-activity record creation and updates.
+
+Request startup is one synchronous transaction:
+
+```text
+reserve request UUID
+→ atomically persist initial activity record
+→ start the worker with that UUID
+```
+
+The initial write completes before worker startup. Progress is reflected live
+but persisted no more than four times per second; phase and terminal changes
+are written immediately. A later activity-write failure is exposed separately
+through `activityPersistenceIssue` and never changes the scientific worker
+outcome. Existing schema-version-1 records remain readable because new
+projections are additive.
+
+Result identity is compared with the saved baseline path and SHA-256, the
+active workspace, and the current on-disk file. Unsaved draft edits do not make
+a result historical; a later Save, file replacement, document replacement, or
+workspace change can. This distinction prevents mutable editor state from
+rewriting the identity of an already executed scientific configuration.
+
+### `InspectionController`
+
+`InspectionController` is the authoritative read-only source-inspection
+workflow. It owns:
+
+- direct-child workspace source discovery, bounded disclosure, and
+  inspectability feedback;
+- the active worker inspection request and exact source revision;
+- source-kind-aware identity, backend, row, diagnostic, table, and integrity
+  projections;
+- dataset row totals together with the worker-reported column count, without
+  opening the table again in the GUI process;
+- three independent dataset failure aggregates for layer, code, and property;
+- one typed row per logical array, including distinct shapes and dtypes within
+  a shared artifact;
+- selected table identity, 500-row worker blocks, and 100-row local pages; and
+- the copied inspected plot context consumed by `SessionPlotController`.
+
+Workspace candidates are sorted by `st_mtime_ns` descending with resolved path
+as the deterministic tiebreaker, revealed 20 at a time, and never discovered
+through recursive traversal or symbolic links. Table row positions shown in
+the frontend are one-based presentation positions; source order and worker
+payload rows are unchanged. Known generated-directory locators receive a
+human-readable mode, UTC timestamp, and short run identity in QML while the
+exact path remains the selection authority and accessible description.
+External file and folder actions are explicitly secondary and begin in the
+active workspace's `outputs/` directory; they can still select an authorized
+source outside the workspace.
+
+`carnopy.app.source_inspection` and `carnopy.app.table_preview` are permanent
+worker-only modules. They may import pandas, PyArrow, visualization inspection,
+and data-reading implementations inside worker request handling.
+`InspectionController`, `inspection_models`, `table_model`, and QML views
+import none of those modules and never open table or array bytes. They consume
+only JSON-compatible worker payloads. The first bounded
+preview is queued after an explicit successful inspection because the request
+coordinator releases its active session only after delivering the terminal
+result.
+
+### `ActivityController`
+
+`ActivityController` is the authoritative read side of private Run activity and
+staging recovery. It owns:
+
+- schema-version-1-compatible record loading and stable-role projection;
+- record selection, typed summaries, and preformatted raw diagnostics;
+- effective `Interrupted` projection for a stored `running` record that has no
+  matching live execution session, without rewriting that record;
+- deletion of the selected private activity JSON only; and
+- recognized direct-child staging discovery, selection, rescan, identity
+  revalidation, and removal.
+
+It never starts a request, updates execution records, owns a generated run, or
+deletes generated artifacts. `DatasetExecutionController` remains the sole
+write-side owner. Recovery removal compares the selected path, device, and inode
+with a fresh scan and then uses the filesystem helper's containment, type,
+symlink, and identity checks immediately before deletion. A replacement is
+reported and retained rather than being adopted as a new deletion target.
+
+`DesktopController` supplies the active workspace once and refreshes Activity
+after execution record changes. The QML Activity page is a view over that
+controller. Selection and refresh are local presentation operations; exact
+Inspect/View navigation and both removal operations cross the queued root
+bridge into composition-owned façade slots.
+The controller exposes preformatted confirmation paths because Python sequence
+wrappers are not treated as JavaScript arrays by QML.
+
+### Configured and session plot controllers
+
+`ConfiguredPlotResultsController` is the read-only owner of configured plot
+results. Discovery starts from a successful schema-version-1 generation record
+loaded by `ActivityController`; it never scans a figure directory or treats
+unrecorded files as configured outcomes. For the record's exact report and
+ordered outcomes, the lightweight `plot_artifacts` verifier checks:
+
+- workspace containment and absence of symbolic-link path components;
+- run, spec, generation-context, source-directory, and visualization identity;
+- the ordered canonical request at each outcome position and its unique name;
+- report/result counts and each completed outcome's exact sidecar request;
+- source dataset path and well-formed recorded SHA-256 identity; and
+- image/sidecar pairing, format, and image SHA-256.
+
+The resulting UI label is limited to recorded-provenance consistency; it is not
+independent scientific validation. PNG and SVG previews receive opaque tokens
+bound to workspace identity, canonical path, expected image hash, format, and
+verification revision. The QML image provider resolves only those tokens and
+revalidates bytes on each read. For QtSvg compatibility it removes empty
+Matplotlib glyph definitions and their no-op references from the in-memory SVG
+preview only; recorded artifact bytes, hashes, sidecars, and exports remain
+unchanged. PDF is revalidated immediately before an explicit external open.
+
+A completed generation remains selectable when it has no configured
+visualization report. That state is explicit evidence absence, not an inferred
+failure or a directory-scan fallback. The controller exposes the record's exact
+output directory so the composition facade can offer **Explore this run**;
+inspection must succeed before QML enters the inspected-data plot workflow.
+
+Image-plus-sidecar export is a no-overwrite pair operation. It revalidates the
+source evidence, stages both destination files in their final directory,
+copies the image, and rewrites only the exported `image.path` and
+`image.sidecar_path` fields in deterministic sidecar JSON before exclusive
+promotion. It does not claim two-file crash atomicity.
+
+`SessionPlotController` owns one inspected-dataset `PlotDraft`, one worker
+render session, structured failure state, the last committed request/result,
+and its preview token. A successful render revalidates the result and sidecar
+before it commits and destroys the temporary draft. Local invalidity focuses a
+typed field and row. Worker failures retain the draft and expose their
+structured category/code/message; field focus occurs only when a structured
+field exists. Cancel returns to the prior committed result. Session edits are
+transient, not YAML dirty: they block source/workspace replacement and
+shutdown, but do not block unrelated Dataset edits or Save. Native close and
+SIGINT surface an explicit **Cancel edit and close** decision instead of
+silently ignoring shutdown; accepting it cancels only temporary plot-edit
+state and then re-enters the ordinary dirty and busy shutdown guards.
+Creating a new session edit does not silently select a scientifically valid
+plot request: the user must choose the plot kind and its required fields.
+The controller does explicitly seed the edit with every fluid recorded by the
+inspected source. Those selections are visible and removable, and a session
+render requires at least one remaining fluid; an empty override is never used
+as a hidden synonym for all fluids.
+Plot-kind help identifies axis, property, series, and color roles, and verified
+worker advisories such as a crowded curve family remain visible with the
+committed result.
+The configured and session workflows remain separate authorities. Configured
+plots are YAML state rendered only by a later Generate; session plots are
+ad-hoc state over the current inspected source. An explicit configured-row
+**Preview with inspected data** action applies that row's inherited configured
+defaults to a new session draft, but starts no worker and requires review
+followed by Render. Scale advisories report the observed minimum, maximum, and
+their ratio and explain the display tradeoff; they never change the selected
+scale automatically.
+
+Both controllers use `carnopy.visualization.requests` for lightweight canonical
+request identity. They do not import visualization configuration/models,
+renderers, source inspection, table readers, pandas, PyArrow, NumPy, CoolProp,
+or Matplotlib. The QML Visualization page binds both controllers. Configured
+result selection never scans figure directories, and session rendering starts
+only from the explicit Render action. PNG and SVG are exposed through opaque,
+cache-disabled verified-preview URLs and an in-app focus mode. PDF opens only
+after immediate revalidation. Both configured and session exports use the same
+no-overwrite image-plus-rewritten-sidecar operation below QML.
+
+Worker-owned sampled-series rendering preserves emitted coordinates and splits
+connected lines at observed phase-label changes rather than joining across an
+unsampled phase interval. Sidecars report these deliberate transitions as
+`phase_break_count` independently from invalid or missing `gap_count`. Dense
+numeric curve families use one shared continuous colorbar across fluid facets;
+smaller or categorical families retain discrete legends. This presentation is
+shared by p–v, T–s, custom X–Y, and property-curve renderers and never adds a
+saturation dome, thermodynamic cycle, process path, interpolation, or backend
+call. The QML process still receives only the worker-produced artifact and
+provenance sidecar.
+Property heatmaps continue to render every sampled cell without interpolation.
+Hollow valid-sample markers are presentation-only and are omitted above 10,000
+samples per fluid facet so their outlines cannot obscure the color mesh;
+invalid emitted states retain explicit cross markers and remain counted in the
+sidecar.
+
 ### `WorkerClient`
 
 `WorkerClient` is transport, not workflow logic. It starts one `QProcess`,
@@ -179,9 +419,11 @@ from treating arbitrary worker output as a successful operation.
 The normal lifecycle is:
 
 1. A controller asks `DesktopRequestCoordinator` to start a supported request
-   under its fixed owner.
-2. The coordinator rejects the request if another one is active, creates an
-   owner-scoped session, and delegates transport to `WorkerClient`.
+   under its fixed owner. Execution may first reserve a UUID and persist its
+   initial activity record; other workflows start directly.
+2. The coordinator rejects the request if another request or reservation is
+   active, creates an owner-scoped session, and delegates transport to
+   `WorkerClient`.
 3. The worker validates the protocol envelope, emits `accepted`, and reports
    phase/progress events where supported.
 4. The coordinator routes events only to the matching session.
@@ -217,6 +459,13 @@ operations intentionally differ:
 | Create Workspace | Existing parent plus a new child name, or an expert non-existing path | Creates the new root, managed directories, and marker |
 | Initialize Existing | Existing ordinary directory, after explicit confirmation | Adds managed directories and marker without deleting unrelated contents |
 | Open Workspace | Existing initialized Carnopy workspace | Verifies the marker and all required directories, then activates it |
+
+Configuration selection remains explicit because one workspace may contain
+multiple YAML documents. The QML open/import dialog starts in the active
+workspace's authoritative `configs/` directory; the Workspace page identifies
+`configs/` as configuration storage, `outputs/` as immutable generated-run
+storage, and `figures/` as rendered-plot storage. External YAML remains
+importable through the same worker-authoritative workflow.
 
 Preflight is non-writing. Commit revalidates the plan; existing-directory
 operations also recheck device and inode identity after confirmation. The
@@ -262,16 +511,15 @@ The controller projects YAML availability and its first blocker as typed state:
 `yamlAvailable`, `blockingSection`, `blockingField`, `blockingRow`, and
 `blockingIssue`. Invalid draft state always exposes an empty YAML preview; the
 last valid serialization and a best-effort replacement are never presented as
-current. Stable field and row identifiers drive navigation in both QML and
-Widgets adapters without parsing issue prose.
+current. Stable field and row identifiers drive QML navigation without parsing
+issue prose.
 
 Save and Save As submit the exact visible complete-document YAML to the worker
 before any write. Imported-document reformat consent, external-change choices,
 no-overwrite Save As, atomic verified replacement, in-flight mutation checks,
 and baseline refresh retain the established controller and document ownership.
 Typed `operationFailed`, `saveSucceeded`, and `importSucceeded` signals provide
-QML feedback while the existing Widgets signals remain available during the
-migration.
+QML feedback.
 
 Standalone worker validation is transient and revision-bound. The controller
 captures the exact visible YAML bytes and SHA-256 and reports `unavailable`,
@@ -287,7 +535,7 @@ immediately before writing.
 `DatasetDraft` owns model, mode, coordinate choice, ordered fluids, properties,
 output formats, sampler drafts, compatibility, local validity, structured
 first-invalid projection, and its dirty baseline. Its list models are the
-single source used by both frontends.
+single source used by QML.
 
 Dataset-only searchable fluid and property views are source-ordered Qt proxy
 models over those authoritative choice models. They filter existing display,
@@ -324,6 +572,12 @@ materialize grids in the GUI process. Production rejects an oversized request
 before allocating a grid. Projection state is transient, nonserialized, and
 excluded from configuration identity and dirtiness.
 
+The draft also projects inclusive interval count for valid linear and step-
+spaced samplers plus the signed declared-unit `linspace` spacing. These values
+are explanatory UI state only: `linspace` still serializes its point count,
+`stepspace` still serializes its step field, and neither projection changes the
+worker-materialized grid.
+
 Dataset property rows add presentation-only label, symbol, and unit roles over
 the existing canonical token. Trusted static symbols deliberately use styled
 text for scientific subscripts; user input is never interpreted as markup.
@@ -353,14 +607,13 @@ fields, workflow-local fluid overrides, filters, series selections, display
 units, and optional format inheritance remain separate raw draft state until
 Commit. Invalid Commit retains the temporary editor and focuses a stable
 `plot.*` field and optional row; controller and QML code never parse issue prose
-to navigate. Widgets keep the established modal dialog over the same draft and
-lifecycle.
+to navigate.
 
 Stage 2 edits configured plot requests but intentionally does not render them.
-Reusable post-generation requests remain on Visualization. Stage 3 will expose
-generated outputs and rendered artifacts through Inspect while preserving the
-worker-only rendering boundary; its design must explicitly place the separate
-session-only manual-plot workflow.
+Stage 3 Steps 7 and 8 extract configured-result evidence and session-only
+manual plotting into authoritative controllers, then expose both workflows
+through QML Visualization while preserving the worker-only rendering boundary.
+Inspect remains the source-selection and table/diagnostic workbench.
 
 The QML YAML Preview page is a read-only projection of the complete document.
 It provides line numbers, search, selection/copy, file and dirty-state context,
@@ -370,25 +623,15 @@ and Close actions cross the root runtime bridge into `DesktopController`; QML
 owns only the consequential decision dialogs and native file selection, not the
 underlying workflow.
 
-## Frontends
+## Public QML frontend
 
-### Public Qt Widgets frontend
-
-`carnopy.app.window.MainWindow` remains the public frontend during Stage 2.
-Widgets pages are adapters over shared controllers for workspace,
-configuration, execution, sources, jobs, recovery, plot requests, and image
-preview. Widgets retain native file dialogs and existing manual workflows as a
-parity oracle until Stage 3.
-
-Widgets must not regain shadow draft state while QML is added. A behavior fix
-at a shared boundary must be reflected in both frontends, as with safe sampler
-unit changes and composition-owned workspace operations.
-
-### Private QML frontend
-
-`carnopy.app.qml_launcher` is intentionally not a project entry point yet. It
-loads the packaged `Carnopy` QML module for development, installed-resource
-smoke testing, and native acceptance.
+`carnopy.app.qml_launcher` is the lightweight public command module. The
+canonical `carnopy-gui` entry point calls `main_gui`; the compatibility
+`carnopy-app` entry point calls `main_app`. Both load the same packaged
+`Carnopy` QML module. Their parser and version handling import no PySide6
+module, so help, version, and missing-extra behavior remain available at the
+optional-dependency boundary. The module's `main` remains an internal smoke
+entry rather than another user-facing application.
 
 Startup ordering is deliberate:
 
@@ -410,8 +653,71 @@ them to Python with queued Qt connections, avoiding re-entrant model mutation
 while delegates are handling input. Native folder dialogs have an explicit
 transient parent and defer path dispatch until the dialog is hidden and the
 event loop advances. Save-file selection follows the same deferred boundary.
+The selected QML palette is applied before the QML engine is constructed so
+fallback controls cannot cache the pre-Carnopy application highlight. Native
+dialog placement itself remains compositor-owned; the transient parent is the
+portable centering and modality contract.
 Window close is routed through the composition-owned active-edit, worker-busy,
 and dirty-document guards before runtime teardown.
+
+Busy close is operation-specific. Generation offers cooperative cancellation
+and closes only after the coordinator releases the request. Plot rendering may
+offer explicit force-stop only through `SessionPlotController` and the
+coordinator's parent-owned staging finalizer; a reported cleanup issue aborts
+close. Configuration, inspection, and preview operations without a safe
+cancellation path remain wait-only. These decisions are enforced in
+`DesktopController`; QML presents the decision and cannot bypass it.
+
+The QML Run page follows that same queued root-signal boundary for Validate,
+Generate, Cancel, and Force Stop. It projects the authoritative execution
+controller's exact saved snapshot, progress, terminal result, activity
+persistence, and saved-baseline relation without parsing worker envelopes.
+Successful generation stays on Run. **Inspect Run** submits its exact recorded
+output directory through the inspection controller. **View Plots** selects its
+exact generation request in configured results, including the explicit empty
+state when no configured report exists. Neither action renders automatically.
+
+The QML Inspect workbench consumes only the typed Qt models owned by
+`InspectionController`. Workspace discovery is direct-child, symlink-excluding,
+newest-first, and revealed 20 entries at a time. Explicit source inspection can
+automatically request the first reported table, but never inspects another
+source automatically. A virtualized table presents 100-row local pages backed
+by bounded 500-row worker blocks, preserves emitted order, and labels positions
+one-based. Summary, logical-array, and source-kind diagnostic projections remain
+separate; QML never infers correlations among independent failure aggregates or
+opens array bytes. Native external file/folder selections are deferred until
+their dialog is hidden before crossing the queued root facade, and the facade
+normalizes `file:` URLs before inspection. Workspace-source rows are the normal
+path for generated outputs; the external actions intentionally accept sources
+outside the active workspace.
+
+Dataset, Run, Inspect, Visualization, and Activity navigation require only an
+active workspace and present their own prerequisite states. YAML Preview alone
+requires an open document. This keeps historical inspection, configured-result
+review, and session plotting reachable without inventing a current
+configuration. Dataset draft validation and Run saved-snapshot validation are
+optional diagnostics. Neither authorizes Save or generation; those operations
+retain their own fresh worker-authoritative validation at the existing trust
+boundaries.
+
+The QML Visualization page projects both plot controllers without importing or
+running rendering code in the GUI process. Configured results start from a
+selected persisted generation record and expose only verified report outcomes;
+session plots start only after an explicit Render action. Opening the page,
+switching its tabs, selecting an outcome, or opening focus mode starts no
+worker. Dense numeric series use the shared continuous color scale while every
+finite emitted coordinate and deliberate phase break remains unchanged.
+
+The QML Activity page uses the rail label **Activity and Recovery**, the page
+heading **Activity**, and separate **Run activity** and **Staging Recovery**
+tabs. Record and recovery collections remain stable-role Qt models. The page
+shows typed summaries and exposes the raw record only as expandable diagnostic
+text. It never scans output or figure directories and never treats an activity
+record as artifact ownership. Record selection, refresh, recovery selection,
+and recovery refresh cross queued root signals before they touch Python state;
+model-backed delegates are never reset or rebound synchronously inside their
+own input callbacks. Recovery confirmation lists exact selected paths; the
+controller still rescans and identity-checks them before removal.
 
 Close processing is deferred out of the native event-filter callback. Teardown
 is idempotent, removes the close filter before object destruction, and uses a
@@ -443,15 +749,22 @@ The permanent invariants are:
   for overlapping launcher and worker processes.
 - QML placement state is versioned. A restoration-contract change must migrate
   or discard only `qml/window/*` placement keys; it must retain appearance,
-  layout, recent-workspace, and unrelated Widgets settings.
-- Widgets and QML deliberately share the stable application identity and
-  `recent_workspaces`. Widgets `window_geometry` and QML `qml/window/*` remain
-  separate, and neither frontend stores scientific draft or YAML state in
-  `QSettings`.
+  layout, recent-workspace, and unrelated settings.
+- QML preserves the stable application identity and `recent_workspaces` used
+  before frontend retirement. Obsolete Widgets `window_geometry` and current
+  `qml/window/*` remain separate; no scientific draft or YAML state is stored
+  in `QSettings`.
 - A clean close records the actual screen and normal client geometry. Tests
   must cover hidden-before-show ordering, obsolete-state migration,
   single-instance rejection, settings isolation, and a clean replacement
   launch after the lock is released.
+- A windowed close resolves the monitor from the largest intersection with the
+  decorated frame rather than trusting a stale `QWindow.screen()` association.
+  A maximized close resolves it from the persisted normal geometry because
+  WSLg can report the maximized frame on a different logical screen. The stored
+  maximized flag then reopens the hidden window maximized on that monitor.
+- With no valid placement state, the normal 1440 by 900 window is centered on
+  the operating system's primary logical screen.
 
 ### Responsive shell and settings
 
@@ -468,13 +781,17 @@ Each surface has one shared toggle action, so pointer, keyboard, settings, and
 breakpoint transitions cannot apply duplicate state changes. The shell remains
 interactive while capability discovery is active and shows that it is
 preparing local CoolProp capabilities rather than implying network activity.
+Workbench pages are instantiated lazily on first visit and then retained until
+runtime teardown. Navigation changes page visibility rather than destroying a
+page whose virtualized delegates may still be incubating; this also preserves
+local view position and focus state without duplicating controller ownership.
 Window restoration clamps the full decorated frame to an available screen and
 prefers the monitor on which the window was last closed. The runtime assigns
 and fits the still-hidden native window to that monitor before showing or
 maximizing it, avoiding a compositor-visible cross-screen remap on a restored
 launch. A versioned migration discards placement state written by the retired
 restoration path once, then subsequent clean closes again remember the actual
-monitor. The private QML launcher also holds a per-user runtime lock so two
+monitor. The QML launcher also holds a per-user runtime lock so two
 CPU-rendered native shells cannot overlap and race on the same settings.
 
 The stable QSettings identity preserves GUI-1 recent workspaces. New settings
@@ -511,7 +828,7 @@ Dark is the default for missing or invalid stored state. System resolves live
 to Light or Dark without creating another serialized mode. The running QML
 window and Qt fallback controls change in the same event turn; the QML runtime
 owns that application-palette override and restores the prior `QPalette` during
-teardown, so the still-public Widgets launchers do not inherit QML styling.
+teardown.
 Warm uses an amber canvas and surface scale that remains visibly distinct from
 Light while retaining the same semantic green, warning, and error roles.
 The wide header places the first-party sun, sunset, and moon controls on the
@@ -564,10 +881,10 @@ Desktop verification is layered:
 
 | Surface | Purpose |
 | --- | --- |
-| `tests/test_app_*.py` | Controller, draft, Widgets, QML engine, and interaction contracts |
+| `tests/test_app_*.py` | Controller, draft, QML engine, and interaction contracts |
 | `scripts/check_qml.py` | Non-writing QML format, import, and lint checks |
 | dedicated Linux app CI job | App-extra typing and desktop tests under Qt offscreen execution |
-| installed smoke tests | Public Widgets launchers plus private packaged-QML startup, responsive state, YAML-page creation, one controller interaction, teardown, and resource checks |
+| installed smoke tests | Both public QML command aliases plus packaged-QML responsive state, YAML-page creation, one controller interaction, teardown, and resource checks |
 | distribution checker | Exact wheel/sdist module, QML, font, icon, license, and provenance inventories |
 | manual native acceptance | File dialogs, monitor/DPI behavior, themes, keyboard use, and perceived interaction |
 | native qualification workflow | Explicit Qt Quick/VTK bridge qualification, not a routine PR requirement |
@@ -611,8 +928,8 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 0 | Qualified a same-repository `QQuickVTKItem` companion bridge on the pinned Linux/Qt/VTK baseline | Complete |
 | 1 | Extracted request ownership, workspace state, dataset/visualization drafts, and complete configuration workflow into QML-ready QtCore controllers | Complete |
 | 2 | Package the Precision Grid QML Workspace, Dataset, Visualization, and YAML/Save workflows | Complete; automated, remote, and native acceptance passed |
-| 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Active |
-| 4 | Add controlled sweep and preparation worker operations | Pending |
+| 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete; graph refreshed |
+| 4 | Add controlled sweep and preparation worker operations | Active after the `0.1.0a4` checkpoint |
 | 5 | Add structured sweep and preparation QML workflows | Pending |
 | 6 | Build exact emitted-value 3D scene contracts | Pending |
 | 7 | Integrate native interactive 3D into QML | Pending |
@@ -654,15 +971,27 @@ failure was reproduced. This remains test-harness evidence to watch if it
 recurs, not a reason to weaken teardown behavior or add an ungrounded
 workaround.
 
+Stage 3 acceptance passed on 2026-07-30. The QML application now owns the
+complete GUI-1 workflow surface through the authoritative QtCore controllers,
+both public launchers select it, and the obsolete Widgets presentation is
+removed. PR #20 passed its Python matrix, desktop, installed-QML Linux/Windows/
+macOS, distribution, dependency, audit, and CodeQL checks; the complete local
+Stage 3 gate also passed. Native review accepted Workspace, Dataset, YAML, Run,
+Inspect, configured and session Visualization, Activity, Recovery, lifecycle,
+theme, and window-state behavior. This is bounded alpha qualification, not the
+full native-3D and platform qualification reserved for Stage 8.
+
 ## Known current limitations
 
-- The public desktop experience is still Widgets; the modern QML launcher is a
-  private development entry point.
-- The QML application can configure and save YAML but cannot yet execute or
-  render its configured visualization; rendering remains worker-owned
-  later-stage functionality.
-- QML generation, inspection, tables, plotting, jobs, recovery, sweep,
-  preparation, and 3D are not implemented.
+- Both public desktop commands launch the single QML presentation.
+- The QML application can configure and save YAML and can validate or generate
+  from the exact saved configuration through the authoritative execution
+  controller. It can also explicitly inspect workspace or external dataset,
+  sweep, and preparation sources and present their typed summaries, logical
+  arrays, diagnostics, and bounded tables. It also presents configured plot
+  evidence, explicit session rendering, private Run activity, and guarded
+  staging recovery.
+- Sweep creation, preparation creation, and 3D presentation are not implemented.
 - Native folder dialogs and compositor behavior require human acceptance;
   headless tests do not automate them.
 - The current WSLg development host can use CPU rendering through Mesa
@@ -673,13 +1002,14 @@ workaround.
 
 ## Maintenance posture and navigation freshness
 
-The temporary source growth during GUI-2 is deliberate but not permanent. QML
-views and interaction tests coexist with the Widgets parity oracle until Stage
-3. Stage 3 is therefore a deletion gate: after equivalent QML behavior is
-verified, remove obsolete Widgets presentation modules, adapters, and
-implementation-specific tests rather than preserving two frontends for a
-speculative future need. Record the removed files and source/test line delta at
-that boundary.
+The temporary source growth during GUI-2 was deliberate but not permanent.
+After equivalent QML behavior and the public launcher migration were verified,
+Stage 3 Step 12 removed the obsolete Widgets presentation rather than keeping
+two frontends for speculative future use. The deletion removed 14 presentation
+modules (3,407 source lines), five implementation-specific test modules (2,487
+test lines), and 83 obsolete Widget/duplicate-discovery lines from the retained
+source-inspection test. This is historical evidence of the retired overlap,
+not a quality metric.
 
 Several desktop files are large because they currently concentrate real
 composition, draft, or shell responsibilities. File size alone is not a reason
@@ -690,7 +1020,7 @@ change that preserves scientific, lifecycle, accessibility, and data-safety
 contracts. Split a module only when a concrete stable responsibility can move
 with focused tests and less coupling. Reassess the QML shell and controller
 hotspots after Stage 2 layout stabilization and again after Stage 3 removes the
-Widgets overlap. A database, web service, or external project-management plugin
+frontend overlap. A database, web service, or external project-management plugin
 does not solve the current local capability-loading or rendering-performance
 constraints and is not justified by the implemented workflow.
 
@@ -708,10 +1038,10 @@ turning them into automatic refactors:
 | `qml_runtime.py` | 773 | Application startup, resources, palette, window state, and teardown meet here |
 
 Step 19 rechecked this list after the Dataset layout settled and found no
-independent refactor required before Stage 3. Stage 3 measures it again after
-obsolete Widgets presentation code is deleted. A split is justified only when
-it removes a named responsibility from one of these files without creating a
-second state owner or weakening a worker boundary.
+independent refactor required before Stage 3. Step 12 removed the obsolete
+Widgets presentation without introducing another controller layer. A split is
+justified only when it removes a named responsibility from one of these files
+without creating a second state owner or weakening a worker boundary.
 
 Use focused checks while a desktop step is being developed. Run the full source,
 distribution, and preflight gates at stage or release boundaries, or earlier
@@ -730,24 +1060,25 @@ git rev-list --count <graph-source-revision>..HEAD
 
 For legacy artifacts without an embedded source revision, use the latest commit
 that changed the complete public artifact set (`GRAPH_REPORT.md`, `graph.html`,
-and `graph.json`) as a conservative baseline. Apply these rules:
+and `graph.json`) as a conservative baseline. The repository-wide gate is
+defined in `docs/agent-guides/DEVELOPMENT.md`; for clarity it is:
 
 - zero intervening commits: the graph may guide navigation, with source
   verification for exact behavior;
-- one through nineteen intervening commits: the graph is navigation-only and
+- one through five intervening commits: the graph is navigation-only and
   every conclusion must be checked against current source;
-- twenty or more intervening commits, or any completed architecture stage not
+- six or more intervening commits, or any completed architecture stage not
   represented in the graph: the graph is hard-stale and must not be queried for
   current architecture or implementation work;
 - a hard-stale graph is either refreshed intentionally and atomically or simply
   bypassed in favor of source, tests, and scoped text search.
 
-As audited on 2026-07-23, the public graph's latest artifact commit is
-`1d819a3dd639958601115758b0c6032b4596ef92`, 34 commits behind the then-current
-Stage 2 branch and older than the packaged QML runtime. It is therefore disabled
-as a navigation source for the remaining Stage 2 work. Refreshing after the
-Stage 2 QML structure settles is preferable to rebuilding it repeatedly during
-layout churn.
+The public artifacts were refreshed on 2026-07-30 in
+`08053757551d89fa7bd9a181411ddb99a91886f4` from exact source revision
+`2f5aa8aa39c9ce28f12941c8d67432e7694c0c8c`. They represent the accepted Stage
+3 architecture. Subsequent documentation, merge, and release commits determine
+their current navigation status through the same Git-history freshness gate;
+do not refresh them repeatedly during ordinary implementation churn.
 
 GitHub Issues are enabled for `gcalpay/carnopy`; the repository had no open or
 closed issues in the 2026-07-23 audit. Create an issue only for reproducible,
@@ -768,13 +1099,14 @@ When changing the desktop, start at the owner of the behavior:
 | Dataset document, merge, validation, Save, and dirty workflow | `carnopy.app.config_controller` and `config_document` |
 | Dataset or sampler editable state | `dataset_draft` and `sampler_draft` |
 | Configured visualization or temporary plot state | `visualization_draft`, `plot_draft`, and `mapping_draft` |
-| Widgets presentation | `window` and the relevant Widgets page/editor |
+| Configured plot evidence, preview authorization, and safe pair export | `configured_plot_results_controller`, `plot_artifacts`, and `plot_preview_provider` |
+| Inspected-data session plot edit and render lifecycle | `session_plot_controller` |
 | QML presentation | `qml/Carnopy/` plus narrow runtime signal wiring |
 | QML startup, resources, fonts, and warning policy | `qml_runtime`, `qml_resources`, and the resource manifest |
 | Scientific behavior | Existing non-app domain/pipeline module, executed by the worker |
 
-Before editing, inspect the applicable controller, both frontend adapters, its
-focused tests, `AGENTS.md`, and the active GUI-2 stage plan. If a change appears
+Before editing, inspect the applicable controller, its QML view and focused
+tests, `AGENTS.md`, and the active GUI-2 stage plan. If a change appears
 to require scientific code in QML, a second configuration copy, a direct CLI
 call, multiple simultaneous workers, or weaker file-integrity checks, stop and
 re-evaluate the ownership boundary.

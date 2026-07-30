@@ -154,6 +154,7 @@ def _generic_xy_series(
                 ordering_field=ordering_field,
                 split_phase=plot_source.mode == "property_table",
                 markers_only=ordering_field is None,
+                level_value=level,
             )
         )
     return series

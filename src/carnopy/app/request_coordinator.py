@@ -36,6 +36,15 @@ class RequestFinalizer(Protocol):
 
 
 @dataclass(frozen=True)
+class RequestReservation:
+    """A non-busy request identity reserved before durable workflow setup."""
+
+    request_id: UUID
+    request_type: RequestType
+    owner: RequestOwner
+
+
+@dataclass(frozen=True)
 class RequestOutcome:
     request_id: UUID
     request_type: RequestType
@@ -227,6 +236,7 @@ class DesktopRequestCoordinator(QObject):
         super().__init__(parent)
         self.client = client
         self._active_session: RequestSession | None = None
+        self._reservation: RequestReservation | None = None
         self._finalizer: RequestFinalizer | None = None
         self._force_timer = QTimer(self)
         self._force_timer.setSingleShot(True)
@@ -257,10 +267,49 @@ class DesktopRequestCoordinator(QObject):
         *,
         finalizer: RequestFinalizer | None = None,
     ) -> RequestSession:
-        if self.is_busy:
+        reservation = self.reserve_request(owner, request_type)
+        try:
+            return self.start_reserved_request(
+                reservation,
+                payload,
+                finalizer=finalizer,
+            )
+        except Exception:
+            self.abandon_reserved_request(reservation)
+            raise
+
+    def reserve_request(
+        self,
+        owner: RequestOwner,
+        request_type: RequestType,
+    ) -> RequestReservation:
+        """Reserve one request UUID without publishing a busy session."""
+
+        if self.is_busy or self._reservation is not None:
             raise RuntimeError("a Carnopy desktop request is already active")
         if request_type not in _OWNER_REQUESTS[owner]:
             raise ValueError(f"request type {request_type!r} is not owned by {owner!r}")
+        reservation = RequestReservation(
+            request_id=uuid4(),
+            request_type=request_type,
+            owner=owner,
+        )
+        self._reservation = reservation
+        return reservation
+
+    def start_reserved_request(
+        self,
+        reservation: RequestReservation,
+        payload: Mapping[str, object] | None = None,
+        *,
+        finalizer: RequestFinalizer | None = None,
+    ) -> RequestSession:
+        """Promote the exact current reservation and start its worker."""
+
+        if reservation is not self._reservation:
+            raise RuntimeError("request reservation is stale or foreign")
+        request_type = reservation.request_type
+        owner = reservation.owner
         if finalizer is not None and request_type != "render_plot":
             raise ValueError("parent export finalizers are supported only for render_plot")
 
@@ -273,7 +322,7 @@ class DesktopRequestCoordinator(QObject):
             cancellation_mode = "none"
         session = RequestSession(
             self,
-            uuid4(),
+            reservation.request_id,
             request_type,
             owner,
             cancellation_mode,
@@ -292,7 +341,14 @@ class DesktopRequestCoordinator(QObject):
             self.busy_changed.emit(False)
             self.active_owner_changed.emit(None)
             raise
+        self._reservation = None
         return session
+
+    def abandon_reserved_request(self, reservation: RequestReservation) -> None:
+        """Release the exact current reservation without starting a worker."""
+
+        if reservation is self._reservation:
+            self._reservation = None
 
     def request_cancel(self, request_id: UUID, owner: RequestOwner) -> bool:
         session = self._matching_session(request_id, owner)
@@ -315,7 +371,7 @@ class DesktopRequestCoordinator(QObject):
         return True
 
     def shutdown(self) -> None:
-        if self.is_busy:
+        if self.is_busy or self._reservation is not None:
             raise RuntimeError("cannot shut down the request coordinator while it is busy")
         self.client.shutdown()
 
@@ -367,6 +423,7 @@ class DesktopRequestCoordinator(QObject):
                 if transport.terminal_event is None
                 else transport.terminal_event.model_dump(mode="json")
             ),
+            "client_failure": transport.client_failure,
             "stderr": stderr,
             "exit_code": transport.exit_code,
             "exit_status": transport.exit_status,

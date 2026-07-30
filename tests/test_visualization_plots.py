@@ -278,6 +278,39 @@ def test_property_table_curves_split_at_phase_changes(tmp_path: Path) -> None:
     )
     y_values = np.asarray(result.figure.axes[0].lines[0].get_ydata(), dtype=float)
     assert int(np.isnan(y_values).sum()) == 2
+    sidecar = json.loads(result.sidecar_path.read_text(encoding="utf-8"))
+    first_series = sidecar["series_or_cells"]["series"]["n-Propane"][0]
+    assert first_series["gap_count"] == 0
+    assert first_series["phase_break_count"] == 2
+
+
+def test_dense_property_curves_use_shared_numeric_color_scale(tmp_path: Path) -> None:
+    pressures = tuple(float(value) for value in np.linspace(1.01325, 5.06625, 21))
+    run = generate_dataset(
+        _write_config(
+            tmp_path / "dense-property.yaml",
+            mode="property_table",
+            temperatures=(250.0, 270.0, 290.0),
+            pressures_bar=pressures,
+        ),
+        output_root=tmp_path / "runs",
+    )
+    result = plot_property_curves(
+        run.output_directory,
+        property_name="mass_density",
+        x="temperature",
+        display_units={"pressure": "bar"},
+        output=tmp_path / "dense-curves.png",
+    )
+
+    plot_axis, colorbar_axis = result.figure.axes
+    assert len(plot_axis.lines) == 21
+    assert plot_axis.get_legend() is None
+    assert "Pressure" in colorbar_axis.get_ylabel()
+    assert "bar" in colorbar_axis.get_ylabel()
+    sidecar = json.loads(result.sidecar_path.read_text(encoding="utf-8"))
+    assert sidecar["effective_settings"]["series_encoding"] == "continuous_colorbar"
+    assert sidecar["effective_settings"]["color_range"] == [1.01325, 5.06625]
 
 
 def test_property_curves_preserve_descending_sampler_order(tmp_path: Path) -> None:
@@ -359,6 +392,31 @@ def test_property_table_heatmap_uses_temperature_and_pressure_axes(
     assert sidecar["axes"]["x"]["field"] == "temperature"
     assert sidecar["axes"]["y"]["field"] == "pressure"
     assert sidecar["axes"]["color"]["field"] == "mass_density"
+
+
+def test_dense_property_heatmap_omits_sample_markers_without_omitting_cells(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "carnopy.visualization.heatmaps.SAMPLE_POINT_OVERLAY_LIMIT",
+        1,
+    )
+    run = generate_dataset(
+        _write_config(tmp_path / "property.yaml", mode="property_table"),
+        output_root=tmp_path / "runs",
+    )
+    result = plot_property_heatmap(
+        run.output_directory,
+        property_name="mass_density",
+        output=tmp_path / "dense-property-heatmap.png",
+    )
+    sidecar = json.loads(result.sidecar_path.read_text(encoding="utf-8"))
+
+    assert sidecar["effective_settings"]["sample_point_overlay"] is False
+    assert len(result.figure.axes[0].collections) == 1
+    cells = sidecar["series_or_cells"]["cells"]["n-Propane"]
+    assert cells["sampled_cell_count"] == 9
 
 
 def test_multifluid_heatmaps_share_color_normalization(tmp_path: Path) -> None:

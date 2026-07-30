@@ -24,7 +24,7 @@ from carnopy.sampling.models import (
     Sampler,
     StepspaceSampler,
 )
-from carnopy.sampling.projection import sampler_point_count
+from carnopy.sampling.projection import linspace_spacing, sampler_point_count
 
 SAMPLER_FIELDS: dict[str, tuple[str, ...]] = {
     "explicit": ("values",),
@@ -143,6 +143,27 @@ class SamplerDraft(QObject):
         get_sample_count,
         notify=sample_count_changed,
     )
+
+    def get_interval_count(self) -> int:
+        if not self._valid or self._kind not in {"linspace", "stepspace"}:
+            return 0
+        return max(0, self._sample_count - 1)
+
+    intervalCount = Property(
+        "qlonglong",  # type: ignore[arg-type]
+        get_interval_count,
+        notify=changed,
+    )
+
+    def get_spacing_text(self) -> str:
+        if not self._valid or self._kind != "linspace":
+            return ""
+        sampler = self._sampler_model()
+        if not isinstance(sampler, LinspaceSampler):  # pragma: no cover - type guard
+            return ""
+        return stable_number_text(linspace_spacing(sampler))
+
+    spacingText = Property(str, get_spacing_text, notify=changed)
 
     @Slot(str, result=str)
     def text(self, field: str) -> str:

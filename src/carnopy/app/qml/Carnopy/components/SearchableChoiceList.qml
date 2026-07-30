@@ -50,6 +50,7 @@ Item {
             Accessible.description: qsTr("Search and change selected %1 values").arg(root.noun)
             enabled: !root.locked
             iconName: "search"
+            Layout.bottomMargin: root.showCanonicalIdentities ? Theme.spacingTiny : 0
             objectName: root.objectName + "OpenButton"
             onClicked: root.openSelector()
             text: root.selectorText
@@ -217,19 +218,24 @@ Item {
             visible: root.showCanonicalIdentities && selectedList.count > 0
 
             Label {
+                Layout.alignment: Qt.AlignVCenter
                 color: Theme.textMuted
                 font.family: Theme.sansFamily
                 font.pixelSize: 11
+                objectName: root.objectName + "CanonicalLabel"
                 text: qsTr("Canonical backend identities:")
+                verticalAlignment: Text.AlignVCenter
             }
 
             ListView {
+                Layout.alignment: Qt.AlignVCenter
                 Layout.fillWidth: true
                 Layout.preferredHeight: 20
                 boundsBehavior: Flickable.StopAtBounds
                 clip: true
                 interactive: false
                 model: root.selectedModel
+                objectName: root.objectName + "CanonicalList"
                 orientation: ListView.Horizontal
                 spacing: Theme.spacingTiny
 
@@ -239,8 +245,10 @@ Item {
 
                     color: Theme.textMuted
                     font.family: Theme.monoFamily
-                    font.pixelSize: 10
+                    font.pixelSize: 11
+                    height: ListView.view.height
                     text: canonical + (index + 1 < selectedList.count ? "," : "")
+                    verticalAlignment: Text.AlignVCenter
                     width: implicitWidth
                 }
             }

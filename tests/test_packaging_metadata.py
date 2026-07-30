@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import json
 import tomllib
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from carnopy._version import __version__
 
 
 def test_all_extra_contains_every_user_facing_optional_dependency() -> None:
@@ -42,32 +45,39 @@ def test_desktop_extra_and_launcher_are_declared() -> None:
     assert (
         "PySide6-Essentials>=6.11.1,<6.12" in pyproject["project"]["optional-dependencies"]["all"]
     )
-    assert pyproject["project"]["scripts"]["carnopy-app"] == "carnopy.app.launcher:main"
-    assert pyproject["project"]["scripts"]["carnopy-gui"] == "carnopy.app.launcher:main_gui"
+    assert pyproject["project"]["scripts"]["carnopy-app"] == "carnopy.app.qml_launcher:main_app"
+    assert pyproject["project"]["scripts"]["carnopy-gui"] == "carnopy.app.qml_launcher:main_gui"
     assert "PySide6 Essentials 6.11.1 or later within the 6.11 release line" in readme
     assert "native bridge remains qualified against exactly Qt 6.11.1" in readme
 
 
-def test_qml_runtime_is_private_and_resources_live_in_the_app_package() -> None:
+def test_qml_runtime_is_public_and_resources_live_in_the_app_package() -> None:
     root = Path(__file__).resolve().parents[1]
     pyproject: dict[str, Any] = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
     scripts = pyproject["project"]["scripts"]
     assert scripts == {
         "carnopy": "carnopy.__main__:main",
-        "carnopy-app": "carnopy.app.launcher:main",
-        "carnopy-gui": "carnopy.app.launcher:main_gui",
+        "carnopy-app": "carnopy.app.qml_launcher:main_app",
+        "carnopy-gui": "carnopy.app.qml_launcher:main_gui",
     }
     app_root = root / "src" / "carnopy" / "app"
     for relative_path in (
         "qml/Carnopy/Main.qml",
+        "qml/Carnopy/pages/ActivityPage.qml",
         "qml/Carnopy/pages/DatasetPage.qml",
+        "qml/Carnopy/pages/InspectPage.qml",
+        "qml/Carnopy/pages/RunPage.qml",
         "qml/Carnopy/pages/VisualizationPage.qml",
         "qml/Carnopy/pages/YamlPreviewPage.qml",
         "qml/Carnopy/components/BlockingBanner.qml",
+        "qml/Carnopy/components/ActivityContextInspector.qml",
+        "qml/Carnopy/components/InspectionContextInspector.qml",
         "qml/Carnopy/components/LineNumberedTextArea.qml",
         "qml/Carnopy/components/MappingEditor.qml",
         "qml/Carnopy/components/OperationFeedback.qml",
         "qml/Carnopy/components/PlotEditor.qml",
+        "qml/Carnopy/components/VerifiedPlotView.qml",
+        "qml/Carnopy/components/RunContextInspector.qml",
         "qml/Carnopy/qmldir",
         "resources/third-party-resources.json",
         "resources/branding/carnopy-mark.png",
@@ -81,6 +91,34 @@ def test_qml_runtime_is_private_and_resources_live_in_the_app_package() -> None:
         "resources/licenses/Lucide-LICENSE.txt",
     ):
         assert (app_root / relative_path).is_file()
+
+
+def test_widgets_presentation_modules_are_retired() -> None:
+    app_root = Path(__file__).resolve().parents[1] / "src" / "carnopy" / "app"
+    retired_modules = {
+        "config_editor.py",
+        "config_form.py",
+        "config_widgets.py",
+        "execution_page.py",
+        "inspection_page.py",
+        "jobs_page.py",
+        "launcher.py",
+        "plot_page.py",
+        "plot_preview.py",
+        "plot_request_dialog.py",
+        "sources_page.py",
+        "visualization_editor.py",
+        "visualization_widgets.py",
+        "window.py",
+    }
+
+    assert not {path.name for path in app_root.iterdir()} & retired_modules
+    qtwidgets_importers = {
+        path.name
+        for path in app_root.glob("*.py")
+        if "PySide6.QtWidgets" in path.read_text(encoding="utf-8")
+    }
+    assert qtwidgets_importers == {"qml_runtime.py"}
 
 
 def test_manifest_hashed_resources_disable_checkout_byte_rewriting() -> None:
@@ -119,9 +157,11 @@ def test_alpha_metadata_uses_modern_license_and_release_urls() -> None:
     project = pyproject["project"]
     assert project["requires-python"] == ">=3.11"
     assert project["description"] == (
-        "CLI-first thermophysical dataset generation and leakage-aware ML preparation "
-        "from thermodynamic backends, with an optional Linux-first desktop GUI."
+        "Reproducible thermophysical datasets from scientific backends with "
+        "visualization, provenance, and leakage-aware preparation for physics-informed "
+        "machine-learning and engineering workflows."
     )
+    assert project["authors"] == [{"name": "gcalpay"}]
     assert project["license"] == "MIT"
     assert project["license-files"] == ["LICENSE"]
     assert project["urls"] == {
@@ -132,19 +172,26 @@ def test_alpha_metadata_uses_modern_license_and_release_urls() -> None:
     }
     assert {
         "thermodynamics",
+        "thermophysical",
         "fluid properties",
         "thermophysical properties",
         "dataset generation",
-        "scientific computing",
+        "synthetic data",
+        "data provenance",
+        "data visualization",
+        "data leakage prevention",
+        "leakage-aware",
         "machine learning",
         "surrogate modeling",
         "CoolProp",
+        "chemical-engineering",
     } == set(project["keywords"])
     for classifier in (
         "Environment :: Console",
         "Intended Audience :: Science/Research",
         "Operating System :: OS Independent",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
+        "Topic :: Scientific/Engineering :: Chemistry",
         "Topic :: Scientific/Engineering :: Physics",
         "Topic :: Software Development :: Libraries :: Python Modules",
     ):
@@ -157,23 +204,18 @@ def test_alpha_metadata_uses_modern_license_and_release_urls() -> None:
     assert "License :: OSI Approved :: MIT License" not in project["classifiers"]
 
 
-def test_manual_plot_workflow_uses_the_printed_run_directory_directly() -> None:
+def test_citation_metadata_matches_the_package_without_a_placeholder_doi() -> None:
     root = Path(__file__).resolve().parents[1]
-    expected_run = 'RUN_DIR="outputs/manual-test/20260621T172006Z_vapor_fraction_c8e28e9f"'
-    text = (root / "README.md").read_text(encoding="utf-8")
-    assert "--out outputs/manual-test" in text
-    assert "Example only; replace this with the exact path printed by your run." in text
-    assert expected_run in text
-    assert "outputs/manual-test/outputs/manual-test" not in text
+    citation = yaml.safe_load((root / "CITATION.cff").read_text(encoding="utf-8"))
+    pyproject = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
 
-
-def test_readme_uses_github_supported_math_delimiters() -> None:
-    root = Path(__file__).resolve().parents[1]
-    text = (root / "README.md").read_text(encoding="utf-8")
-    assert r"\(" not in text
-    assert r"\[" not in text
-    assert "$x_{\\mathrm{vap}}$" in text
-    assert "```math" in text
+    assert citation["title"] == "Carnopy"
+    assert citation["version"] == __version__
+    assert citation["license"] == "MIT"
+    assert citation["repository-code"] == "https://github.com/gcalpay/carnopy"
+    assert citation["abstract"] == pyproject["project"]["description"]
+    assert "doi" not in citation
+    assert "10.xxxx" not in json.dumps(citation)
 
 
 def test_public_and_community_markdown_have_intentional_distribution_boundaries() -> None:
@@ -198,6 +240,7 @@ def test_public_and_community_markdown_have_intentional_distribution_boundaries(
     sdist_includes = set(pyproject["tool"]["hatch"]["build"]["targets"]["sdist"]["include"])
     assert "/README.md" in sdist_includes
     assert "/AGENTS.md" in sdist_includes
+    assert "/CITATION.cff" in sdist_includes
     assert "/DESKTOP_ARCHITECTURE.md" in sdist_includes
     assert "/ML_PREPARATION_ROADMAP.md" in sdist_includes
     assert "/docs/agent-guides" in sdist_includes
@@ -205,25 +248,19 @@ def test_public_and_community_markdown_have_intentional_distribution_boundaries(
     assert "/docs" not in sdist_includes
 
 
-def test_readme_documents_the_0_1_0a3_release_boundary() -> None:
+def test_readme_documents_published_and_source_release_boundaries() -> None:
     root = Path(__file__).resolve().parents[1]
     text = (root / "README.md").read_text(encoding="utf-8")
-    for package in (
-        "carnopy",
-        "carnopy[viz]",
-        "carnopy[ml]",
-        "carnopy[analysis]",
-        "carnopy[app]",
-        "carnopy[all]",
-    ):
-        assert f'python -m pip install "{package}==0.1.0a3"' in text
-    assert 'uv tool install "carnopy==0.1.0a3"' in text
-    assert 'uv tool install "carnopy[all]==0.1.0a3"' in text
-    assert "The `all` extra is the dependency union of `viz`,\n" in text
-    assert "`ml`, `analysis`, and `app`" in text
-    assert "Version `0.1.0a3` includes GUI-1" in text
-    assert "active GUI-2 source line reports `0.1.0a4.dev0`" in text
-    assert "active `0.1.0a4.dev0` application development line" in text
+    assert 'uv tool install "carnopy[app]==0.1.0a4"' in text
+    assert 'python -m pip install "carnopy==0.1.0a4"' in text
+    assert 'python -m pip install "carnopy[app]==0.1.0a4"' not in text
+    for extra in ("app", "viz", "ml", "analysis", "all"):
+        assert f"| `{extra}` |" in text
+    assert "Exact union of all public extras" in text
+    assert "The latest published alpha is `0.1.0a3`" in text
+    assert "`0.1.0a4.dev0` source" in text
+    assert "`carnopy-gui` is the canonical" in text
+    assert "`carnopy-app` launches the same\nQML application" in text
     assert "0.1.0a2" not in text
     assert "After `0.1.0a3` is published" not in text
     assert "not yet published" not in text
@@ -234,8 +271,9 @@ def test_readme_documents_the_0_1_0a3_release_boundary() -> None:
     assert "pending publisher" not in text.casefold()
     assert "Typing: typed" not in text
     assert (
-        "CLI-first thermophysical dataset generation and leakage-aware ML preparation\n"
-        "from thermodynamic backends, with an optional Linux-first desktop GUI."
+        "Reproducible thermophysical datasets from scientific backends with\n"
+        "visualization, provenance, and leakage-aware preparation for physics-informed\n"
+        "machine-learning and engineering workflows."
     ) in text
 
 

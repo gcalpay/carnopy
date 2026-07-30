@@ -99,7 +99,7 @@ Item {
                             Accessible.name: qsTr("%1 field").arg(root.noun)
                             Layout.fillWidth: true
                             Layout.minimumWidth: 0
-                            currentIndex: indexOfValue(mappingRow.field)
+                            currentIndex: indexForRoleValue(mappingRow.field)
                             enabled: !root.locked
                             model: root.mappingModel === null || root.mappingModel === undefined
                                    ? null : root.mappingModel.fieldChoices
@@ -115,7 +115,7 @@ Item {
                             Accessible.name: qsTr("%1 value").arg(root.noun)
                             Layout.fillWidth: true
                             Layout.minimumWidth: 0
-                            currentIndex: indexOfValue(mappingRow.rawValue)
+                            currentIndex: indexForRoleValue(mappingRow.rawValue)
                             enabled: !root.locked
                             model: mappingRow.choices
                             objectName: root.objectName + "ChoiceValue-" + mappingRow.index

@@ -4,16 +4,23 @@ from pathlib import Path
 
 from PySide6.QtCore import Property, QObject, QSettings, QTimer, QUrl, Signal, Slot
 
+from carnopy.app.activity_controller import ActivityController
 from carnopy.app.client import WorkerClient
 from carnopy.app.config_controller import DatasetConfigController
+from carnopy.app.configured_plot_results_controller import ConfiguredPlotResultsController
 from carnopy.app.dataset_draft import DatasetDraft
+from carnopy.app.execution_controller import DatasetExecutionController
 from carnopy.app.field_ids import VISUALIZATION_PLOTS
+from carnopy.app.inspection_controller import InspectionController
 from carnopy.app.mapping_draft import MappingDraftModel
 from carnopy.app.plot_draft import PlotDraft
+from carnopy.app.plot_preview_provider import VerifiedPlotPreviewRegistry
 from carnopy.app.qml_settings import QmlSettingsController
 from carnopy.app.request_coordinator import DesktopRequestCoordinator
 from carnopy.app.sampler_draft import SamplerDraft
+from carnopy.app.session_plot_controller import SessionPlotController
 from carnopy.app.visualization_draft import VisualizationDraft
+from carnopy.app.workspace import Workspace
 from carnopy.app.workspace_controller import WorkspaceController
 
 
@@ -29,7 +36,11 @@ class DesktopController(QObject):
     datasetDocumentOpened = Signal()
     attentionRequested = Signal(str, str, int)
     shutdownConfirmationRequested = Signal()
+    transientEditShutdownConfirmationRequested = Signal(str)
     closeWindowRequested = Signal()
+    navigationRequested = Signal(str, str)
+    activityActionFailed = Signal(str, str)
+    busyShutdownConfirmationRequested = Signal(str, str)
 
     def __init__(
         self,
@@ -50,6 +61,48 @@ class DesktopController(QObject):
             self.visualization_draft,
             self,
         )
+        self.execution_controller = DatasetExecutionController(
+            self.request_coordinator,
+            self.dataset_config_controller,
+            self,
+        )
+        self.inspection_controller = InspectionController(
+            self.request_coordinator,
+            self,
+        )
+        self.activity_controller = ActivityController(
+            self.request_coordinator,
+            self,
+        )
+        self.plot_preview_registry = VerifiedPlotPreviewRegistry(self)
+        self.configured_plot_results_controller = ConfiguredPlotResultsController(
+            self.activity_controller,
+            self.dataset_config_controller,
+            self.plot_preview_registry,
+            self,
+        )
+        self.session_plot_controller = SessionPlotController(
+            self.request_coordinator,
+            self.inspection_controller,
+            self.plot_preview_registry,
+            self,
+        )
+        self.inspection_controller.set_lifecycle_guard(
+            self.session_plot_controller.can_replace_inspection
+        )
+        self.inspection_controller.inspection_loaded.connect(
+            self._pending_explore_inspection_loaded
+        )
+        self.inspection_controller.inspection_failed.connect(
+            self._pending_explore_inspection_failed
+        )
+        self.execution_controller.activity_record_changed.connect(
+            self.activity_controller.refresh_records
+        )
+        self.execution_controller.state_changed.connect(self._continue_pending_busy_shutdown)
+        self.execution_controller.run_finalized.connect(
+            lambda _path: self.inspection_controller.refresh_sources()
+        )
         self.dataset_config_controller.set_lifecycle_guard(self._guard_active_plot_edit)
         self.workspace_controller = WorkspaceController(
             self.request_coordinator,
@@ -68,6 +121,10 @@ class DesktopController(QObject):
         self.dataset_config_controller.document_opened.connect(self.datasetDocumentOpened)
         self.request_coordinator.busy_changed.connect(self._request_state_changed)
         self.visualization_draft.active_plot_draft_changed.connect(self._active_plot_state_changed)
+        self.session_plot_controller.active_edit_changed.connect(self._active_plot_state_changed)
+        self.session_plot_controller.attention_requested.connect(
+            lambda field, row: self.attentionRequested.emit("visualization", field, row)
+        )
         self.visualization_draft.plot_commit_rejected.connect(self._plot_commit_rejected)
         self._queued_workspace_request: tuple[str, str, str, bool] | None = None
         self._pending_dataset_decision: tuple[str, str] | None = None
@@ -77,6 +134,8 @@ class DesktopController(QObject):
         self._workspace_request_timer.timeout.connect(self._run_queued_workspace_request)
         self._shutdown = False
         self._shutdown_discard_confirmed = False
+        self._pending_explore_source: Path | None = None
+        self._pending_busy_shutdown = ""
 
     def get_workspace_controller(self) -> QObject:
         return self.workspace_controller
@@ -138,6 +197,7 @@ class DesktopController(QObject):
         return (
             self.workspace_controller.get_can_change_workspace()
             and self.visualization_draft.get_active_plot_draft() is None
+            and not self.session_plot_controller.get_has_active_edit()
         )
 
     canChangeWorkspace = Property(
@@ -249,12 +309,81 @@ class DesktopController(QObject):
         notify=workspace_state_changed,
     )
 
+    hasConfiguredPlotEdit = Property(
+        bool,
+        get_has_active_plot_edit,
+        notify=workspace_state_changed,
+    )
+
+    def get_has_session_plot_edit(self) -> bool:
+        return self.session_plot_controller.get_has_active_edit()
+
+    hasSessionPlotEdit = Property(
+        bool,
+        get_has_session_plot_edit,
+        notify=workspace_state_changed,
+    )
+
+    def get_has_any_transient_edit(self) -> bool:
+        return self.get_has_active_plot_edit() or self.get_has_session_plot_edit()
+
+    hasAnyTransientEdit = Property(
+        bool,
+        get_has_any_transient_edit,
+        notify=workspace_state_changed,
+    )
+
     def get_dataset_config_controller(self) -> QObject:
         return self.dataset_config_controller
 
     datasetConfigController = Property(
         QObject,
         get_dataset_config_controller,
+        constant=True,
+    )
+
+    def get_execution_controller(self) -> QObject:
+        return self.execution_controller
+
+    executionController = Property(
+        QObject,
+        get_execution_controller,
+        constant=True,
+    )
+
+    def get_inspection_controller(self) -> QObject:
+        return self.inspection_controller
+
+    inspectionController = Property(
+        QObject,
+        get_inspection_controller,
+        constant=True,
+    )
+
+    def get_activity_controller(self) -> QObject:
+        return self.activity_controller
+
+    activityController = Property(
+        QObject,
+        get_activity_controller,
+        constant=True,
+    )
+
+    def get_configured_plot_results_controller(self) -> QObject:
+        return self.configured_plot_results_controller
+
+    configuredPlotResultsController = Property(
+        QObject,
+        get_configured_plot_results_controller,
+        constant=True,
+    )
+
+    def get_session_plot_controller(self) -> QObject:
+        return self.session_plot_controller
+
+    sessionPlotController = Property(
+        QObject,
+        get_session_plot_controller,
         constant=True,
     )
 
@@ -323,6 +452,129 @@ class DesktopController(QObject):
         if not self._guard_active_plot_edit("Validation"):
             return False
         return self.dataset_config_controller.request_validation()
+
+    @Slot(result=bool, name="requestExecutionValidation")
+    def request_execution_validation(self) -> bool:
+        return self.execution_controller.validate()
+
+    @Slot(result=bool, name="requestDatasetGeneration")
+    def request_dataset_generation(self) -> bool:
+        return self.execution_controller.generate()
+
+    @Slot(result=bool, name="requestExecutionCancel")
+    def request_execution_cancel(self) -> bool:
+        return self.execution_controller.cancel()
+
+    @Slot(result=bool, name="requestExecutionForceStop")
+    def request_execution_force_stop(self) -> bool:
+        return self.execution_controller.force_stop()
+
+    @Slot(str, result=bool, name="requestInspectSource")
+    def request_inspect_source(self, source: str) -> bool:
+        return self.inspection_controller.inspect_source(_local_path(source))
+
+    @Slot(result=bool, name="requestRefreshInspection")
+    def request_refresh_inspection(self) -> bool:
+        return self.inspection_controller.refresh_inspection()
+
+    @Slot(name="requestRefreshInspectionSources")
+    def request_refresh_inspection_sources(self) -> None:
+        self.inspection_controller.refresh_sources()
+
+    @Slot(str, result=bool, name="requestInspectionTable")
+    def request_inspection_table(self, table_id: str) -> bool:
+        return self.inspection_controller.select_table(table_id)
+
+    @Slot(int, result=bool, name="requestInspectionPreviewPage")
+    def request_inspection_preview_page(self, page_offset: int) -> bool:
+        return self.inspection_controller.request_preview_page(page_offset)
+
+    @Slot(name="requestMoreInspectionSources")
+    def request_more_inspection_sources(self) -> None:
+        self.inspection_controller.reveal_more_sources()
+
+    @Slot(result=bool, name="requestExecutionInspectRun")
+    def request_execution_inspect_run(self) -> bool:
+        if (
+            self.execution_controller.get_operation() != "generate"
+            or self.execution_controller.get_state() != "succeeded"
+        ):
+            self.activityActionFailed.emit(
+                "Inspect Run",
+                "Generate a dataset successfully before inspecting its output.",
+            )
+            return False
+        return self._inspect_run(
+            self.execution_controller.get_result_output_directory(),
+            navigate=True,
+        )
+
+    @Slot(result=bool, name="requestExecutionViewPlots")
+    def request_execution_view_plots(self) -> bool:
+        if (
+            self.execution_controller.get_operation() != "generate"
+            or self.execution_controller.get_state() != "succeeded"
+        ):
+            self.activityActionFailed.emit(
+                "View Plots",
+                "Generate a dataset successfully before opening its plot results.",
+            )
+            return False
+        return self._view_configured_generation(self.execution_controller.get_result_request_id())
+
+    @Slot(result=bool, name="requestInspectionExplore")
+    def request_inspection_explore(self) -> bool:
+        if not self.inspection_controller.get_can_explore_plots():
+            self.activityActionFailed.emit(
+                "Explore inspected data",
+                self.inspection_controller.get_issue()
+                or "Inspect a compatible generated dataset before opening session plotting.",
+            )
+            return False
+        self.navigationRequested.emit("visualization", "explore")
+        return True
+
+    @Slot(result=bool, name="requestConfiguredPlotExploreRun")
+    def request_configured_plot_explore_run(self) -> bool:
+        controller = self.configured_plot_results_controller
+        if not controller.get_can_explore_run():
+            self.activityActionFailed.emit(
+                "Explore this run",
+                "Select a successful generated run with a recorded output directory.",
+            )
+            return False
+        return self._inspect_for_exploration(controller.get_selected_output_directory())
+
+    @Slot(result=bool, name="requestActivityInspectRun")
+    def request_activity_inspect_run(self) -> bool:
+        summary = self.activity_controller.get_selected_record_summary()
+        source = summary.get("outputDirectory")
+        if not self.activity_controller.get_can_inspect_run() or not isinstance(source, str):
+            self.activityActionFailed.emit(
+                "Inspect Run",
+                "Select a completed generation record with a recorded output directory.",
+            )
+            return False
+        return self._inspect_run(source, navigate=True)
+
+    @Slot(result=bool, name="requestActivityViewPlots")
+    def request_activity_view_plots(self) -> bool:
+        record_id = self.activity_controller.get_selected_record_id()
+        if not self.activity_controller.get_can_view_plots() or not record_id:
+            self.activityActionFailed.emit(
+                "View Plots",
+                "Select a completed generation record with a recorded output directory.",
+            )
+            return False
+        return self._view_configured_generation(record_id)
+
+    @Slot(result=bool, name="requestActivityRecordRemoval")
+    def request_activity_record_removal(self) -> bool:
+        return self.activity_controller.remove_selected_record()
+
+    @Slot(result=bool, name="requestActivityRecoveryRemoval")
+    def request_activity_recovery_removal(self) -> bool:
+        return self.activity_controller.remove_selected_recovery()
 
     @Slot(str, result=bool, name="requestSavePathSelected")
     def request_save_path_selected(self, path: str) -> bool:
@@ -497,6 +749,16 @@ class DesktopController(QObject):
             return False
         return self.visualization_draft.begin_edit_plot(row) is not None
 
+    @Slot(int, result=bool, name="requestConfiguredPlotSessionEdit")
+    def request_configured_plot_session_edit(self, row: int) -> bool:
+        payload = self.visualization_draft.resolved_plot_payload(row)
+        if payload is None:
+            return False
+        started = self.session_plot_controller.begin_edit_from_request(payload)
+        if started:
+            self.navigationRequested.emit("visualization", "explore")
+        return started
+
     @Slot(result=bool, name="requestVisualizationCommitPlot")
     def request_visualization_commit_plot(self) -> bool:
         return self.visualization_draft.commit_plot()
@@ -516,6 +778,46 @@ class DesktopController(QObject):
         if not self._guard_active_plot_edit("plot movement"):
             return False
         return self.visualization_draft.move_plot(row, offset)
+
+    @Slot(str, result=bool, name="requestConfiguredPlotGeneration")
+    def request_configured_plot_generation(self, request_id: str) -> bool:
+        return self.configured_plot_results_controller.select_generation(request_id)
+
+    @Slot(int, result=bool, name="requestConfiguredPlotOutcome")
+    def request_configured_plot_outcome(self, index: int) -> bool:
+        return self.configured_plot_results_controller.select_outcome(index)
+
+    @Slot(str, result=bool, name="requestConfiguredPlotExport")
+    def request_configured_plot_export(self, destination: str) -> bool:
+        return self.configured_plot_results_controller.export_selected(_local_path(destination))
+
+    @Slot(result=bool, name="requestConfiguredPlotOpenPdf")
+    def request_configured_plot_open_pdf(self) -> bool:
+        return self.configured_plot_results_controller.open_selected_pdf()
+
+    @Slot(str, result=bool, name="requestSessionPlotBeginEdit")
+    def request_session_plot_begin_edit(self, output_format: str) -> bool:
+        return self.session_plot_controller.begin_edit(output_format)
+
+    @Slot(result=bool, name="requestSessionPlotCancelEdit")
+    def request_session_plot_cancel_edit(self) -> bool:
+        return self.session_plot_controller.cancel_edit()
+
+    @Slot(result=bool, name="requestSessionPlotRender")
+    def request_session_plot_render(self) -> bool:
+        return self.session_plot_controller.render()
+
+    @Slot(result=bool, name="requestSessionPlotForceStop")
+    def request_session_plot_force_stop(self) -> bool:
+        return self.session_plot_controller.force_stop()
+
+    @Slot(str, result=bool, name="requestSessionPlotExport")
+    def request_session_plot_export(self, destination: str) -> bool:
+        return self.session_plot_controller.export_result(_local_path(destination))
+
+    @Slot(result=bool, name="requestSessionPlotOpenPdf")
+    def request_session_plot_open_pdf(self) -> bool:
+        return self.session_plot_controller.open_result_pdf()
 
     @Slot(QObject, str, str, name="requestPlotFieldChange")
     def request_plot_field_change(self, candidate: QObject, field: str, value: str) -> None:
@@ -591,8 +893,18 @@ class DesktopController(QObject):
         )
 
     def _owned_active_plot(self, candidate: QObject) -> PlotDraft | None:
-        active = self.visualization_draft.get_active_plot_draft()
-        return active if isinstance(active, PlotDraft) and active is candidate else None
+        active_drafts = (
+            self.visualization_draft.get_active_plot_draft(),
+            self.session_plot_controller.get_active_plot_draft(),
+        )
+        return next(
+            (
+                active
+                for active in active_drafts
+                if isinstance(active, PlotDraft) and active is candidate
+            ),
+            None,
+        )
 
     def _owned_visualization_mapping(
         self,
@@ -606,12 +918,15 @@ class DesktopController(QObject):
             if not self._guard_active_plot_edit("shared visualization mapping change"):
                 return None
             return candidate if isinstance(candidate, MappingDraftModel) else None
-        active = self.visualization_draft.get_active_plot_draft()
-        if not isinstance(active, PlotDraft):
-            return None
-        mappings = (active.filters, active.series, active.display_units)
-        if isinstance(candidate, MappingDraftModel) and candidate in mappings:
-            return candidate
+        for active in (
+            self.visualization_draft.get_active_plot_draft(),
+            self.session_plot_controller.get_active_plot_draft(),
+        ):
+            if not isinstance(active, PlotDraft):
+                continue
+            mappings = (active.filters, active.series, active.display_units)
+            if isinstance(candidate, MappingDraftModel) and candidate in mappings:
+                return candidate
         return None
 
     @Slot(str, str, result=bool, name="prepareCreateWorkspace")
@@ -692,6 +1007,8 @@ class DesktopController(QObject):
             return True
         if not self._guard_active_plot_edit("closing Carnopy"):
             return False
+        if not self._guard_session_plot_edit("closing Carnopy"):
+            return False
         self.workspace_controller.cancel_pending()
         if self.request_coordinator.is_busy:
             return False
@@ -704,11 +1021,46 @@ class DesktopController(QObject):
 
     @Slot(result=bool, name="requestShutdown")
     def request_shutdown(self) -> bool:
-        if not self._guard_active_plot_edit("closing Carnopy"):
+        active_session = self.request_coordinator.active_session
+        if active_session is not None:
+            if (
+                active_session.owner == "execution"
+                and active_session.request_type == "generate_dataset"
+            ):
+                self.busyShutdownConfirmationRequested.emit(
+                    "cancel_generation",
+                    "Dataset generation is active. Cancel it cooperatively and close "
+                    "Carnopy after the worker and activity record finish safely?",
+                )
+            elif (
+                active_session.owner == "plot"
+                and active_session.request_type == "render_plot"
+                and self.session_plot_controller.get_can_force_stop()
+            ):
+                self.busyShutdownConfirmationRequested.emit(
+                    "force_stop_plot",
+                    "A session plot render is active. Force-stop it and close Carnopy only "
+                    "after its owned staging cleanup succeeds?",
+                )
+            else:
+                self.workspace_controller.report_error(
+                    "Wait for the active worker request to finish before closing Carnopy."
+                )
             return False
         if self.request_coordinator.is_busy:
             self.workspace_controller.report_error(
                 "Wait for the active worker request to finish before closing Carnopy."
+            )
+            return False
+        if self.get_has_any_transient_edit():
+            edit_names = []
+            if self.get_has_active_plot_edit():
+                edit_names.append("configured plot")
+            if self.get_has_session_plot_edit():
+                edit_names.append("session plot")
+            description = " and ".join(edit_names)
+            self.transientEditShutdownConfirmationRequested.emit(
+                f"A {description} edit is still open. Cancel the edit and close Carnopy?"
             )
             return False
         if (
@@ -720,12 +1072,52 @@ class DesktopController(QObject):
         self._shutdown_discard_confirmed = False
         return self.shutdown()
 
+    @Slot(bool, result=bool, name="confirmBusyShutdown")
+    def confirm_busy_shutdown(self, confirmed: bool) -> bool:
+        if not confirmed:
+            self._pending_busy_shutdown = ""
+            return False
+        session = self.request_coordinator.active_session
+        if session is None:
+            return False
+        if session.owner == "execution" and session.request_type == "generate_dataset":
+            self._pending_busy_shutdown = "generation_waiting"
+            self._continue_pending_busy_shutdown()
+            return True
+        if session.owner == "plot" and session.request_type == "render_plot":
+            if not self.session_plot_controller.force_stop():
+                self.workspace_controller.report_error(
+                    "The plot worker cannot be force-stopped safely yet."
+                )
+                return False
+            self._pending_busy_shutdown = "plot"
+            return True
+        return False
+
+    @Slot(bool, result=bool, name="confirmTransientEditShutdown")
+    def confirm_transient_edit_shutdown(self, discard_confirmed: bool) -> bool:
+        if not discard_confirmed:
+            return False
+        if self.request_coordinator.is_busy:
+            self.workspace_controller.report_error(
+                "Wait for the active worker request to finish before closing Carnopy."
+            )
+            return False
+        if self.get_has_active_plot_edit() and not self.visualization_draft.cancel_plot():
+            return False
+        if self.get_has_session_plot_edit() and not self.session_plot_controller.cancel_edit():
+            return False
+        self.closeWindowRequested.emit()
+        return True
+
     @Slot(bool, result=bool, name="confirmShutdown")
     def confirm_shutdown(self, discard_confirmed: bool) -> bool:
         if not discard_confirmed:
             self._shutdown_discard_confirmed = False
             return False
         if not self._guard_active_plot_edit("closing Carnopy"):
+            return False
+        if not self._guard_session_plot_edit("closing Carnopy"):
             return False
         if self.request_coordinator.is_busy:
             self.workspace_controller.report_error(
@@ -737,7 +1129,15 @@ class DesktopController(QObject):
         return True
 
     def _workspace_activated(self, value: object) -> None:
+        self._pending_explore_source = None
         self.dataset_config_controller.set_workspace(value)
+        self.execution_controller.set_workspace(value if isinstance(value, Workspace) else None)
+        self.session_plot_controller.set_workspace(value if isinstance(value, Workspace) else None)
+        self.inspection_controller.set_workspace(value if isinstance(value, Workspace) else None)
+        self.activity_controller.set_workspace(value if isinstance(value, Workspace) else None)
+        self.configured_plot_results_controller.set_workspace(
+            value if isinstance(value, Workspace) else None
+        )
         self.workspace_state_changed.emit()
         self.workspace_confirmation_changed.emit()
 
@@ -745,15 +1145,56 @@ class DesktopController(QObject):
         self.workspace_state_changed.emit()
         self.workspace_confirmation_changed.emit()
 
-    def _request_state_changed(self, _busy: bool) -> None:
+    def _request_state_changed(self, busy: bool) -> None:
         self.workspace_state_changed.emit()
+        if not busy and self._pending_busy_shutdown:
+            QTimer.singleShot(0, self._complete_busy_shutdown)
+
+    def _continue_pending_busy_shutdown(self) -> None:
+        if self._pending_busy_shutdown != "generation_waiting":
+            return
+        session = self.request_coordinator.active_session
+        if (
+            session is None
+            or session.owner != "execution"
+            or session.request_type != "generate_dataset"
+            or not self.execution_controller.get_can_cancel()
+        ):
+            return
+        self._pending_busy_shutdown = "generation"
+        if not self.execution_controller.cancel():
+            self._pending_busy_shutdown = "generation_waiting"
+
+    def _complete_busy_shutdown(self) -> None:
+        mode, self._pending_busy_shutdown = self._pending_busy_shutdown, ""
+        if not mode or self.request_coordinator.is_busy:
+            return
+        if mode == "plot":
+            cleanup_issue = self.session_plot_controller.get_cleanup_issue()
+            if cleanup_issue:
+                message = f"Plot staging cleanup failed; Carnopy remains open: {cleanup_issue}"
+                self.workspace_controller.report_error(message)
+                self.activityActionFailed.emit("Close Carnopy", message)
+                return
+            if (
+                self.session_plot_controller.get_has_active_edit()
+                and not self.session_plot_controller.cancel_edit()
+            ):
+                self.workspace_controller.report_error(
+                    "The stopped session plot edit could not be cancelled safely."
+                )
+                return
+        if self.request_shutdown():
+            self.closeWindowRequested.emit()
 
     def _active_plot_state_changed(self) -> None:
         self.workspace_state_changed.emit()
         self.workspace_confirmation_changed.emit()
 
     def _guard_workspace_change(self, *, before_commit: bool) -> bool:
-        if self._guard_active_plot_edit():
+        if self._guard_active_plot_edit() and self._guard_session_plot_edit(
+            "replacing the workspace"
+        ):
             return True
         if before_commit:
             self.workspace_controller.cancel_pending()
@@ -772,8 +1213,78 @@ class DesktopController(QObject):
         )
         return False
 
+    def _guard_session_plot_edit(self, operation: str = "this operation") -> bool:
+        if self.session_plot_controller.can_replace_inspection(operation):
+            return True
+        self.workspace_controller.report_error(self.session_plot_controller.get_issue())
+        return False
+
     def _plot_commit_rejected(self, field: str, row: int, _message: str) -> None:
         self.attentionRequested.emit("visualization", field, row)
+
+    def _inspect_run(self, source: str, *, navigate: bool) -> bool:
+        if not source:
+            self.activityActionFailed.emit(
+                "Inspect Run",
+                "The selected generation record has no output directory.",
+            )
+            return False
+        if not self.inspection_controller.inspect_source(source):
+            self.activityActionFailed.emit(
+                "Inspect Run",
+                self.inspection_controller.get_issue()
+                or "The selected run could not be submitted for inspection.",
+            )
+            return False
+        if navigate:
+            self.navigationRequested.emit("inspect", "")
+        return True
+
+    def _view_configured_generation(self, record_id: str) -> bool:
+        if not record_id:
+            self.activityActionFailed.emit(
+                "View Plots",
+                "The selected generation has no persisted request identity.",
+            )
+            return False
+        if not self.configured_plot_results_controller.select_generation(record_id):
+            self.activityActionFailed.emit(
+                "View Plots",
+                self.configured_plot_results_controller.get_issue()
+                or "The selected plot evidence could not be opened.",
+            )
+            return False
+        self.navigationRequested.emit("visualization", "configured")
+        return True
+
+    def _inspect_for_exploration(self, source: str) -> bool:
+        if self._pending_explore_source is not None or not source:
+            return False
+        resolved = Path(source).expanduser().resolve()
+        self._pending_explore_source = resolved
+        if self.inspection_controller.inspect_source(str(resolved)):
+            return True
+        self._pending_explore_source = None
+        self.activityActionFailed.emit(
+            "Explore this run",
+            self.inspection_controller.get_issue()
+            or "The selected run could not be submitted for inspection.",
+        )
+        return False
+
+    def _pending_explore_inspection_loaded(self, value: object) -> None:
+        pending = self._pending_explore_source
+        if pending is None or not isinstance(value, Path) or value.resolve() != pending:
+            return
+        self._pending_explore_source = None
+        self.navigationRequested.emit("visualization", "explore")
+
+    def _pending_explore_inspection_failed(self, value: object, message: str) -> None:
+        pending = self._pending_explore_source
+        if pending is None or not isinstance(value, Path) or value.resolve() != pending:
+            return
+        self._pending_explore_source = None
+        self.activityActionFailed.emit("Explore this run", message)
 
     def _queue_workspace_request(
         self,

@@ -5,7 +5,6 @@ from typing import Any
 
 import pandas as pd
 
-from carnopy._version import __version__
 from carnopy.backends.coolprop_models import (
     MODEL_PREFIXES,
     supported_properties,
@@ -21,6 +20,7 @@ from carnopy.provenance import (
     METADATA_SCHEMA_VERSION,
     REFERENCE_STATE_POLICY,
     Identity,
+    generator_metadata,
     runtime_versions,
 )
 from carnopy.results import RunStatus
@@ -42,6 +42,7 @@ def build_metadata(
     output_request_id: str,
     dataset_formats: tuple[str, ...],
 ) -> dict[str, Any]:
+    generator = generator_metadata()
     return {
         "metadata_schema_version": METADATA_SCHEMA_VERSION,
         "dataset_schema_version": DATASET_SCHEMA_VERSION,
@@ -53,7 +54,8 @@ def build_metadata(
         "run_status": run_status,
         "mode": config.mode,
         "created_at_utc": created_at_utc,
-        "carnopy_version": __version__,
+        "carnopy_version": generator["version"],
+        "generator": generator,
         "backend": config.backend.name,
         "backend_model": config.backend.model,
         "backend_version": backend_version,

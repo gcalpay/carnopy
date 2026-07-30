@@ -112,6 +112,15 @@ Item {
         root.reveal(target);
     }
 
+    ListModel {
+        id: backendChoices
+
+        ListElement {
+            display: "CoolProp"
+            value: "coolprop"
+        }
+    }
+
     onAttentionSerialChanged: Qt.callLater(function () {
         root.focusField(root.attentionField, root.attentionRow);
     })
@@ -237,12 +246,23 @@ Item {
                         text: qsTr("Backend")
                     }
 
-                    Label {
+                    AppComboBox {
+                        id: backendChoice
+
+                        Accessible.description: qsTr(
+                                                    "CoolProp is the only scientific backend supported in this release")
+                        Accessible.name: qsTr("Scientific backend")
                         Layout.fillWidth: true
-                        color: Theme.text
-                        font.family: Theme.sansFamily
-                        font.pixelSize: 12
-                        text: qsTr("CoolProp")
+                        currentIndex: 0
+                        delegateObjectPrefix: "datasetBackendChoice"
+                        model: backendChoices
+                        objectName: "datasetBackendChoice"
+                        textRole: "display"
+                        valueRole: "value"
+
+                        ToolTip.text: qsTr(
+                                          "CoolProp is the only scientific backend supported in Carnopy 0.1.0a4.")
+                        ToolTip.visible: hovered
                     }
 
                     Label {

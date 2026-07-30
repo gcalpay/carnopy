@@ -237,7 +237,9 @@ def dynamic_range_advisories(
         Advisory(
             code="large_linear_dynamic_range",
             message=(
-                f"the linear {subject} range spans {ratio:.6g}:1; consider logarithmic scaling"
+                f"{subject} values range from {minimum:.6g} to {maximum:.6g}; "
+                f"the maximum is {ratio:.6g} times the minimum. Logarithmic scaling "
+                "can make variation among lower positive values easier to distinguish."
             ),
             dynamic_range_ratio=ratio,
         ),

@@ -11,10 +11,13 @@ Item {
     id: root
 
     function openImportDialog() {
+        if (root.importFolder.toString().length > 0)
+            importConfigurationDialog.currentFolder = root.importFolder;
         importConfigurationDialog.open();
     }
 
     required property var desktopController
+    required property url importFolder
     property int expectedColumns: 1
     readonly property bool controllerAvailable: desktopController !== null
     readonly property string workspaceState: controllerAvailable ? desktopController.workspaceState :
@@ -355,16 +358,16 @@ Item {
             Card {
                 Layout.fillWidth: true
                 subtitle: qsTr(
-                              "Worker-authoritative import is activated with the Dataset workflow; no file is parsed in QML.")
-                title: qsTr("Import Existing Configuration")
+                              "Choose YAML from configs/. Generated datasets are stored in outputs/ and rendered plots in figures/. External YAML remains importable.")
+                title: qsTr("Open or Import Configuration")
                 visible: root.workspaceState === "landing"
 
                 AppButton {
                     enabled: root.controllerAvailable
                              && root.desktopController.datasetConfigController.canImport
                     objectName: "importDatasetButton"
-                    onClicked: importConfigurationDialog.open()
-                    text: qsTr("Import YAML")
+                    onClicked: root.openImportDialog()
+                    text: qsTr("Choose YAML")
                 }
             }
         }

@@ -8,12 +8,22 @@ import pandas as pd
 import pyarrow.parquet as pq
 import pytest
 
+import carnopy.provenance as provenance
+from carnopy._version import __version__
 from carnopy.api import generate_dataset
 from carnopy.domain.failures import OutputError
 from carnopy.outputs.layout import cleanup_run_layout, create_run_layout
-from carnopy.outputs.writers import hash_artifacts
+from carnopy.outputs.writers import hash_artifacts, write_dataset_formats
 from carnopy.provenance import sha256_bytes, sha256_file
 from carnopy.templates import template_text
+
+
+def test_generator_metadata_adds_only_a_configured_real_doi(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(provenance, "SOFTWARE_DOI", "https://doi.org/10.5281/zenodo.1234567")
+
+    assert provenance.generator_metadata()["doi"] == ("https://doi.org/10.5281/zenodo.1234567")
 
 
 @pytest.mark.parametrize(
@@ -100,6 +110,14 @@ def test_generation_writes_complete_immutable_artifacts(
     assert metadata["generation_context_id"] == result.generation_context_id
     assert metadata["output_request_id"] == result.output_request_id
     assert metadata["dataset_formats"] == ["csv", "parquet"]
+    assert metadata["generator"] == {
+        "name": "Carnopy",
+        "version": __version__,
+        "repository": "https://github.com/gcalpay/carnopy",
+        "license": "MIT",
+    }
+    assert metadata["carnopy_version"] == metadata["generator"]["version"]
+    assert "doi" not in metadata["generator"]
     assert str(property_config_path.resolve()) not in json.dumps(metadata)
     assert metadata["artifact_hashes"]["dataset.csv"]
     reference = result.output_directory / "config.reference.yaml"
@@ -114,7 +132,27 @@ def test_generation_writes_complete_immutable_artifacts(
     assert metadata["artifact_hashes"]["config.reference.yaml"] == sha256_file(reference)
     schema_metadata = pq.read_schema(result.output_directory / "dataset.parquet").metadata
     assert schema_metadata is not None
+    assert schema_metadata[b"carnopy.dataset_schema_version"] == b"2"
     assert b"carnopy.units" in schema_metadata
+    assert schema_metadata[b"carnopy.name"] == b"Carnopy"
+    assert schema_metadata[b"carnopy.version"] == __version__.encode("utf-8")
+    assert schema_metadata[b"carnopy.repository"] == (b"https://github.com/gcalpay/carnopy")
+    assert schema_metadata[b"carnopy.software_license"] == b"MIT"
+    assert b"carnopy.software_doi" not in schema_metadata
+
+
+def test_csv_serialization_is_unchanged_by_generator_metadata(tmp_path: Path) -> None:
+    frame = pd.DataFrame({"temperature_K": [273.15, 300.0], "valid": [True, False]})
+
+    written = write_dataset_formats(
+        frame,
+        tmp_path,
+        {"temperature_K": "K"},
+        dataset_formats=("csv",),
+    )
+
+    assert written == ["dataset.csv"]
+    assert (tmp_path / "dataset.csv").read_text(encoding="utf-8") == frame.to_csv(index=False)
 
 
 @pytest.mark.parametrize(

@@ -16,6 +16,7 @@ from PySide6.QtCore import (
     QCoreApplication,
     QEventLoop,
     QMargins,
+    QObject,
     QPoint,
     QRect,
     QSettings,
@@ -27,6 +28,7 @@ from PySide6.QtGui import QColor, QPalette, QScreen, QWindow
 from PySide6.QtQml import QQmlError
 from PySide6.QtWidgets import QApplication
 
+import carnopy.app.qml_runtime as qml_runtime_module
 from carnopy.app.application_identity import APPLICATION_NAME, ORGANIZATION_NAME
 from carnopy.app.qml_resources import (
     MANDATORY_ICON_FILES,
@@ -40,8 +42,11 @@ from carnopy.app.qml_runtime import (
     QmlStartupError,
     QmlWarningCapture,
     _acquire_instance_lock,
+    _configure_quick_style,
     create_qml_runtime,
     fitted_window_frame,
+    screen_name_for_frame,
+    screen_name_for_window_state,
 )
 from carnopy.app.qml_settings import (
     NORMAL_SCREEN_KEY,
@@ -111,6 +116,7 @@ def test_private_qml_runtime_loads_one_warning_free_root(
     assert root.property("runtimeReady") is True
     assert root.property("desktopController") is runtime.controller
     assert root.property("qmlSettings") is runtime.controller.qml_settings
+    assert runtime.plot_image_provider.registry is runtime.controller.plot_preview_registry
     assert root.property("geometryTrackingReady") is True
     assert root.property("startupWorkspace") == str(workspace.root)
     assert runtime.controller.workspace_controller.workspace == workspace
@@ -131,6 +137,20 @@ def test_private_qml_runtime_loads_one_warning_free_root(
     application.processEvents()
 
 
+def test_qml_quick_style_is_not_reset_after_basic_controls_are_loaded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed_names = iter(("Fusion", "Basic"))
+    set_calls: list[str] = []
+    monkeypatch.setattr(qml_runtime_module.QQuickStyle, "name", lambda: next(observed_names))
+    monkeypatch.setattr(qml_runtime_module.QQuickStyle, "setStyle", set_calls.append)
+
+    _configure_quick_style()
+    _configure_quick_style()
+
+    assert set_calls == ["Basic"]
+
+
 def test_qml_runtime_applies_each_theme_palette_immediately_and_restores_it(
     application: QApplication,
     tmp_path: Path,
@@ -138,11 +158,20 @@ def test_qml_runtime_applies_each_theme_palette_immediately_and_restores_it(
 ) -> None:
     previous = QPalette(application.palette())
     settings = QSettings(str(tmp_path / "palette.ini"), QSettings.Format.IniFormat)
+    real_engine = qml_runtime_module.QQmlApplicationEngine
+    engine_creation_highlights: list[QColor] = []
+
+    def create_engine() -> object:
+        engine_creation_highlights.append(application.palette().color(QPalette.ColorRole.Highlight))
+        return real_engine()
+
+    monkeypatch.setattr(qml_runtime_module, "QQmlApplicationEngine", create_engine)
     runtime = create_qml_runtime(settings=settings, application_arguments=[])
     controller = runtime.controller.qml_settings
     root = runtime.engine.rootObjects()[0]
 
     assert controller.get_theme_mode() == "dark"
+    assert engine_creation_highlights == [QColor("#159660")]
     assert application.palette().color(QPalette.ColorRole.Window) == QColor("#0f0f0f")
     assert root.property("color") == QColor("#0f0f0f")
 
@@ -249,6 +278,58 @@ def test_maximized_window_is_placed_while_hidden_before_being_shown(
     assert runtime.close()
 
 
+def test_closing_screen_uses_window_frame_instead_of_stale_qt_screen() -> None:
+    screens = (
+        ("main", QRect(0, 0, 1920, 1080)),
+        ("secondary", QRect(1920, 0, 1280, 1024)),
+    )
+
+    assert (
+        screen_name_for_frame(
+            QRect(1920, 0, 1280, 1024),
+            screens,
+            fallback_name="main",
+        )
+        == "secondary"
+    )
+    assert (
+        screen_name_for_window_state(
+            QRect(1920, 0, 1280, 1024),
+            QRect(142, 116, 1440, 884),
+            True,
+            screens,
+            fallback_name="secondary",
+        )
+        == "main"
+    )
+    assert (
+        screen_name_for_window_state(
+            QRect(1920, 0, 1280, 1024),
+            QRect(142, 116, 1440, 884),
+            False,
+            screens,
+            fallback_name="secondary",
+        )
+        == "secondary"
+    )
+    assert (
+        screen_name_for_frame(
+            QRect(0, 0, 1920, 1080),
+            screens,
+            fallback_name="secondary",
+        )
+        == "main"
+    )
+    assert (
+        screen_name_for_frame(
+            QRect(5000, 5000, 800, 600),
+            screens,
+            fallback_name="secondary",
+        )
+        == "secondary"
+    )
+
+
 def test_qml_instance_lock_rejects_overlapping_launches(
     application: QApplication,
 ) -> None:
@@ -320,6 +401,44 @@ def test_qml_close_approval_uses_one_bypass_then_restores_the_guard(
     application.processEvents()
     assert len(calls) == 2
     assert root.property("visible") is True
+    assert runtime.close()
+
+
+def test_qml_close_offers_an_explicit_transient_edit_decision(
+    application: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runtime = create_qml_runtime(
+        settings=QSettings(str(tmp_path / "transient-close.ini"), QSettings.Format.IniFormat),
+        application_arguments=[],
+    )
+    root = runtime.engine.rootObjects()[0]
+    active = {"session": True}
+    monkeypatch.setattr(runtime.controller, "get_has_active_plot_edit", lambda: False)
+    monkeypatch.setattr(
+        runtime.controller,
+        "get_has_session_plot_edit",
+        lambda: active["session"],
+    )
+    monkeypatch.setattr(
+        runtime.controller.session_plot_controller,
+        "cancel_edit",
+        lambda: active.update(session=False) is None,
+    )
+
+    root.close()
+    application.processEvents()
+
+    dialog = root.findChild(QObject, "transientEditShutdownDialog")
+    assert dialog is not None
+    assert dialog.property("opened") is True
+    assert "session plot edit" in dialog.property("bodyText")
+
+    assert runtime.controller.confirm_transient_edit_shutdown(True)
+    application.processEvents()
+    application.processEvents()
+    assert root.property("visible") is False
     assert runtime.close()
 
 
@@ -413,7 +532,7 @@ for name in ("CoolProp", "numpy", "pandas", "pyarrow", "matplotlib"):
     assert completed.returncode == 0, completed.stdout + completed.stderr
 
 
-def test_private_qml_launcher_smoke_exits_cleanly() -> None:
+def test_module_qml_launcher_smoke_exits_cleanly() -> None:
     environment = os.environ.copy()
     environment["QT_QPA_PLATFORM"] = "offscreen"
     completed = subprocess.run(
@@ -480,4 +599,4 @@ def test_qml_sources_pass_non_writing_qt_tooling() -> None:
         timeout=30,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
-    assert completed.stdout == "QML checks passed for 32 file(s).\n"
+    assert completed.stdout == "QML checks passed for 39 file(s).\n"

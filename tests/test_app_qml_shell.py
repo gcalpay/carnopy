@@ -36,10 +36,10 @@ ROOT = Path(__file__).resolve().parents[1]
 NAVIGATION_ORDER = (
     "Workspace",
     "Dataset",
-    "Visualization",
     "YAML Preview",
     "Run",
     "Inspect",
+    "Visualization",
     "Activity and Recovery",
     "Model Sweeps",
     "ML Preparation",
@@ -147,7 +147,7 @@ def test_shell_uses_exact_navigation_order_and_disables_future_workflows(
     )
     assert tuple(
         model.data(model.index(row, 0), available_role) for row in range(model.rowCount())
-    ) == (True, True, True, True, False, False, False, False, False, False)
+    ) == (True, True, True, True, True, True, True, False, False, False)
     nav_source = (ROOT / "src/carnopy/app/qml/Carnopy/components/NavRail.qml").read_text(
         encoding="utf-8"
     )
@@ -159,6 +159,12 @@ def test_shell_uses_exact_navigation_order_and_disables_future_workflows(
     assert "root.visualizationAvailable" in nav_source
     assert 'pageKey !== "yaml"' in nav_source
     assert "root.yamlAvailable" in nav_source
+    assert '!== "run"' in nav_source
+    assert "root.runAvailable" in nav_source
+    assert 'pageKey !== "inspect"' in nav_source
+    assert "root.inspectAvailable" in nav_source
+    assert '!== "activity"' in nav_source
+    assert "root.activityAvailable" in nav_source
     assert root.property("hasFake3dViewport") is False
 
 
@@ -651,14 +657,14 @@ if not runtime.close():
         assert completed.returncode == 0, completed.stdout + completed.stderr
 
 
-def test_public_launchers_still_resolve_to_widgets() -> None:
-    from carnopy.app import launcher
+def test_public_launchers_resolve_directly_to_qml() -> None:
+    from carnopy.app import qml_launcher
 
-    assert launcher.main.__module__ == "carnopy.app.launcher"
-    assert launcher.main_gui.__module__ == "carnopy.app.launcher"
-    source = (ROOT / "src/carnopy/app/launcher.py").read_text(encoding="utf-8")
-    assert "from carnopy.app.window import run_application" in source
-    assert "qml_runtime" not in source
+    assert qml_launcher.main_app.__module__ == "carnopy.app.qml_launcher"
+    assert qml_launcher.main_gui.__module__ == "carnopy.app.qml_launcher"
+    source = (ROOT / "src/carnopy/app/qml_launcher.py").read_text(encoding="utf-8")
+    assert "from carnopy.app.qml_runtime import QmlStartupError, run_qml_application" in source
+    assert "carnopy.app.window" not in source
 
 
 def test_shell_imports_remain_scientifically_isolated() -> None:

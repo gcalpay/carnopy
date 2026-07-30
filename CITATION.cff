@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "To cite Carnopy, use the metadata below."
+title: "Carnopy"
+type: software
+version: "0.1.0a4.dev0"
+license: MIT
+
+authors:
+  - name: "gcalpay"
+
+abstract: >-
+  Reproducible thermophysical datasets from scientific backends with
+  visualization, provenance, and leakage-aware preparation for physics-informed
+  machine-learning and engineering workflows.
+
+repository-code: "https://github.com/gcalpay/carnopy"
+url: "https://carnopy.org"

@@ -21,6 +21,40 @@ from carnopy.app.field_ids import (
 from carnopy.app.mapping_draft import MappingDraftModel
 from carnopy.visualization.requests import PLOT_NAME_PATTERN
 
+PLOT_KIND_LABELS = {
+    "property_curves": "Property curves",
+    "property_heatmap": "Sampled property heatmap",
+    "xy": "Custom X\N{EN DASH}Y plot",
+    "pv": "p\N{EN DASH}v emitted-state diagram",
+    "ts": "T\N{EN DASH}s emitted-state diagram",
+}
+PLOT_KIND_HELP = {
+    "property_curves": (
+        "The selected property is the Y axis. The chosen sampled coordinate is the "
+        "X axis, and the other coordinate becomes the curve series and color encoding. "
+        "Select exact series values when the full family would be crowded."
+    ),
+    "property_heatmap": (
+        "The two sampled coordinates form the X and Y axes, and the selected property "
+        "is encoded by color. Only emitted samples are shown; Carnopy does not "
+        "interpolate missing states."
+    ),
+    "xy": (
+        "Plots one emitted field against another. Choose both axes explicitly; grouping "
+        "and series selections use only recorded dataset values."
+    ),
+    "pv": (
+        "Uses emitted pressure and specific_volume = 1 / mass_density. Missing or "
+        "invalid samples remain gaps. It does not construct a cycle, process path, "
+        "phase envelope, or saturation dome."
+    ),
+    "ts": (
+        "Uses emitted temperature and specific entropy. Missing or invalid samples "
+        "remain gaps. It does not construct a cycle, process path, phase envelope, "
+        "or saturation dome."
+    ),
+}
+
 
 @dataclass(frozen=True)
 class _PlotIssue:
@@ -54,11 +88,13 @@ class PlotDraft(QObject):
         parent: QObject | None = None,
         *,
         allow_format: bool = True,
+        require_explicit_fluids: bool = False,
     ) -> None:
         super().__init__(parent)
         self.capabilities = copy.deepcopy(dict(capabilities))
         self.dataset_payload = copy.deepcopy(dict(dataset_payload))
         self.allow_format = allow_format
+        self.require_explicit_fluids = require_explicit_fluids
         self.kind_choices = DraftListModel(self)
         self.property_choices = DraftListModel(self)
         self.axis_choices = DraftListModel(self)
@@ -175,6 +211,16 @@ class PlotDraft(QObject):
             self._refresh_models()
 
     kind = Property(str, get_kind, set_kind, notify=kind_changed)
+
+    def get_kind_display(self) -> str:
+        return PLOT_KIND_LABELS.get(self._kind, self._kind)
+
+    kindDisplay = Property(str, get_kind_display, notify=kind_changed)
+
+    def get_kind_help(self) -> str:
+        return PLOT_KIND_HELP.get(self._kind, "")
+
+    kindHelp = Property(str, get_kind_help, notify=kind_changed)
 
     def get_property_name(self) -> str:
         return self._property_name
@@ -464,7 +510,7 @@ class PlotDraft(QObject):
 
     def _refresh_models(self) -> None:
         kinds = self._plot_kinds()
-        self.kind_choices.replace(_choice_items(kinds, self._kind))
+        self.kind_choices.replace(_kind_choice_items(kinds, self._kind))
         self.property_choices.replace(_choice_items(self._properties(), self._property_name))
         self.axis_choices.replace(_choice_items(self._axis_fields(), self._x_field, self._y_field))
         self.group_choices.replace(_choice_items(self._group_fields(), self._group_by))
@@ -613,6 +659,12 @@ class PlotDraft(QObject):
                     f"plot {field} value {value!r} is unavailable",
                 )
         canonical_fluids = self._canonical_fluid_values(self._fluids)
+        if self.require_explicit_fluids and "fluids" in applicable and not canonical_fluids:
+            return _PlotIssue(
+                PLOT_FLUIDS,
+                -1,
+                "select at least one inspected-source fluid",
+            )
         if len(set(canonical_fluids)) != len(canonical_fluids):
             return _PlotIssue(
                 PLOT_FLUIDS,
@@ -915,6 +967,20 @@ def _choice_items(values: Iterable[str], *selected: str) -> list[DraftItem]:
                 )
             )
     return items
+
+
+def _kind_choice_items(values: Iterable[str], selected: str) -> list[DraftItem]:
+    return [
+        DraftItem(
+            value=item.value,
+            display=PLOT_KIND_LABELS.get(item.value, item.display),
+            canonical=item.canonical,
+            compatible=item.compatible,
+            selected=item.selected,
+            issue=item.issue,
+        )
+        for item in _choice_items(values, selected)
+    ]
 
 
 def _mapping(value: object) -> dict[str, object]:

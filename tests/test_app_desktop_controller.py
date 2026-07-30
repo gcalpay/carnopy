@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import cast
 
 import pytest
@@ -24,6 +25,7 @@ from PySide6.QtCore import (
 
 from carnopy.app.desktop_controller import DesktopController
 from carnopy.app.draft_models import DraftItem
+from carnopy.app.jobs import JobStore
 from carnopy.app.request_coordinator import DesktopRequestCoordinator
 from carnopy.app.workspace import initialize_workspace
 from carnopy.app.workspace_controller import (
@@ -93,6 +95,16 @@ def test_desktop_controller_owns_one_composition_and_preserves_settings_identity
     assert desktop.dataset_config_controller.coordinator is desktop.request_coordinator
     assert desktop.dataset_config_controller.dataset_draft is desktop.dataset_draft
     assert desktop.dataset_config_controller.visualization_draft is desktop.visualization_draft
+    assert desktop.execution_controller.parent() is desktop
+    assert desktop.execution_controller.coordinator is desktop.request_coordinator
+    assert desktop.execution_controller.config_controller is desktop.dataset_config_controller
+    assert desktop.activity_controller.parent() is desktop
+    assert desktop.activity_controller.coordinator is desktop.request_coordinator
+    assert desktop.configured_plot_results_controller.parent() is desktop
+    assert desktop.configured_plot_results_controller.activity is desktop.activity_controller
+    assert desktop.session_plot_controller.parent() is desktop
+    assert desktop.session_plot_controller.coordinator is desktop.request_coordinator
+    assert desktop.session_plot_controller.inspection is desktop.inspection_controller
     assert desktop.workspace_controller.coordinator is desktop.request_coordinator
     assert desktop.client.parent() is desktop
     assert desktop.request_coordinator.parent() is desktop
@@ -102,6 +114,13 @@ def test_desktop_controller_owns_one_composition_and_preserves_settings_identity
     assert desktop.property("datasetDraft") is desktop.dataset_draft
     assert desktop.property("visualizationDraft") is desktop.visualization_draft
     assert desktop.property("datasetConfigController") is desktop.dataset_config_controller
+    assert desktop.property("executionController") is desktop.execution_controller
+    assert desktop.property("activityController") is desktop.activity_controller
+    assert (
+        desktop.property("configuredPlotResultsController")
+        is desktop.configured_plot_results_controller
+    )
+    assert desktop.property("sessionPlotController") is desktop.session_plot_controller
     assert (
         desktop.workspace_controller.property("recentWorkspaces")
         is desktop.workspace_controller.recent_model
@@ -202,6 +221,119 @@ def test_qml_shutdown_refuses_an_active_worker_without_closing(
     assert desktop.shutdown()
 
 
+def test_qml_shutdown_cancels_generation_then_closes_after_safe_completion(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    confirmations: list[tuple[str, str]] = []
+    cancellations: list[str] = []
+    close_requests: list[str] = []
+    desktop.busyShutdownConfirmationRequested.connect(
+        lambda mode, message: confirmations.append((mode, message))
+    )
+    desktop.closeWindowRequested.connect(lambda: close_requests.append("close"))
+    desktop.request_coordinator._active_session = SimpleNamespace(
+        owner="execution",
+        request_type="generate_dataset",
+    )
+    monkeypatch.setattr(desktop.execution_controller, "get_can_cancel", lambda: True)
+    monkeypatch.setattr(
+        desktop.execution_controller,
+        "cancel",
+        lambda: cancellations.append("cancel") or True,
+    )
+
+    assert not desktop.request_shutdown()
+    assert confirmations == [
+        (
+            "cancel_generation",
+            "Dataset generation is active. Cancel it cooperatively and close Carnopy "
+            "after the worker and activity record finish safely?",
+        )
+    ]
+    assert not desktop.confirm_busy_shutdown(False)
+    assert cancellations == []
+
+    assert not desktop.request_shutdown()
+    assert desktop.confirm_busy_shutdown(True)
+    assert cancellations == ["cancel"]
+    desktop.request_coordinator._active_session = None
+    desktop._complete_busy_shutdown()
+
+    assert close_requests == ["close"]
+
+
+def test_plot_cleanup_failure_aborts_pending_busy_shutdown(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    confirmations: list[tuple[str, str]] = []
+    close_requests: list[str] = []
+    desktop.busyShutdownConfirmationRequested.connect(
+        lambda mode, message: confirmations.append((mode, message))
+    )
+    desktop.closeWindowRequested.connect(lambda: close_requests.append("close"))
+    desktop.request_coordinator._active_session = SimpleNamespace(
+        owner="plot",
+        request_type="render_plot",
+    )
+    monkeypatch.setattr(desktop.session_plot_controller, "get_can_force_stop", lambda: True)
+    monkeypatch.setattr(desktop.session_plot_controller, "force_stop", lambda: True)
+
+    assert not desktop.request_shutdown()
+    assert confirmations[0][0] == "force_stop_plot"
+    assert desktop.confirm_busy_shutdown(True)
+    desktop.request_coordinator._active_session = None
+    monkeypatch.setattr(
+        desktop.session_plot_controller,
+        "get_cleanup_issue",
+        lambda: "owned staging cleanup failed",
+    )
+    desktop._complete_busy_shutdown()
+
+    assert close_requests == []
+    assert "cleanup failed" in desktop.get_workspace_error_message()
+    assert desktop.shutdown()
+
+
+def test_qml_shutdown_explicitly_cancels_transient_plot_edits_before_close(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    confirmations: list[str] = []
+    close_requests: list[str] = []
+    cancellations: list[str] = []
+    desktop.transientEditShutdownConfirmationRequested.connect(confirmations.append)
+    desktop.closeWindowRequested.connect(lambda: close_requests.append("close"))
+    monkeypatch.setattr(desktop, "get_has_active_plot_edit", lambda: False)
+    monkeypatch.setattr(desktop, "get_has_session_plot_edit", lambda: True)
+    monkeypatch.setattr(
+        desktop.session_plot_controller,
+        "cancel_edit",
+        lambda: cancellations.append("session") or True,
+    )
+
+    assert not desktop.request_shutdown()
+    assert confirmations == [
+        "A session plot edit is still open. Cancel the edit and close Carnopy?"
+    ]
+    assert not desktop.confirm_transient_edit_shutdown(False)
+    assert cancellations == []
+    assert close_requests == []
+    assert desktop.confirm_transient_edit_shutdown(True)
+    assert cancellations == ["session"]
+    assert close_requests == ["close"]
+
+
 def test_configuration_attention_facade_accepts_only_stable_sections(
     tmp_path: Path,
     application: QCoreApplication,
@@ -220,6 +352,158 @@ def test_configuration_attention_facade_accepts_only_stable_sections(
     assert attention == [
         ("dataset", "dataset.properties", 2),
         ("visualization", "plot.name", -1),
+    ]
+    assert desktop.shutdown()
+
+
+def test_execution_facade_routes_qml_intent_to_the_authoritative_controller(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    calls: list[str] = []
+    monkeypatch.setattr(
+        desktop.execution_controller,
+        "validate",
+        lambda: calls.append("validate") or True,
+    )
+    monkeypatch.setattr(
+        desktop.execution_controller,
+        "generate",
+        lambda: calls.append("generate") or True,
+    )
+    monkeypatch.setattr(
+        desktop.execution_controller,
+        "cancel",
+        lambda: calls.append("cancel") or True,
+    )
+    monkeypatch.setattr(
+        desktop.execution_controller,
+        "force_stop",
+        lambda: calls.append("force_stop") or True,
+    )
+
+    assert desktop.request_execution_validation()
+    assert desktop.request_dataset_generation()
+    assert desktop.request_execution_cancel()
+    assert desktop.request_execution_force_stop()
+    assert calls == ["validate", "generate", "cancel", "force_stop"]
+    assert desktop.shutdown()
+
+
+def test_execution_record_changes_refresh_the_shared_activity_projection(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    workspace = initialize_workspace(tmp_path / "workspace")
+    desktop.activity_controller.set_workspace(workspace)
+    assert desktop.activity_controller.records_model.get_count() == 0
+    JobStore(workspace.private_directory).start(
+        request_id="00000000-0000-0000-0000-000000000020",
+        operation="validate",
+        config_relative_path="configs/dataset.yaml",
+        yaml_snapshot="schema_version: 2\n",
+        config_sha256="a" * 64,
+    )
+
+    desktop.execution_controller.activity_record_changed.emit()
+
+    assert desktop.activity_controller.records_model.get_count() == 1
+    assert desktop.activity_controller.records_model.rows()[0]["state"] == "interrupted"
+    assert desktop.shutdown()
+
+
+def test_activity_cross_page_actions_use_exact_selected_record_identity(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    source = str((tmp_path / "workspace" / "outputs" / "run-id").resolve())
+    inspected: list[str] = []
+    selected: list[str] = []
+    navigation: list[tuple[str, str]] = []
+    desktop.navigationRequested.connect(lambda page, detail: navigation.append((page, detail)))
+    monkeypatch.setattr(
+        desktop.activity_controller,
+        "get_selected_record_summary",
+        lambda: {"outputDirectory": source},
+    )
+    monkeypatch.setattr(
+        desktop.activity_controller,
+        "get_selected_record_id",
+        lambda: "request-id",
+    )
+    monkeypatch.setattr(
+        desktop.activity_controller,
+        "get_can_inspect_run",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        desktop.activity_controller,
+        "get_can_view_plots",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        desktop.inspection_controller,
+        "inspect_source",
+        lambda value: inspected.append(value) or True,
+    )
+    monkeypatch.setattr(
+        desktop.configured_plot_results_controller,
+        "select_generation",
+        lambda value: selected.append(value) or True,
+    )
+    monkeypatch.setattr(desktop.execution_controller, "get_operation", lambda: "generate")
+    monkeypatch.setattr(desktop.execution_controller, "get_state", lambda: "succeeded")
+    monkeypatch.setattr(
+        desktop.execution_controller,
+        "get_result_output_directory",
+        lambda: source,
+    )
+    monkeypatch.setattr(
+        desktop.execution_controller,
+        "get_result_request_id",
+        lambda: "request-id",
+    )
+    monkeypatch.setattr(
+        desktop.inspection_controller,
+        "get_can_explore_plots",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        desktop.configured_plot_results_controller,
+        "get_can_explore_run",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        desktop.configured_plot_results_controller,
+        "get_selected_output_directory",
+        lambda: source,
+    )
+
+    assert desktop.request_activity_inspect_run()
+    assert desktop.request_activity_view_plots()
+    assert desktop.request_execution_inspect_run()
+    assert desktop.request_execution_view_plots()
+    assert desktop.request_inspection_explore()
+    assert desktop.request_configured_plot_explore_run()
+    desktop.inspection_controller.inspection_loaded.emit(Path(source))
+
+    assert inspected == [source, source, source]
+    assert selected == ["request-id", "request-id"]
+    assert navigation == [
+        ("inspect", ""),
+        ("visualization", "configured"),
+        ("inspect", ""),
+        ("visualization", "configured"),
+        ("visualization", "explore"),
+        ("visualization", "explore"),
     ]
     assert desktop.shutdown()
 
@@ -421,6 +705,50 @@ def test_active_plot_edit_blocks_all_composition_lifecycle_paths(
     assert calls == []
     assert attention
     assert all(item == ("visualization", "visualization.plots", -1) for item in attention)
+
+
+def test_session_plot_edit_guards_replacement_but_not_configuration_save(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    calls: list[str] = []
+    monkeypatch.setattr(
+        desktop.session_plot_controller,
+        "get_has_active_edit",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        desktop.session_plot_controller,
+        "can_replace_inspection",
+        lambda operation: calls.append(operation) or False,
+    )
+    monkeypatch.setattr(
+        desktop.session_plot_controller,
+        "get_issue",
+        lambda: "Render or cancel the session plot edit.",
+    )
+    save_calls: list[str] = []
+    monkeypatch.setattr(
+        desktop.dataset_config_controller,
+        "request_save",
+        lambda *_args: save_calls.append("save") or True,
+    )
+
+    assert not desktop.get_can_change_workspace()
+    assert not desktop.prepare_create_workspace_path(str(tmp_path / "workspace"))
+    assert not desktop.shutdown()
+    assert desktop.request_save()
+    assert save_calls == ["save"]
+    assert calls == ["replacing the workspace", "closing Carnopy"]
+    monkeypatch.setattr(
+        desktop.session_plot_controller,
+        "can_replace_inspection",
+        lambda _operation: True,
+    )
+    assert desktop.shutdown()
 
 
 def test_visualization_facade_accepts_only_the_owned_active_plot_and_mappings(
@@ -775,6 +1103,7 @@ for name in (
     "CoolProp", "numpy", "pandas", "pyarrow", "matplotlib",
     "carnopy.cli", "carnopy.pipeline", "carnopy.app.source_inspection",
     "carnopy.app.table_preview", "carnopy.app.plot_rendering",
+    "carnopy.visualization.configuration", "carnopy.visualization.models",
 ):
     if name in sys.modules:
         raise SystemExit(name)

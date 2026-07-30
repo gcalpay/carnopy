@@ -70,13 +70,14 @@ CoolProp, pandas, PyArrow, and Matplotlib execution imports.
 Run the current source-checkout desktop application with:
 
 ```bash
-uv run --locked carnopy-app
+uv run --locked carnopy-gui
 ```
 
-Version `0.1.0a3` includes the optional Linux-first Widgets GUI. The active
-`0.1.0a4.dev0` source development line will replace its presentation layer with
-QML only after equivalent workflow tests pass. Widgets remain the active parity
-baseline until that migration is verified.
+Version `0.1.0a3` contains the historical Linux-first Widgets GUI. The current
+`0.1.0a4.dev0` source has completed tested QML parity, both public desktop
+commands launch the same QML application, and the duplicate Widgets
+presentation is removed. `carnopy-gui` is the canonical command;
+`carnopy-app` remains a compatibility alias for `0.1.0a4`.
 
 Worker-backed inspection and preview changes must use stable table IDs rather
 than GUI-supplied artifact paths. Cover traversal, symlink, integrity-token,

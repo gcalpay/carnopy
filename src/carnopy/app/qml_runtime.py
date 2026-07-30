@@ -39,6 +39,10 @@ from PySide6.QtWidgets import QApplication
 
 from carnopy.app.application_identity import apply_application_identity
 from carnopy.app.desktop_controller import DesktopController
+from carnopy.app.plot_preview_provider import (
+    PLOT_PREVIEW_PROVIDER,
+    VerifiedPlotImageProvider,
+)
 from carnopy.app.qml_resources import (
     MANDATORY_FONT_FILES,
     QML_MODULE,
@@ -112,7 +116,7 @@ QML_PALETTE_COLORS: dict[str, dict[str, str]] = {
 
 
 class QmlStartupError(RuntimeError):
-    """Raised when the private QML application cannot start cleanly."""
+    """Raised when the QML desktop application cannot start cleanly."""
 
 
 def qml_application_palette(mode: str) -> QPalette:
@@ -175,6 +179,41 @@ def fitted_window_frame(
     return QSize(width, height), QPoint(x, y)
 
 
+def screen_name_for_frame(
+    frame: QRect,
+    screens: tuple[tuple[str, QRect], ...],
+    fallback_name: str = "",
+) -> str:
+    """Resolve the logical screen containing most of a decorated window frame."""
+
+    if not screens:
+        return fallback_name
+
+    def intersection_area(item: tuple[str, QRect]) -> int:
+        intersection = frame.intersected(item[1])
+        return max(0, intersection.width()) * max(0, intersection.height())
+
+    selected = max(screens, key=intersection_area)
+    if intersection_area(selected) > 0:
+        return selected[0]
+    if any(name == fallback_name for name, _geometry in screens):
+        return fallback_name
+    return screens[0][0]
+
+
+def screen_name_for_window_state(
+    frame: QRect,
+    normal_geometry: QRect,
+    maximized: bool,
+    screens: tuple[tuple[str, QRect], ...],
+    fallback_name: str = "",
+) -> str:
+    """Resolve placement from normal geometry when a compositor maximizes elsewhere."""
+
+    reference = normal_geometry if maximized and normal_geometry.isValid() else frame
+    return screen_name_for_frame(reference, screens, fallback_name)
+
+
 def _fit_window_to_available_screen(
     window: QWindow,
     preferred_screen_name: str = "",
@@ -202,6 +241,8 @@ def _fit_window_to_available_screen(
         screen = max(screens, key=intersection_area)
         if intersection_area(screen) == 0 and window.screen() is not None:
             screen = window.screen()
+    if window.screen() != screen:
+        window.setScreen(screen)
     frame_margins = window.frameMargins()
     client_size, frame_position = fitted_window_frame(
         window.size(),
@@ -294,7 +335,7 @@ class QmlWarningCapture(QObject):
 
 
 class QmlApplicationRuntime:
-    """Own the private Stage 2 QML engine and its authoritative controllers."""
+    """Own the public QML engine and its authoritative controllers."""
 
     def __init__(
         self,
@@ -310,7 +351,14 @@ class QmlApplicationRuntime:
         self.initial_workspace = initial_workspace
         self._previous_application_palette = QPalette(application.palette())
         self._palette_applied = False
+        self.controller.qml_settings.effectiveThemeChanged.connect(self._apply_application_palette)
+        # Apply the selected palette before the QML engine can cache fallback-control
+        # colors. Otherwise the first native/fallback dialog may retain the platform
+        # highlight until a later theme change refreshes it.
+        self._apply_application_palette()
         self.engine = QQmlApplicationEngine()
+        self.plot_image_provider = VerifiedPlotImageProvider(self.controller.plot_preview_registry)
+        self.engine.addImageProvider(PLOT_PREVIEW_PROVIDER, self.plot_image_provider)
         self.warning_capture = QmlWarningCapture(self.engine)
         self._close_guard: QmlWindowCloseGuard | None = None
         self._geometry_fit_timer = QTimer(self.engine)
@@ -325,8 +373,6 @@ class QmlApplicationRuntime:
         self._closing = False
         self._closed = False
         self._close_result = False
-        self.controller.qml_settings.effectiveThemeChanged.connect(self._apply_application_palette)
-        self._apply_application_palette()
 
     def _apply_application_palette(self) -> None:
         self.application.setPalette(
@@ -487,6 +533,51 @@ class QmlApplicationRuntime:
             ),
             ("datasetDecisionCommitRequested", self.controller.commit_dataset_decision),
             ("datasetDecisionCancelRequested", self.controller.cancel_dataset_decision),
+            ("runValidateRequested", self.controller.request_execution_validation),
+            ("runGenerateRequested", self.controller.request_dataset_generation),
+            ("runCancelRequested", self.controller.request_execution_cancel),
+            ("runForceStopRequested", self.controller.request_execution_force_stop),
+            ("runInspectRunRequested", self.controller.request_execution_inspect_run),
+            ("runViewPlotsRequested", self.controller.request_execution_view_plots),
+            ("inspectionInspectRequested", self.controller.request_inspect_source),
+            ("inspectionExploreRequested", self.controller.request_inspection_explore),
+            ("inspectionRefreshRequested", self.controller.request_refresh_inspection),
+            (
+                "inspectionSourcesRefreshRequested",
+                self.controller.request_refresh_inspection_sources,
+            ),
+            ("inspectionTableRequested", self.controller.request_inspection_table),
+            (
+                "inspectionPreviewPageRequested",
+                self.controller.request_inspection_preview_page,
+            ),
+            ("inspectionMoreSourcesRequested", self.controller.request_more_inspection_sources),
+            (
+                "activityRecordSelectionRequested",
+                self.controller.activity_controller.select_record,
+            ),
+            (
+                "activityRecordsRefreshRequested",
+                self.controller.activity_controller.refresh_records,
+            ),
+            (
+                "activityRecoveryRefreshRequested",
+                self.controller.activity_controller.refresh_recovery,
+            ),
+            (
+                "activityRecoverySelectionRequested",
+                self.controller.activity_controller.set_recovery_selected,
+            ),
+            ("activityInspectRunRequested", self.controller.request_activity_inspect_run),
+            ("activityViewPlotsRequested", self.controller.request_activity_view_plots),
+            (
+                "activityRecordRemovalRequested",
+                self.controller.request_activity_record_removal,
+            ),
+            (
+                "activityRecoveryRemovalRequested",
+                self.controller.request_activity_recovery_removal,
+            ),
             ("visualizationEnabledRequested", self.controller.request_visualization_enabled),
             ("visualizationFormatRequested", self.controller.request_visualization_format),
             (
@@ -539,11 +630,64 @@ class QmlApplicationRuntime:
                 self.controller.request_visualization_mapping_remove,
             ),
             (
+                "configuredPlotGenerationRequested",
+                self.controller.request_configured_plot_generation,
+            ),
+            (
+                "configuredPlotOutcomeRequested",
+                self.controller.request_configured_plot_outcome,
+            ),
+            (
+                "configuredPlotExportRequested",
+                self.controller.request_configured_plot_export,
+            ),
+            (
+                "configuredPlotExploreRunRequested",
+                self.controller.request_configured_plot_explore_run,
+            ),
+            (
+                "configuredPlotOpenPdfRequested",
+                self.controller.request_configured_plot_open_pdf,
+            ),
+            (
+                "configuredPlotSessionEditRequested",
+                self.controller.request_configured_plot_session_edit,
+            ),
+            (
+                "sessionPlotBeginEditRequested",
+                self.controller.request_session_plot_begin_edit,
+            ),
+            (
+                "sessionPlotCancelEditRequested",
+                self.controller.request_session_plot_cancel_edit,
+            ),
+            (
+                "sessionPlotRenderRequested",
+                self.controller.request_session_plot_render,
+            ),
+            (
+                "sessionPlotForceStopRequested",
+                self.controller.request_session_plot_force_stop,
+            ),
+            (
+                "sessionPlotExportRequested",
+                self.controller.request_session_plot_export,
+            ),
+            (
+                "sessionPlotOpenPdfRequested",
+                self.controller.request_session_plot_open_pdf,
+            ),
+            (
                 "normalGeometryRememberRequested",
                 self.controller.qml_settings.rememberNormalGeometry,
             ),
             ("settingsLayoutResetRequested", self.controller.qml_settings.resetLayout),
             ("shutdownConfirmed", self.controller.confirm_shutdown),
+            ("busyShutdownConfirmed", self.controller.confirm_busy_shutdown),
+            (
+                "transientEditShutdownConfirmed",
+                self.controller.confirm_transient_edit_shutdown,
+            ),
         )
         for signal_name, callback in connections:
             signal = getattr(root, signal_name, None)
@@ -579,9 +723,24 @@ class QmlApplicationRuntime:
 
     def _remember_window_state(self, window: QWindow) -> None:
         settings = self.controller.qml_settings
-        screen = window.screen()
-        settings.remember_normal_screen("" if screen is None else screen.name())
-        settings.set_maximized(window.visibility() == QWindow.Visibility.Maximized)
+        application = QGuiApplication.instance()
+        screens = (
+            tuple((screen.name(), screen.availableGeometry()) for screen in application.screens())
+            if isinstance(application, QGuiApplication)
+            else ()
+        )
+        fallback = "" if window.screen() is None else window.screen().name()
+        maximized = window.visibility() == QWindow.Visibility.Maximized
+        settings.remember_normal_screen(
+            screen_name_for_window_state(
+                window.frameGeometry(),
+                settings.get_normal_geometry(),
+                maximized,
+                screens,
+                fallback,
+            )
+        )
+        settings.set_maximized(maximized)
         if window.visibility() == QWindow.Visibility.Windowed:
             geometry = window.geometry()
             settings.rememberNormalGeometry(
@@ -650,6 +809,11 @@ def _application(arguments: Sequence[str] | None = None) -> QApplication:
     return existing
 
 
+def _configure_quick_style() -> None:
+    if QQuickStyle.name() != "Basic":
+        QQuickStyle.setStyle("Basic")
+
+
 def _acquire_instance_lock() -> QLockFile:
     user_suffix = f"-{os.getuid()}" if hasattr(os, "getuid") else ""
     lock_path = Path(tempfile.gettempdir()) / f"carnopy-qml-desktop{user_suffix}.lock"
@@ -671,7 +835,7 @@ def create_qml_runtime(
 ) -> QmlApplicationRuntime:
     application = _application(application_arguments)
     apply_application_identity(application)
-    QQuickStyle.setStyle("Basic")
+    _configure_quick_style()
     selected_settings = settings if settings is not None else QSettings()
     controller = DesktopController(settings=selected_settings, parent=application)
     runtime = QmlApplicationRuntime(

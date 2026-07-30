@@ -9,6 +9,15 @@ ComboBox {
 
     property string delegateObjectPrefix: objectName
 
+    function indexForRoleValue(value) {
+        const expected = String(value);
+        for (let row = 0; row < count; ++row) {
+            if (String(valueAt(row)) === expected)
+                return row;
+        }
+        return -1;
+    }
+
     palette.button: Theme.surfaceRaised
     palette.buttonText: Theme.text
     palette.highlight: Theme.primary

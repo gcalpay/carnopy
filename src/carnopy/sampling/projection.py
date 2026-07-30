@@ -3,6 +3,11 @@ from __future__ import annotations
 import math
 from collections.abc import Iterable
 
+from carnopy.domain.numbers import (
+    binary64_from_decimal,
+    canonical_decimal_context,
+    decimal_from_binary64,
+)
 from carnopy.sampling.models import (
     ExplicitSampler,
     GeomspaceSampler,
@@ -27,6 +32,17 @@ def sampler_point_count(sampler: Sampler) -> int:
     if isinstance(sampler, StepspaceSampler):
         return stepspace_point_count(sampler)
     raise TypeError(f"unsupported sampler type: {type(sampler).__name__}")
+
+
+def linspace_spacing(sampler: LinspaceSampler) -> float:
+    """Return the signed declared-unit spacing without materializing a grid."""
+
+    context = canonical_decimal_context()
+    span = context.subtract(
+        decimal_from_binary64(sampler.stop),
+        decimal_from_binary64(sampler.start),
+    )
+    return binary64_from_decimal(context.divide(span, context.create_decimal(sampler.num - 1)))
 
 
 def stepspace_point_count(sampler: StepspaceSampler) -> int:

@@ -12,6 +12,9 @@ Control {
     property bool allowCollapse: true
     property string currentPage: "workspace"
     property bool datasetAvailable: false
+    property bool inspectAvailable: false
+    property bool activityAvailable: false
+    property bool runAvailable: false
     property bool visualizationAvailable: false
     property bool yamlAvailable: false
     readonly property alias collapseControl: railCollapseButton
@@ -59,14 +62,7 @@ Control {
             title: qsTr("Dataset")
             iconName: "database"
             available: true
-            unavailableReason: qsTr("Create or import a dataset configuration first.")
-        }
-        ListElement {
-            pageKey: "visualization"
-            title: qsTr("Visualization")
-            iconName: "chart-spline"
-            available: true
-            unavailableReason: qsTr("Create or import a dataset configuration first.")
+            unavailableReason: qsTr("Open a workspace before configuring a dataset.")
         }
         ListElement {
             pageKey: "yaml"
@@ -79,22 +75,29 @@ Control {
             pageKey: "run"
             title: qsTr("Run")
             iconName: "play"
-            available: false
-            unavailableReason: qsTr("Generation is the next GUI-2 workflow in Stage 3.")
+            available: true
+            unavailableReason: qsTr("Open a workspace before using Run.")
         }
         ListElement {
             pageKey: "inspect"
             title: qsTr("Inspect")
             iconName: "search"
-            available: false
-            unavailableReason: qsTr("Inspection follows generation in Stage 4.")
+            available: true
+            unavailableReason: qsTr("Open a workspace before inspecting generated outputs.")
+        }
+        ListElement {
+            pageKey: "visualization"
+            title: qsTr("Visualization")
+            iconName: "chart-spline"
+            available: true
+            unavailableReason: qsTr("Open a workspace before reviewing visualization results.")
         }
         ListElement {
             pageKey: "activity"
             title: qsTr("Activity and Recovery")
             iconName: "activity"
-            available: false
-            unavailableReason: qsTr("Jobs and recovery enter QML in Stage 5.")
+            available: true
+            unavailableReason: qsTr("Open a workspace to review activity and staging recovery.")
         }
         ListElement {
             pageKey: "sweeps"
@@ -199,7 +202,13 @@ Control {
                                                              && (pageKey !== "visualization"
                                                                  || root.visualizationAvailable) && (
                                                                  pageKey !== "yaml"
-                                                                 || root.yamlAvailable)
+                                                                 || root.yamlAvailable) && (pageKey
+                                                                                            !== "run"
+                                                                                            || root.runAvailable)
+                                                             && (pageKey !== "inspect"
+                                                                 || root.inspectAvailable) && (
+                                                                 pageKey !== "activity"
+                                                                 || root.activityAvailable)
 
                 Accessible.description: effectivelyAvailable ? "" : unavailableReason
                 Accessible.name: title

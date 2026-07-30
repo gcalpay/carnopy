@@ -441,6 +441,9 @@ def test_shared_inheritance_merge_and_override_semantics(
     assert inherited["format"] == "svg"
     assert inherited["fluids"] == ["Propane"]
     assert inherited["display_units"] == {"pressure": "bar"}
+    assert draft.resolved_plot_payload(0) == overridden
+    assert draft.resolved_plot_payload(1) == inherited
+    assert draft.resolved_plot_payload(2) is None
 
     conflicting = draft.plot_payloads()
     conflicting[0]["filters"] = {"phase": "liquid"}

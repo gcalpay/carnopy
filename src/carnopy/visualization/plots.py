@@ -47,6 +47,7 @@ from carnopy.visualization.selection import (
     row_valid_mask,
     select_rows,
 )
+from carnopy.visualization.series import MAX_DISCRETE_LEGEND_SERIES
 from carnopy.visualization.xy import render_xy
 
 SeriesInput = Mapping[str, Sequence[object]] | Sequence[SeriesSelection]
@@ -376,7 +377,7 @@ def _plot_property_request(
     advisories = dynamic_range_advisories(
         valid_values.tolist(),
         scale=effective_scale,
-        subject=f"{property_name} property",
+        subject=property_field.label,
     )
     mpl = import_matplotlib()
     if request.kind == "property_curves":
@@ -787,13 +788,19 @@ def _layout_advisories(
                 (len(items) for items in raw_series.values() if isinstance(items, list)),
                 default=0,
             )
-            if maximum > 20:
+            if maximum > MAX_DISCRETE_LEGEND_SERIES:
+                encoding = rendered.settings.get("series_encoding")
+                presentation = (
+                    "a shared continuous color scale is used; "
+                    if encoding == "continuous_colorbar"
+                    else ""
+                )
                 advisories.append(
                     Advisory(
                         code="crowded_curve_family",
                         message=(
                             f"the largest facet contains {maximum} curve series; "
-                            "consider exact filters or separate plots"
+                            f"{presentation}consider exact filters or separate plots"
                         ),
                     )
                 )
