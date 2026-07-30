@@ -14,7 +14,7 @@ architecture, and the maintainer accepts the finished application.
 
 - `0.1.0a3` is the published baseline and contains the retired GUI-1 Widgets
   presentation.
-- Current source reports `0.1.0a4.dev0` and contains the accepted Stage 3 QML
+- Current source reports `0.1.0a4` and contains the accepted Stage 3 QML
   parity application.
 - `carnopy-gui` is canonical. `carnopy-app` launches the same QML application
   as a compatibility alias for `0.1.0a4`.
@@ -135,9 +135,9 @@ PR:     chore(release): publish Carnopy 0.1.0a4
 commit: chore(release): prepare 0.1.0a4
 ```
 
-The release commit changes `0.1.0a4.dev0` to `0.1.0a4` in Carnopy source,
-companion-bridge metadata and qualification constants, `uv.lock`, tracked
-citation metadata, release assertions, and version-specific documentation.
+The release commit aligns `0.1.0a4` across Carnopy source, companion-bridge
+metadata and qualification constants, `uv.lock`, tracked citation metadata,
+release assertions, and version-specific documentation.
 Run the complete source, package, Twine, installed-distribution, and local
 release gates. Require green release-PR CI, merge through protected `main`,
 create and push one annotated `v0.1.0a4` tag, approve the protected PyPI

@@ -75,7 +75,7 @@ approval. The detailed supported scope and explicit exclusions live in the
 scientific contracts routed above.
 
 The `0.1.0a3` release line provides the historical Qt Widgets desktop frontend.
-Current `0.1.0a4.dev0` source has completed the QML parity migration and both
+Current `0.1.0a4` source has completed the QML parity migration and both
 public desktop commands launch the single QML application. [GUI2_PLAN.md](GUI2_PLAN.md)
 is the temporary source of truth for unfinished GUI-2 stages. Read it before
 changing desktop controllers, QML, native 3D, or desktop packaging. Delete it

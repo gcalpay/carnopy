@@ -258,7 +258,7 @@ def test_readme_documents_published_and_source_release_boundaries() -> None:
         assert f"| `{extra}` |" in text
     assert "Exact union of all public extras" in text
     assert "The latest published alpha is `0.1.0a3`" in text
-    assert "`0.1.0a4.dev0` source" in text
+    assert "current `0.1.0a4` source is\nrelease-prepared" in text
     assert "`carnopy-gui` is the canonical" in text
     assert "`carnopy-app` launches the same\nQML application" in text
     assert "0.1.0a2" not in text
@@ -268,6 +268,7 @@ def test_readme_documents_published_and_source_release_boundaries() -> None:
     assert "uv sync --locked --extra app --group dev" in text
     assert "uv run --locked carnopy-gui" in text
     assert "0.1.0a3.dev0" not in text
+    assert "0.1.0a4.dev0" not in text
     assert "pending publisher" not in text.casefold()
     assert "Typing: typed" not in text
     assert (

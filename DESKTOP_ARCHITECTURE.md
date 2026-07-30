@@ -57,7 +57,7 @@ The source tree has one desktop presentation implementation:
 - the QML Activity page, guarded end-to-end cross-page/close parity, public
   launcher migration, and Widgets retirement are implemented.
 
-The development version is `0.1.0a4.dev0`. Both public launchers select the
+The release version is `0.1.0a4`. Both public launchers select the
 tested QML parity application; Carnopy does not ship two normal desktop
 applications or a frontend selector. The resulting QML application is the
 planned `0.1.0a4` alpha checkpoint. Later sweep, preparation, and native-3D

@@ -74,7 +74,7 @@ uv run --locked carnopy-gui
 ```
 
 Version `0.1.0a3` contains the historical Linux-first Widgets GUI. The current
-`0.1.0a4.dev0` source has completed tested QML parity, both public desktop
+`0.1.0a4` source has completed tested QML parity, both public desktop
 commands launch the same QML application, and the duplicate Widgets
 presentation is removed. `carnopy-gui` is the canonical command;
 `carnopy-app` remains a compatibility alias for `0.1.0a4`.
