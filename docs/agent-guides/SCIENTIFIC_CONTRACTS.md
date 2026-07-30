@@ -48,22 +48,22 @@ Milestone 1 supports:
 - configured post-generation visualization;
 - model-sweep bundles comparing emitted values from multiple CoolProp models.
 
-The `0.1.0a3` release line adds a Linux-first PySide6 desktop frontend for
-the existing dataset workflow. The desktop application is a presentation
-frontend, not a new scientific execution layer. GUI-1 includes the worker
-protocol, optional desktop shell, workspace lifecycle, worker-validated dataset
-configuration editor, saved-config execution, workspace-local job diagnostics,
-guarded staging recovery, read-only output/bundle inspection, bounded table
-previews, inspection-driven session plot requests, private worker rendering,
-guarded no-overwrite image/sidecar promotion, desktop Render controls,
-immediate confirmed force-stop, Qt-only PNG/SVG previews, and explicit PDF
-opening.
+The `0.1.0a3` release line established a Linux-first PySide6 Widgets frontend
+for the existing dataset workflow. Current `0.1.0a4.dev0` source has migrated
+those accepted workflows into one QML application and removed the duplicate
+Widgets presentation. The desktop application remains a presentation frontend,
+not a new scientific execution layer. Its permanent boundary includes the
+private worker protocol, workspace lifecycle, worker-validated configuration,
+saved-config execution, private activity and guarded staging recovery,
+read-only source inspection, bounded table previews, configured and session
+plot workflows, guarded no-overwrite image/sidecar promotion, Qt-only PNG/SVG
+previews, and explicit PDF opening.
 
-[GUI2_PLAN.md](GUI2_PLAN.md) is the temporary source of truth for the active
-GUI-2 migration. Read it before changing desktop controllers, QML, native 3D,
-desktop packaging, or Widgets retirement. Delete it only after GUI-2 is complete
-and permanent documentation and Graphify outputs describe the final design.
-[DESKTOP_ARCHITECTURE.md](DESKTOP_ARCHITECTURE.md) is the durable record of the
+[GUI2_PLAN.md](../../GUI2_PLAN.md) is the temporary source of truth for unfinished
+GUI-2 stages. Read it before changing desktop controllers, QML, native 3D, or
+desktop packaging. Delete it only after GUI-2 is complete and permanent
+documentation and Graphify outputs describe the final design.
+[DESKTOP_ARCHITECTURE.md](../../DESKTOP_ARCHITECTURE.md) is the durable record of the
 implemented desktop structure and evolution; update it when accepted work
 changes a major ownership or process boundary.
 
@@ -215,7 +215,7 @@ require one compatible `reference_state_policy`/backend/model context across
 the selected source rows. Mixed incompatible absolute `h`, `s`, or `u` values
 must fail before writing a preparation bundle.
 
-[ML_PREPARATION_ROADMAP.md](ML_PREPARATION_ROADMAP.md) records implemented
+[ML_PREPARATION_ROADMAP.md](../../ML_PREPARATION_ROADMAP.md) records implemented
 preparation behavior separately from future research directions. Read it before
 proposing preparation-quality, feature-engineering, statistical-diagnostic,
 active-learning, or optimization work. Roadmap entries are not implementation

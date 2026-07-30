@@ -61,7 +61,11 @@ The development version is `0.1.0a4.dev0`. Both public launchers select the
 tested QML parity application; Carnopy does not ship two normal desktop
 applications or a frontend selector. The resulting QML application is the
 planned `0.1.0a4` alpha checkpoint. Later sweep, preparation, and native-3D
-stages are not prerequisites for that release.
+stages are not prerequisites for that release. Stage 3 implementation, remote
+CI, the complete local gate, and native acceptance passed on 2026-07-30. Its
+accepted screenshot and historical implementation index are tracked under
+`docs/`; refreshing the hard-stale public Graphify artifacts is the last
+documentation task before the Stage 3 PR merges.
 
 ## Authority map
 
@@ -924,8 +928,8 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 0 | Qualified a same-repository `QQuickVTKItem` companion bridge on the pinned Linux/Qt/VTK baseline | Complete |
 | 1 | Extracted request ownership, workspace state, dataset/visualization drafts, and complete configuration workflow into QML-ready QtCore controllers | Complete |
 | 2 | Package the Precision Grid QML Workspace, Dataset, Visualization, and YAML/Save workflows | Complete; automated, remote, and native acceptance passed |
-| 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Active |
-| 4 | Add controlled sweep and preparation worker operations | Pending |
+| 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete; graph refresh pending before merge |
+| 4 | Add controlled sweep and preparation worker operations | Active after the `0.1.0a4` checkpoint |
 | 5 | Add structured sweep and preparation QML workflows | Pending |
 | 6 | Build exact emitted-value 3D scene contracts | Pending |
 | 7 | Integrate native interactive 3D into QML | Pending |
@@ -966,6 +970,16 @@ consecutive runs, alongside the green remote desktop checks. No deterministic
 failure was reproduced. This remains test-harness evidence to watch if it
 recurs, not a reason to weaken teardown behavior or add an ungrounded
 workaround.
+
+Stage 3 acceptance passed on 2026-07-30. The QML application now owns the
+complete GUI-1 workflow surface through the authoritative QtCore controllers,
+both public launchers select it, and the obsolete Widgets presentation is
+removed. PR #20 passed its Python matrix, desktop, installed-QML Linux/Windows/
+macOS, distribution, dependency, audit, and CodeQL checks; the complete local
+Stage 3 gate also passed. Native review accepted Workspace, Dataset, YAML, Run,
+Inspect, configured and session Visualization, Activity, Recovery, lifecycle,
+theme, and window-state behavior. This is bounded alpha qualification, not the
+full native-3D and platform qualification reserved for Stage 8.
 
 ## Known current limitations
 
@@ -1059,13 +1073,13 @@ defined in `docs/agent-guides/DEVELOPMENT.md`; for clarity it is:
 - a hard-stale graph is either refreshed intentionally and atomically or simply
   bypassed in favor of source, tests, and scoped text search.
 
-As audited on 2026-07-28, the public artifacts were last refreshed in
+As audited on 2026-07-30, the public artifacts were last refreshed in
 `42ff05955e4dc6ea418a14a41bd9dda2780f7b12` from exact source revision
-`e3550b244d2ac05d0a33cb37875c98c0cb49c7c5`. That source is 13 commits behind
-the then-current Stage 3 branch. The graph is therefore hard-stale and must not
-be queried during the remaining parity work. Refresh it intentionally after
-the Stage 3 Widgets deletion settles the architecture rather than repeatedly
-during migration churn.
+`e3550b244d2ac05d0a33cb37875c98c0cb49c7c5`. It predates the completed Stage 3
+architecture by more than the six-commit cutoff. The graph is hard-stale and
+must not be queried. Refresh its three public artifacts intentionally from the
+settled Stage 3 source before merging the stage PR; do not refresh it repeatedly
+during ordinary implementation churn.
 
 GitHub Issues are enabled for `gcalpay/carnopy`; the repository had no open or
 closed issues in the 2026-07-23 audit. Create an issue only for reproducible,

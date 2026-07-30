@@ -74,13 +74,15 @@ Do not broaden the approved milestone or public interfaces without maintainer
 approval. The detailed supported scope and explicit exclusions live in the
 scientific contracts routed above.
 
-The `0.1.0a3` release line provides the public Qt Widgets desktop frontend.
-[GUI2_PLAN.md](GUI2_PLAN.md) is the temporary source of truth for the active
-GUI-2 migration. Read it before changing desktop controllers, QML, native 3D,
-desktop packaging, or Widgets retirement. Delete it only after GUI-2 is complete
-and permanent documentation and intentionally refreshed Graphify outputs
-describe the final design. [DESKTOP_ARCHITECTURE.md](DESKTOP_ARCHITECTURE.md)
-is the durable implemented desktop record.
+The `0.1.0a3` release line provides the historical Qt Widgets desktop frontend.
+Current `0.1.0a4.dev0` source has completed the QML parity migration and both
+public desktop commands launch the single QML application. [GUI2_PLAN.md](GUI2_PLAN.md)
+is the temporary source of truth for unfinished GUI-2 stages. Read it before
+changing desktop controllers, QML, native 3D, or desktop packaging. Delete it
+only after GUI-2 is complete and permanent documentation and intentionally
+refreshed Graphify outputs describe the final design.
+[DESKTOP_ARCHITECTURE.md](DESKTOP_ARCHITECTURE.md) is the durable implemented
+desktop record.
 
 ## Always-on safeguards
 

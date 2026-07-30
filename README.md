@@ -14,6 +14,8 @@ Parquet datasets, diagnostics, metadata, and optional figures. It is available
 as an automation-friendly CLI, a Python library, and an optional QML desktop
 workbench.
 
+![Carnopy QML Dataset workbench](https://raw.githubusercontent.com/gcalpay/carnopy/main/docs/assets/carnopy-dataset-workbench-dark.png)
+
 > Carnopy is alpha software. Public interfaces and generated schemas may change
 > before the stable `0.1.0` release.
 
@@ -425,11 +427,12 @@ repository freshness gate before use.
 ## Release status
 
 The latest published alpha is `0.1.0a3`. The current source reports
-`0.1.0a4.dev0` and contains the QML parity work planned for `0.1.0a4`. Stage 3
-remains under native acceptance until a representative, non-personal-path
-screenshot and the final source/distribution gates are accepted. The version
-bump, tag, PyPI publication, GitHub prerelease, and citation metadata belong to
-the separate human-controlled `0.1.0a4` release process.
+`0.1.0a4.dev0` and contains the accepted QML parity application planned for
+`0.1.0a4`. Stage 3 implementation, remote CI, the complete local gate, and
+native acceptance have passed. The public Graphify navigation artifacts will
+be refreshed from this settled architecture before the Stage 3 PR merges. The
+version bump, tag, PyPI publication, GitHub prerelease, and post-release Zenodo
+DOI belong to the separate human-controlled `0.1.0a4` release process.
 
 ## License
 
