@@ -257,7 +257,18 @@ class SessionPlotController(QObject):
         context = self._context
         if context is None or self._active_draft is not None or self.coordinator.is_busy:
             return False
-        draft = PlotDraft(context, context, initial, self, allow_format=True)
+        if "fluids" not in initial:
+            fluids = context.get("fluids")
+            if isinstance(fluids, (list, tuple)):
+                initial["fluids"] = [str(value) for value in fluids]
+        draft = PlotDraft(
+            context,
+            context,
+            initial,
+            self,
+            allow_format=True,
+            require_explicit_fluids=True,
+        )
         draft.set_output_format(output_format)
         self._active_draft = draft
         draft.changed.connect(self.state_changed)

@@ -276,7 +276,7 @@ Current implementation status as of 2026-07-29:
 | 10. Complete guarded workflow parity | Implemented and committed | The six exact cross-page paths, record-driven configured empty state, explicit inspected-data exploration, and operation-specific busy-close decisions are implemented. Focused QML, controller, lifecycle, and warning checks pass. |
 | 11. Make QML the public desktop frontend | Implemented and committed | Both package entry points resolve directly to the lightweight QML launcher; source, installed-distribution, and remote checks pass. |
 | 12. Retire the Widgets presentation layer | Implemented and committed | Fourteen obsolete source modules, five implementation-specific test modules, and obsolete mixed-test UI coverage are removed. Focused structural and QML parity verification and the branch's remote checks pass. |
-| 13. Accept and complete Stage 3 | Native acceptance in progress | Step 12 and its remote checks pass. Native review rejected the first presentation capture and exposed the configured-result alignment, focus-preview, active-workspace navigation, Activity-card geometry, and QtSvg compatibility defects recorded below. Corrections pass focused checks. Release-facing README and metadata are simplified to two primary installation paths and one canonical description; tracked citation and generated-software provenance are prepared without a placeholder DOI. Stage 3 remains incomplete until native review accepts the workflow, a representative capture is approved, and the final gates pass. |
+| 13. Accept and complete Stage 3 | Native acceptance in progress | Step 12 and its remote checks pass. Native review rejected the first presentation capture and exposed the configured-result alignment, focus-preview, active-workspace navigation, Activity-card geometry, QtSvg compatibility, and inspected-data workflow defects recorded below. Corrections pass focused checks. Release-facing README and metadata are simplified to two primary installation paths and one canonical description; tracked citation and generated-software provenance are prepared without a placeholder DOI. Stage 3 remains incomplete until native review accepts the workflow, a representative capture is approved, and the final gates pass. |
 
 The continuing native review also found bounded release-candidate defects.
 Inspect now projects the worker-reported column count beside the bounded table
@@ -1424,6 +1424,22 @@ editors label the existing `step` field as **Step size** and show both the
 derived interval and sampled-point counts. The projections reuse the
 lightweight sampler validation and reachability rules, import no NumPy, and
 remain transient presentation state outside dirty and scientific identity.
+
+The continuing native workflow review also clarified the boundary between
+reproducible configured plots and ad-hoc inspected-data plots. Configured rows
+remain YAML rendered only by the next Generate, but now expose a prominent
+**Preview with inspected data** action that seeds a reviewed session draft and
+never renders automatically. A new session draft explicitly selects every
+fluid recorded by the inspected source, displays those selections, and becomes
+locally invalid if all are removed; no empty selection is interpreted as a
+hidden request for every fluid. Workspace output candidates present a readable
+mode, UTC timestamp, and short run identity while retaining their exact paths
+as authority. Secondary external-source dialogs start in the active
+workspace's `outputs/` directory. Large-linear-range advisories now state the
+observed minimum, maximum, and ratio and explain that logarithmic presentation
+can reveal relative variation among lower positive values; they still never
+change the requested scale. These corrections change no YAML, emitted rows,
+worker protocol, plot identity, or interpolation policy.
 
 Steps 9 and 10 are implemented and committed with focused verification. Native
 human review covers Step 9, and the corrective queued delegate-interaction

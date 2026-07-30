@@ -25,6 +25,18 @@ Item {
     signal refreshSourcesRequested
     signal selectTableRequested(string tableId)
 
+    function openExternalFileDialog() {
+        if (root.inspectionController.workspaceOutputsUrl.length > 0)
+            inspectFileDialog.currentFolder = root.inspectionController.workspaceOutputsUrl;
+        inspectFileDialog.open();
+    }
+
+    function openExternalFolderDialog() {
+        if (root.inspectionController.workspaceOutputsUrl.length > 0)
+            inspectFolderDialog.currentFolder = root.inspectionController.workspaceOutputsUrl;
+        inspectFolderDialog.open();
+    }
+
     function completeFileSelection() {
         if (!fileSelectionAccepted || inspectFileDialog.visible)
             return;
@@ -217,8 +229,8 @@ Item {
                         enabled: root.inspectionController.canInspect
                         iconName: "file-code"
                         objectName: "inspectExternalFileButton"
-                        onClicked: inspectFileDialog.open()
-                        text: qsTr("Inspect CSV or Parquet")
+                        onClicked: root.openExternalFileDialog()
+                        text: qsTr("Choose external CSV or Parquet")
 
                         ToolTip.text: text
                         ToolTip.visible: hovered
@@ -229,8 +241,8 @@ Item {
                         enabled: root.inspectionController.canInspect
                         iconName: "search"
                         objectName: "inspectExternalFolderButton"
-                        onClicked: inspectFolderDialog.open()
-                        text: qsTr("Inspect run or bundle")
+                        onClicked: root.openExternalFolderDialog()
+                        text: qsTr("Choose external run or bundle")
 
                         ToolTip.text: text
                         ToolTip.visible: hovered
@@ -268,13 +280,15 @@ Item {
                         id: sourceButton
 
                         required property bool inspectable
+                        required property string detail
                         required property string issue
                         required property string kindHint
                         required property string name
                         required property string path
 
                         Accessible.description: issue.length > 0 ? issue : path
-                        Accessible.name: qsTr("Inspect %1: %2").arg(kindHint).arg(name)
+                        Accessible.name: qsTr("Inspect %1: %2, %3").arg(kindHint).arg(name).arg(
+                                             detail)
                         activeFocusOnTab: inspectable
                         enabled: inspectable && root.inspectionController.canInspect
                         height: 52
@@ -293,8 +307,7 @@ Item {
                                 font.family: Theme.sansFamily
                                 font.pixelSize: 12
                                 font.weight: Font.Medium
-                                text: sourceButton.kindHint.length > 0 ? sourceButton.kindHint :
-                                                                         qsTr("Workspace output")
+                                text: sourceButton.name
                             }
 
                             Label {
@@ -305,7 +318,7 @@ Item {
                                 font.family: Theme.monoFamily
                                 font.pixelSize: 10
                                 text: sourceButton.issue.length > 0 ? sourceButton.issue :
-                                                                      sourceButton.name
+                                                                      sourceButton.detail
                             }
                         }
 
@@ -383,7 +396,7 @@ Item {
                         compact: true
                         enabled: root.inspectionController.canInspect
                         iconName: "file-code"
-                        onClicked: inspectFileDialog.open()
+                        onClicked: root.openExternalFileDialog()
                         text: qsTr("Inspect external file")
 
                         ToolTip.text: text
@@ -394,7 +407,7 @@ Item {
                         compact: true
                         enabled: root.inspectionController.canInspect
                         iconName: "search"
-                        onClicked: inspectFolderDialog.open()
+                        onClicked: root.openExternalFolderDialog()
                         text: qsTr("Inspect external run or bundle")
 
                         ToolTip.text: text

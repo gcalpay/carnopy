@@ -377,7 +377,7 @@ def _plot_property_request(
     advisories = dynamic_range_advisories(
         valid_values.tolist(),
         scale=effective_scale,
-        subject=f"{property_name} property",
+        subject=property_field.label,
     )
     mpl = import_matplotlib()
     if request.kind == "property_curves":

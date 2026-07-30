@@ -88,11 +88,13 @@ class PlotDraft(QObject):
         parent: QObject | None = None,
         *,
         allow_format: bool = True,
+        require_explicit_fluids: bool = False,
     ) -> None:
         super().__init__(parent)
         self.capabilities = copy.deepcopy(dict(capabilities))
         self.dataset_payload = copy.deepcopy(dict(dataset_payload))
         self.allow_format = allow_format
+        self.require_explicit_fluids = require_explicit_fluids
         self.kind_choices = DraftListModel(self)
         self.property_choices = DraftListModel(self)
         self.axis_choices = DraftListModel(self)
@@ -657,6 +659,12 @@ class PlotDraft(QObject):
                     f"plot {field} value {value!r} is unavailable",
                 )
         canonical_fluids = self._canonical_fluid_values(self._fluids)
+        if self.require_explicit_fluids and "fluids" in applicable and not canonical_fluids:
+            return _PlotIssue(
+                PLOT_FLUIDS,
+                -1,
+                "select at least one inspected-source fluid",
+            )
         if len(set(canonical_fluids)) != len(canonical_fluids):
             return _PlotIssue(
                 PLOT_FLUIDS,

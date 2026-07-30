@@ -240,6 +240,38 @@ def test_configured_request_opens_as_session_edit_without_rendering(
     assert stub.started is None
 
 
+def test_session_edit_explicitly_selects_all_source_fluids(
+    tmp_path: Path,
+    application: QApplication,
+) -> None:
+    del application
+    controller, stub, _source = _controller(tmp_path)
+    assert controller._context is not None
+    controller._context["fluids"] = ["Propane", "IsoButane"]
+    visualization = controller._context["visualization"]
+    assert isinstance(visualization, dict)
+    contracts = visualization["kind_contracts"]
+    assert isinstance(contracts, dict)
+    for contract in contracts.values():
+        assert isinstance(contract, dict)
+        applicable = contract["applicable"]
+        assert isinstance(applicable, list)
+        applicable.append("fluids")
+
+    assert controller.begin_edit("png")
+    draft = controller.get_active_plot_draft()
+    assert isinstance(draft, PlotDraft)
+    assert draft.selected_fluid_values() == ("Propane", "IsoButane")
+    _select_property_curve(controller)
+
+    assert draft.set_fluid_selected("Propane", False)
+    assert draft.set_fluid_selected("IsoButane", False)
+    assert draft.get_first_invalid_field() == "plot.fluids"
+    assert draft.get_issue() == "select at least one inspected-source fluid"
+    assert not controller.get_can_render()
+    assert stub.started is None
+
+
 def test_session_plot_success_commits_result_and_destroys_edit(
     tmp_path: Path,
     application: QApplication,

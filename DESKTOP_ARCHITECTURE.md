@@ -262,7 +262,12 @@ Workspace candidates are sorted by `st_mtime_ns` descending with resolved path
 as the deterministic tiebreaker, revealed 20 at a time, and never discovered
 through recursive traversal or symbolic links. Table row positions shown in
 the frontend are one-based presentation positions; source order and worker
-payload rows are unchanged.
+payload rows are unchanged. Known generated-directory locators receive a
+human-readable mode, UTC timestamp, and short run identity in QML while the
+exact path remains the selection authority and accessible description.
+External file and folder actions are explicitly secondary and begin in the
+active workspace's `outputs/` directory; they can still select an authorized
+source outside the workspace.
 
 `carnopy.app.source_inspection` and `carnopy.app.table_preview` are permanent
 worker-only modules. They may import pandas, PyArrow, visualization inspection,
@@ -352,14 +357,21 @@ silently ignoring shutdown; accepting it cancels only temporary plot-edit
 state and then re-enters the ordinary dirty and busy shutdown guards.
 Creating a new session edit does not silently select a scientifically valid
 plot request: the user must choose the plot kind and its required fields.
+The controller does explicitly seed the edit with every fluid recorded by the
+inspected source. Those selections are visible and removable, and a session
+render requires at least one remaining fluid; an empty override is never used
+as a hidden synonym for all fluids.
 Plot-kind help identifies axis, property, series, and color roles, and verified
 worker advisories such as a crowded curve family remain visible with the
 committed result.
 The configured and session workflows remain separate authorities. Configured
 plots are YAML state rendered only by a later Generate; session plots are
 ad-hoc state over the current inspected source. An explicit configured-row
-**Explore** action applies that row's inherited configured defaults to a new
-session draft, but starts no worker and requires review followed by Render.
+**Preview with inspected data** action applies that row's inherited configured
+defaults to a new session draft, but starts no worker and requires review
+followed by Render. Scale advisories report the observed minimum, maximum, and
+their ratio and explain the display tradeoff; they never change the selected
+scale automatically.
 
 Both controllers use `carnopy.visualization.requests` for lightweight canonical
 request identity. They do not import visualization configuration/models,

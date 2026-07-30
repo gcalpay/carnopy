@@ -222,6 +222,11 @@ def test_dynamic_range_advisory_never_changes_scale() -> None:
     assert len(advisories) == 1
     assert advisories[0].code == "large_linear_dynamic_range"
     assert advisories[0].dynamic_range_ratio == 100.0
+    assert advisories[0].message == (
+        "mass_density property values range from 1 to 100; the maximum is 100 times "
+        "the minimum. Logarithmic scaling can make variation among lower positive "
+        "values easier to distinguish."
+    )
     assert dynamic_range_advisories([1.0, 100.0], scale="log", subject="property") == ()
     assert dynamic_range_advisories([0.0, 100.0], scale="linear", subject="property") == ()
 

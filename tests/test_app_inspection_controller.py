@@ -78,6 +78,30 @@ def test_workspace_sources_are_direct_bounded_and_newest_first(tmp_path: Path) -
     coordinator.shutdown()
 
 
+def test_generated_run_sources_have_human_readable_identity(tmp_path: Path) -> None:
+    workspace = initialize_workspace(tmp_path / "workspace")
+    run = workspace.outputs / "20260729T205138Z_property_7718e16a"
+    run.mkdir()
+    (run / "metadata.json").write_text("{}", encoding="utf-8")
+
+    controller, coordinator = controller_for()
+    controller.set_workspace(workspace)
+
+    assert controller.get_workspace_outputs_url() == workspace.outputs.resolve().as_uri()
+    assert controller.workspace_sources_model.rows() == (
+        {
+            "path": str(run.resolve()),
+            "name": "Property table · 2026-07-29 20:51 UTC",
+            "detail": "Run 7718e16a · dataset run",
+            "kindHint": "dataset run",
+            "modifiedNs": run.stat().st_mtime_ns,
+            "issue": "",
+            "inspectable": True,
+        },
+    )
+    coordinator.shutdown()
+
+
 def test_dataset_projection_keeps_failure_aggregates_independent(tmp_path: Path) -> None:
     source = tmp_path / "dataset.parquet"
     source.touch()

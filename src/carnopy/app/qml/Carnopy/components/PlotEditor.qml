@@ -13,6 +13,8 @@ Item {
     property int attentionRow: -1
     property int attentionSerial: 0
     property string cancelActionText: qsTr("Cancel")
+    property string fluidEmptyText: qsTr("No per-plot fluid override; shared fluids are inherited.")
+    property string fluidSelectionHelp: ""
     property string primaryActionText: qsTr("Commit plot")
 
     signal cancelRequested
@@ -41,6 +43,8 @@ Item {
             yBox.forceActiveFocus();
         else if (field === "plot.group_by")
             groupBox.forceActiveFocus();
+        else if (field === "plot.fluids")
+            fluidList.forceActiveFocus();
         else if (field === "plot.filters")
             filterEditor.focusRow(row);
         else if (field === "plot.series")
@@ -324,10 +328,12 @@ Item {
         }
 
         ChoiceList {
+            id: fluidList
+
             Layout.fillWidth: true
             allowMove: false
             choiceModel: root.draft === null ? null : root.draft.fluidChoices
-            emptyText: qsTr("No per-plot fluid override; shared fluids are inherited.")
+            emptyText: root.fluidEmptyText
             noun: qsTr("plot fluid")
             objectName: "plotFluidList"
             onAddRequested: value => root.fluidSelectionRequested(root.draft, value, true)
@@ -335,6 +341,16 @@ Item {
                                                                                  false)
             selectedModel: root.draft === null ? null : root.draft.selectedFluids
             visible: root.applicable("fluids")
+        }
+
+        Label {
+            Layout.fillWidth: true
+            color: Theme.textMuted
+            font.family: Theme.sansFamily
+            font.pixelSize: 11
+            text: root.fluidSelectionHelp
+            visible: root.applicable("fluids") && text.length > 0
+            wrapMode: Text.Wrap
         }
 
         MappingEditor {

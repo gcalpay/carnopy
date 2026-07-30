@@ -3,8 +3,10 @@ from __future__ import annotations
 import copy
 import json
 import os
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -70,7 +72,15 @@ class InspectionController(QObject):
         self._lifecycle_guard: Callable[[str], bool] | None = None
 
         self.workspace_sources_model = InspectionListModel(
-            ("path", "name", "kindHint", "modifiedNs", "issue", "inspectable"),
+            (
+                "path",
+                "name",
+                "detail",
+                "kindHint",
+                "modifiedNs",
+                "issue",
+                "inspectable",
+            ),
             self,
         )
         self.source_summary_model = _summary_model(self)
@@ -309,6 +319,12 @@ class InspectionController(QObject):
         return self.table_model
 
     tableModel = Property(QObject, get_table_model, constant=True)
+
+    def get_workspace_outputs_url(self) -> str:
+        workspace = self.workspace
+        return "" if workspace is None else workspace.outputs.resolve().as_uri()
+
+    workspaceOutputsUrl = Property(str, get_workspace_outputs_url, notify=state_changed)
 
     def set_workspace(self, workspace: Workspace | None) -> None:
         if self.workspace == workspace:
@@ -820,7 +836,8 @@ class InspectionController(QObject):
         rows = (
             {
                 "path": str(candidate.path),
-                "name": candidate.path.name,
+                "name": _source_display_name(candidate),
+                "detail": _source_display_detail(candidate),
                 "kindHint": candidate.kind_hint,
                 "modifiedNs": candidate.modified_ns,
                 "issue": self._source_issues.get(candidate.path, ""),
@@ -829,6 +846,40 @@ class InspectionController(QObject):
             for candidate in self._source_candidates[: self._revealed_source_count]
         )
         self.workspace_sources_model.set_rows(rows, available=self.workspace is not None)
+
+
+_RUN_NAME_PATTERN = re.compile(
+    r"^(?P<timestamp>\d{8}T\d{6}Z)_(?P<kind>property|saturation|vapor_fraction|"
+    r"model_sweep|preparation)_(?P<identity>[A-Za-z0-9]+)$"
+)
+_RUN_KIND_LABELS = {
+    "property": "Property table",
+    "saturation": "Saturation table",
+    "vapor_fraction": "Vapor-mass-fraction table",
+    "model_sweep": "Model sweep",
+    "preparation": "ML preparation",
+}
+
+
+def _source_display_name(candidate: SourceCandidate) -> str:
+    match = _RUN_NAME_PATTERN.fullmatch(candidate.path.name)
+    if match is None:
+        return candidate.path.name
+    try:
+        timestamp = datetime.strptime(match.group("timestamp"), "%Y%m%dT%H%M%SZ").replace(
+            tzinfo=UTC
+        )
+    except ValueError:
+        return candidate.path.name
+    label = _RUN_KIND_LABELS[match.group("kind")]
+    return f"{label} · {timestamp:%Y-%m-%d %H:%M} UTC"
+
+
+def _source_display_detail(candidate: SourceCandidate) -> str:
+    match = _RUN_NAME_PATTERN.fullmatch(candidate.path.name)
+    if match is None:
+        return candidate.kind_hint
+    return f"Run {match.group('identity')} · {candidate.kind_hint}"
 
 
 def discover_workspace_sources(output_root: Path) -> tuple[SourceCandidate, ...]:

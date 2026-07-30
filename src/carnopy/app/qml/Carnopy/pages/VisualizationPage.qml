@@ -363,6 +363,16 @@ Item {
                               "Plot order is deterministic. Each durable row is a payload snapshot; only the open editor owns a temporary PlotDraft.")
                 title: qsTr("Plot requests")
 
+                Label {
+                    Layout.fillWidth: true
+                    color: Theme.textMuted
+                    font.family: Theme.sansFamily
+                    font.pixelSize: 11
+                    text: qsTr(
+                              "These plots are saved in YAML and render during the next Generate. To try one with the currently inspected dataset, use Preview with inspected data.")
+                    wrapMode: Text.Wrap
+                }
+
                 ListView {
                     id: plotList
 
@@ -394,7 +404,7 @@ Item {
                         border.color: compatible ? Theme.border : Theme.danger
                         border.width: 1
                         color: Theme.surfaceRaised
-                        height: issue.length > 0 ? 82 : 52
+                        height: issue.length > 0 ? 112 : 84
                         radius: Theme.radiusSmall
                         width: ListView.view.width
 
@@ -428,16 +438,6 @@ Item {
                                 }
 
                                 AppButton {
-                                    Accessible.name: qsTr("Use configured plot with inspected data")
-                                    enabled: root.visualizationDraft.enabled && plotRow.compatible
-                                             && !root.visualizationDraft.hasActivePlotEdit
-                                             && root.sessionPlotController.canBeginEdit
-                                    objectName: "visualizationUsePlot-" + plotRow.index
-                                    onClicked: root.configuredSessionEditRequested(plotRow.index)
-                                    text: qsTr("Explore")
-                                }
-
-                                AppButton {
                                     enabled: root.visualizationDraft.enabled &&
                                              !root.visualizationDraft.hasActivePlotEdit
                                              && plotRow.index > 0
@@ -461,6 +461,33 @@ Item {
                                     objectName: "visualizationRemovePlot-" + plotRow.index
                                     onClicked: root.removePlotRequested(plotRow.index)
                                     text: qsTr("Remove")
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+
+                                Label {
+                                    Layout.fillWidth: true
+                                    color: Theme.textMuted
+                                    elide: Text.ElideRight
+                                    font.family: Theme.sansFamily
+                                    font.pixelSize: 11
+                                    text: root.sessionPlotController.canBeginEdit ? qsTr(
+                                                                                        "Apply this saved definition to the inspected dataset without changing YAML.") :
+                                                                                    qsTr("Inspect a dataset to preview this saved definition.")
+                                }
+
+                                AppButton {
+                                    Accessible.name: qsTr(
+                                                         "Preview configured plot with inspected data")
+                                    enabled: root.visualizationDraft.enabled && plotRow.compatible
+                                             && !root.visualizationDraft.hasActivePlotEdit
+                                             && root.sessionPlotController.canBeginEdit
+                                    objectName: "visualizationUsePlot-" + plotRow.index
+                                    onClicked: root.configuredSessionEditRequested(plotRow.index)
+                                    text: qsTr("Preview with inspected data")
+                                    tone: "primary"
                                 }
                             }
 
@@ -818,8 +845,9 @@ Item {
                         objectName: "sessionPlotBeginButton"
                         onClicked: root.sessionBeginEditRequested(String(
                                                                       newSessionFormat.currentText))
-                        text: root.sessionPlotController.hasResult ? qsTr("Edit and render again") :
-                                                                     qsTr("Create exploratory plot")
+                        text: root.sessionPlotController.hasResult ? qsTr(
+                                                                         "Edit current session plot") :
+                                                                     qsTr("New plot from inspected data")
                         tone: "primary"
                     }
                 }
@@ -846,6 +874,9 @@ Item {
                         attentionRow: root.attentionRow
                         attentionSerial: root.attentionSerial
                         draft: root.sessionPlotController.activePlotDraft
+                        fluidEmptyText: qsTr("Select at least one inspected-source fluid.")
+                        fluidSelectionHelp: qsTr(
+                                                "All inspected-source fluids are selected by default. Remove any fluid you do not want to render.")
                         primaryActionText: qsTr("Render plot")
                         onCancelRequested: root.sessionCancelEditRequested()
                         onCommitRequested: root.sessionRenderRequested()
