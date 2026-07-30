@@ -92,7 +92,7 @@ lint = [
   "ruff>=0.9",
 ]
 type = [
-  "mypy>=1.13",
+  "mypy>=2.3.0",
   "pandas-stubs>=2.2",
 ]
 release = [
