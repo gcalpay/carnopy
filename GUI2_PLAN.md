@@ -12,10 +12,10 @@ architecture, and the maintainer accepts the finished application.
 
 ## Release and frontend baseline
 
-- `0.1.0a3` is the published baseline and contains the retired GUI-1 Widgets
-  presentation.
-- Current source reports `0.1.0a4` and contains the accepted Stage 3 QML
+- `0.1.0a4` is the published baseline and contains the accepted Stage 3 QML
   parity application.
+- `0.1.0a3` is the historical GUI-1 release and contains the retired Widgets
+  presentation.
 - `carnopy-gui` is canonical. `carnopy-app` launches the same QML application
   as a compatibility alias for `0.1.0a4`.
 - The obsolete Widgets presentation is deleted. Carnopy does not ship a
@@ -78,7 +78,7 @@ implementation.
 | 1 | Complete | Established request ownership and QML-ready dataset controllers |
 | 2 | Complete | Added the packaged QML shell and Dataset/YAML/Save workflows |
 | 3 | Complete; graph refreshed | Reached parity, migrated both launchers, retired Widgets, and qualified `0.1.0a4` |
-| 4 | Active after the `0.1.0a4` checkpoint | Add controlled sweep and preparation worker operations |
+| 4 | Ready after the post-release Graphify refresh | Add controlled sweep and preparation worker operations |
 | 5 | Pending | Add structured sweep and preparation QML workflows |
 | 6 | Pending | Build exact emitted-value 3D scenes |
 | 7 | Pending | Add native interactive 3D to QML |
@@ -127,7 +127,7 @@ The accepted public Dataset capture is:
 
 ## `0.1.0a4` release checkpoint
 
-After the Stage 3 PR and refreshed public graph merge into `main`, use:
+The checkpoint completed on 2026-07-30 through:
 
 ```text
 branch: release/0.1.0a4
@@ -135,17 +135,20 @@ PR:     chore(release): publish Carnopy 0.1.0a4
 commit: chore(release): prepare 0.1.0a4
 ```
 
-The release commit aligns `0.1.0a4` across Carnopy source, companion-bridge
+The release commit aligned `0.1.0a4` across Carnopy source, companion-bridge
 metadata and qualification constants, `uv.lock`, tracked citation metadata,
-release assertions, and version-specific documentation.
-Run the complete source, package, Twine, installed-distribution, and local
-release gates. Require green release-PR CI, merge through protected `main`,
-create and push one annotated `v0.1.0a4` tag, approve the protected PyPI
-deployment, verify PyPI, and create the matching GitHub prerelease.
+release assertions, and version-specific documentation. The complete source,
+package, Twine, installed-distribution, and local release gates passed before
+the protected `main` merge. The annotated `v0.1.0a4` tag then passed the
+protected publication workflow and produced the byte-identical
+[PyPI distributions](https://pypi.org/project/carnopy/0.1.0a4/). The matching
+[GitHub prerelease](https://github.com/gcalpay/carnopy/releases/tag/v0.1.0a4)
+was archived under the version-specific Zenodo DOI
+[`10.5281/zenodo.21709965`](https://doi.org/10.5281/zenodo.21709965).
 
-Zenodo normally issues the DOI only after archiving that GitHub release. Add
-the issued DOI to the GitHub release and then to `CITATION.cff` and README on
-`main`; do not replace already published distributions or emit placeholders.
+Refresh the public Graphify artifacts from the post-release `main` baseline
+before Stage 4 implementation begins. Do not replace the published
+distributions or move the release tag.
 
 No Stage 4–8 functionality or native VTK is part of the `0.1.0a4` gate.
 

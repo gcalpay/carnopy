@@ -3,6 +3,8 @@ message: "To cite Carnopy, use the metadata below."
 title: "Carnopy"
 type: software
 version: "0.1.0a4"
+doi: "10.5281/zenodo.21709965"
+date-released: "2026-07-30"
 license: MIT
 
 authors:

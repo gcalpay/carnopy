@@ -204,7 +204,7 @@ def test_alpha_metadata_uses_modern_license_and_release_urls() -> None:
     assert "License :: OSI Approved :: MIT License" not in project["classifiers"]
 
 
-def test_citation_metadata_matches_the_package_without_a_placeholder_doi() -> None:
+def test_citation_metadata_matches_the_package_and_published_release() -> None:
     root = Path(__file__).resolve().parents[1]
     citation = yaml.safe_load((root / "CITATION.cff").read_text(encoding="utf-8"))
     pyproject = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
@@ -214,7 +214,8 @@ def test_citation_metadata_matches_the_package_without_a_placeholder_doi() -> No
     assert citation["license"] == "MIT"
     assert citation["repository-code"] == "https://github.com/gcalpay/carnopy"
     assert citation["abstract"] == pyproject["project"]["description"]
-    assert "doi" not in citation
+    assert citation["doi"] == "10.5281/zenodo.21709965"
+    assert str(citation["date-released"]) == "2026-07-30"
     assert "10.xxxx" not in json.dumps(citation)
 
 
@@ -257,8 +258,10 @@ def test_readme_documents_published_and_source_release_boundaries() -> None:
     for extra in ("app", "viz", "ml", "analysis", "all"):
         assert f"| `{extra}` |" in text
     assert "Exact union of all public extras" in text
-    assert "The latest published alpha is `0.1.0a3`" in text
-    assert "current `0.1.0a4` source is\nrelease-prepared" in text
+    assert "The latest published alpha is `0.1.0a4`" in text
+    assert "https://doi.org/10.5281/zenodo.21709965" in text
+    assert "https://doi.org/10.5281/zenodo.21709964" in text
+    assert "kind: property_heatmap" in text
     assert "`carnopy-gui` is the canonical" in text
     assert "`carnopy-app` launches the same\nQML application" in text
     assert "0.1.0a2" not in text
