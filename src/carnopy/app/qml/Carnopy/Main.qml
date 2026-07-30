@@ -87,6 +87,7 @@ ApplicationWindow {
     signal configuredPlotExportRequested(string path)
     signal configuredPlotExploreRunRequested
     signal configuredPlotOpenPdfRequested
+    signal configuredPlotSessionEditRequested(int row)
     signal sessionPlotBeginEditRequested(string format)
     signal sessionPlotCancelEditRequested
     signal sessionPlotRenderRequested
@@ -1015,6 +1016,7 @@ ApplicationWindow {
             onConfiguredExportRequested: path => root.configuredPlotExportRequested(path)
             onConfiguredExploreRunRequested: root.configuredPlotExploreRunRequested()
             onConfiguredOpenPdfRequested: root.configuredPlotOpenPdfRequested()
+            onConfiguredSessionEditRequested: row => root.configuredPlotSessionEditRequested(row)
             onSessionBeginEditRequested: format => root.sessionPlotBeginEditRequested(format)
             onSessionCancelEditRequested: root.sessionPlotCancelEditRequested()
             onSessionRenderRequested: root.sessionPlotRenderRequested()

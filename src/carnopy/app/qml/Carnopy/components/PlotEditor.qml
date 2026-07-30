@@ -103,12 +103,23 @@ Item {
 
                 Accessible.name: qsTr("Plot kind")
                 Layout.fillWidth: true
-                currentIndex: root.draft === null ? -1 : indexOfValue(root.draft.kind)
+                currentIndex: root.draft === null ? -1 : indexForRoleValue(root.draft.kind)
                 model: root.draft === null ? null : root.draft.kindChoices
                 objectName: "plotKindBox"
                 onActivated: root.fieldChangeRequested(root.draft, "kind", String(currentValue))
                 textRole: "display"
                 valueRole: "value"
+            }
+
+            Label {
+                Layout.columnSpan: root.width >= 760 ? 4 : 2
+                Layout.fillWidth: true
+                color: Theme.textMuted
+                font.family: Theme.sansFamily
+                font.pixelSize: 12
+                text: root.draft === null ? "" : root.draft.kindHelp
+                visible: text.length > 0
+                wrapMode: Text.Wrap
             }
 
             Label {
@@ -124,7 +135,7 @@ Item {
 
                 Accessible.name: qsTr("Plot property")
                 Layout.fillWidth: true
-                currentIndex: root.draft === null ? -1 : indexOfValue(root.draft.propertyName)
+                currentIndex: root.draft === null ? -1 : indexForRoleValue(root.draft.propertyName)
                 model: root.draft === null ? null : root.draft.propertyChoices
                 objectName: "plotPropertyBox"
                 onActivated: root.fieldChangeRequested(root.draft, "property", String(currentValue))
@@ -146,7 +157,7 @@ Item {
 
                 Accessible.name: qsTr("Plot X axis")
                 Layout.fillWidth: true
-                currentIndex: root.draft === null ? -1 : indexOfValue(root.draft.xField)
+                currentIndex: root.draft === null ? -1 : indexForRoleValue(root.draft.xField)
                 model: root.draft === null ? null : root.draft.axisChoices
                 objectName: "plotXFieldBox"
                 onActivated: root.fieldChangeRequested(root.draft, "x", String(currentValue))
@@ -168,7 +179,7 @@ Item {
 
                 Accessible.name: qsTr("Plot Y axis")
                 Layout.fillWidth: true
-                currentIndex: root.draft === null ? -1 : indexOfValue(root.draft.yField)
+                currentIndex: root.draft === null ? -1 : indexForRoleValue(root.draft.yField)
                 model: root.draft === null ? null : root.draft.axisChoices
                 objectName: "plotYFieldBox"
                 onActivated: root.fieldChangeRequested(root.draft, "y", String(currentValue))
@@ -190,7 +201,7 @@ Item {
 
                 Accessible.name: qsTr("Plot group field")
                 Layout.fillWidth: true
-                currentIndex: root.draft === null ? -1 : indexOfValue(root.draft.groupBy)
+                currentIndex: root.draft === null ? -1 : indexForRoleValue(root.draft.groupBy)
                 model: root.draft === null ? null : root.draft.groupChoices
                 objectName: "plotGroupFieldBox"
                 onActivated: root.fieldChangeRequested(root.draft, "group_by", String(currentValue))
@@ -210,7 +221,7 @@ Item {
             AppComboBox {
                 Accessible.name: qsTr("Plot value scale")
                 Layout.fillWidth: true
-                currentIndex: root.draft === null ? -1 : indexOfValue(root.draft.valueScale)
+                currentIndex: root.draft === null ? -1 : indexForRoleValue(root.draft.valueScale)
                 model: root.draft === null ? null : root.draft.scaleChoices
                 onActivated: root.fieldChangeRequested(root.draft, "value_scale", String(
                                                            currentValue))
@@ -230,7 +241,7 @@ Item {
             AppComboBox {
                 Accessible.name: qsTr("Plot color scale")
                 Layout.fillWidth: true
-                currentIndex: root.draft === null ? -1 : indexOfValue(root.draft.colorScale)
+                currentIndex: root.draft === null ? -1 : indexForRoleValue(root.draft.colorScale)
                 model: root.draft === null ? null : root.draft.scaleChoices
                 onActivated: root.fieldChangeRequested(root.draft, "color_scale", String(
                                                            currentValue))
@@ -250,7 +261,7 @@ Item {
             AppComboBox {
                 Accessible.name: qsTr("Plot X scale")
                 Layout.fillWidth: true
-                currentIndex: root.draft === null ? -1 : indexOfValue(root.draft.xScale)
+                currentIndex: root.draft === null ? -1 : indexForRoleValue(root.draft.xScale)
                 model: root.draft === null ? null : root.draft.scaleChoices
                 onActivated: root.fieldChangeRequested(root.draft, "x_scale", String(currentValue))
                 textRole: "display"
@@ -269,7 +280,7 @@ Item {
             AppComboBox {
                 Accessible.name: qsTr("Plot Y scale")
                 Layout.fillWidth: true
-                currentIndex: root.draft === null ? -1 : indexOfValue(root.draft.yScale)
+                currentIndex: root.draft === null ? -1 : indexForRoleValue(root.draft.yScale)
                 model: root.draft === null ? null : root.draft.scaleChoices
                 onActivated: root.fieldChangeRequested(root.draft, "y_scale", String(currentValue))
                 textRole: "display"
@@ -292,7 +303,8 @@ Item {
                 AppComboBox {
                     Accessible.name: qsTr("Plot format override")
                     Layout.fillWidth: true
-                    currentIndex: root.draft === null ? -1 : indexOfValue(root.draft.outputFormat)
+                    currentIndex: root.draft === null ? -1 : indexForRoleValue(
+                                                            root.draft.outputFormat)
                     model: root.draft === null ? null : root.draft.formatChoices
                     onActivated: root.fieldChangeRequested(root.draft, "format", String(
                                                                currentValue))

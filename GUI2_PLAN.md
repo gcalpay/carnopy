@@ -278,6 +278,27 @@ Current implementation status as of 2026-07-29:
 | 12. Retire the Widgets presentation layer | Implemented and committed | Fourteen obsolete source modules, five implementation-specific test modules, and obsolete mixed-test UI coverage are removed. Focused structural and QML parity verification and the branch's remote checks pass. |
 | 13. Accept and complete Stage 3 | Native acceptance in progress | Step 12 and its remote checks pass. Native review rejected the first presentation capture and exposed the configured-result alignment, focus-preview, active-workspace navigation, Activity-card geometry, and QtSvg compatibility defects recorded below. Corrections pass focused checks. Release-facing README and metadata are simplified to two primary installation paths and one canonical description; tracked citation and generated-software provenance are prepared without a placeholder DOI. Stage 3 remains incomplete until native review accepts the workflow, a representative capture is approved, and the final gates pass. |
 
+The continuing native review also found bounded release-candidate defects.
+Inspect now projects the worker-reported column count beside the bounded table
+range and binds its
+failure-layer delegate through a nonconflicting private Qt role, eliminating
+the runtime `model is not defined` warning without changing generated failure
+columns. A valid property-table state that lands exactly on saturation may
+remain an invalid row with the retained `phase_evaluation_failed` backend
+diagnostic; the GUI does not invent a single phase at a two-phase boundary.
+A new inspected-data session plot now requires an explicit plot-kind
+and field choice, explains property/axis/series/color roles, and surfaces
+verified worker advisories instead of hiding crowded-family guidance.
+Configured plot edits display their stored values, and an explicit Explore
+action can seed—but never render—a session draft from one configured request
+with inherited defaults. Dense heatmaps omit redundant hollow valid-sample
+markers above 10,000 samples per fluid facet while retaining every sampled
+color cell and every invalid-state cross. Finally, maximized close resolves the
+remembered monitor from the persisted normal geometry rather than a WSLg frame
+reported on another screen, while missing placement state centers on the
+primary screen. These corrections change no YAML, worker protocol, emitted
+rows, interpolation policy, or scientific identity.
+
 Two earlier failed remote runs exposed a real QML lifecycle warning, not a
 scientific, worker, inspection, or packaging failure. Rapid Dataset-to-Run
 navigation replaced the central page `Loader` while `SearchableChoiceList`
@@ -334,7 +355,8 @@ remote checks pass.
   automatic first preview after explicit inspection, local paging, Focus
   Table, and an Inspect-specific context inspector. All operations cross queued
   root-facade signals; QML consumes only the lightweight typed models from Step
-  4 and does not import or materialize source data.
+  4 and does not import or materialize source data. Dataset shape presentation
+  includes the worker-reported row totals and number of columns.
 - Workspace-generated outputs remain the primary Inspect source path: their
   typed workspace rows show source kind before the generated directory ID.
   External CSV/Parquet and run/bundle dialogs are explicitly for sources not
@@ -397,7 +419,10 @@ remote checks pass.
   PDF opening, provenance-preserving export, and session-only rendering over
   the Step 7 controllers. Page and tab entry remain worker-idle, and the
   emitted-state p–v/T–s correction preserves exact finite coordinates while
-  replacing dense per-series legends with a continuous color scale.
+  replacing dense per-series legends with a continuous color scale. New
+  inspected-data session edits require deliberate plot-kind and field
+  selection; plot-kind help names each visual encoding and verified rendering
+  advisories remain visible with the result.
 - Step 9 is implemented and committed. The QML rail now enables **Activity and
   Recovery** for an active workspace. Its **Activity** page exposes **Run
   activity** and **Staging Recovery** tabs, virtualized record and candidate
@@ -704,7 +729,8 @@ Dataset inspection currently provides three independent failure aggregates:
 `failure_counts.layer`, `failure_counts.code`, and
 `failure_counts.property`. Preserve them as separate models:
 
-- `failureLayerCountsModel`: `layer`, `count`;
+- `failureLayerCountsModel`: `failureLayer`, `count` (the private Qt role is
+  prefixed because `layer` is a final `QQuickItem` property);
 - `failureCodeCountsModel`: `code`, `count`;
 - `failurePropertyCountsModel`: `property`, `count`.
 
@@ -810,11 +836,11 @@ Additional plot kinds require a later scientific review.
 Visualization has two top-level subviews:
 
 ```text
-Configured plots
-Explore inspected data
+Configured for generation
+Explore current data
 ```
 
-Configured plots contains the existing authoritative YAML configuration editor
+Configured for generation contains the existing authoritative YAML configuration editor
 and a clearly separate historical generated-results area. Entering the page or
 changing subviews does not inspect or render anything.
 
@@ -863,9 +889,13 @@ Provenance mismatch
 Do not use bare **Verified**: internal cryptographic and structural consistency
 is not independent scientific validation.
 
-`Explore inspected data` consumes the current ready Inspect selection, has no
+`Explore current data` consumes the current ready Inspect selection, has no
 duplicate source picker, uses a distinct workflow-local `PlotDraft`, remains
 session-only, and never changes YAML. It renders only after explicit Render.
+An explicit Explore action on a compatible configured row opens a session
+draft with that row and its inherited shared defaults. It starts no worker and
+does not join the two authorities; the user reviews the session draft and
+chooses Render.
 
 ### Preview and export safety
 
@@ -999,7 +1029,7 @@ This terminology correction is nonblocking; the safety checks remain required.
 **View Plots**
 
 - Select the exact originating generation request ID.
-- Navigate to Visualization → Configured plots.
+- Navigate to Visualization → Configured for generation.
 - Do not inspect or render automatically.
 - If no configured visualization existed, show an explicit empty state with
   **Explore this run**.
@@ -1007,7 +1037,7 @@ This terminology correction is nonblocking; the safety checks remain required.
 **Explore this run**
 
 - Explicitly inspect the generation's exact output directory.
-- On success, navigate to Visualization → Explore inspected data.
+- On success, navigate to Visualization → Explore current data.
 - On failure, remain in the current context and show typed failure feedback.
 - Never create or render a plot automatically.
 
@@ -1065,10 +1095,10 @@ The Inspect inspector shows only worker-derived source, revision, integrity,
 backend/model/version, reference-state, row, failure, selected-table, column,
 unit, and hash facts. Do not invent checks such as monotonicity.
 
-Configured plots shows originating configuration SHA, run and visualization
+Configured for generation shows originating configuration SHA, run and visualization
 identities, saved-baseline relation, and deterministic completed, failed, and
 skipped cards. Failures show exact type and message and never a placeholder
-graph. Explore inspected data uses an inline editor beside the preview in wide
+graph. Explore current data uses an inline editor beside the preview in wide
 mode and a stacked editor and preview at smaller widths.
 
 Activity uses a bounded record list, selected summary and details, exact
@@ -1089,7 +1119,7 @@ Navigation availability is:
   workspace but render meaningful prerequisite states internally.
 - Visualization may show persisted configured results without an open
   document.
-- Explore inspected data requires a ready inspected dataset.
+- Explore current data requires a ready inspected dataset.
 - Future workflows remain disabled, explained, and outside keyboard focus.
 
 ### Stage 3 Step sequence
@@ -1311,14 +1341,14 @@ Recommended commit:
 feat(app): add QML plot results and data exploration
 ```
 
-Add Configured plots and Explore inspected data, deterministic outcome cards,
+Add Configured for generation and Explore current data, deterministic outcome cards,
 lazy previews, inline session editing, explicit Render, focus mode, Export/Open
 actions, and render-another-format flow. Page entry and tab changes start no
 worker.
 
 Implemented locally on 2026-07-26 without a worker-protocol, public-schema,
 scientific-algorithm, or dependency change. The QML page now has explicit
-**Configured plots** and **Explore inspected data** views. Configured results
+**Configured for generation** and **Explore current data** views. Configured results
 are selected from successful persisted generation records and display only the
 verified ordered report outcomes. PNG and SVG use opaque, cache-disabled image
 provider URLs and an in-app focus mode; PDF remains an explicitly revalidated
@@ -1328,8 +1358,10 @@ Step 7 no-overwrite image-plus-rewritten-sidecar operation.
 Session exploration binds the one authoritative `SessionPlotController` and
 its temporary `PlotDraft`. Creating an edit is explicit, Render is the only
 worker-starting action, local and worker failures retain the edit, Cancel
-returns to the last committed result, and Render another format starts another
-explicit edit. Native close and SIGINT offer an explicit **Cancel edit and
+returns to the last committed result, and Edit and render again starts another
+explicit edit. A compatible configured row can explicitly seed a populated
+session draft with inherited defaults; this bridge starts no worker and does
+not modify YAML. Native close and SIGINT offer an explicit **Cancel edit and
 close** decision for unresolved configured or session edits; accepting it
 cancels only transient edit state before re-entering the ordinary dirty and
 busy guards. Hidden editor instances are not retained, preventing duplicate
@@ -1434,7 +1466,7 @@ Generate → View Plots
 Configured empty state → Explore this run
 Activity → Inspect Run
 Activity → View Plots
-Inspect → Explore inspected data
+Inspect → Explore current data
 ```
 
 Cover workspace/source replacement, both transient edit types, busy close,
@@ -1450,7 +1482,7 @@ Generate → View Plots
 Configured empty state → Explore this run
 Activity → Inspect Run
 Activity → View Plots
-Inspect → Explore inspected data
+Inspect → Explore current data
 ```
 
 A completed generation without a configured report remains selectable in the

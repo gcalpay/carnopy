@@ -541,10 +541,11 @@ Item {
                                 font.pixelSize: 11
                                 objectName: "inspectionTableRange"
                                 text: root.inspectionController.previewState === "ready" ? qsTr(
-                                                                                               "Rows %1–%2 of %3").arg(
+                                                                                               "Rows %1–%2 of %3 · %4 columns").arg(
                                                                                                root.inspectionController.previewFirstRow).arg(
                                                                                                root.inspectionController.previewLastRow).arg(
-                                                                                               root.inspectionController.previewTotalRows) :
+                                                                                               root.inspectionController.previewTotalRows).arg(
+                                                                                               root.inspectionController.tableModel.totalColumns) :
                                                                                            qsTr("No preview")
                             }
                         }
@@ -843,9 +844,12 @@ Item {
                                     model: root.inspectionController.failureLayerCountsModel
 
                                     delegate: DiagnosticFact {
+                                        required property int count
+                                        required property string failureLayer
+
                                         Layout.fillWidth: true
-                                        labelText: model.layer
-                                        valueText: String(model.count)
+                                        labelText: failureLayer
+                                        valueText: String(count)
                                     }
                                 }
                             }

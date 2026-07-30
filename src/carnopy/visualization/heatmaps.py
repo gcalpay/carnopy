@@ -33,6 +33,7 @@ SATURATION_HEATMAP_ERROR = (
     "x_vap=0 and x_vap=1 endpoint states. Use vapor_mass_fraction_table for "
     "quality-resolved maps."
 )
+SAMPLE_POINT_OVERLAY_LIMIT = 10_000
 
 
 def render_property_heatmap(
@@ -60,6 +61,9 @@ def render_property_heatmap(
     )
     cmap = mpl["pyplot"].get_cmap(DEFAULT_COLORMAP)
     figure, axes = create_faceted_figure(mpl=mpl, fluids=fluids)
+    sample_point_overlay = all(
+        int((frame["fluid"] == fluid).sum()) <= SAMPLE_POINT_OVERLAY_LIMIT for fluid in fluids
+    )
     cell_summaries: dict[str, dict[str, object]] = {}
     all_x_values: list[float] = []
     all_y_values: list[float] = []
@@ -102,15 +106,16 @@ def render_property_heatmap(
         )
         valid_points = fluid_frame.loc[fluid_frame["_plot_valid"]]
         invalid_points = fluid_frame.loc[~fluid_frame["_plot_valid"]]
-        axis.scatter(
-            valid_points["_x_display"],
-            valid_points["_y_display"],
-            s=10,
-            marker="o",
-            facecolors="none",
-            edgecolors="black",
-            linewidths=0.45,
-        )
+        if sample_point_overlay:
+            axis.scatter(
+                valid_points["_x_display"],
+                valid_points["_y_display"],
+                s=10,
+                marker="o",
+                facecolors="none",
+                edgecolors="black",
+                linewidths=0.45,
+            )
         if not invalid_points.empty:
             axis.scatter(
                 invalid_points["_x_display"],
@@ -161,7 +166,8 @@ def render_property_heatmap(
             "shading": "flat",
             "cell_boundary_policy": "adjacent_midpoints_with_half_spacing_endpoints",
             "interpolation": False,
-            "sample_point_overlay": True,
+            "sample_point_overlay": sample_point_overlay,
+            "sample_point_overlay_limit_per_facet": SAMPLE_POINT_OVERLAY_LIMIT,
             "invalid_marker": "x",
             "property_range": [value_min, value_max],
             "x_range": [min(all_x_values), max(all_x_values)],

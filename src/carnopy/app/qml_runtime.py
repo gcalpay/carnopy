@@ -179,6 +179,41 @@ def fitted_window_frame(
     return QSize(width, height), QPoint(x, y)
 
 
+def screen_name_for_frame(
+    frame: QRect,
+    screens: tuple[tuple[str, QRect], ...],
+    fallback_name: str = "",
+) -> str:
+    """Resolve the logical screen containing most of a decorated window frame."""
+
+    if not screens:
+        return fallback_name
+
+    def intersection_area(item: tuple[str, QRect]) -> int:
+        intersection = frame.intersected(item[1])
+        return max(0, intersection.width()) * max(0, intersection.height())
+
+    selected = max(screens, key=intersection_area)
+    if intersection_area(selected) > 0:
+        return selected[0]
+    if any(name == fallback_name for name, _geometry in screens):
+        return fallback_name
+    return screens[0][0]
+
+
+def screen_name_for_window_state(
+    frame: QRect,
+    normal_geometry: QRect,
+    maximized: bool,
+    screens: tuple[tuple[str, QRect], ...],
+    fallback_name: str = "",
+) -> str:
+    """Resolve placement from normal geometry when a compositor maximizes elsewhere."""
+
+    reference = normal_geometry if maximized and normal_geometry.isValid() else frame
+    return screen_name_for_frame(reference, screens, fallback_name)
+
+
 def _fit_window_to_available_screen(
     window: QWindow,
     preferred_screen_name: str = "",
@@ -206,6 +241,8 @@ def _fit_window_to_available_screen(
         screen = max(screens, key=intersection_area)
         if intersection_area(screen) == 0 and window.screen() is not None:
             screen = window.screen()
+    if window.screen() != screen:
+        window.setScreen(screen)
     frame_margins = window.frameMargins()
     client_size, frame_position = fitted_window_frame(
         window.size(),
@@ -613,6 +650,10 @@ class QmlApplicationRuntime:
                 self.controller.request_configured_plot_open_pdf,
             ),
             (
+                "configuredPlotSessionEditRequested",
+                self.controller.request_configured_plot_session_edit,
+            ),
+            (
                 "sessionPlotBeginEditRequested",
                 self.controller.request_session_plot_begin_edit,
             ),
@@ -682,9 +723,24 @@ class QmlApplicationRuntime:
 
     def _remember_window_state(self, window: QWindow) -> None:
         settings = self.controller.qml_settings
-        screen = window.screen()
-        settings.remember_normal_screen("" if screen is None else screen.name())
-        settings.set_maximized(window.visibility() == QWindow.Visibility.Maximized)
+        application = QGuiApplication.instance()
+        screens = (
+            tuple((screen.name(), screen.availableGeometry()) for screen in application.screens())
+            if isinstance(application, QGuiApplication)
+            else ()
+        )
+        fallback = "" if window.screen() is None else window.screen().name()
+        maximized = window.visibility() == QWindow.Visibility.Maximized
+        settings.remember_normal_screen(
+            screen_name_for_window_state(
+                window.frameGeometry(),
+                settings.get_normal_geometry(),
+                maximized,
+                screens,
+                fallback,
+            )
+        )
+        settings.set_maximized(maximized)
         if window.visibility() == QWindow.Visibility.Windowed:
             geometry = window.geometry()
             settings.rememberNormalGeometry(

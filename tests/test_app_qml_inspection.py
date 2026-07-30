@@ -130,10 +130,20 @@ def test_inspect_page_uses_bounded_worker_preview_and_focus_mode(
     assert controller.table_model.last_row == 100
     assert controller.table_model.total_rows == 150
 
+    controller.failure_layer_counts_model.set_rows(
+        ({"failureLayer": "state", "count": 1},),
+        available=True,
+    )
+    assert page.setProperty("selectedTab", 3)
+    _process_events()
+    assert runtime.warning_capture.runtime_warnings == ()
+    assert page.setProperty("selectedTab", 1)
+    _process_events()
+
     range_label = root.findChild(QObject, "inspectionTableRange")
     focus = _visible_item(root, "inspectionFocusTableButton")
     assert range_label is not None
-    assert range_label.property("text") == "Rows 1\N{EN DASH}100 of 150"
+    assert range_label.property("text") == "Rows 1\N{EN DASH}100 of 150 · 12 columns"
     assert QMetaObject.invokeMethod(focus, "click")
     _process_events()
     assert page.property("focusTable") is True

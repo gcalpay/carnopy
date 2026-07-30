@@ -45,6 +45,8 @@ from carnopy.app.qml_runtime import (
     _configure_quick_style,
     create_qml_runtime,
     fitted_window_frame,
+    screen_name_for_frame,
+    screen_name_for_window_state,
 )
 from carnopy.app.qml_settings import (
     NORMAL_SCREEN_KEY,
@@ -274,6 +276,58 @@ def test_maximized_window_is_placed_while_hidden_before_being_shown(
     assert root.property("visibility") == QWindow.Visibility.Maximized
     assert root.property("geometryTrackingReady") is True
     assert runtime.close()
+
+
+def test_closing_screen_uses_window_frame_instead_of_stale_qt_screen() -> None:
+    screens = (
+        ("main", QRect(0, 0, 1920, 1080)),
+        ("secondary", QRect(1920, 0, 1280, 1024)),
+    )
+
+    assert (
+        screen_name_for_frame(
+            QRect(1920, 0, 1280, 1024),
+            screens,
+            fallback_name="main",
+        )
+        == "secondary"
+    )
+    assert (
+        screen_name_for_window_state(
+            QRect(1920, 0, 1280, 1024),
+            QRect(142, 116, 1440, 884),
+            True,
+            screens,
+            fallback_name="secondary",
+        )
+        == "main"
+    )
+    assert (
+        screen_name_for_window_state(
+            QRect(1920, 0, 1280, 1024),
+            QRect(142, 116, 1440, 884),
+            False,
+            screens,
+            fallback_name="secondary",
+        )
+        == "secondary"
+    )
+    assert (
+        screen_name_for_frame(
+            QRect(0, 0, 1920, 1080),
+            screens,
+            fallback_name="secondary",
+        )
+        == "main"
+    )
+    assert (
+        screen_name_for_frame(
+            QRect(5000, 5000, 800, 600),
+            screens,
+            fallback_name="secondary",
+        )
+        == "secondary"
+    )
 
 
 def test_qml_instance_lock_rejects_overlapping_launches(

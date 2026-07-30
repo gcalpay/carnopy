@@ -199,6 +199,8 @@ def test_configured_and_manual_drafts_are_workflow_local() -> None:
 def test_plot_kind_labels_and_emitted_state_help_are_presentation_only() -> None:
     draft = PlotDraft(capabilities(inspected=True), dataset())
 
+    assert "other coordinate becomes the curve series" in draft.get_kind_help()
+
     draft.set_kind("pv")
     assert draft.get_kind_display() == "p\N{EN DASH}v emitted-state diagram"
     assert "specific_volume = 1 / mass_density" in draft.get_kind_help()

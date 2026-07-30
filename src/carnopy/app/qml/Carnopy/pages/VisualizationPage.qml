@@ -37,6 +37,7 @@ Item {
     signal configuredExportRequested(string path)
     signal configuredExploreRunRequested
     signal configuredOpenPdfRequested
+    signal configuredSessionEditRequested(int row)
     signal sessionBeginEditRequested(string format)
     signal sessionCancelEditRequested
     signal sessionRenderRequested
@@ -89,7 +90,7 @@ Item {
             id: configuredTab
 
             objectName: "configuredPlotsTab"
-            text: qsTr("Configured plots")
+            text: qsTr("Configured for generation")
 
             contentItem: Label {
                 color: configuredTab.checked ? Theme.success : Theme.textMuted
@@ -118,7 +119,7 @@ Item {
             id: exploreTab
 
             objectName: "exploreInspectedDataTab"
-            text: qsTr("Explore inspected data")
+            text: qsTr("Explore current data")
 
             contentItem: Label {
                 color: exploreTab.checked ? Theme.success : Theme.textMuted
@@ -203,7 +204,7 @@ Item {
                 font.family: Theme.sansFamily
                 font.pixelSize: 22
                 font.weight: Font.DemiBold
-                text: qsTr("Configured visualization")
+                text: qsTr("Configured generation plots")
             }
 
             Label {
@@ -212,7 +213,7 @@ Item {
                 font.family: Theme.sansFamily
                 font.pixelSize: 12
                 text: qsTr(
-                          "Define reproducible views of emitted dataset columns. Rendering remains worker-owned and does not run in this QML process.")
+                          "Define reproducible plots in YAML. They render during the next Generate; editing or opening this page never renders anything.")
                 wrapMode: Text.Wrap
             }
 
@@ -221,8 +222,8 @@ Item {
                 Layout.minimumWidth: 0
                 subtitle: root.visualizationDraft.hasActivePlotEdit ? qsTr(
                                                                           "Commit or cancel the temporary plot before changing shared settings.") :
-                                                                      qsTr("Disabled visualization keeps its latent settings and plot requests without affecting dataset validity.")
-                title: qsTr("Shared visualization settings")
+                                                                      qsTr("These defaults apply to every configured plot unless that plot overrides them. Turn plotting off for dataset-only runs; the current edit-session definitions are then omitted from YAML and Generate.")
+                title: qsTr("Defaults for configured plots")
 
                 RowLayout {
                     Layout.fillWidth: true
@@ -235,7 +236,8 @@ Item {
                         enabled: !root.visualizationDraft.hasActivePlotEdit
                         objectName: "visualizationEnabledSwitch"
                         onToggled: root.enabledChangeRequested(checked)
-                        text: checked ? qsTr("Enabled") : qsTr("Disabled")
+                        text: checked ? qsTr("Include plots during Generate") : qsTr(
+                                            "Dataset only — do not generate plots")
                     }
 
                     Item {
@@ -275,15 +277,15 @@ Item {
                             color: Theme.textMuted
                             font.family: Theme.sansFamily
                             font.pixelSize: 12
-                            text: qsTr("Shared output format")
+                            text: qsTr("Default output format")
                         }
 
                         AppComboBox {
                             id: formatBox
 
-                            Accessible.name: qsTr("Shared visualization format")
+                            Accessible.name: qsTr("Default configured plot format")
                             Layout.fillWidth: true
-                            currentIndex: indexOfValue(root.visualizationDraft.format)
+                            currentIndex: indexForRoleValue(root.visualizationDraft.format)
                             model: root.visualizationDraft.formatChoices
                             objectName: "visualizationFormatBox"
                             onActivated: root.formatChangeRequested(String(currentValue))
@@ -423,6 +425,16 @@ Item {
                                     objectName: "visualizationEditPlot-" + plotRow.index
                                     onClicked: root.editPlotRequested(plotRow.index)
                                     text: qsTr("Edit")
+                                }
+
+                                AppButton {
+                                    Accessible.name: qsTr("Use configured plot with inspected data")
+                                    enabled: root.visualizationDraft.enabled && plotRow.compatible
+                                             && !root.visualizationDraft.hasActivePlotEdit
+                                             && root.sessionPlotController.canBeginEdit
+                                    objectName: "visualizationUsePlot-" + plotRow.index
+                                    onClicked: root.configuredSessionEditRequested(plotRow.index)
+                                    text: qsTr("Explore")
                                 }
 
                                 AppButton {
@@ -757,7 +769,7 @@ Item {
                 font.family: Theme.sansFamily
                 font.pixelSize: 22
                 font.weight: Font.DemiBold
-                text: qsTr("Explore inspected data")
+                text: qsTr("Explore current data")
             }
 
             Label {
@@ -766,7 +778,7 @@ Item {
                 font.family: Theme.sansFamily
                 font.pixelSize: 12
                 text: qsTr(
-                          "Create a session-only view of the currently inspected dataset. Opening this page never renders; Render plot is always explicit.")
+                          "Create an ad-hoc, session-only view of the currently inspected dataset. Choose the plot kind and fields explicitly. This never changes the saved YAML, and opening the page never renders.")
                 wrapMode: Text.Wrap
             }
 
@@ -806,8 +818,8 @@ Item {
                         objectName: "sessionPlotBeginButton"
                         onClicked: root.sessionBeginEditRequested(String(
                                                                       newSessionFormat.currentText))
-                        text: root.sessionPlotController.hasResult ? qsTr("Render another format") :
-                                                                     qsTr("Create session plot")
+                        text: root.sessionPlotController.hasResult ? qsTr("Edit and render again") :
+                                                                     qsTr("Create exploratory plot")
                         tone: "primary"
                     }
                 }
@@ -903,6 +915,31 @@ Item {
                     onExportRequested: root.openExportDialog("session",
                                                              root.sessionPlotController.resultFormat)
                     onOpenPdfRequested: root.sessionOpenPdfRequested()
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: sessionAdvisory.implicitHeight + 20
+                    border.color: Theme.warning
+                    border.width: 1
+                    color: Theme.warningSoft
+                    radius: Theme.radiusSmall
+                    visible: root.sessionPlotController.advisoryText.length > 0
+
+                    Label {
+                        id: sessionAdvisory
+
+                        anchors.left: parent.left
+                        anchors.leftMargin: 12
+                        anchors.right: parent.right
+                        anchors.rightMargin: 12
+                        anchors.verticalCenter: parent.verticalCenter
+                        color: Theme.text
+                        font.family: Theme.sansFamily
+                        font.pixelSize: 12
+                        text: root.sessionPlotController.advisoryText
+                        wrapMode: Text.Wrap
+                    }
                 }
             }
 

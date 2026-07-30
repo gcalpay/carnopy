@@ -449,6 +449,13 @@ class VisualizationDraft(QObject):
     def plot_payloads(self) -> list[dict[str, Any]]:
         return [copy.deepcopy(plot) for plot in self._plots]
 
+    def resolved_plot_payload(self, row: int) -> dict[str, Any] | None:
+        """Return one configured plot with its inherited defaults applied."""
+
+        if not self._enabled or not 0 <= row < len(self._plots):
+            return None
+        return self._effective_plot(self._plots[row])
+
     @Slot(result=QObject)
     def begin_add_plot(self) -> QObject | None:
         if not self._can_begin_plot_edit():

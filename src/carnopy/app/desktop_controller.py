@@ -749,6 +749,16 @@ class DesktopController(QObject):
             return False
         return self.visualization_draft.begin_edit_plot(row) is not None
 
+    @Slot(int, result=bool, name="requestConfiguredPlotSessionEdit")
+    def request_configured_plot_session_edit(self, row: int) -> bool:
+        payload = self.visualization_draft.resolved_plot_payload(row)
+        if payload is None:
+            return False
+        started = self.session_plot_controller.begin_edit_from_request(payload)
+        if started:
+            self.navigationRequested.emit("visualization", "explore")
+        return started
+
     @Slot(result=bool, name="requestVisualizationCommitPlot")
     def request_visualization_commit_plot(self) -> bool:
         return self.visualization_draft.commit_plot()

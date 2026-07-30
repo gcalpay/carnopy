@@ -394,6 +394,31 @@ def test_property_table_heatmap_uses_temperature_and_pressure_axes(
     assert sidecar["axes"]["color"]["field"] == "mass_density"
 
 
+def test_dense_property_heatmap_omits_sample_markers_without_omitting_cells(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "carnopy.visualization.heatmaps.SAMPLE_POINT_OVERLAY_LIMIT",
+        1,
+    )
+    run = generate_dataset(
+        _write_config(tmp_path / "property.yaml", mode="property_table"),
+        output_root=tmp_path / "runs",
+    )
+    result = plot_property_heatmap(
+        run.output_directory,
+        property_name="mass_density",
+        output=tmp_path / "dense-property-heatmap.png",
+    )
+    sidecar = json.loads(result.sidecar_path.read_text(encoding="utf-8"))
+
+    assert sidecar["effective_settings"]["sample_point_overlay"] is False
+    assert len(result.figure.axes[0].collections) == 1
+    cells = sidecar["series_or_cells"]["cells"]["n-Propane"]
+    assert cells["sampled_cell_count"] == 9
+
+
 def test_multifluid_heatmaps_share_color_normalization(tmp_path: Path) -> None:
     run = generate_dataset(
         _write_config(

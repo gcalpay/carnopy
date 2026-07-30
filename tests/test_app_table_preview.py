@@ -129,6 +129,7 @@ def test_preview_model_pages_locally_and_shows_units() -> None:
     )
 
     assert model.rowCount() == 100
+    assert model.get_total_columns() == 1
     assert model.headerData(0, Qt.Orientation.Horizontal) == "pressure_Pa [Pa]"
     assert model.headerData(0, Qt.Orientation.Vertical) == "1"
     assert model.first_row == 1

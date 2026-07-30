@@ -177,6 +177,18 @@ class SessionPlotController(QObject):
 
     excludedSampleCount = Property(int, get_excluded_sample_count, notify=state_changed)
 
+    def get_advisory_text(self) -> str:
+        artifact = self._artifact
+        if artifact is None:
+            return ""
+        return "\n".join(
+            str(item.get("message", "")).strip()
+            for item in artifact.advisories
+            if str(item.get("message", "")).strip()
+        )
+
+    advisoryText = Property(str, get_advisory_text, notify=state_changed)
+
     def get_can_preview(self) -> bool:
         return bool(self._preview_url)
 
@@ -229,13 +241,23 @@ class SessionPlotController(QObject):
 
     @Slot(str, result=bool, name="beginEdit")
     def begin_edit(self, output_format: str = "png") -> bool:
+        initial = copy.deepcopy(self._committed_request)
+        if initial is None:
+            initial = {"name": "session-plot", "kind": ""}
+        return self._begin_edit(initial, output_format)
+
+    def begin_edit_from_request(self, request: Mapping[str, object]) -> bool:
+        """Open, but never render, a configured request against inspected data."""
+
+        initial = copy.deepcopy(dict(request))
+        output_format = str(initial.get("format", "png"))
+        return self._begin_edit(initial, output_format)
+
+    def _begin_edit(self, initial: dict[str, Any], output_format: str) -> bool:
         context = self._context
         if context is None or self._active_draft is not None or self.coordinator.is_busy:
             return False
-        initial = copy.deepcopy(self._committed_request)
         draft = PlotDraft(context, context, initial, self, allow_format=True)
-        if initial is None:
-            draft.set_name("session-plot")
         draft.set_output_format(output_format)
         self._active_draft = draft
         draft.changed.connect(self.state_changed)

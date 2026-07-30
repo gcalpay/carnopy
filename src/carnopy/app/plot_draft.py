@@ -29,6 +29,20 @@ PLOT_KIND_LABELS = {
     "ts": "T\N{EN DASH}s emitted-state diagram",
 }
 PLOT_KIND_HELP = {
+    "property_curves": (
+        "The selected property is the Y axis. The chosen sampled coordinate is the "
+        "X axis, and the other coordinate becomes the curve series and color encoding. "
+        "Select exact series values when the full family would be crowded."
+    ),
+    "property_heatmap": (
+        "The two sampled coordinates form the X and Y axes, and the selected property "
+        "is encoded by color. Only emitted samples are shown; Carnopy does not "
+        "interpolate missing states."
+    ),
+    "xy": (
+        "Plots one emitted field against another. Choose both axes explicitly; grouping "
+        "and series selections use only recorded dataset values."
+    ),
     "pv": (
         "Uses emitted pressure and specific_volume = 1 / mass_density. Missing or "
         "invalid samples remain gaps. It does not construct a cycle, process path, "

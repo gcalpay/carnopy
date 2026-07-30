@@ -108,6 +108,11 @@ class PreviewTableModel(QAbstractTableModel):
 
     totalRows = Property(int, get_total_rows, notify=state_changed)
 
+    def get_total_columns(self) -> int:
+        return self.columnCount()
+
+    totalColumns = Property(int, get_total_columns, notify=state_changed)
+
     def get_page_offset(self) -> int:
         return self.page_offset
 

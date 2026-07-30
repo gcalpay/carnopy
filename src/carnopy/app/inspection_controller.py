@@ -78,7 +78,7 @@ class InspectionController(QObject):
         self.backend_summary_model = _summary_model(self)
         self.row_summary_model = _summary_model(self)
         self.phase_counts_model = InspectionListModel(("phase", "count"), self)
-        self.failure_layer_counts_model = InspectionListModel(("layer", "count"), self)
+        self.failure_layer_counts_model = InspectionListModel(("failureLayer", "count"), self)
         self.failure_code_counts_model = InspectionListModel(("code", "count"), self)
         self.failure_property_counts_model = InspectionListModel(("property", "count"), self)
         self.sweep_delta_reason_counts_model = InspectionListModel(("reason", "count"), self)
@@ -687,7 +687,10 @@ class InspectionController(QObject):
             available=bool(backend),
         )
         self.row_summary_model.set_rows(
-            _summary_rows(rows, (("total", "Total"), ("valid", "Valid"), ("invalid", "Invalid"))),
+            _summary_rows(
+                rows,
+                (("total", "Total"), ("valid", "Valid"), ("invalid", "Invalid")),
+            ),
             available=bool(rows),
         )
         self.phase_counts_model.set_rows(
@@ -696,7 +699,7 @@ class InspectionController(QObject):
         )
         failures = _mapping(summary.get("failure_counts"))
         self.failure_layer_counts_model.set_rows(
-            _count_rows(failures.get("layer"), "layer"),
+            _count_rows(failures.get("layer"), "failureLayer"),
             available=isinstance(failures.get("layer"), dict),
         )
         self.failure_code_counts_model.set_rows(

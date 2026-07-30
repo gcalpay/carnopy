@@ -18,6 +18,7 @@ from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QApplication
 
 from carnopy.app.inspection_controller import InspectionController
+from carnopy.app.plot_draft import PlotDraft
 from carnopy.app.plot_preview_provider import VerifiedPlotPreviewRegistry
 from carnopy.app.protocol import RequestType, WorkerEvent
 from carnopy.app.request_coordinator import (
@@ -204,6 +205,41 @@ def _controller(
     return controller, stub, source
 
 
+def _select_property_curve(controller: SessionPlotController) -> PlotDraft:
+    draft = controller.get_active_plot_draft()
+    assert isinstance(draft, PlotDraft)
+    draft.set_kind("property_curves")
+    draft.set_property_name("mass_density")
+    draft.set_x_field("temperature")
+    return draft
+
+
+def test_configured_request_opens_as_session_edit_without_rendering(
+    tmp_path: Path,
+    application: QApplication,
+) -> None:
+    del application
+    controller, stub, _source = _controller(tmp_path)
+
+    assert controller.begin_edit_from_request(
+        {
+            "name": "configured-density",
+            "kind": "property_curves",
+            "property": "mass_density",
+            "x": "temperature",
+            "format": "svg",
+        }
+    )
+    draft = controller.get_active_plot_draft()
+    assert isinstance(draft, PlotDraft)
+    assert draft.get_name() == "configured-density"
+    assert draft.get_kind() == "property_curves"
+    assert draft.get_property_name() == "mass_density"
+    assert draft.get_x_field() == "temperature"
+    assert draft.get_output_format() == "svg"
+    assert stub.started is None
+
+
 def test_session_plot_success_commits_result_and_destroys_edit(
     tmp_path: Path,
     application: QApplication,
@@ -211,6 +247,8 @@ def test_session_plot_success_commits_result_and_destroys_edit(
     del application
     controller, stub, source = _controller(tmp_path)
     assert controller.begin_edit("png")
+    assert not controller.get_can_render()
+    _select_property_curve(controller)
     assert controller.get_can_render()
     assert controller.render()
     request = PlotRequest(
@@ -239,7 +277,12 @@ def test_session_plot_success_commits_result_and_destroys_edit(
                 "normalized_request": canonical,
                 "valid_sample_count": 4,
                 "excluded_sample_count": 0,
-                "advisories": [],
+                "advisories": [
+                    {
+                        "code": "crowded_curve_family",
+                        "message": "Select fewer exact pressure series.",
+                    }
+                ],
                 "image": {
                     "path": str(image),
                     "sidecar_path": str(sidecar_path),
@@ -277,6 +320,7 @@ def test_session_plot_success_commits_result_and_destroys_edit(
     assert controller.get_result_format() == "png"
     assert controller.get_valid_sample_count() == 4
     assert controller.get_excluded_sample_count() == 0
+    assert controller.get_advisory_text() == "Select fewer exact pressure series."
 
     exported = tmp_path / "exported-session.png"
     assert controller.export_result(str(exported))
@@ -311,6 +355,7 @@ def test_session_plot_failure_keeps_edit_and_uses_only_structured_field(
     attention: list[tuple[str, int]] = []
     controller.attention_requested.connect(lambda field, row: attention.append((field, row)))
     assert controller.begin_edit("png")
+    _select_property_curve(controller)
     assert controller.render()
     stub.finish(
         failure={

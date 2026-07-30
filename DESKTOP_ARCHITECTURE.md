@@ -250,6 +250,8 @@ workflow. It owns:
 - the active worker inspection request and exact source revision;
 - source-kind-aware identity, backend, row, diagnostic, table, and integrity
   projections;
+- dataset row totals together with the worker-reported column count, without
+  opening the table again in the GUI process;
 - three independent dataset failure aggregates for layer, code, and property;
 - one typed row per logical array, including distinct shapes and dtypes within
   a shared artifact;
@@ -348,6 +350,16 @@ shutdown, but do not block unrelated Dataset edits or Save. Native close and
 SIGINT surface an explicit **Cancel edit and close** decision instead of
 silently ignoring shutdown; accepting it cancels only temporary plot-edit
 state and then re-enters the ordinary dirty and busy shutdown guards.
+Creating a new session edit does not silently select a scientifically valid
+plot request: the user must choose the plot kind and its required fields.
+Plot-kind help identifies axis, property, series, and color roles, and verified
+worker advisories such as a crowded curve family remain visible with the
+committed result.
+The configured and session workflows remain separate authorities. Configured
+plots are YAML state rendered only by a later Generate; session plots are
+ad-hoc state over the current inspected source. An explicit configured-row
+**Explore** action applies that row's inherited configured defaults to a new
+session draft, but starts no worker and requires review followed by Render.
 
 Both controllers use `carnopy.visualization.requests` for lightweight canonical
 request identity. They do not import visualization configuration/models,
@@ -369,6 +381,11 @@ shared by p–v, T–s, custom X–Y, and property-curve renderers and never add
 saturation dome, thermodynamic cycle, process path, interpolation, or backend
 call. The QML process still receives only the worker-produced artifact and
 provenance sidecar.
+Property heatmaps continue to render every sampled cell without interpolation.
+Hollow valid-sample markers are presentation-only and are omitted above 10,000
+samples per fluid facet so their outlines cannot obscure the color mesh;
+invalid emitted states retain explicit cross markers and remain counted in the
+sidecar.
 
 ### `WorkerClient`
 
@@ -725,6 +742,13 @@ The permanent invariants are:
   must cover hidden-before-show ordering, obsolete-state migration,
   single-instance rejection, settings isolation, and a clean replacement
   launch after the lock is released.
+- A windowed close resolves the monitor from the largest intersection with the
+  decorated frame rather than trusting a stale `QWindow.screen()` association.
+  A maximized close resolves it from the persisted normal geometry because
+  WSLg can report the maximized frame on a different logical screen. The stored
+  maximized flag then reopens the hidden window maximized on that monitor.
+- With no valid placement state, the normal 1440 by 900 window is centered on
+  the operating system's primary logical screen.
 
 ### Responsive shell and settings
 

@@ -98,6 +98,10 @@ def test_dataset_projection_keeps_failure_aggregates_independent(tmp_path: Path)
                 "identity": {"mode": "property_table", "run_id": "run"},
                 "backend": {"name": "coolprop", "version": "8.0", "model": "heos"},
                 "rows": {"total": 7, "valid": 4, "invalid": 3},
+                "columns": [
+                    {"name": "temperature_K", "dtype": "float64"},
+                    {"name": "pressure_Pa", "dtype": "float64"},
+                ],
                 "phase_counts": {"gas": 4, "liquid": 3},
                 "failure_counts": {
                     "layer": {"backend": 3},
@@ -108,13 +112,20 @@ def test_dataset_projection_keeps_failure_aggregates_independent(tmp_path: Path)
         },
     )
 
-    assert controller.failure_layer_counts_model.rows() == ({"layer": "backend", "count": 3},)
+    assert controller.failure_layer_counts_model.rows() == (
+        {"failureLayer": "backend", "count": 3},
+    )
     assert controller.failure_code_counts_model.rows() == (
         {"code": "property_failed", "count": 2},
         {"code": "state_failed", "count": 1},
     )
     assert controller.failure_property_counts_model.rows() == (
         {"property": "dynamic_viscosity", "count": 2},
+    )
+    assert tuple(row["key"] for row in controller.row_summary_model.rows()) == (
+        "total",
+        "valid",
+        "invalid",
     )
     assert controller.get_integrity_label() == "Verified recorded artifact"
     coordinator.shutdown()
