@@ -28,10 +28,11 @@ architecture, and the maintainer accepts the finished application.
 
 Stage 3 product implementation, remote CI, the complete local gate, and native
 acceptance passed on 2026-07-30. Its accepted implementation record is indexed
-in [`docs/archive/GUI2_STAGE3.md`](docs/archive/GUI2_STAGE3.md). The only
-remaining pre-merge documentation task is an intentional refresh of the
-hard-stale public Graphify artifacts from the settled Stage 3 architecture.
-Graphify remains forbidden for current navigation until that refresh completes.
+in [`docs/archive/GUI2_STAGE3.md`](docs/archive/GUI2_STAGE3.md). The public
+Graphify artifacts were refreshed in commit
+`08053757551d89fa7bd9a181411ddb99a91886f4` from exact source revision
+`2f5aa8aa39c9ce28f12941c8d67432e7694c0c8c`. They represent the accepted
+Stage 3 architecture and remain subject to the repository freshness gate.
 
 ## Authority and permanent boundaries
 
@@ -76,7 +77,7 @@ implementation.
 | 0 | Complete | Qualified the native Qt Quick and VTK bridge feasibility baseline |
 | 1 | Complete | Established request ownership and QML-ready dataset controllers |
 | 2 | Complete | Added the packaged QML shell and Dataset/YAML/Save workflows |
-| 3 | Complete; graph refresh pending before merge | Reached parity, migrated both launchers, retired Widgets, and qualified `0.1.0a4` |
+| 3 | Complete; graph refreshed | Reached parity, migrated both launchers, retired Widgets, and qualified `0.1.0a4` |
 | 4 | Active after the `0.1.0a4` checkpoint | Add controlled sweep and preparation worker operations |
 | 5 | Pending | Add structured sweep and preparation QML workflows |
 | 6 | Pending | Build exact emitted-value 3D scenes |

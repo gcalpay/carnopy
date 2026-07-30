@@ -64,8 +64,8 @@ planned `0.1.0a4` alpha checkpoint. Later sweep, preparation, and native-3D
 stages are not prerequisites for that release. Stage 3 implementation, remote
 CI, the complete local gate, and native acceptance passed on 2026-07-30. Its
 accepted screenshot and historical implementation index are tracked under
-`docs/`; refreshing the hard-stale public Graphify artifacts is the last
-documentation task before the Stage 3 PR merges.
+`docs/`. The public Graphify artifacts now represent this accepted Stage 3
+architecture and remain governed by the repository freshness gate.
 
 ## Authority map
 
@@ -928,7 +928,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 0 | Qualified a same-repository `QQuickVTKItem` companion bridge on the pinned Linux/Qt/VTK baseline | Complete |
 | 1 | Extracted request ownership, workspace state, dataset/visualization drafts, and complete configuration workflow into QML-ready QtCore controllers | Complete |
 | 2 | Package the Precision Grid QML Workspace, Dataset, Visualization, and YAML/Save workflows | Complete; automated, remote, and native acceptance passed |
-| 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete; graph refresh pending before merge |
+| 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete; graph refreshed |
 | 4 | Add controlled sweep and preparation worker operations | Active after the `0.1.0a4` checkpoint |
 | 5 | Add structured sweep and preparation QML workflows | Pending |
 | 6 | Build exact emitted-value 3D scene contracts | Pending |
@@ -1073,13 +1073,12 @@ defined in `docs/agent-guides/DEVELOPMENT.md`; for clarity it is:
 - a hard-stale graph is either refreshed intentionally and atomically or simply
   bypassed in favor of source, tests, and scoped text search.
 
-As audited on 2026-07-30, the public artifacts were last refreshed in
-`42ff05955e4dc6ea418a14a41bd9dda2780f7b12` from exact source revision
-`e3550b244d2ac05d0a33cb37875c98c0cb49c7c5`. It predates the completed Stage 3
-architecture by more than the six-commit cutoff. The graph is hard-stale and
-must not be queried. Refresh its three public artifacts intentionally from the
-settled Stage 3 source before merging the stage PR; do not refresh it repeatedly
-during ordinary implementation churn.
+The public artifacts were refreshed on 2026-07-30 in
+`08053757551d89fa7bd9a181411ddb99a91886f4` from exact source revision
+`2f5aa8aa39c9ce28f12941c8d67432e7694c0c8c`. They represent the accepted Stage
+3 architecture. Subsequent documentation, merge, and release commits determine
+their current navigation status through the same Git-history freshness gate;
+do not refresh them repeatedly during ordinary implementation churn.
 
 GitHub Issues are enabled for `gcalpay/carnopy`; the repository had no open or
 closed issues in the 2026-07-23 audit. Create an issue only for reproducible,
