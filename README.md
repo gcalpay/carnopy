@@ -50,8 +50,8 @@ synthetic output from the selected backend and model.
 
 The commands below are the two primary `0.1.0a4` installation paths. They
 become usable when the PyPI badge above reports `0.1.0a4`. Until then, the
-latest published alpha is `0.1.0a3`, while the modern QML frontend is available
-from the current `0.1.0a4.dev0` source checkout.
+latest published alpha is `0.1.0a3`, while the current `0.1.0a4` source is
+release-prepared with the modern QML frontend.
 
 ### Isolated desktop application
 
@@ -426,13 +426,13 @@ repository freshness gate before use.
 
 ## Release status
 
-The latest published alpha is `0.1.0a3`. The current source reports
-`0.1.0a4.dev0` and contains the accepted QML parity application planned for
-`0.1.0a4`. Stage 3 implementation, remote CI, the complete local gate, and
-native acceptance have passed. The public Graphify navigation artifacts have
-been refreshed from the accepted Stage 3 architecture. The version bump, tag,
-PyPI publication, GitHub prerelease, and post-release Zenodo DOI belong to the
-separate human-controlled `0.1.0a4` release process.
+The latest published alpha is `0.1.0a3`. The current source reports the
+release-prepared `0.1.0a4` and contains the accepted QML parity application.
+Stage 3 implementation, remote CI, the complete local gate, and native
+acceptance have passed. The public Graphify navigation artifacts have been
+refreshed from the accepted Stage 3 architecture. The tag, PyPI publication,
+GitHub prerelease, and post-release Zenodo DOI belong to the separate
+human-controlled `0.1.0a4` release process.
 
 ## License
 

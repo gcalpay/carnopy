@@ -18,7 +18,7 @@ from carnopy._version import __version__
 ROOT = Path(__file__).resolve().parents[1]
 BRIDGE_ROOT = ROOT / "native" / "carnopy-vtk-bridge"
 FIXTURE_VERSION = "1.2.3"
-GUI2_DEVELOPMENT_VERSION = "0.1.0a4.dev0"
+GUI2_RELEASE_VERSION = "0.1.0a4"
 
 
 def load_script(name: str) -> ModuleType:
@@ -37,14 +37,14 @@ smoke_installed = load_script("smoke_installed")
 verify_index_release = load_script("verify_index_release")
 
 
-def test_gui2_development_version_surfaces_are_aligned() -> None:
+def test_gui2_release_version_surfaces_are_aligned() -> None:
     root_metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     bridge_metadata = tomllib.loads((BRIDGE_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     bridge_init = (BRIDGE_ROOT / "src/carnopy_vtk_bridge/__init__.py").read_text(encoding="utf-8")
     qualification = (BRIDGE_ROOT / "tests/qualification.py").read_text(encoding="utf-8")
     cmake = (BRIDGE_ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
 
-    assert __version__ == GUI2_DEVELOPMENT_VERSION
+    assert __version__ == GUI2_RELEASE_VERSION
     assert root_metadata["project"]["dynamic"] == ["version"]
     assert root_metadata["tool"]["hatch"]["version"]["path"] == "src/carnopy/_version.py"
     assert (
@@ -55,12 +55,12 @@ def test_gui2_development_version_surfaces_are_aligned() -> None:
         "PySide6-Essentials>=6.11.1,<6.12"
         in root_metadata["project"]["optional-dependencies"]["all"]
     )
-    assert bridge_metadata["project"]["version"] == GUI2_DEVELOPMENT_VERSION
+    assert bridge_metadata["project"]["version"] == GUI2_RELEASE_VERSION
     assert bridge_metadata["project"]["dependencies"] == ["PySide6-Essentials==6.11.1"]
-    assert f'__version__ = "{GUI2_DEVELOPMENT_VERSION}"' in bridge_init
-    assert f'VERSION = "{GUI2_DEVELOPMENT_VERSION}"' in qualification
+    assert f'__version__ = "{GUI2_RELEASE_VERSION}"' in bridge_init
+    assert f'VERSION = "{GUI2_RELEASE_VERSION}"' in qualification
     assert "project(carnopy_vtk_bridge VERSION 0.1.0 LANGUAGES CXX)" in cmake
-    assert GUI2_DEVELOPMENT_VERSION not in cmake
+    assert GUI2_RELEASE_VERSION not in cmake
 
 
 def test_distribution_checksums_are_deterministic_and_non_overwriting(tmp_path: Path) -> None:

@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "To cite Carnopy, use the metadata below."
 title: "Carnopy"
 type: software
-version: "0.1.0a4.dev0"
+version: "0.1.0a4"
 license: MIT
 
 authors:

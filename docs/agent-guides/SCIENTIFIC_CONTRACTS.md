@@ -49,7 +49,7 @@ Milestone 1 supports:
 - model-sweep bundles comparing emitted values from multiple CoolProp models.
 
 The `0.1.0a3` release line established a Linux-first PySide6 Widgets frontend
-for the existing dataset workflow. Current `0.1.0a4.dev0` source has migrated
+for the existing dataset workflow. Current `0.1.0a4` source has migrated
 those accepted workflows into one QML application and removed the duplicate
 Widgets presentation. The desktop application remains a presentation frontend,
 not a new scientific execution layer. Its permanent boundary includes the
