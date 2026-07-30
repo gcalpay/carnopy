@@ -3,6 +3,7 @@
 [![PyPI](https://img.shields.io/pypi/v/carnopy.svg)](https://pypi.org/project/carnopy/)
 [![Python](https://img.shields.io/pypi/pyversions/carnopy.svg)](https://pypi.org/project/carnopy/)
 [![Verify](https://github.com/gcalpay/carnopy/actions/workflows/ci.yml/badge.svg)](https://github.com/gcalpay/carnopy/actions/workflows/ci.yml)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21709964.svg)](https://doi.org/10.5281/zenodo.21709964)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Reproducible thermophysical datasets from scientific backends with
@@ -48,10 +49,9 @@ synthetic output from the selected backend and model.
 
 ## Installation
 
-The commands below are the two primary `0.1.0a4` installation paths. They
-become usable when the PyPI badge above reports `0.1.0a4`. Until then, the
-latest published alpha is `0.1.0a3`, while the current `0.1.0a4` source is
-release-prepared with the modern QML frontend.
+The commands below install the published `0.1.0a4` alpha from PyPI. Use an
+isolated uv-managed environment for the desktop application or install the
+CLI and Python library into the current environment with pip.
 
 ### Isolated desktop application
 
@@ -59,6 +59,11 @@ Install the QML desktop workbench in its own uv-managed environment:
 
 ```bash
 uv tool install "carnopy[app]==0.1.0a4"
+```
+
+Then start the workbench:
+
+```bash
 carnopy-gui
 ```
 
@@ -68,6 +73,11 @@ Install the base package into your current Python environment:
 
 ```bash
 python -m pip install "carnopy==0.1.0a4"
+```
+
+Then inspect the available commands:
+
+```bash
 carnopy --help
 ```
 
@@ -221,6 +231,27 @@ properties:
 outputs:
   dataset_formats: [csv, parquet]
 ```
+
+Add an optional top-level `visualization` section to render configured figures
+after the immutable dataset run is finalized. For example, this block adds a
+non-interpolated density heatmap for the configuration above:
+
+```yaml
+visualization:
+  format: png
+  fluids: [Propane]
+  display_units:
+    temperature: degC
+    pressure: bar
+  plots:
+    - name: propane-density-map
+      kind: property_heatmap
+      property: mass_density
+```
+
+Configured visualization requires the `viz`, `app`, or `all` extra. Generated
+figures are written outside the immutable dataset run with plot provenance and
+a visualization report.
 
 Create a concise starter or the exhaustive commented reference:
 
@@ -426,13 +457,14 @@ repository freshness gate before use.
 
 ## Release status
 
-The latest published alpha is `0.1.0a3`. The current source reports the
-release-prepared `0.1.0a4` and contains the accepted QML parity application.
-Stage 3 implementation, remote CI, the complete local gate, and native
-acceptance have passed. The public Graphify navigation artifacts have been
-refreshed from the accepted Stage 3 architecture. The tag, PyPI publication,
-GitHub prerelease, and post-release Zenodo DOI belong to the separate
-human-controlled `0.1.0a4` release process.
+The latest published alpha is `0.1.0a4`, the bounded post-Stage-3 release of
+the accepted QML parity application. Its complete local and remote release
+gates, native acceptance, [PyPI publication](https://pypi.org/project/carnopy/0.1.0a4/),
+[GitHub prerelease](https://github.com/gcalpay/carnopy/releases/tag/v0.1.0a4),
+and [version-specific Zenodo archive](https://doi.org/10.5281/zenodo.21709965)
+are complete. The public Graphify artifacts describe the accepted Stage 3
+architecture and will be refreshed from the post-release `main` baseline
+before Stage 4 begins.
 
 ## License
 
