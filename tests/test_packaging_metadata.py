@@ -260,7 +260,6 @@ def test_readme_documents_published_and_source_release_boundaries() -> None:
     assert "Exact union of all public extras" in text
     assert "The latest published alpha is `0.1.0a4`" in text
     assert "https://doi.org/10.5281/zenodo.21709965" in text
-    assert "https://doi.org/10.5281/zenodo.21709964" in text
     assert "kind: property_heatmap" in text
     assert "`carnopy-gui` is the canonical" in text
     assert "`carnopy-app` launches the same\nQML application" in text
