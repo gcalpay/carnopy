@@ -3,7 +3,7 @@
 [![PyPI](https://img.shields.io/pypi/v/carnopy.svg)](https://pypi.org/project/carnopy/)
 [![Python](https://img.shields.io/pypi/pyversions/carnopy.svg)](https://pypi.org/project/carnopy/)
 [![Verify](https://github.com/gcalpay/carnopy/actions/workflows/ci.yml/badge.svg)](https://github.com/gcalpay/carnopy/actions/workflows/ci.yml)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21709964.svg)](https://doi.org/10.5281/zenodo.21709964)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21709965.svg)](https://doi.org/10.5281/zenodo.21709965)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Reproducible thermophysical datasets from scientific backends with
