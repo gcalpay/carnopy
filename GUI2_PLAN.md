@@ -7,8 +7,8 @@ short indexes under `docs/archive/`; durable implemented ownership belongs in
 out of this mandatory reading path is an intentional context-budget safeguard.
 
 Delete this plan only after every GUI-2 stage is complete, permanent
-documentation and intentionally refreshed Graphify outputs describe the final
-architecture, and the maintainer accepts the finished application.
+documentation describes the final architecture, and the maintainer accepts the
+finished application.
 
 ## Release and frontend baseline
 
@@ -28,11 +28,8 @@ architecture, and the maintainer accepts the finished application.
 
 Stage 3 product implementation, remote CI, the complete local gate, and native
 acceptance passed on 2026-07-30. Its accepted implementation record is indexed
-in [`docs/archive/GUI2_STAGE3.md`](docs/archive/GUI2_STAGE3.md). The public
-Graphify artifacts were refreshed in commit
-`08053757551d89fa7bd9a181411ddb99a91886f4` from exact source revision
-`2f5aa8aa39c9ce28f12941c8d67432e7694c0c8c`. They represent the accepted
-Stage 3 architecture and remain subject to the repository freshness gate.
+in [`docs/archive/GUI2_STAGE3.md`](docs/archive/GUI2_STAGE3.md), and durable
+ownership is recorded in [`DESKTOP_ARCHITECTURE.md`](DESKTOP_ARCHITECTURE.md).
 
 ## Authority and permanent boundaries
 
@@ -77,8 +74,8 @@ implementation.
 | 0 | Complete | Qualified the native Qt Quick and VTK bridge feasibility baseline |
 | 1 | Complete | Established request ownership and QML-ready dataset controllers |
 | 2 | Complete | Added the packaged QML shell and Dataset/YAML/Save workflows |
-| 3 | Complete; graph refreshed | Reached parity, migrated both launchers, retired Widgets, and qualified `0.1.0a4` |
-| 4 | Ready after the post-release Graphify refresh | Add controlled sweep and preparation worker operations |
+| 3 | Complete | Reached parity, migrated both launchers, retired Widgets, and qualified `0.1.0a4` |
+| 4 | Ready | Add controlled sweep and preparation worker operations |
 | 5 | Pending | Add structured sweep and preparation QML workflows |
 | 6 | Pending | Build exact emitted-value 3D scenes |
 | 7 | Pending | Add native interactive 3D to QML |
@@ -146,9 +143,7 @@ protected publication workflow and produced the byte-identical
 was archived under the version-specific Zenodo DOI
 [`10.5281/zenodo.21709965`](https://doi.org/10.5281/zenodo.21709965).
 
-Refresh the public Graphify artifacts from the post-release `main` baseline
-before Stage 4 implementation begins. Do not replace the published
-distributions or move the release tag.
+Do not replace the published distributions or move the release tag.
 
 No Stage 4–8 functionality or native VTK is part of the `0.1.0a4` gate.
 
@@ -260,7 +255,7 @@ Before each remaining stage PR merges:
 Before final GUI-2 completion, run complete source, distribution, installed-
 profile, cross-platform QML, Linux-native, and manual workflow qualification;
 obtain an independent explicitly configured review; refresh permanent
-documentation and Graphify from the final architecture; and delete this plan.
+documentation from the final architecture; and delete this plan.
 
 Manim, PyMC, SINDy, optimization, ORC/TFC workflows, mixtures, training
 infrastructure, deployment, additional backends, and standalone installers

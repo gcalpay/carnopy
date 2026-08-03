@@ -50,7 +50,7 @@ reading.
 
 | Work being performed | Required tracked guidance |
 | --- | --- |
-| Any implementation, test, documentation, Graphify, or commit handoff | [Development and contribution workflow](docs/agent-guides/DEVELOPMENT.md) |
+| Any implementation, test, documentation, or commit handoff | [Development and contribution workflow](docs/agent-guides/DEVELOPMENT.md) |
 | Delegating work or changing project-agent definitions | [Codex delegation policy](docs/agent-guides/DELEGATION.md) and the applicable files under `.codex/agents/` |
 | Scientific behavior, configuration, sampling, CLI/API, rows, provenance, preparation, visualization, or core architecture | [Public scientific and application contracts](docs/agent-guides/SCIENTIFIC_CONTRACTS.md) |
 | Desktop controllers, QML, Widgets, worker boundaries, packaging of desktop resources, native 3D, or frontend retirement | [Desktop architecture](DESKTOP_ARCHITECTURE.md) and, while GUI-2 is active, [GUI-2 plan](GUI2_PLAN.md) |
@@ -79,8 +79,8 @@ Current `0.1.0a4` source has completed the QML parity migration and both
 public desktop commands launch the single QML application. [GUI2_PLAN.md](GUI2_PLAN.md)
 is the temporary source of truth for unfinished GUI-2 stages. Read it before
 changing desktop controllers, QML, native 3D, or desktop packaging. Delete it
-only after GUI-2 is complete and permanent documentation and intentionally
-refreshed Graphify outputs describe the final design.
+only after GUI-2 is complete, permanent documentation describes the final
+design, and the maintainer accepts the finished application.
 [DESKTOP_ARCHITECTURE.md](DESKTOP_ARCHITECTURE.md) is the durable implemented
 desktop record.
 
@@ -110,5 +110,5 @@ desktop record.
   commit recommendation never grants Git, dependency, credential, publication,
   or external-service authority.
 
-Read the routed development guide for exact commands, documentation and
-Graphify policy, test posture, and commit handoff requirements.
+Read the routed development guide for exact commands, documentation policy,
+test posture, and commit handoff requirements.

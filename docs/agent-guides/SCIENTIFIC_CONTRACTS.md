@@ -62,7 +62,7 @@ previews, and explicit PDF opening.
 [GUI2_PLAN.md](../../GUI2_PLAN.md) is the temporary source of truth for unfinished
 GUI-2 stages. Read it before changing desktop controllers, QML, native 3D, or
 desktop packaging. Delete it only after GUI-2 is complete and permanent
-documentation and Graphify outputs describe the final design.
+documentation describes the final design.
 [DESKTOP_ARCHITECTURE.md](../../DESKTOP_ARCHITECTURE.md) is the durable record of the
 implemented desktop structure and evolution; update it when accepted work
 changes a major ownership or process boundary.

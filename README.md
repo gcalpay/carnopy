@@ -452,8 +452,6 @@ privately through the [security policy](https://github.com/gcalpay/carnopy/secur
 
 The implemented desktop ownership and worker boundary are documented in
 [DESKTOP_ARCHITECTURE.md](https://github.com/gcalpay/carnopy/blob/main/DESKTOP_ARCHITECTURE.md).
-The generated Graphify artifacts are navigation aids only and must pass the
-repository freshness gate before use.
 
 ## Release status
 
@@ -462,9 +460,7 @@ the accepted QML parity application. Its complete local and remote release
 gates, native acceptance, [PyPI publication](https://pypi.org/project/carnopy/0.1.0a4/),
 [GitHub prerelease](https://github.com/gcalpay/carnopy/releases/tag/v0.1.0a4),
 and [version-specific Zenodo archive](https://doi.org/10.5281/zenodo.21709965)
-are complete. The public Graphify artifacts describe the accepted Stage 3
-architecture and will be refreshed from the post-release `main` baseline
-before Stage 4 begins.
+are complete. Stage 4 may proceed from this accepted release baseline.
 
 ## License
 

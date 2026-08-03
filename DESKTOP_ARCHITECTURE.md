@@ -64,8 +64,7 @@ planned `0.1.0a4` alpha checkpoint. Later sweep, preparation, and native-3D
 stages are not prerequisites for that release. Stage 3 implementation, remote
 CI, the complete local gate, and native acceptance passed on 2026-07-30. Its
 accepted screenshot and historical implementation index are tracked under
-`docs/`. The public Graphify artifacts now represent this accepted Stage 3
-architecture and remain governed by the repository freshness gate.
+`docs/`, and this document records the accepted Stage 3 architecture.
 
 ## Authority map
 
@@ -78,7 +77,6 @@ Use the narrowest applicable authority:
 | `GUI2_PLAN.md` | Temporary GUI-2 scope, sequencing, decisions, and acceptance status |
 | `DESKTOP_ARCHITECTURE.md` | Durable implemented desktop structure and evolution |
 | `README.md` | User-facing installation and workflow guidance |
-| `graphify-out/` | Generated navigation aid; never stronger than source or tracked contracts |
 
 When these disagree, do not silently blend them. Repository source and tests
 establish current behavior, while `AGENTS.md`, its task-routed authoritative
@@ -909,7 +907,7 @@ GUI-1 established the permanent desktop boundary in seven development stages:
 5. worker-rendered manual plots, no-overwrite promotion, and Qt-only PNG/SVG
    preview with explicit PDF opening;
 6. CI, distribution, documentation, and release hardening; and
-7. architecture boundary review and generated Graphify map.
+7. architecture boundary review and durable architecture documentation.
 
 The temporary GUI-1 plan was deleted when that migration completed. Its final
 tracked content remains recoverable for archaeology with:
@@ -928,7 +926,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 0 | Qualified a same-repository `QQuickVTKItem` companion bridge on the pinned Linux/Qt/VTK baseline | Complete |
 | 1 | Extracted request ownership, workspace state, dataset/visualization drafts, and complete configuration workflow into QML-ready QtCore controllers | Complete |
 | 2 | Package the Precision Grid QML Workspace, Dataset, Visualization, and YAML/Save workflows | Complete; automated, remote, and native acceptance passed |
-| 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete; graph refreshed |
+| 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete |
 | 4 | Add controlled sweep and preparation worker operations | Active after the `0.1.0a4` checkpoint |
 | 5 | Add structured sweep and preparation QML workflows | Pending |
 | 6 | Build exact emitted-value 3D scene contracts | Pending |
@@ -1048,37 +1046,6 @@ distribution, and preflight gates at stage or release boundaries, or earlier
 when a cross-cutting change warrants them. This keeps verification complete
 without repeatedly executing the same repository suite through both a direct
 test command and the aggregate preflight wrapper.
-
-Graphify is optional generated navigation, never implementation authority. A
-refreshed public graph must record the exact source revision used to build it.
-Determine freshness from Git history, not a manually edited counter:
-
-```bash
-git log -1 --format=%H -- graphify-out/graph.json
-git rev-list --count <graph-source-revision>..HEAD
-```
-
-For legacy artifacts without an embedded source revision, use the latest commit
-that changed the complete public artifact set (`GRAPH_REPORT.md`, `graph.html`,
-and `graph.json`) as a conservative baseline. The repository-wide gate is
-defined in `docs/agent-guides/DEVELOPMENT.md`; for clarity it is:
-
-- zero intervening commits: the graph may guide navigation, with source
-  verification for exact behavior;
-- one through five intervening commits: the graph is navigation-only and
-  every conclusion must be checked against current source;
-- six or more intervening commits, or any completed architecture stage not
-  represented in the graph: the graph is hard-stale and must not be queried for
-  current architecture or implementation work;
-- a hard-stale graph is either refreshed intentionally and atomically or simply
-  bypassed in favor of source, tests, and scoped text search.
-
-The public artifacts were refreshed on 2026-07-30 in
-`08053757551d89fa7bd9a181411ddb99a91886f4` from exact source revision
-`2f5aa8aa39c9ce28f12941c8d67432e7694c0c8c`. They represent the accepted Stage
-3 architecture. Subsequent documentation, merge, and release commits determine
-their current navigation status through the same Git-history freshness gate;
-do not refresh them repeatedly during ordinary implementation churn.
 
 GitHub Issues are enabled for `gcalpay/carnopy`; the repository had no open or
 closed issues in the 2026-07-23 audit. Create an issue only for reproducible,

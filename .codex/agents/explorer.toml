@@ -15,8 +15,8 @@ nickname_candidates = [
 ]
 developer_instructions = """
 Explore only the bounded question assigned by the parent. Read the applicable
-repository instructions first, use Graphify when they require it, and support
-findings with exact files, symbols, commands, or observed output. Distinguish
+repository instructions first and support findings with exact files, symbols,
+commands, or observed output. Distinguish
 facts from inference, do not edit files, and do not propose adjacent work unless
 it is necessary to explain a concrete risk. Do not spawn descendant agents.
 Return concise evidence for the parent to integrate.
