@@ -259,6 +259,7 @@ def test_product_scope_separates_current_contracts_from_future_direction() -> No
     for classification in (
         "Implemented",
         "Approved next",
+        "Planned, sequenced",
         "Planned, unscheduled",
         "Research candidate",
         "External",
@@ -266,6 +267,8 @@ def test_product_scope_separates_current_contracts_from_future_direction() -> No
         assert f"**{classification}**" in scope
         assert f"| {classification} |" in scope
 
+    assert "workflow depth now, source breadth next," in normalized_scope
+    assert "advanced model breadth later" in normalized_scope
     assert "This direction is not an implemented interface" in normalized_scope
     assert "one manifest-backed CPU tensor dictionary written as `.pt`" in normalized_scope
     assert "no `.pth` duplicate" in normalized_scope
@@ -274,11 +277,9 @@ def test_product_scope_separates_current_contracts_from_future_direction() -> No
     gui_plan = (root / "GUI2_PLAN.md").read_text(encoding="utf-8")
     desktop = (root / "DESKTOP_ARCHITECTURE.md").read_text(encoding="utf-8")
     assert "PRODUCT_SCOPE.md" in readme
-    assert "it is not part of the current release" in readme
-    assert "| 4 | Ready; deferred |" in gui_plan
-    assert (
-        "| 4 | Add controlled sweep and preparation worker operations | Ready; deferred" in desktop
-    )
+    assert "it is neither implemented nor the current product priority" in readme
+    assert "| 4 | Approved next |" in gui_plan
+    assert "| 4 | Add controlled sweep and preparation worker operations | Approved next" in desktop
 
 
 def test_readme_documents_published_and_source_release_boundaries() -> None:

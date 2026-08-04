@@ -374,8 +374,8 @@ does not train, tune, register, or deploy production models.
 
 Implemented behavior and reviewed research directions are separated in the
 [ML preparation roadmap](https://github.com/gcalpay/carnopy/blob/main/ML_PREPARATION_ROADMAP.md).
-The approved next functional stage is an optional manifest-backed PyTorch
-dataset export; it is not part of the current release.
+An optional manifest-backed PyTorch dataset export remains a reviewed future
+direction; it is neither implemented nor the current product priority.
 
 ## Python API
 
@@ -434,11 +434,15 @@ thermophysical engines and data sources
   → external model-training frameworks and applications
 ```
 
-Additional backends and sources, richer sampling, exact 3D, desktop sweep and
-preparation workflows, PyTorch consumption exports, and later automation
-integrations have different roadmap statuses; none should be inferred from a
-single undifferentiated wish list. The authoritative classifications and the
-Carnopy/Pinntropy/training boundary are in the
+The accepted direction is workflow depth now, source breadth next, and advanced
+model breadth later. The near-term milestone brings existing model-sweep and
+preparation workflows into the desktop. It is followed by a validated
+import/source contract and one evidence-driven source expansion.
+
+CoolProp mixtures, `thermo` with NRTL/UNIQUAC, licensed REFPROP integration,
+and CPA/PC-SAFT are preserved as later research candidates with different
+scientific and validation requirements. Optional PyTorch export, exact 3D, and
+automation also retain separate roadmap statuses. Details and gates are in the
 [product scope and direction](https://github.com/gcalpay/carnopy/blob/main/PRODUCT_SCOPE.md).
 
 ## Development and contribution
@@ -471,8 +475,8 @@ the accepted QML parity application. Its complete local and remote release
 gates, native acceptance, [PyPI publication](https://pypi.org/project/carnopy/0.1.0a4/),
 [GitHub prerelease](https://github.com/gcalpay/carnopy/releases/tag/v0.1.0a4),
 and [version-specific Zenodo archive](https://doi.org/10.5281/zenodo.21709965)
-are complete. GUI-2 Stage 4 remains ready but is deferred until the optional
-PyTorch export stage is accepted and desktop priorities are reassessed.
+are complete. GUI-2 Stage 4 is the approved next stage; Stage 5 follows to
+complete the desktop sweep and preparation workflow-depth milestone.
 
 ## License
 

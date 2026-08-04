@@ -76,8 +76,8 @@ implementation.
 | 1 | Complete | Established request ownership and QML-ready dataset controllers |
 | 2 | Complete | Added the packaged QML shell and Dataset/YAML/Save workflows |
 | 3 | Complete | Reached parity, migrated both launchers, retired Widgets, and qualified `0.1.0a4` |
-| 4 | Ready; deferred | Add controlled sweep and preparation worker operations after the product-scope sequence is reassessed |
-| 5 | Pending | Add structured sweep and preparation QML workflows |
+| 4 | Approved next | Add controlled sweep and preparation worker operations for the existing public contracts |
+| 5 | Planned; follows Stage 4 | Add structured sweep and preparation QML workflows |
 | 6 | Pending | Build exact emitted-value 3D scenes |
 | 7 | Pending | Add native interactive 3D to QML |
 | 8 | Pending | Qualify native 3D packaging, platforms, and a later release |
@@ -148,11 +148,12 @@ Do not replace the published distributions or move the release tag.
 
 No Stage 4–8 functionality or native VTK is part of the `0.1.0a4` gate.
 
-Stage 4 remains technically ready but is not the next implementation stage.
-The durable product sequence first establishes the product-scope authority and
-then adds the approved optional PyTorch dataset export. Stage 4 is reassessed
-after that separate work is accepted. Its number, dependencies, and reviewed
-technical content remain unchanged during the deferral.
+Stage 4 is the approved next implementation stage. It begins the accepted
+workflow-depth milestone by exposing the existing sweep and preparation
+contracts through controlled worker operations without changing their public
+schemas or output layouts. Stage 5 follows only after Stage 4 acceptance and
+adds the corresponding structured QML workflows. Their numbers, dependencies,
+and reviewed technical content remain unchanged by this reprioritization.
 
 ## Stage 4: sweep and preparation worker operations
 

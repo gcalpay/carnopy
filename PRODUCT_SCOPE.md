@@ -41,6 +41,22 @@ Thermodynamic engines remain responsible for their property models. Training
 frameworks remain responsible for model execution. Carnopy owns the auditable
 data path between them.
 
+### Relationship to backend-owned graphical tools
+
+CoolProp 8 includes a native desktop GUI centered on point-property lookup,
+saturation tables, and humid-air calculation and plotting. That tool remains a
+frontend for CoolProp itself; its existence is not a reason for Carnopy to
+duplicate calculator tabs or compete on direct property-query breadth. See the
+[CoolProp GUI implementation](https://github.com/CoolProp/CoolProp/pull/2715)
+and [CoolProp changelog](https://coolprop.org/coolprop/changelog.html).
+
+Carnopy must differentiate through the workflow around scientific sources:
+reproducible batch specifications, immutable dataset bundles, model-aligned
+comparison, provenance, diagnostics, emitted-value visualization,
+leakage-aware preparation, and explicit consumption exports. A desktop feature
+that merely reproduces a backend calculator is not product progress unless it
+serves that auditable workflow.
+
 ## Ecosystem boundary
 
 ```text
@@ -144,6 +160,8 @@ The status labels below are intentional:
   contracts.
 - **Approved next** means selected for the next separate implementation stage,
   but not yet available.
+- **Planned, sequenced** means its relative order is accepted, but its public
+  contract, implementation stage, and release are not yet approved.
 - **Planned, unscheduled** means aligned with the product direction but neither
   sequenced nor promised for a release.
 - **Research candidate** means evidence or design work is still required.
@@ -153,15 +171,49 @@ The status labels below are intentional:
 | Status | Capabilities |
 | --- | --- |
 | Implemented | CoolProp pure-fluid generation with HEOS/PR/SRK; YAML init/preview/validation; immutable CSV/Parquet runs; thermodynamic-model sweeps; provenance and inspection; emitted-column 2D visualization; leakage-aware preparation; NumPy, NPZ, and SafeTensors exports; diagnostic baselines; CLI, Python, and QML workbench surfaces documented by the current contracts |
-| Approved next | Optional PyTorch dataset export from preparation: one manifest-backed CPU tensor dictionary written as `.pt`, with no `.pth` duplicate and no training objects |
-| Planned, unscheduled | Additional thermophysical backends; licensed local-engine adapters; validated user, experimental, operational, and simulation-source imports; richer reviewed sampling; desktop sweep and preparation workflows; exact emitted-value 3D scenes and native interaction |
-| Research candidate | Active-learning generation, additional consumption formats with demonstrated consumers, multidimensional labelled-data models, advanced phase-safe diagnostics, and a mature skill/MCP boundary |
+| Approved next | GUI-2 Stage 4: controlled desktop worker operations for existing model-sweep and preparation capabilities, without changing their public scientific schemas or output layouts |
+| Planned, sequenced | GUI-2 Stage 5 structured sweep and preparation QML workflows; then a validated source/import capability contract and one concrete source-breadth expansion selected from demonstrated user needs |
+| Planned, unscheduled | Optional manifest-backed PyTorch `.pt` export; richer reviewed sampling; exact emitted-value 3D scenes and native interaction; later automation integrations |
+| Research candidate | CoolProp mixtures; `thermo` activity-coefficient workflows; licensed REFPROP integration; CPA/PC-SAFT support; active-learning generation; additional consumption formats with demonstrated consumers; multidimensional labelled-data models; advanced phase-safe diagnostics; and a mature skill/MCP boundary |
 | External | Problem definitions, physical constraints, neural-network architectures, training and ML hyperparameter sweeps, GPU/distributed execution, experiments, model checkpoints, production validation, inference services, and deployment |
 
-## Approved next stage: PyTorch dataset export
+## Source and advanced-model horizons
 
-The next functional stage after this documentation reset is an optional
-PyTorch consumption export. Its reviewed direction is:
+The accepted product order is **workflow depth now, source breadth next,
+advanced model breadth later**.
+
+Workflow depth means exposing the already implemented sweep and preparation
+contracts through the desktop without creating a second scientific
+implementation. Source breadth then begins with a reviewed capability and
+import contract covering semantics, units, identity, uncertainty, licensing,
+validity, provenance, and comparison. A validated tabular import path for
+user-supplied, experimental, operational, or simulation data is the preferred
+first proof that Carnopy is a source-aware workbench rather than a CoolProp
+frontend. One additional computational source may follow when a concrete user
+workflow justifies it.
+
+Advanced thermodynamic families require separate scientific milestones. The
+following candidates are preserved for future planning; their order is not a
+support promise or an implementation ranking.
+
+| Candidate | Product reason | Required scientific gate |
+| --- | --- | --- |
+| CoolProp mixtures | Moderate scientific expansion while retaining the current engine and provenance family | Composition and mixture identity, interaction parameters, phase behavior, validity domains, aligned-state comparison, and reference-state contracts |
+| `thermo` with NRTL or UNIQUAC | Mixture VLE/LLE workflows using parameterized activity-coefficient models | Phase-equilibrium schemas, parameter source and regression provenance, composition bases, applicability ranges, convergence diagnostics, and validation cases |
+| REFPROP integration | Professional reference-property workflows using a licensed local engine | User-managed installation and license boundaries, non-redistribution, version and fluid identity, reference-state compatibility, capability discovery, and platform qualification |
+| CPA or PC-SAFT | Advanced associating-fluid and molecular equation-of-state work | A dedicated model-family milestone with selected source ownership, parameter provenance, domain-specific validation datasets, numerical-failure contracts, and comparison policy |
+
+No candidate should be introduced merely to increase a backend or model count.
+The implementation plan must identify the user workflow, authoritative source,
+validation evidence, schema impact, optional dependencies, and maintenance
+boundary first.
+
+## Reviewed future stage: Optional PyTorch dataset export
+
+An optional PyTorch consumption export remains a reviewed, bounded future
+direction, but it no longer defines the next product stage. Its artifact remains
+one manifest-backed CPU tensor dictionary written as `.pt`, with no `.pth`
+duplicate and no training objects, governed by these constraints:
 
 - add `pytorch` as a preparation array-output format;
 - write one `.pt` file containing only CPU tensors for features, targets, and
@@ -176,20 +228,30 @@ PyTorch consumption export. Its reviewed direction is:
 - qualify dependency availability against Carnopy's supported Python and
   platform matrix before changing packaging.
 
-This direction is not an implemented interface until its separate stage is
-accepted and the current contracts, templates, package metadata, and tests are
-updated together.
+This direction is not an implemented interface until a concrete consumer
+justifies its separate stage and the current contracts, templates, package
+metadata, and tests are updated together.
 
 ## Sequencing
 
 1. Establish and synchronize this product-scope authority.
-2. Implement and qualify the optional PyTorch dataset export as a separate
-   stage.
-3. Reassess GUI-2 Stage 4 against the accepted product direction and current
-   user workflow before resuming it.
+2. Implement GUI-2 Stage 4 worker operations for the existing sweep and
+   preparation contracts.
+3. Complete the visible workflow-depth milestone through GUI-2 Stage 5 QML
+   sweep and preparation workflows after Stage 4 acceptance.
+4. Plan source breadth through a validated import/source capability contract,
+   then select one concrete source expansion from demonstrated user needs.
+5. Consider advanced mixture and model families only through dedicated
+   scientific stages with suitable validation evidence.
 
-GUI-2 Stage numbers remain stable. Deferral does not cancel their reviewed
-technical content or imply that a later stage may bypass its dependencies.
+The optional PyTorch export may be accepted as a bounded independent stage when
+a concrete consumer makes it worthwhile, but it does not preempt workflow or
+source depth by default. Exact 3D and native interaction remain valid later
+directions rather than the current differentiator.
+
+GUI-2 Stage numbers remain stable. Reprioritization does not cancel their
+reviewed technical content or imply that a later stage may bypass its
+dependencies.
 
 ## Licensing and sustainability gate
 

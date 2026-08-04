@@ -211,12 +211,12 @@ SafeTensors exports are derived ML-consumption files and must record feature
 and target order, units, shapes, dtype, hashes, and conversion-error summaries.
 Carnopy is not a training framework. The current implementation does not
 optimize, depend on PyTorch, or export `.pt`/`.pth` files. The product scope
-approves a separate future optional PyTorch dataset-export stage; this current
-contract remains unchanged until that stage is implemented, verified, and
-accepted. The optional `analysis` extra may fit disposable scikit-learn
-baseline estimators for train/evaluation diagnostics only. It must not persist
-models or predictions, tune hyperparameters, alter prepared rows, or leak
-validation/test statistics into fitting.
+records a reviewed but unscheduled optional PyTorch dataset-export direction;
+this current contract remains unchanged until a separate stage is approved,
+implemented, verified, and accepted. The optional `analysis` extra may fit
+disposable scikit-learn baseline estimators for train/evaluation diagnostics
+only. It must not persist models or predictions, tune hyperparameters, alter
+prepared rows, or leak validation/test statistics into fitting.
 
 If preparation selects reference-dependent properties (`specific_enthalpy`,
 `specific_entropy`, or `specific_internal_energy`) as features, targets, or

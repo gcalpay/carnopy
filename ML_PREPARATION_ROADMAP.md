@@ -50,11 +50,11 @@ auxiliary export is explicitly enabled. The manifest records the original
 column, vocabulary, code order, missing-value code, dtype, and output-array
 name.
 
-## Approved next — Optional PyTorch dataset export
+## Reviewed future direction — Optional PyTorch dataset export
 
-The next separate functional stage adds a PyTorch consumption format to
-preparation without adding training behavior. This is an approved direction,
-not part of the current public interface.
+The product sequence now prioritizes desktop workflow depth and then source
+breadth. This bounded PyTorch consumption format remains reviewed but planned
+and unscheduled; it is not part of the current public interface.
 
 The reviewed boundary is:
 

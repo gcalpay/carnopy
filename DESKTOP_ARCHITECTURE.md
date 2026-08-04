@@ -928,8 +928,8 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 1 | Extracted request ownership, workspace state, dataset/visualization drafts, and complete configuration workflow into QML-ready QtCore controllers | Complete |
 | 2 | Package the Precision Grid QML Workspace, Dataset, Visualization, and YAML/Save workflows | Complete; automated, remote, and native acceptance passed |
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete |
-| 4 | Add controlled sweep and preparation worker operations | Ready; deferred by the accepted product-scope sequence |
-| 5 | Add structured sweep and preparation QML workflows | Pending |
+| 4 | Add controlled sweep and preparation worker operations | Approved next |
+| 5 | Add structured sweep and preparation QML workflows | Planned; follows Stage 4 |
 | 6 | Build exact emitted-value 3D scene contracts | Pending |
 | 7 | Integrate native interactive 3D into QML | Pending |
 | 8 | Complete native-3D platform, distribution, documentation, and later-release qualification | Pending |
