@@ -74,10 +74,10 @@ Use the narrowest applicable authority:
 | --- | --- |
 | `AGENTS.md` and its routed agent guides | Public scientific, data, architecture, packaging, and contribution contracts |
 | `.agents/local.md` | Checkout-local execution, environment, credential, dependency, and Git restrictions |
-| `PRODUCT_SCOPE.md` | Durable product identity, ecosystem boundary, and cross-roadmap priority |
+| `PRODUCT_SCOPE.md` and `.agents/private/PRODUCT_STRATEGY.md`, when present | Maintainer-local product identity, future direction, and cross-roadmap priority |
 | `GUI2_PLAN.md` | Temporary GUI-2 scope, sequencing, decisions, and acceptance status |
 | `DESKTOP_ARCHITECTURE.md` | Durable implemented desktop structure and evolution |
-| `README.md` | User-facing installation and workflow guidance |
+| `README.md` | Public product summary plus user-facing installation and workflow guidance |
 
 When these disagree, do not silently blend them. Repository source and tests
 establish current behavior, while `AGENTS.md`, its task-routed authoritative

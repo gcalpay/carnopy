@@ -40,10 +40,16 @@ Verification must be proportional to the changed artifacts:
   update that documentation-contract assertion and run only the focused test
   target. Such a synchronized assertion does not by itself escalate the change
   to the complete implementation gate.
+- For source-distribution inventory changes limited to adding or removing prose
+  documents, run `git diff --check` plus the focused packaging metadata,
+  distribution-inventory, and release-tool tests. This does not require the
+  complete runtime suite when the build backend, dependencies, entry points,
+  package code, and installed wheel contents are unchanged.
 - Use the complete gate for implementation behavior, source or test logic,
   executable configuration, generated templates, public schemas or APIs,
-  packaging or dependency metadata, CI, security, release work, or another
-  cross-cutting change that can affect runtime or distributed artifacts.
+  packaging changes that affect build or installed behavior, dependency
+  metadata, CI, security, release work, or another cross-cutting change that
+  can affect runtime or distributed artifacts.
 - A maintainer may explicitly request broader verification for any change.
 
 File extension alone does not determine scope: YAML, TOML, templates, and even

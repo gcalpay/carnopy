@@ -225,7 +225,6 @@ def test_public_and_community_markdown_have_intentional_distribution_boundaries(
     assert (root / "AGENTS.md").is_file()
     assert (root / "DESKTOP_ARCHITECTURE.md").is_file()
     assert (root / "ML_PREPARATION_ROADMAP.md").is_file()
-    assert (root / "PRODUCT_SCOPE.md").is_file()
     agent_guides = root / "docs" / "agent-guides"
     assert {path.name for path in agent_guides.glob("*.md")} == {
         "DELEGATION.md",
@@ -245,39 +244,25 @@ def test_public_and_community_markdown_have_intentional_distribution_boundaries(
     assert "/CITATION.cff" in sdist_includes
     assert "/DESKTOP_ARCHITECTURE.md" in sdist_includes
     assert "/ML_PREPARATION_ROADMAP.md" in sdist_includes
-    assert "/PRODUCT_SCOPE.md" in sdist_includes
+    assert "/PRODUCT_SCOPE.md" not in sdist_includes
     assert "/docs/agent-guides" in sdist_includes
     assert not any(path.startswith("/.github") for path in sdist_includes)
     assert "/docs" not in sdist_includes
 
 
-def test_product_scope_separates_current_contracts_from_future_direction() -> None:
+def test_public_roadmap_separates_current_contracts_from_future_direction() -> None:
     root = Path(__file__).resolve().parents[1]
-    scope = (root / "PRODUCT_SCOPE.md").read_text(encoding="utf-8")
-    normalized_scope = " ".join(scope.split())
-
-    for classification in (
-        "Implemented",
-        "Approved next",
-        "Planned, sequenced",
-        "Planned, unscheduled",
-        "Research candidate",
-        "External",
-    ):
-        assert f"**{classification}**" in scope
-        assert f"| {classification} |" in scope
-
-    assert "workflow depth now, source breadth next," in normalized_scope
-    assert "advanced model breadth later" in normalized_scope
-    assert "This direction is not an implemented interface" in normalized_scope
-    assert "one manifest-backed CPU tensor dictionary written as `.pt`" in normalized_scope
-    assert "no `.pth` duplicate" in normalized_scope
-
     readme = (root / "README.md").read_text(encoding="utf-8")
+    normalized_readme = " ".join(readme.split())
     gui_plan = (root / "GUI2_PLAN.md").read_text(encoding="utf-8")
     desktop = (root / "DESKTOP_ARCHITECTURE.md").read_text(encoding="utf-8")
-    assert "PRODUCT_SCOPE.md" in readme
-    assert "it is neither implemented nor the current product priority" in readme
+
+    assert "workflow depth now, source breadth next, and advanced model breadth later" in (
+        normalized_readme
+    )
+    assert "Detailed source and model candidates are maintainer planning" in normalized_readme
+    assert "it is neither implemented nor the current product priority" in normalized_readme
+    assert "PRODUCT_SCOPE.md" not in readme
     assert "| 4 | Approved next |" in gui_plan
     assert "| 4 | Add controlled sweep and preparation worker operations | Approved next" in desktop
 
@@ -360,8 +345,9 @@ def test_public_agents_bootstraps_ignored_local_policy() -> None:
     agents = (root / "AGENTS.md").read_text(encoding="utf-8")
     gitignore = (root / ".gitignore").read_text(encoding="utf-8")
     assert "<repository-root>/.agents/local.md" in agents
+    assert "<repository-root>/PRODUCT_SCOPE.md" in agents
+    assert "<repository-root>/.agents/private/PRODUCT_STRATEGY.md" in agents
     assert "highest-priority repository instruction" in agents
-    assert "[Product scope and direction](PRODUCT_SCOPE.md)" in agents
     for guide in (
         "DELEGATION.md",
         "DEVELOPMENT.md",
@@ -370,3 +356,5 @@ def test_public_agents_bootstraps_ignored_local_policy() -> None:
     ):
         assert f"docs/agent-guides/{guide}" in agents
     assert ".agents/local.md" in gitignore
+    assert "/PRODUCT_SCOPE.md" in gitignore
+    assert ".agents/private/" in gitignore

@@ -7,10 +7,10 @@ provenance, preparation, visualization, or core architecture. It must be
 combined with the active stage plan and more specific architecture guidance
 when those scopes apply.
 
-[`PRODUCT_SCOPE.md`](../../PRODUCT_SCOPE.md) is authoritative for durable
-product direction and roadmap classification. It does not override this
-document's current scientific and public contracts or make an unimplemented
-direction available.
+The tracked README provides the public high-level direction. Maintainer-local
+`PRODUCT_SCOPE.md` and `.agents/private/PRODUCT_STRATEGY.md`, when present,
+may prioritize future work, but they do not override this document's current
+scientific and public contracts or make an unimplemented direction available.
 
 ## Purpose and scope
 

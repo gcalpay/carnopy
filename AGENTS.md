@@ -18,6 +18,23 @@ allowed commands, Git authority, dependency operations, credentials, and
 publication boundaries. Do not infer permission from this public guide when the
 local file is more restrictive.
 
+Before product prioritization, future-scope research, roadmap planning, or
+implementation-stage selection, also check both exact repository-relative paths
+after reading `.agents/local.md`:
+
+```text
+<repository-root>/PRODUCT_SCOPE.md
+<repository-root>/.agents/private/PRODUCT_STRATEGY.md
+```
+
+Read each file that exists in full. Both are intentionally local and
+unpublished, may contain maintainer-private direction, and must not be copied
+into tracked documentation or external systems without explicit maintainer
+approval. They may narrow or order future work but cannot override tracked
+scientific behavior, compatibility contracts, safety boundaries, or accepted
+stage plans. Their absence in a public clone does not relax those public
+contracts.
+
 This file and its routed references are one tracked contributor guide. They are
 authoritative for public scientific behavior, schemas, compatibility contracts,
 architecture, packaging, and contribution standards. Local instructions may
@@ -48,10 +65,10 @@ each referenced document **in full before acting**. Multiple rows commonly
 apply. A routed document is mandatory for its scope, not optional background
 reading.
 
-| Work being performed | Required tracked guidance |
+| Work being performed | Required guidance |
 | --- | --- |
 | Any implementation, test, documentation, or commit handoff | [Development and contribution workflow](docs/agent-guides/DEVELOPMENT.md) |
-| Product identity, boundaries, future scope, or roadmap priority | [Product scope and direction](PRODUCT_SCOPE.md) |
+| Product identity, boundaries, future scope, or roadmap priority | Maintainer-local `PRODUCT_SCOPE.md` and `.agents/private/PRODUCT_STRATEGY.md` when present, plus the public [README Future Scope](README.md#future-scope) |
 | Delegating work or changing project-agent definitions | [Codex delegation policy](docs/agent-guides/DELEGATION.md) and the applicable files under `.codex/agents/` |
 | Scientific behavior, configuration, sampling, CLI/API, rows, provenance, preparation, visualization, or core architecture | [Public scientific and application contracts](docs/agent-guides/SCIENTIFIC_CONTRACTS.md) |
 | Desktop controllers, QML, Widgets, worker boundaries, packaging of desktop resources, native 3D, or frontend retirement | [Desktop architecture](DESKTOP_ARCHITECTURE.md) and, while GUI-2 is active, [GUI-2 plan](GUI2_PLAN.md) |
@@ -67,10 +84,11 @@ blending them.
 ## Project boundary
 
 Carnopy is an open and auditable thermophysical-data workbench. Current
-behavior and exclusions live in the scientific contracts; durable product
-direction and roadmap status live in [PRODUCT_SCOPE.md](PRODUCT_SCOPE.md).
-Planned directions are not implemented capabilities or authority to broaden a
-public contract without maintainer approval.
+behavior and exclusions live in the tracked scientific contracts. The public
+direction is summarized in the [README Future Scope](README.md#future-scope);
+maintainer-local product files may order future work when present. Planned
+directions are not implemented capabilities or authority to broaden a public
+contract without maintainer approval.
 
 ## Always-on safeguards
 

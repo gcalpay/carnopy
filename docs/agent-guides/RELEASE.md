@@ -29,10 +29,17 @@ The current alpha line remains MIT licensed, and already published versions
 retain the terms under which they were released. Before the first stable
 release (`0.1.0` under the current versioning plan) or acceptance of a
 substantial external contribution, whichever comes first, the maintainer must
-complete the business, licensing, copyright, contribution, and dependency
-review defined in [`PRODUCT_SCOPE.md`](../../PRODUCT_SCOPE.md). This is a review
-gate, not an announced license change or a promise that future major releases
-will remain MIT.
+review:
+
+- Carnopy's sustainability and business model;
+- the intended balance between adoption, reciprocity, and commercial use;
+- copyright ownership and contribution governance;
+- dependency and distribution-license compatibility; and
+- synchronized repository, package, release, citation, and archival metadata.
+
+This is a review gate, not an announced license change or a promise that future
+major releases will remain MIT. Maintainer-local product documents may add
+private decision context when present but cannot weaken this tracked gate.
 
 Any prospective license change requires a separate legal and governance plan.
 It must synchronize `LICENSE`, `pyproject.toml`, `CITATION.cff`, public

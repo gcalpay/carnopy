@@ -5,8 +5,8 @@ Thank you for considering a contribution to Carnopy.
 Carnopy generates reproducible, backend-derived thermophysical datasets. Changes
 to scientific interpretation, public configuration, schemas, provenance, or
 failure semantics require more review than ordinary implementation changes.
-[`PRODUCT_SCOPE.md`](../PRODUCT_SCOPE.md) records the durable product boundary
-and separates implemented, approved, unscheduled, research, and external work.
+The [README Future Scope](../README.md#future-scope) gives the high-level public
+product direction; current scientific contracts remain authoritative.
 
 ## Before opening a pull request
 
@@ -24,7 +24,8 @@ directly to a pull request.
 Read [AGENTS.md](../AGENTS.md) before changing code. It routes the applicable
 product, scientific, architecture, contribution, and release authorities.
 Substantial external contributions also require the licensing and
-sustainability review defined in `PRODUCT_SCOPE.md` before acceptance.
+sustainability review defined in
+[the release safeguards](../docs/agent-guides/RELEASE.md) before acceptance.
 
 ## Development setup
 
@@ -46,7 +47,7 @@ authoritative.
 
 ## Quality checks
 
-Run:
+For implementation and operational changes, run:
 
 ```bash
 uv lock --check
@@ -57,6 +58,11 @@ uv run --locked pytest
 uv run --locked python scripts/preflight.py
 uv pip check --python .venv/bin/python
 ```
+
+Pure prose documentation uses complete diff inspection, `git diff --check`,
+and only directly relevant focused documentation checks. A source-distribution
+inventory change limited to adding or removing prose documents uses its focused
+packaging and release-inventory tests rather than the complete runtime suite.
 
 Add a focused regression test for every changed contract or corrected failure
 mode. Prefer parametrization over duplicating equivalent cases. Scientific

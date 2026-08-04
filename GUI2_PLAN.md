@@ -35,9 +35,11 @@ ownership is recorded in [`DESKTOP_ARCHITECTURE.md`](DESKTOP_ARCHITECTURE.md).
 
 `AGENTS.md`, its routed guides, and `.agents/local.md` control scientific and
 public contracts, local authority, dependencies, verification, and release
-operations. `PRODUCT_SCOPE.md` controls durable product direction and
-cross-roadmap priority. `DESKTOP_ARCHITECTURE.md` records implemented desktop
-ownership. Repository source and tests establish exact current behavior.
+operations. The README records public direction; maintainer-local
+`PRODUCT_SCOPE.md` and `.agents/private/PRODUCT_STRATEGY.md` control private
+cross-roadmap priority when present. `DESKTOP_ARCHITECTURE.md` records
+implemented desktop ownership. Repository source and tests establish exact
+current behavior.
 
 Locked GUI-2 boundaries:
 

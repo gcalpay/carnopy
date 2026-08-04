@@ -204,7 +204,6 @@ SDIST_REQUIRED = {
     "docs/agent-guides/SCIENTIFIC_CONTRACTS.md",
     "LICENSE",
     "ML_PREPARATION_ROADMAP.md",
-    "PRODUCT_SCOPE.md",
     "README.md",
     "configs/model_sweep_example.yaml",
     "configs/property_table_example.yaml",
@@ -316,7 +315,6 @@ SDIST_MARKDOWN = {
     "docs/agent-guides/RELEASE.md",
     "docs/agent-guides/SCIENTIFIC_CONTRACTS.md",
     "ML_PREPARATION_ROADMAP.md",
-    "PRODUCT_SCOPE.md",
     "README.md",
 }
 FORBIDDEN_ANYWHERE = {

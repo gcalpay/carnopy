@@ -124,7 +124,6 @@ include = [
   "/docs/agent-guides",
   "/LICENSE",
   "/ML_PREPARATION_ROADMAP.md",
-  "/PRODUCT_SCOPE.md",
   "/README.md",
   "/configs",
   "/pyproject.toml",

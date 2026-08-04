@@ -415,7 +415,7 @@ rather than maintaining separate scientific implementations.
   deployment are outside Carnopy core.
 - Mixtures, additional backends, ORC generation, web services, databases,
   native 3D, and standalone desktop installers are not currently implemented;
-  their roadmap classifications are recorded in `PRODUCT_SCOPE.md`.
+  the high-level public direction is summarized below.
 
 See the official [CoolProp documentation](https://coolprop.org/coolprop/) and
 [high-level API reference](https://coolprop.org/coolprop/HighLevelAPI.html) for
@@ -439,11 +439,10 @@ model breadth later. The near-term milestone brings existing model-sweep and
 preparation workflows into the desktop. It is followed by a validated
 import/source contract and one evidence-driven source expansion.
 
-CoolProp mixtures, `thermo` with NRTL/UNIQUAC, licensed REFPROP integration,
-and CPA/PC-SAFT are preserved as later research candidates with different
-scientific and validation requirements. Optional PyTorch export, exact 3D, and
-automation also retain separate roadmap statuses. Details and gates are in the
-[product scope and direction](https://github.com/gcalpay/carnopy/blob/main/PRODUCT_SCOPE.md).
+Detailed source and model candidates are maintainer planning rather than public
+support promises. Optional PyTorch export, exact 3D, and automation remain
+unimplemented directions that require separately reviewed plans before they can
+change public behavior.
 
 ## Development and contribution
 

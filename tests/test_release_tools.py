@@ -254,7 +254,6 @@ def test_distribution_checker_requires_model_sweep_artifacts() -> None:
     assert {
         "DESKTOP_ARCHITECTURE.md",
         "ML_PREPARATION_ROADMAP.md",
-        "PRODUCT_SCOPE.md",
         "configs/model_sweep_example.yaml",
         "scripts/check_qml.py",
         "src/carnopy/_execution.py",

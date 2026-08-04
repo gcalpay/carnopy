@@ -32,6 +32,10 @@ figures/
 # Operator-specific coding-agent instructions
 .agents/local.md
 
+# Maintainer-private product scope, strategy, and stage planning
+/PRODUCT_SCOPE.md
+.agents/private/
+
 # Workspace-local desktop application state
 .carnopy-gui/
 
