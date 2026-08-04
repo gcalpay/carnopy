@@ -5,11 +5,14 @@ Thank you for considering a contribution to Carnopy.
 Carnopy generates reproducible, backend-derived thermophysical datasets. Changes
 to scientific interpretation, public configuration, schemas, provenance, or
 failure semantics require more review than ordinary implementation changes.
+[`PRODUCT_SCOPE.md`](../PRODUCT_SCOPE.md) records the durable product boundary
+and separates implemented, approved, unscheduled, research, and external work.
 
 ## Before opening a pull request
 
 Open an issue before implementing:
 
+- changes to Carnopy's product identity, boundary, or roadmap classification;
 - new scientific behavior or property backends;
 - changes to public YAML, CLI, Python, dataset, metadata, or report contracts;
 - changes to units, sampling, phase interpretation, or reference-state policy;
@@ -18,9 +21,10 @@ Open an issue before implementing:
 Small fixes to documentation, tests, and clearly incorrect behavior may go
 directly to a pull request.
 
-Read [AGENTS.md](../AGENTS.md) before changing code. It records the architecture,
-scientific invariants, compatibility boundaries, release safeguards, and the
-boundary between Qt presentation code and scientific worker execution.
+Read [AGENTS.md](../AGENTS.md) before changing code. It routes the applicable
+product, scientific, architecture, contribution, and release authorities.
+Substantial external contributions also require the licensing and
+sustainability review defined in `PRODUCT_SCOPE.md` before acceptance.
 
 ## Development setup
 

@@ -51,6 +51,7 @@ reading.
 | Work being performed | Required tracked guidance |
 | --- | --- |
 | Any implementation, test, documentation, or commit handoff | [Development and contribution workflow](docs/agent-guides/DEVELOPMENT.md) |
+| Product identity, boundaries, future scope, or roadmap priority | [Product scope and direction](PRODUCT_SCOPE.md) |
 | Delegating work or changing project-agent definitions | [Codex delegation policy](docs/agent-guides/DELEGATION.md) and the applicable files under `.codex/agents/` |
 | Scientific behavior, configuration, sampling, CLI/API, rows, provenance, preparation, visualization, or core architecture | [Public scientific and application contracts](docs/agent-guides/SCIENTIFIC_CONTRACTS.md) |
 | Desktop controllers, QML, Widgets, worker boundaries, packaging of desktop resources, native 3D, or frontend retirement | [Desktop architecture](DESKTOP_ARCHITECTURE.md) and, while GUI-2 is active, [GUI-2 plan](GUI2_PLAN.md) |
@@ -65,24 +66,11 @@ blending them.
 
 ## Project boundary
 
-Carnopy generates reproducible, backend-derived synthetic thermophysical
-datasets for machine-learning, surrogate-model, and engineering workflows. It
-is not a thermodynamic property model, experimental or backend-independent
-ground truth, a process simulator, or an ML training framework.
-
-Do not broaden the approved milestone or public interfaces without maintainer
-approval. The detailed supported scope and explicit exclusions live in the
-scientific contracts routed above.
-
-The `0.1.0a3` release line provides the historical Qt Widgets desktop frontend.
-Current `0.1.0a4` source has completed the QML parity migration and both
-public desktop commands launch the single QML application. [GUI2_PLAN.md](GUI2_PLAN.md)
-is the temporary source of truth for unfinished GUI-2 stages. Read it before
-changing desktop controllers, QML, native 3D, or desktop packaging. Delete it
-only after GUI-2 is complete, permanent documentation describes the final
-design, and the maintainer accepts the finished application.
-[DESKTOP_ARCHITECTURE.md](DESKTOP_ARCHITECTURE.md) is the durable implemented
-desktop record.
+Carnopy is an open and auditable thermophysical-data workbench. Current
+behavior and exclusions live in the scientific contracts; durable product
+direction and roadmap status live in [PRODUCT_SCOPE.md](PRODUCT_SCOPE.md).
+Planned directions are not implemented capabilities or authority to broaden a
+public contract without maintainer approval.
 
 ## Always-on safeguards
 

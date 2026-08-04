@@ -7,6 +7,11 @@ provenance, preparation, visualization, or core architecture. It must be
 combined with the active stage plan and more specific architecture guidance
 when those scopes apply.
 
+[`PRODUCT_SCOPE.md`](../../PRODUCT_SCOPE.md) is authoritative for durable
+product direction and roadmap classification. It does not override this
+document's current scientific and public contracts or make an unimplemented
+direction available.
+
 ## Purpose and scope
 
 Carnopy generates reproducible, backend-derived synthetic thermophysical
@@ -67,7 +72,7 @@ documentation describes the final design.
 implemented desktop structure and evolution; update it when accepted work
 changes a major ownership or process boundary.
 
-Out of scope for now:
+Outside the current implemented contract:
 
 - mixtures;
 - ORC generation;
@@ -77,7 +82,9 @@ Out of scope for now:
 - web/API services or databases;
 - ThermoML, OCR, RAG, or literature mining.
 
-Do not broaden scope without maintainer approval.
+The product-scope document distinguishes planned, research, and external work.
+Do not interpret those classifications as implementation authority or broaden
+this contract without maintainer approval.
 
 ## Public interfaces
 
@@ -202,11 +209,14 @@ deterministic numeric transformations (`log10`, `standard`, `minmax`,
 partitions. Parquet remains canonical. Optional NumPy and
 SafeTensors exports are derived ML-consumption files and must record feature
 and target order, units, shapes, dtype, hashes, and conversion-error summaries.
-Carnopy is not a training framework and does not optimize, depend on PyTorch,
-or export `.pt`/`.pth` files. The optional `analysis` extra may fit disposable
-scikit-learn baseline estimators for train/evaluation diagnostics only. It must
-not persist models or predictions, tune hyperparameters, alter prepared rows,
-or leak validation/test statistics into fitting.
+Carnopy is not a training framework. The current implementation does not
+optimize, depend on PyTorch, or export `.pt`/`.pth` files. The product scope
+approves a separate future optional PyTorch dataset-export stage; this current
+contract remains unchanged until that stage is implemented, verified, and
+accepted. The optional `analysis` extra may fit disposable scikit-learn
+baseline estimators for train/evaluation diagnostics only. It must not persist
+models or predictions, tune hyperparameters, alter prepared rows, or leak
+validation/test statistics into fitting.
 
 If preparation selects reference-dependent properties (`specific_enthalpy`,
 `specific_entropy`, or `specific_internal_energy`) as features, targets, or

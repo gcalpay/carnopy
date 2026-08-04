@@ -74,6 +74,7 @@ Use the narrowest applicable authority:
 | --- | --- |
 | `AGENTS.md` and its routed agent guides | Public scientific, data, architecture, packaging, and contribution contracts |
 | `.agents/local.md` | Checkout-local execution, environment, credential, dependency, and Git restrictions |
+| `PRODUCT_SCOPE.md` | Durable product identity, ecosystem boundary, and cross-roadmap priority |
 | `GUI2_PLAN.md` | Temporary GUI-2 scope, sequencing, decisions, and acceptance status |
 | `DESKTOP_ARCHITECTURE.md` | Durable implemented desktop structure and evolution |
 | `README.md` | User-facing installation and workflow guidance |
@@ -927,7 +928,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 1 | Extracted request ownership, workspace state, dataset/visualization drafts, and complete configuration workflow into QML-ready QtCore controllers | Complete |
 | 2 | Package the Precision Grid QML Workspace, Dataset, Visualization, and YAML/Save workflows | Complete; automated, remote, and native acceptance passed |
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete |
-| 4 | Add controlled sweep and preparation worker operations | Active after the `0.1.0a4` checkpoint |
+| 4 | Add controlled sweep and preparation worker operations | Ready; deferred by the accepted product-scope sequence |
 | 5 | Add structured sweep and preparation QML workflows | Pending |
 | 6 | Build exact emitted-value 3D scene contracts | Pending |
 | 7 | Integrate native interactive 3D into QML | Pending |

@@ -25,6 +25,21 @@ vendor Qt or ship standalone desktop installers; downstream redistribution
 requires review of the applicable Qt terms rather than assumptions based on
 Carnopy's MIT license.
 
+The current alpha line remains MIT licensed, and already published versions
+retain the terms under which they were released. Before the first stable
+release (`0.1.0` under the current versioning plan) or acceptance of a
+substantial external contribution, whichever comes first, the maintainer must
+complete the business, licensing, copyright, contribution, and dependency
+review defined in [`PRODUCT_SCOPE.md`](../../PRODUCT_SCOPE.md). This is a review
+gate, not an announced license change or a promise that future major releases
+will remain MIT.
+
+Any prospective license change requires a separate legal and governance plan.
+It must synchronize `LICENSE`, `pyproject.toml`, `CITATION.cff`, public
+documentation, package metadata, contribution terms, and release/archive
+records without relabelling or replacing an existing distribution, tag, DOI,
+or archived payload.
+
 Carnopy uses alpha releases before stable `0.1.0`. The release workflow builds
 one wheel and sdist, verifies them, requires human approval, and publishes them
 to production PyPI through GitHub OIDC Trusted Publishing.
