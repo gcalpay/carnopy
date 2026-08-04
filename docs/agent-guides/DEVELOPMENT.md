@@ -23,7 +23,33 @@ Release tooling:
 uv sync --locked --extra all --group dev --group release
 ```
 
-Required quality gate:
+### Verification scope
+
+Verification must be proportional to the changed artifacts:
+
+- For read-only planning, reasoning, status inspection, or review with no
+  worktree changes, do not run Ruff, mypy, pytest, preflight, or the local gate.
+  Run only the read-only inspection needed to support the result.
+- For pure prose documentation changes, including ordinary Markdown edits that
+  are not consumed as templates, package metadata, generated inputs, or
+  executable configuration, inspect the complete intended diff and run
+  `git diff --check`. Run only directly relevant focused documentation
+  parser, link, or contract checks when they exist. Do not run the complete
+  pytest suite, mypy, preflight, or the local distribution gate by default.
+- If a prose change intentionally updates exact wording asserted by a test,
+  update that documentation-contract assertion and run only the focused test
+  target. Such a synchronized assertion does not by itself escalate the change
+  to the complete implementation gate.
+- Use the complete gate for implementation behavior, source or test logic,
+  executable configuration, generated templates, public schemas or APIs,
+  packaging or dependency metadata, CI, security, release work, or another
+  cross-cutting change that can affect runtime or distributed artifacts.
+- A maintainer may explicitly request broader verification for any change.
+
+File extension alone does not determine scope: YAML, TOML, templates, and even
+Markdown consumed by tooling may be operational inputs rather than pure prose.
+
+Required implementation, packaging, and release quality gate:
 
 ```bash
 uv lock --check

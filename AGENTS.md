@@ -86,6 +86,10 @@ public contract without maintainer approval.
   pandas, PyArrow, or Matplotlib.
 - Use temporary directories for generated test artifacts. Do not commit
   generated datasets or figures.
+- Match verification to the change class defined in the routed development
+  guide. Read-only planning requires no quality gate. Pure prose documentation
+  requires diff inspection and only directly relevant documentation checks,
+  never the complete test or preflight suite by default.
 - Add focused verification for behavior changes. Test count is not a target,
   and brittle golden thermodynamic data or pixel-perfect figure tests are not
   substitutes for contract tests.
