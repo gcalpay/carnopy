@@ -928,8 +928,8 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 1 | Extracted request ownership, workspace state, dataset/visualization drafts, and complete configuration workflow into QML-ready QtCore controllers | Complete |
 | 2 | Package the Precision Grid QML Workspace, Dataset, Visualization, and YAML/Save workflows | Complete; automated, remote, and native acceptance passed |
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete |
-| 4 | Add controlled sweep and preparation worker operations | Approved next |
-| 5 | Add structured sweep and preparation QML workflows | Planned; follows Stage 4 |
+| 4 | Add controlled sweep and preparation worker operations | Complete |
+| 5 | Add structured sweep and preparation QML workflows | Approved next |
 | 6 | Build exact emitted-value 3D scene contracts | Pending |
 | 7 | Integrate native interactive 3D into QML | Pending |
 | 8 | Complete native-3D platform, distribution, documentation, and later-release qualification | Pending |
@@ -980,6 +980,19 @@ Inspect, configured and session Visualization, Activity, Recovery, lifecycle,
 theme, and window-state behavior. This is bounded alpha qualification, not the
 full native-3D and platform qualification reserved for Stage 8.
 
+Stage 4 acceptance passed on 2026-08-08. The private worker boundary now
+supports revision-bound sweep and preparation planning and execution, exact
+configuration identities, runtime fingerprints, stable preparation reads,
+sticky protected finalization, guarded staging cleanup, and recovery of
+force-stopped staging. `DesktopController` composes nonvisual workflow
+controllers, while Activity persists executions only and can hand every
+finalized inspectable result back to Inspect. Public APIs, YAML schemas,
+scientific result models, output layouts, dependencies, and visible QML were
+unchanged. The complete required implementation gate passed with 820 tests,
+preflight, lock, formatting, typing, and dependency checks. Stage 4 has no
+native UI acceptance surface; structured editors and visible workflow pages
+remain Stage 5.
+
 ## Known current limitations
 
 - Both public desktop commands launch the single QML presentation.
@@ -990,7 +1003,9 @@ full native-3D and platform qualification reserved for Stage 8.
   arrays, diagnostics, and bounded tables. It also presents configured plot
   evidence, explicit session rendering, private Run activity, and guarded
   staging recovery.
-- Sweep creation, preparation creation, and 3D presentation are not implemented.
+- The visible QML application does not yet provide sweep or preparation
+  editors; Stage 4 supplies their nonvisual worker and controller foundation.
+  Exact emitted-value 3D presentation remains a later stage.
 - Native folder dialogs and compositor behavior require human acceptance;
   headless tests do not automate them.
 - The current WSLg development host can use CPU rendering through Mesa

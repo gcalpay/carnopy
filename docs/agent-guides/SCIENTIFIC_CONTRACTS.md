@@ -125,12 +125,21 @@ The supported Python API intentionally remains narrow:
 
 Keep CLI handlers thin and scientific logic outside `cli.py`.
 
-The desktop frontend follows the same boundary. Qt widgets must communicate
-with one short-lived worker process through the private, versioned JSON Lines
-protocol under `carnopy.app`; they must not invoke or parse the public CLI.
+The desktop frontend follows the same boundary. Desktop presentation code must
+communicate with one short-lived worker process through the private, versioned
+JSON Lines protocol under `carnopy.app`; it must not invoke or parse the public
+CLI.
 Only the worker may import CoolProp, generation pipelines, pandas, PyArrow, or
 Matplotlib. Progress and cooperative cancellation use private execution hooks;
 do not add these hooks to the public Python API.
+
+GUI-2 Stage 4 extends this private boundary with revision-bound, non-writing
+planning and controlled execution for model sweeps and preparation. Planning
+does not create output paths or fit baseline estimators. Execution recomputes
+and verifies the current plan in its short-lived worker, persists Activity only
+for execution, and protects the final immutable rename after all source,
+serialization, and hashing checks succeed. Visible sweep and preparation QML
+workflows remain Stage 5.
 
 Manual desktop plots must use the inspected dataset source and its integrity
 revision. The GUI supplies a session-only public-shaped request; the worker

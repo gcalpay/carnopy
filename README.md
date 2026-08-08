@@ -435,9 +435,11 @@ thermophysical engines and data sources
 ```
 
 The accepted direction is workflow depth now, source breadth next, and advanced
-model breadth later. The near-term milestone brings existing model-sweep and
-preparation workflows into the desktop. It is followed by a validated
-import/source contract and one evidence-driven source expansion.
+model breadth later. GUI-2 Stage 4 has now brought the existing model-sweep and
+preparation workflows into the desktop's controlled nonvisual worker boundary.
+Stage 5 adds their visible structured QML workflows. After that milestone,
+Carnopy will establish a validated import/source contract and one
+evidence-driven source expansion.
 
 Detailed source and model candidates are maintainer planning rather than public
 support promises. Optional PyTorch export, exact 3D, and automation remain
@@ -474,8 +476,9 @@ the accepted QML parity application. Its complete local and remote release
 gates, native acceptance, [PyPI publication](https://pypi.org/project/carnopy/0.1.0a4/),
 [GitHub prerelease](https://github.com/gcalpay/carnopy/releases/tag/v0.1.0a4),
 and [version-specific Zenodo archive](https://doi.org/10.5281/zenodo.21709965)
-are complete. GUI-2 Stage 4 is the approved next stage; Stage 5 follows to
-complete the desktop sweep and preparation workflow-depth milestone.
+are complete. GUI-2 Stage 4 is implemented on the current development branch
+without changing the published `0.1.0a4` artifacts; Stage 5 is the approved
+next stage for the visible sweep and preparation workflow-depth milestone.
 
 ## License
 

@@ -78,8 +78,8 @@ implementation.
 | 1 | Complete | Established request ownership and QML-ready dataset controllers |
 | 2 | Complete | Added the packaged QML shell and Dataset/YAML/Save workflows |
 | 3 | Complete | Reached parity, migrated both launchers, retired Widgets, and qualified `0.1.0a4` |
-| 4 | Approved next | Add controlled sweep and preparation worker operations for the existing public contracts |
-| 5 | Planned; follows Stage 4 | Add structured sweep and preparation QML workflows |
+| 4 | Complete | Added controlled sweep and preparation worker operations for the existing public contracts |
+| 5 | Approved next | Add structured sweep and preparation QML workflows |
 | 6 | Pending | Build exact emitted-value 3D scenes |
 | 7 | Pending | Add native interactive 3D to QML |
 | 8 | Pending | Qualify native 3D packaging, platforms, and a later release |
@@ -159,19 +159,30 @@ and reviewed technical content remain unchanged by this reprioritization.
 
 ## Stage 4: sweep and preparation worker operations
 
-Add private worker operations for sweep and preparation capabilities, loading,
-exact-text validation, planning, execution, progress, and cancellation.
+Stage 4 is complete. The accepted implementation record is indexed in
+[`docs/archive/GUI2_STAGE4.md`](docs/archive/GUI2_STAGE4.md). It adds private
+worker operations for sweep and preparation loading, exact-text validation,
+non-writing planning, execution, progress, cancellation, protected
+finalization, and guarded recovery.
 
-Preparation planning must be non-writing and verify source identity,
-integrity, revision, semantic fields, units, derived dependencies,
-reference-state compatibility, scenarios, exact-state leakage protection,
-transformations, output formats, categorical coding, optional dependency
-availability, matrix diagnostics, and baseline feasibility.
+Preparation planning is revision-bound and non-writing. It classifies eligible
+sources explicitly, performs stable descriptor-backed reads, computes semantic
+resolution, exclusions, scenarios, transformations, leakage checks, matrix
+diagnostics, array feasibility, and baseline feasibility without fitting.
+Execution recomputes and verifies the plan in its short-lived worker, fits
+requested baselines only during execution, and writes only after the plan and
+source checks succeed.
 
-Add cancellation checkpoints to expensive phases and disable cancellation
-before immutable finalization. Handled failures clean staging; recognized
-staging left by force-stop remains recoverable. Do not change public schemas,
-APIs, or output layouts.
+The desktop now composes nonvisual sweep and preparation workflow controllers
+with execution-only Activity records, stale-input invalidation, and inspection
+handoff. Protected finalization is sticky and distinct from ordinary
+non-cooperative phases, so the existing force-only plot behavior remains
+unchanged. Public APIs, YAML schemas, result models, output layouts,
+dependencies, and visible QML are unchanged.
+
+The complete required implementation gate and preflight passed on 2026-08-08
+(820 tests). No screenshot or native UI acceptance was required because this
+stage has no visible QML changes. Stage 5 is now the approved next stage.
 
 ## Stage 5: sweep and preparation QML workflows
 
