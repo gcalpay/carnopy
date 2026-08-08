@@ -23,6 +23,12 @@ from carnopy.app.protocol import (
     encode_event,
     parse_request,
 )
+from carnopy.app.workflow_worker import (
+    WORKFLOW_REQUESTS,
+    StalePlanError,
+    WorkflowSourceChangedError,
+    execute_workflow_request,
+)
 from carnopy.domain.failures import CarnopyError, ConfigError
 
 if TYPE_CHECKING:
@@ -137,6 +143,12 @@ def main(
     except SourceChangedError as exc:
         writer.emit("error", _error_payload("config", "source_changed", str(exc)))
         return 1
+    except WorkflowSourceChangedError as exc:
+        writer.emit("error", _error_payload("config", "source_changed", str(exc)))
+        return 1
+    except StalePlanError as exc:
+        writer.emit("error", _error_payload("config", "stale_plan", str(exc)))
+        return 1
     except ConfigError as exc:
         writer.emit("error", _config_error_payload(exc))
         return 1
@@ -184,6 +196,13 @@ def _execute(
 
         capabilities = CapabilitiesPayload.model_validate(request.payload)
         return cast(dict[str, Any], describe_capabilities(capabilities.model))
+    if request.type in WORKFLOW_REQUESTS:
+        return execute_workflow_request(
+            request.type,
+            request.payload,
+            emit=writer.emit,
+            cancellation_requested=cancelled.is_set,
+        )
     if request.type == "load_dataset_config":
         load_payload = ValidatePayload.model_validate(request.payload)
         writer.emit("phase", {"name": "validation", "cancellable": True})

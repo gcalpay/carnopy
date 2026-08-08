@@ -16,6 +16,14 @@ RequestType = Literal[
     "inspect_source",
     "preview_table",
     "render_plot",
+    "load_sweep_config",
+    "validate_sweep_config",
+    "plan_sweep",
+    "execute_sweep",
+    "load_preparation_config",
+    "validate_preparation_config",
+    "plan_preparation",
+    "execute_preparation",
     "cancel",
 ]
 EventType = Literal["accepted", "phase", "progress", "result", "error", "cancelled"]

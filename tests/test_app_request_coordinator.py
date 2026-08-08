@@ -285,6 +285,40 @@ def test_execution_cancel_policy_rejects_foreign_and_stale_sessions(
     assert not session.force_stop()
 
 
+def test_protected_finalization_is_sticky_and_cancels_delayed_force_stop(
+    application: QCoreApplication,
+) -> None:
+    del application
+    transport = StubTransport()
+    coordinator = coordinator_for(transport)
+    session = coordinator.start_request("sweep", "execute_sweep", {})
+    transport.emit_event("accepted")
+    transport.emit_event("phase", {"name": "models", "cancellable": True})
+
+    assert session.cancel()
+    assert coordinator._force_timer.isActive()
+    transport.emit_event(
+        "phase",
+        {
+            "name": "finalization",
+            "cancellable": False,
+            "termination_protected": True,
+        },
+    )
+
+    assert not coordinator._force_timer.isActive()
+    assert not session.cooperative_cancel_available
+    assert not session.force_stop_available
+    assert not session.cancel()
+    assert not session.force_stop()
+    coordinator._enable_delayed_force_stop()
+    assert not session.force_stop_available
+    transport.emit_event("phase", {"name": "late", "cancellable": True})
+    assert not session.cooperative_cancel_available
+    assert not session.force_stop_available
+    transport.finish(payload={"output_directory": "/tmp/final"})
+
+
 def test_plot_force_stop_is_immediate_and_configuration_cannot_cancel(
     application: QCoreApplication,
 ) -> None:

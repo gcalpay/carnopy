@@ -43,6 +43,38 @@ def _events(stream: io.StringIO) -> list[dict[str, object]]:
     return [json.loads(line) for line in stream.getvalue().splitlines()]
 
 
+def _stage4_config_text(workflow_kind: str) -> str:
+    if workflow_kind == "sweep":
+        return """schema_version: 2
+document_type: model_sweep
+backend:
+  name: coolprop
+  models: [heos, pr]
+  reference_model: heos
+mode: property_table
+fluids: [Propane]
+grid:
+  temperature: {kind: explicit, values: [300.0], unit: K}
+  pressure: {kind: explicit, values: [100000.0], unit: Pa}
+properties: [mass_density, specific_enthalpy]
+outputs:
+  dataset_formats: [parquet]
+"""
+    if workflow_kind == "preparation":
+        return """schema_version: 1
+document_type: preparation
+features:
+  numeric: [temperature, pressure, mass_density]
+  derived: [specific_volume]
+categorical_features: []
+targets: [specific_enthalpy]
+auxiliary: [fluid, backend_model, phase, run_id, case_id]
+outputs:
+  formats: [parquet]
+"""
+    raise AssertionError(f"unknown Stage 4 workflow kind: {workflow_kind}")
+
+
 def test_protocol_round_trip_and_version_rejection() -> None:
     request_id, line = _request("validate_config", {"config_path": "config.yaml"})
     request = parse_request(line)
@@ -232,6 +264,99 @@ def test_worker_reports_structured_dataset_config_issues(property_config_path: P
     assert issue["path"] == "properties"
     assert issue["code"] == "too_short"
     assert "at least 1" in issue["message"]
+
+
+@pytest.mark.parametrize(
+    ("workflow_kind", "request_type"),
+    [
+        ("sweep", "load_sweep_config"),
+        ("preparation", "load_preparation_config"),
+    ],
+)
+def test_worker_loads_stage4_config_with_exact_saved_identity(
+    tmp_path: Path,
+    workflow_kind: str,
+    request_type: str,
+) -> None:
+    config_path = tmp_path / "configs" / f"{workflow_kind}.yaml"
+    config_path.parent.mkdir()
+    raw_bytes = _stage4_config_text(workflow_kind).encode("utf-8") + b"# exact saved bytes\n"
+    config_path.write_bytes(raw_bytes)
+    request_id, line = _request(request_type, {"config_path": str(config_path)})
+    stdout = io.StringIO()
+
+    assert main(io.StringIO(line + "\n"), stdout, io.StringIO()) == 0
+
+    events = _events(stdout)
+    assert [event["type"] for event in events] == ["accepted", "phase", "result"]
+    assert all(event["request_id"] == request_id for event in events)
+    assert events[0]["payload"] == {"request_type": request_type}
+    payload = events[-1]["payload"]
+    assert isinstance(payload, dict)
+    assert payload["source_name"] == str(config_path)
+    assert payload["source_sha256"] == hashlib.sha256(raw_bytes).hexdigest()
+    config = payload["config"]
+    assert isinstance(config, dict)
+    assert config["document_type"] == (
+        "preparation" if workflow_kind == "preparation" else "model_sweep"
+    )
+    if workflow_kind == "sweep":
+        assert config["backend"]["models"] == ["heos", "pr"]
+        assert config["properties"] == ["mass_density", "specific_enthalpy"]
+    else:
+        assert config["features"]["derived"] == ["specific_volume"]
+        assert config["targets"] == ["specific_enthalpy"]
+
+
+@pytest.mark.parametrize(
+    ("workflow_kind", "request_type", "valid_fragment", "invalid_fragment", "issue_path"),
+    [
+        (
+            "sweep",
+            "validate_sweep_config",
+            "properties: [mass_density, specific_enthalpy]",
+            "properties: []",
+            "properties",
+        ),
+        (
+            "preparation",
+            "validate_preparation_config",
+            "targets: [specific_enthalpy]",
+            "targets: []",
+            "targets",
+        ),
+    ],
+)
+def test_worker_validates_stage4_exact_text_with_structured_issues(
+    workflow_kind: str,
+    request_type: str,
+    valid_fragment: str,
+    invalid_fragment: str,
+    issue_path: str,
+) -> None:
+    yaml_text = _stage4_config_text(workflow_kind).replace(valid_fragment, invalid_fragment)
+    source_name = f"invalid-{workflow_kind}.yaml"
+    request_id, line = _request(
+        request_type,
+        {"yaml_text": yaml_text, "source_name": source_name},
+    )
+    stdout = io.StringIO()
+
+    assert main(io.StringIO(line + "\n"), stdout, io.StringIO()) == 0
+
+    events = _events(stdout)
+    assert [event["type"] for event in events] == ["accepted", "phase", "result"]
+    assert all(event["request_id"] == request_id for event in events)
+    payload = events[-1]["payload"]
+    assert isinstance(payload, dict)
+    assert payload["valid"] is False
+    assert payload["source_name"] == source_name
+    assert payload["source_sha256"] == hashlib.sha256(yaml_text.encode("utf-8")).hexdigest()
+    error = payload["error"]
+    assert error["code"] == "invalid_config"
+    assert len(error["issues"]) == 1
+    assert error["issues"][0]["path"] == issue_path
+    assert error["issues"][0]["code"] == "too_short"
 
 
 def test_worker_generates_structured_progress_and_result(

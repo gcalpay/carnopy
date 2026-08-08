@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import shutil
+import stat
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -13,6 +15,8 @@ class SweepLayout:
     output_root: Path
     staging_directory: Path
     final_directory: Path
+    staging_device: int
+    staging_inode: int
 
 
 def create_sweep_layout(
@@ -37,17 +41,55 @@ def create_sweep_layout(
         raise OutputError(f"immutable sweep path already exists: {final_directory}")
     try:
         staging_directory.mkdir()
+        staging_info = staging_directory.stat(follow_symlinks=False)
     except OSError as exc:
         raise OutputError(f"could not create sweep staging directory: {exc}") from exc
-    return SweepLayout(output_root, staging_directory, final_directory)
+    return SweepLayout(
+        output_root,
+        staging_directory,
+        final_directory,
+        staging_info.st_dev,
+        staging_info.st_ino,
+    )
 
 
 def finalize_sweep_layout(layout: SweepLayout) -> None:
-    if layout.final_directory.exists():
+    if layout.final_directory.exists() or layout.final_directory.is_symlink():
         raise OutputError(
             f"refusing to overwrite existing sweep directory {layout.final_directory}"
         )
+    _verify_sweep_staging(layout)
     try:
         layout.staging_directory.rename(layout.final_directory)
     except OSError as exc:
         raise OutputError(f"could not finalize sweep directory: {exc}") from exc
+
+
+def cleanup_sweep_layout(layout: SweepLayout) -> None:
+    staging = layout.staging_directory
+    if not staging.exists() and not staging.is_symlink():
+        return
+    _verify_sweep_staging(layout)
+    try:
+        shutil.rmtree(staging)
+    except OSError as exc:
+        raise OutputError(f"could not clean sweep staging directory {staging}: {exc}") from exc
+
+
+def _verify_sweep_staging(layout: SweepLayout) -> None:
+    staging = layout.staging_directory
+    if staging.is_symlink():
+        raise OutputError(f"refusing to use sweep staging symlink {staging}")
+    try:
+        root = layout.output_root.resolve(strict=True)
+        if staging.parent.resolve(strict=True) != root:
+            raise OutputError(f"sweep staging directory escapes output root {staging}")
+        info = staging.stat(follow_symlinks=False)
+    except OutputError:
+        raise
+    except OSError as exc:
+        raise OutputError(f"could not inspect sweep staging directory {staging}: {exc}") from exc
+    if not stat.S_ISDIR(info.st_mode):
+        raise OutputError(f"refusing to use non-directory sweep staging path {staging}")
+    if (info.st_dev, info.st_ino) != (layout.staging_device, layout.staging_inode):
+        raise OutputError(f"refusing to use replaced sweep staging directory {staging}")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime
 from importlib import metadata
 from pathlib import Path
@@ -28,6 +29,7 @@ def render_comparison_plots(
     selected_models: tuple[str, ...],
     reference_model: str,
     fluid_aliases: dict[str, str],
+    checkpoint: Callable[[], None] | None = None,
 ) -> tuple[Path, Path, int]:
     try:
         output_directory.mkdir(parents=True, exist_ok=False)
@@ -42,6 +44,8 @@ def render_comparison_plots(
     failed = 0
     mpl = import_matplotlib()
     for plot in comparison_plots.plots:
+        if checkpoint is not None:
+            checkpoint()
         image_path = output_directory / f"{plot.name}.{plot.format or comparison_plots.format}"
         sidecar_path = output_directory / f"{plot.name}.plot.json"
         try:
@@ -96,6 +100,8 @@ def render_comparison_plots(
             )
         finally:
             mpl["pyplot"].close("all")
+        if checkpoint is not None:
+            checkpoint()
     report_path = output_directory / "comparison-report.json"
     report = {
         "comparison_report_schema_version": COMPARISON_REPORT_SCHEMA_VERSION,

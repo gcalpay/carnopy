@@ -12,13 +12,28 @@ from carnopy.config.io import LoadedSweepConfig
 from carnopy.preparation.computation import PreparationComputation, compute_preparation
 from carnopy.preparation.models import LoadedPreparationConfig
 from carnopy.provenance import sha256_bytes
-from carnopy.sweeps.normalize import normalize_sweep_config
+from carnopy.sweeps.normalize import NormalizedSweep, normalize_sweep_config
 
 PLAN_SCHEMA_VERSION = 1
 
 
 def plan_sweep(loaded: LoadedSweepConfig) -> dict[str, Any]:
     normalized = normalize_sweep_config(loaded)
+    return _plan_sweep_from_normalized(loaded, normalized)
+
+
+def plan_sweep_with_normalized(
+    loaded: LoadedSweepConfig,
+) -> tuple[dict[str, Any], NormalizedSweep]:
+    """Build a sweep plan and retain its normalized computation for execution."""
+    normalized = normalize_sweep_config(loaded)
+    return _plan_sweep_from_normalized(loaded, normalized), normalized
+
+
+def _plan_sweep_from_normalized(
+    loaded: LoadedSweepConfig,
+    normalized: NormalizedSweep,
+) -> dict[str, Any]:
     comparison_plots_requested = loaded.model.comparison_plots is not None
     runtime = {
         "coolprop": _distribution_version("CoolProp"),
