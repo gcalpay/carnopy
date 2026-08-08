@@ -48,12 +48,8 @@ def assess_baseline_feasibility(
     for partition in evaluation_partitions:
         if checkpoint is not None:
             checkpoint()
-        evaluation_features = _matrix(
-            partitions[partition], feature_columns, role="feature"
-        )
-        evaluation_targets = _matrix(
-            partitions[partition], target_columns, role="target"
-        )
+        evaluation_features = _matrix(partitions[partition], feature_columns, role="feature")
+        evaluation_targets = _matrix(partitions[partition], target_columns, role="target")
         evaluation_shapes[partition] = {
             "features": list(evaluation_features.shape),
             "targets": list(evaluation_targets.shape),
