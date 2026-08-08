@@ -20,6 +20,10 @@ from carnopy.app.request_coordinator import DesktopRequestCoordinator
 from carnopy.app.sampler_draft import SamplerDraft
 from carnopy.app.session_plot_controller import SessionPlotController
 from carnopy.app.visualization_draft import VisualizationDraft
+from carnopy.app.workflow_controller import (
+    PreparationWorkflowController,
+    SweepWorkflowController,
+)
 from carnopy.app.workspace import Workspace
 from carnopy.app.workspace_controller import WorkspaceController
 
@@ -70,6 +74,15 @@ class DesktopController(QObject):
             self.request_coordinator,
             self,
         )
+        self.sweep_workflow_controller = SweepWorkflowController(
+            self.request_coordinator,
+            self,
+        )
+        self.preparation_workflow_controller = PreparationWorkflowController(
+            self.request_coordinator,
+            self.inspection_controller,
+            self,
+        )
         self.activity_controller = ActivityController(
             self.request_coordinator,
             self,
@@ -101,6 +114,18 @@ class DesktopController(QObject):
         )
         self.execution_controller.state_changed.connect(self._continue_pending_busy_shutdown)
         self.execution_controller.run_finalized.connect(
+            lambda _path: self.inspection_controller.refresh_sources()
+        )
+        self.sweep_workflow_controller.activity_record_changed.connect(
+            self.activity_controller.refresh_records
+        )
+        self.preparation_workflow_controller.activity_record_changed.connect(
+            self.activity_controller.refresh_records
+        )
+        self.sweep_workflow_controller.output_finalized.connect(
+            lambda _path: self.inspection_controller.refresh_sources()
+        )
+        self.preparation_workflow_controller.output_finalized.connect(
             lambda _path: self.inspection_controller.refresh_sources()
         )
         self.dataset_config_controller.set_lifecycle_guard(self._guard_active_plot_edit)
@@ -1134,6 +1159,12 @@ class DesktopController(QObject):
         self.execution_controller.set_workspace(value if isinstance(value, Workspace) else None)
         self.session_plot_controller.set_workspace(value if isinstance(value, Workspace) else None)
         self.inspection_controller.set_workspace(value if isinstance(value, Workspace) else None)
+        self.sweep_workflow_controller.set_workspace(
+            value if isinstance(value, Workspace) else None
+        )
+        self.preparation_workflow_controller.set_workspace(
+            value if isinstance(value, Workspace) else None
+        )
         self.activity_controller.set_workspace(value if isinstance(value, Workspace) else None)
         self.configured_plot_results_controller.set_workspace(
             value if isinstance(value, Workspace) else None

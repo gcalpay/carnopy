@@ -53,6 +53,9 @@ class InspectionController(QObject):
         self._source: Path | None = None
         self._source_kind = ""
         self._revision = ""
+        self._preparation_eligible = False
+        self._preparation_ineligible_reason = ""
+        self._preparation_source_descriptor: dict[str, Any] | None = None
         self._integrity_status = ""
         self._integrity_label = ""
         self._issue = ""
@@ -136,6 +139,31 @@ class InspectionController(QObject):
         return self._revision
 
     revision = Property(str, get_revision, notify=state_changed)
+
+    def get_preparation_eligible(self) -> bool:
+        return self._preparation_eligible
+
+    preparationEligible = Property(bool, get_preparation_eligible, notify=state_changed)
+
+    def get_preparation_ineligible_reason(self) -> str:
+        return self._preparation_ineligible_reason
+
+    preparationIneligibleReason = Property(
+        str,
+        get_preparation_ineligible_reason,
+        notify=state_changed,
+    )
+
+    def preparation_source_snapshot(self) -> tuple[Path, str, dict[str, Any]] | None:
+        if (
+            self._state != "ready"
+            or self._source is None
+            or not self._revision
+            or not self._preparation_eligible
+            or self._preparation_source_descriptor is None
+        ):
+            return None
+        return self._source, self._revision, copy.deepcopy(self._preparation_source_descriptor)
 
     def get_integrity_status(self) -> str:
         return self._integrity_status
@@ -510,6 +538,9 @@ class InspectionController(QObject):
         source_kind = payload.get("source_kind")
         revision = payload.get("revision")
         source_value = payload.get("source")
+        preparation_eligible = payload.get("preparation_eligible", False)
+        ineligible_reason = payload.get("preparation_ineligible_reason", "")
+        preparation_descriptor = payload.get("preparation_source_descriptor")
         if (
             source_kind not in {"dataset", "model_sweep", "preparation"}
             or not isinstance(revision, str)
@@ -517,6 +548,11 @@ class InspectionController(QObject):
             or any(character not in "0123456789abcdef" for character in revision.lower())
             or not isinstance(source_value, str)
             or not isinstance(payload.get("summary"), dict)
+            or not isinstance(preparation_eligible, bool)
+            or not isinstance(ineligible_reason, str)
+            or (preparation_eligible and source_kind not in {"dataset", "model_sweep"})
+            or (preparation_eligible and not isinstance(preparation_descriptor, dict))
+            or (not preparation_eligible and preparation_descriptor is not None)
         ):
             self._accept_failure(
                 "inspection",
@@ -532,9 +568,28 @@ class InspectionController(QObject):
                 {"message": "worker inspection result belongs to another source"},
             )
             return
+        if preparation_eligible:
+            assert isinstance(preparation_descriptor, dict)
+            expected_kind = "model_sweep" if source_kind == "model_sweep" else "dataset_run"
+            if (
+                preparation_descriptor.get("source_path") != str(inspected_source)
+                or preparation_descriptor.get("source_kind") != expected_kind
+            ):
+                self._accept_failure(
+                    "inspection",
+                    {"message": "worker preparation eligibility descriptor is inconsistent"},
+                )
+                return
         self._payload = copy.deepcopy(payload)
         self._source_kind = source_kind
         self._revision = revision
+        self._preparation_eligible = preparation_eligible
+        self._preparation_ineligible_reason = ineligible_reason
+        self._preparation_source_descriptor = (
+            copy.deepcopy(preparation_descriptor)
+            if isinstance(preparation_descriptor, dict)
+            else None
+        )
         self._plot_context = (
             copy.deepcopy(payload.get("plot_context"))
             if isinstance(payload.get("plot_context"), dict)
@@ -582,6 +637,9 @@ class InspectionController(QObject):
         self._preview_state = "empty"
         self._issue = message
         self._payload = None
+        self._preparation_eligible = False
+        self._preparation_ineligible_reason = ""
+        self._preparation_source_descriptor = None
         self._plot_context = None
         self._reset_projection()
         self.inspection_changed.emit(None)
@@ -611,6 +669,9 @@ class InspectionController(QObject):
         self._source = source
         self._source_kind = ""
         self._revision = ""
+        self._preparation_eligible = False
+        self._preparation_ineligible_reason = ""
+        self._preparation_source_descriptor = None
         self._integrity_status = ""
         self._integrity_label = ""
         self._issue = ""

@@ -67,6 +67,28 @@ def test_job_store_retains_records_and_reports_malformed_records(tmp_path: Path)
     assert len(list(store.directory.glob("*.json"))) == 3
 
 
+def test_job_store_adds_workflow_identity_fields_without_schema_change(tmp_path: Path) -> None:
+    store = JobStore(tmp_path / ".carnopy-gui")
+    store.start(
+        request_id="00000000-0000-0000-0000-000000000012",
+        operation="execute_preparation",
+        config_relative_path="configs/preparation.yaml",
+        yaml_snapshot="schema_version: 1\n",
+        config_sha256="e" * 64,
+        owner="preparation",
+        plan_identity={"plan_id": "f" * 64},
+        preparation_source_identity={"inspection_revision": "a" * 64},
+    )
+
+    loaded = store.load()[0].data
+
+    assert loaded is not None
+    assert loaded["job_schema_version"] == 1
+    assert loaded["owner"] == "preparation"
+    assert loaded["plan_identity"] == {"plan_id": "f" * 64}
+    assert loaded["preparation_source_identity"] == {"inspection_revision": "a" * 64}
+
+
 def test_job_store_keeps_schema_one_backward_readable_and_records_start_failure(
     tmp_path: Path,
 ) -> None:

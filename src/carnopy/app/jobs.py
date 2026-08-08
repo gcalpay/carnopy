@@ -32,12 +32,16 @@ class JobStore:
         config_relative_path: str,
         yaml_snapshot: str,
         config_sha256: str,
+        owner: str = "execution",
+        plan_identity: dict[str, Any] | None = None,
+        preparation_source_identity: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         now = _utc_now()
         record: dict[str, Any] = {
             "job_schema_version": JOB_SCHEMA_VERSION,
             "request_id": request_id,
             "operation": operation,
+            "owner": owner,
             "status": "running",
             "created_at_utc": now,
             "updated_at_utc": now,
@@ -52,6 +56,10 @@ class JobStore:
             "summary": {},
             "terminal_envelope": None,
         }
+        if plan_identity is not None:
+            record["plan_identity"] = plan_identity
+        if preparation_source_identity is not None:
+            record["preparation_source_identity"] = preparation_source_identity
         self.write(record)
         return record
 
