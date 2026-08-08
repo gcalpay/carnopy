@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.metadata
 import math
+from collections.abc import Callable
 from typing import Any, cast
 
 import numpy as np
@@ -12,6 +13,81 @@ from carnopy.domain.failures import ConfigError
 from carnopy.preparation.models import BaselineDiagnosticsConfig, BaselineModel
 
 
+def assess_baseline_feasibility(
+    partitions: dict[str, pd.DataFrame],
+    *,
+    feature_columns: list[str],
+    target_columns: list[str],
+    config: BaselineDiagnosticsConfig,
+    scenario: str,
+    checkpoint: Callable[[], None] | None = None,
+) -> dict[str, Any]:
+    """Validate baseline inputs and estimator construction without fitting."""
+    if "train" not in partitions:
+        return {
+            "scenario": scenario,
+            "status": "skipped_missing_train_partition",
+            "feature_columns": feature_columns,
+            "target_columns": target_columns,
+        }
+    evaluation_partitions = [
+        partition for partition in ("validation", "test") if partition in partitions
+    ]
+    if not evaluation_partitions:
+        return {
+            "scenario": scenario,
+            "status": "skipped_missing_evaluation_partition",
+            "feature_columns": feature_columns,
+            "target_columns": target_columns,
+        }
+    sklearn_version = _require_sklearn()
+    train = partitions["train"]
+    train_features = _matrix(train, feature_columns, role="feature")
+    train_targets = _matrix(train, target_columns, role="target")
+    evaluation_shapes: dict[str, dict[str, list[int]]] = {}
+    for partition in evaluation_partitions:
+        if checkpoint is not None:
+            checkpoint()
+        evaluation_features = _matrix(
+            partitions[partition], feature_columns, role="feature"
+        )
+        evaluation_targets = _matrix(
+            partitions[partition], target_columns, role="target"
+        )
+        evaluation_shapes[partition] = {
+            "features": list(evaluation_features.shape),
+            "targets": list(evaluation_targets.shape),
+        }
+    estimators: list[dict[str, str]] = []
+    for model_name in config.models:
+        for target_column in target_columns:
+            if checkpoint is not None:
+                checkpoint()
+            estimator = _estimator(model_name, config)
+            estimators.append(
+                {
+                    "model": model_name,
+                    "target": target_column,
+                    "estimator_type": type(estimator).__name__,
+                }
+            )
+    return {
+        "scenario": scenario,
+        "status": "ready",
+        "library": "scikit-learn",
+        "library_version": sklearn_version,
+        "feature_columns": feature_columns,
+        "target_columns": target_columns,
+        "train_shapes": {
+            "features": list(train_features.shape),
+            "targets": list(train_targets.shape),
+        },
+        "evaluation_shapes": evaluation_shapes,
+        "estimators": estimators,
+        "fit_performed": False,
+    }
+
+
 def build_baseline_diagnostics(
     partitions: dict[str, pd.DataFrame],
     *,
@@ -19,6 +95,7 @@ def build_baseline_diagnostics(
     target_columns: list[str],
     config: BaselineDiagnosticsConfig,
     scenario: str,
+    checkpoint: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     if "train" not in partitions:
         return {
@@ -51,6 +128,8 @@ def build_baseline_diagnostics(
     models: list[dict[str, Any]] = []
     for model_name in config.models:
         for target_index, target_column in enumerate(target_columns):
+            if checkpoint is not None:
+                checkpoint()
             models.append(
                 _fit_target_baseline(
                     model_name,

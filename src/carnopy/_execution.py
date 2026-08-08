@@ -7,6 +7,7 @@ from time import monotonic
 from carnopy.domain.failures import CarnopyError
 
 PhaseCallback = Callable[[str, bool], None]
+ProtectedPhaseCallback = Callable[[str], None]
 ProgressCallback = Callable[[int, int], None]
 CancellationCheck = Callable[[], bool]
 
@@ -22,6 +23,7 @@ class ExecutionControl:
     cancellation_requested: CancellationCheck
     on_phase: PhaseCallback
     on_progress: ProgressCallback
+    on_protected_phase: ProtectedPhaseCallback | None = None
     minimum_progress_interval: float = 0.1
     _cancellable: bool = field(default=True, init=False)
     _last_progress_at: float | None = field(default=None, init=False)
@@ -30,6 +32,15 @@ class ExecutionControl:
         self._cancellable = cancellable
         self.raise_if_cancelled()
         self.on_phase(name, cancellable)
+
+    def protected_phase(self, name: str) -> None:
+        """Cross the irreversible outer-finalization termination boundary."""
+        self.raise_if_cancelled()
+        self._cancellable = False
+        if self.on_protected_phase is None:
+            self.on_phase(name, False)
+        else:
+            self.on_protected_phase(name)
 
     def checkpoint(self, completed: int, total: int) -> None:
         self.raise_if_cancelled()

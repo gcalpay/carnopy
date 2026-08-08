@@ -9,7 +9,9 @@ from pathlib import Path
 from typing import Any, cast
 
 from carnopy.app.plot_context import build_plot_context
+from carnopy.domain.failures import ConfigError
 from carnopy.inspection import PreparationInspection, SweepInspection, inspect_source
+from carnopy.preparation.source import load_preparation_source
 from carnopy.provenance import sha256_file
 from carnopy.visualization.inspect import PlotInspection
 from carnopy.visualization.models import VisualizationError
@@ -32,6 +34,17 @@ class ResolvedTable:
             "sha256": self.sha256,
         }
 
+    def private_descriptor(self) -> dict[str, object]:
+        info = self.path.stat(follow_symlinks=False)
+        return {
+            **self.public_descriptor(),
+            "path": str(self.path.resolve(strict=True)),
+            "device": info.st_dev,
+            "inode": info.st_ino,
+            "size": info.st_size,
+            "modified_ns": info.st_mtime_ns,
+        }
+
 
 @dataclass(frozen=True)
 class ResolvedInspection:
@@ -42,6 +55,9 @@ class ResolvedInspection:
     tables: tuple[ResolvedTable, ...]
     arrays: tuple[dict[str, Any], ...]
     plot_context: dict[str, Any] | None = None
+    preparation_eligible: bool = False
+    preparation_ineligible_reason: str = ""
+    preparation_source_descriptor: dict[str, Any] | None = None
 
     def public_payload(self) -> dict[str, Any]:
         return {
@@ -52,6 +68,9 @@ class ResolvedInspection:
             "tables": [table.public_descriptor() for table in self.tables],
             "arrays": list(self.arrays),
             "plot_context": self.plot_context,
+            "preparation_eligible": self.preparation_eligible,
+            "preparation_ineligible_reason": self.preparation_ineligible_reason,
+            "preparation_source_descriptor": self.preparation_source_descriptor,
         }
 
 
@@ -61,6 +80,7 @@ class ResolvedCatalog:
     revision: str
     tables: tuple[ResolvedTable, ...]
     arrays: tuple[dict[str, Any], ...]
+    controls: dict[str, Any]
 
 
 def inspect_for_app(source: str | Path) -> ResolvedInspection:
@@ -81,6 +101,11 @@ def inspect_for_app(source: str | Path) -> ResolvedInspection:
     if kind != catalog.source_kind:
         raise VisualizationError("inspection source classification changed during inspection")
     summary = inspection.to_dict()
+    eligible, ineligible_reason, preparation_descriptor = _preparation_eligibility(
+        requested,
+        kind,
+        catalog,
+    )
     return ResolvedInspection(
         source=requested,
         source_kind=kind,
@@ -89,6 +114,9 @@ def inspect_for_app(source: str | Path) -> ResolvedInspection:
         tables=catalog.tables,
         arrays=catalog.arrays,
         plot_context=plot_context,
+        preparation_eligible=eligible,
+        preparation_ineligible_reason=ineligible_reason,
+        preparation_source_descriptor=preparation_descriptor,
     )
 
 
@@ -104,6 +132,28 @@ def resolve_table(
         if table.table_id == table_id:
             return table
     raise VisualizationError(f"inspection source does not contain table ID {table_id!r}")
+
+
+def revalidate_preparation_inspection(
+    source: str | Path,
+    *,
+    inspection_revision: str,
+    inspection_descriptor: dict[str, Any],
+) -> None:
+    """Recheck an accepted preparation source without parsing table contents."""
+    requested = Path(source).expanduser().absolute()
+    catalog = _resolve_catalog(requested)
+    if catalog.revision != inspection_revision:
+        raise VisualizationError("preparation source changed after inspection")
+    if catalog.source_kind == "preparation":
+        raise VisualizationError("prepared bundles cannot be used as preparation sources")
+    if catalog.source_kind == "dataset" and not requested.is_dir():
+        raise VisualizationError(
+            "standalone CSV and Parquet files cannot be used as preparation sources"
+        )
+    descriptor = _preparation_descriptor(requested, catalog.source_kind, catalog)
+    if descriptor != inspection_descriptor:
+        raise VisualizationError("preparation source identity changed after inspection")
 
 
 def _resolve_catalog(source: Path) -> ResolvedCatalog:
@@ -125,6 +175,7 @@ def _resolve_catalog(source: Path) -> ResolvedCatalog:
             _catalog_revision("preparation", tables, controls),
             tables,
             arrays,
+            controls,
         )
     if source.is_dir() and (source / "sweep.normalized.json").is_file():
         metadata = _read_json(source / "metadata.json", "sweep metadata")
@@ -138,6 +189,7 @@ def _resolve_catalog(source: Path) -> ResolvedCatalog:
             _catalog_revision("model_sweep", tables, controls),
             tables,
             (),
+            controls,
         )
     table = _dataset_table(source)
     controls = _control_hashes(table.path.parent, ("metadata.json", "report.json"))
@@ -146,6 +198,7 @@ def _resolve_catalog(source: Path) -> ResolvedCatalog:
         _catalog_revision("dataset", (table,), controls),
         (table,),
         (),
+        controls,
     )
 
 
@@ -422,7 +475,7 @@ def _read_json(path: Path, label: str) -> dict[str, Any]:
 def _catalog_revision(
     source_kind: str,
     tables: tuple[ResolvedTable, ...],
-    controls: dict[str, str],
+    controls: dict[str, Any],
 ) -> str:
     value = {
         "source_kind": source_kind,
@@ -433,9 +486,61 @@ def _catalog_revision(
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _control_hashes(root: Path, names: tuple[str, ...]) -> dict[str, str]:
+def _control_hashes(root: Path, names: tuple[str, ...]) -> dict[str, dict[str, Any]]:
     return {
-        name: sha256_file(path)
+        name: _control_descriptor(path)
         for name in names
         if (path := root / name).is_file() and not path.is_symlink()
+    }
+
+
+def _control_descriptor(path: Path) -> dict[str, Any]:
+    info = path.stat(follow_symlinks=False)
+    return {
+        "path": str(path.resolve(strict=True)),
+        "sha256": sha256_file(path),
+        "device": info.st_dev,
+        "inode": info.st_ino,
+        "size": info.st_size,
+        "modified_ns": info.st_mtime_ns,
+    }
+
+
+def _preparation_eligibility(
+    source: Path,
+    source_kind: str,
+    catalog: ResolvedCatalog,
+) -> tuple[bool, str, dict[str, Any] | None]:
+    if source_kind == "preparation":
+        return False, "prepared bundles cannot be used as preparation sources", None
+    if source_kind == "dataset" and not source.is_dir():
+        return (
+            False,
+            "standalone CSV and Parquet files cannot be used as preparation sources",
+            None,
+        )
+    descriptor = _preparation_descriptor(source, source_kind, catalog)
+    try:
+        load_preparation_source(
+            source,
+            allow_partial_sweep=True,
+            accepted_descriptor=descriptor,
+        )
+    except ConfigError as exc:
+        return False, str(exc), None
+    return True, "", descriptor
+
+
+def _preparation_descriptor(
+    source: Path,
+    source_kind: str,
+    catalog: ResolvedCatalog,
+) -> dict[str, Any]:
+    preparation_kind = "model_sweep" if source_kind == "model_sweep" else "dataset_run"
+    return {
+        "source_path": str(source.resolve(strict=True)),
+        "source_kind": preparation_kind,
+        "inspection_revision": catalog.revision,
+        "controls": catalog.controls,
+        "tables": [table.private_descriptor() for table in catalog.tables],
     }

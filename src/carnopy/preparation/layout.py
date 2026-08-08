@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import shutil
+import stat
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -10,8 +12,11 @@ from carnopy.domain.failures import OutputError
 
 @dataclass(frozen=True)
 class PreparationLayout:
+    output_root: Path
     staging_directory: Path
     final_directory: Path
+    staging_device: int
+    staging_inode: int
 
 
 def create_preparation_layout(
@@ -36,32 +41,57 @@ def create_preparation_layout(
         raise OutputError(f"immutable preparation path already exists: {final}")
     try:
         staging.mkdir()
+        staging_info = staging.stat(follow_symlinks=False)
     except OSError as exc:
         raise OutputError(f"could not create preparation staging directory: {exc}") from exc
-    return PreparationLayout(staging, final)
+    return PreparationLayout(
+        output_root,
+        staging,
+        final,
+        staging_info.st_dev,
+        staging_info.st_ino,
+    )
 
 
 def finalize_preparation_layout(layout: PreparationLayout) -> None:
-    if layout.final_directory.exists():
+    if layout.final_directory.exists() or layout.final_directory.is_symlink():
         raise OutputError(f"refusing to overwrite preparation directory {layout.final_directory}")
+    _verify_preparation_staging(layout)
     try:
         layout.staging_directory.rename(layout.final_directory)
     except OSError as exc:
         raise OutputError(f"could not finalize preparation directory: {exc}") from exc
 
 
-def cleanup_staging(path: Path) -> None:
-    if not path.exists():
+def cleanup_preparation_layout(layout: PreparationLayout) -> None:
+    staging = layout.staging_directory
+    if not staging.exists() and not staging.is_symlink():
         return
-    for child in sorted(path.rglob("*"), reverse=True):
-        try:
-            if child.is_file() or child.is_symlink():
-                child.unlink()
-            elif child.is_dir():
-                child.rmdir()
-        except OSError:
-            return
+    _verify_preparation_staging(layout)
     try:
-        path.rmdir()
-    except OSError:
-        return
+        shutil.rmtree(staging)
+    except OSError as exc:
+        raise OutputError(
+            f"could not clean preparation staging directory {staging}: {exc}"
+        ) from exc
+
+
+def _verify_preparation_staging(layout: PreparationLayout) -> None:
+    staging = layout.staging_directory
+    if staging.is_symlink():
+        raise OutputError(f"refusing to use preparation staging symlink {staging}")
+    try:
+        root = layout.output_root.resolve(strict=True)
+        if staging.parent.resolve(strict=True) != root:
+            raise OutputError(f"preparation staging directory escapes output root {staging}")
+        info = staging.stat(follow_symlinks=False)
+    except OutputError:
+        raise
+    except OSError as exc:
+        raise OutputError(
+            f"could not inspect preparation staging directory {staging}: {exc}"
+        ) from exc
+    if not stat.S_ISDIR(info.st_mode):
+        raise OutputError(f"refusing to use non-directory preparation staging path {staging}")
+    if (info.st_dev, info.st_ino) != (layout.staging_device, layout.staging_inode):
+        raise OutputError(f"refusing to use replaced preparation staging directory {staging}")

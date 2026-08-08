@@ -505,6 +505,16 @@ def load_preparation_config(path: str | Path) -> LoadedPreparationConfig:
         raw_bytes = config_path.read_bytes()
     except OSError as exc:
         raise ConfigError(f"could not read preparation configuration {config_path}: {exc}") from exc
+    return load_preparation_config_bytes(raw_bytes, source_name=str(config_path))
+
+
+def load_preparation_config_bytes(
+    raw_bytes: bytes,
+    *,
+    source_name: str = "<memory>",
+) -> LoadedPreparationConfig:
+    """Load one preparation configuration from exact in-memory YAML bytes."""
+    config_path = Path(source_name)
     try:
         payload: Any = yaml.safe_load(raw_bytes)
     except yaml.YAMLError as exc:

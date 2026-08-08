@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -72,8 +73,10 @@ def build_prepared_rows(
     config: PreparationConfig,
     source_data: LoadedPreparationSource,
     resolved: ResolvedPreparation,
+    *,
+    checkpoint: Callable[[int, int], None] | None = None,
 ) -> PreparedRows:
-    candidates = _candidate_rows(config, source_data, resolved)
+    candidates = _candidate_rows(config, source_data, resolved, checkpoint=checkpoint)
     categories = _resolve_categories(config, candidates)
     prepared_rows: list[dict[str, Any]] = []
     exclusion_rows: list[dict[str, Any]] = []
@@ -114,10 +117,18 @@ def _candidate_rows(
     config: PreparationConfig,
     source_data: LoadedPreparationSource,
     resolved: ResolvedPreparation,
+    *,
+    checkpoint: Callable[[int, int], None] | None,
 ) -> list[CandidateRow]:
     candidates: list[CandidateRow] = []
+    total_rows = sum(len(table.frame) for table in source_data.tables)
+    processed = 0
+    if checkpoint is not None:
+        checkpoint(0, total_rows)
     for table in source_data.tables:
         for row_position, (_, row) in enumerate(table.frame.iterrows()):
+            if checkpoint is not None and processed % 1_024 == 0:
+                checkpoint(processed, total_rows)
             identity = _source_identity(row, table, row_position)
             diagnostics = _source_diagnostics(row)
             values: dict[str, Any] = {**identity, **diagnostics}
@@ -177,6 +188,9 @@ def _candidate_rows(
                     "missing_or_invalid_fields": _unique(fields),
                 }
             candidates.append(CandidateRow(values, exclusion, categorical_values))
+            processed += 1
+        if checkpoint is not None:
+            checkpoint(processed, total_rows)
     return candidates
 
 

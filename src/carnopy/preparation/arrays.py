@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,7 @@ def write_array_exports(
     target_columns: list[str],
     auxiliary_columns: list[str],
     units: dict[str, str | None],
+    checkpoint: Callable[[], None] | None = None,
 ) -> ArrayExportResult:
     if config is None or frame.empty:
         return ArrayExportResult(artifact_names=[], manifest={"enabled": False, "exports": []})
@@ -72,13 +74,19 @@ def write_array_exports(
         )
 
     if "npy" in config.formats:
+        if checkpoint is not None:
+            checkpoint()
         feature_path = arrays_directory / f"{file_prefix}features.{dtype}.npy"
         target_path = arrays_directory / f"{file_prefix}targets.{dtype}.npy"
         _save_npy(feature_path, feature_matrix)
+        if checkpoint is not None:
+            checkpoint()
         _save_npy(target_path, target_matrix)
         record(feature_path, fmt="npy", arrays={"features": feature_matrix})
         record(target_path, fmt="npy", arrays={"targets": target_matrix})
         for auxiliary_name, auxiliary_array in auxiliary.arrays.items():
+            if checkpoint is not None:
+                checkpoint()
             suffix = str(auxiliary_array.dtype)
             auxiliary_path = arrays_directory / f"{file_prefix}{auxiliary_name}.{suffix}.npy"
             _save_npy(auxiliary_path, auxiliary_array)
@@ -90,13 +98,19 @@ def write_array_exports(
         **auxiliary.arrays,
     }
     if "npz" in config.formats:
+        if checkpoint is not None:
+            checkpoint()
         npz_path = arrays_directory / f"{file_prefix}dataset.{dtype}.npz"
         _save_npz(npz_path, container_arrays)
         record(npz_path, fmt="npz", arrays=container_arrays)
     if "safetensors" in config.formats:
+        if checkpoint is not None:
+            checkpoint()
         safetensors_path = arrays_directory / f"{file_prefix}dataset.{dtype}.safetensors"
         _save_safetensors(safetensors_path, container_arrays)
         record(safetensors_path, fmt="safetensors", arrays=container_arrays)
+    if checkpoint is not None:
+        checkpoint()
 
     manifest: dict[str, Any] = {
         "enabled": True,

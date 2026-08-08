@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -8,37 +9,35 @@ from uuid import uuid4
 
 import pandas as pd
 
+from carnopy._execution import ExecutionControl
 from carnopy.domain.failures import OutputError
 from carnopy.outputs.writers import hash_artifacts, write_bytes, write_json
 from carnopy.preparation.arrays import ArrayExportResult, write_array_exports
-from carnopy.preparation.baselines import build_baseline_diagnostics
+from carnopy.preparation.computation import (
+    PreparationComputation,
+    compute_preparation,
+    fit_preparation_baselines,
+)
 from carnopy.preparation.fields import (
     ResolvedPreparation,
-    resolve_preparation_fields,
     sanitize_category,
 )
 from carnopy.preparation.layout import (
     PreparationLayout,
-    cleanup_staging,
+    cleanup_preparation_layout,
     create_preparation_layout,
     finalize_preparation_layout,
 )
-from carnopy.preparation.matrix_diagnostics import build_matrix_diagnostics
 from carnopy.preparation.models import (
     LoadedPreparationConfig,
     PreparationArrayOutputsConfig,
     load_preparation_config,
 )
-from carnopy.preparation.quality import (
-    build_quality_artifacts,
-    partition_target_summaries,
-)
-from carnopy.preparation.reference import build_reference_state_summary
+from carnopy.preparation.quality import build_quality_artifacts
 from carnopy.preparation.reporting import (
     build_dataset_card,
     build_diagnostics,
     build_manifest,
-    normalized_preparation_bytes,
     preparation_context_id,
 )
 from carnopy.preparation.rows import (
@@ -46,12 +45,10 @@ from carnopy.preparation.rows import (
     PREPARED_ROW_ID_COLUMN,
     SOURCE_DIAGNOSTIC_COLUMNS,
     PreparedRows,
-    build_prepared_rows,
     exclusions_frame,
 )
-from carnopy.preparation.scenarios import ScenarioOutput, build_scenario_outputs
-from carnopy.preparation.source import LoadedPreparationSource, load_preparation_source
-from carnopy.provenance import sha256_bytes
+from carnopy.preparation.scenarios import ScenarioOutput
+from carnopy.preparation.source import verify_loaded_source_unchanged
 from carnopy.results import PreparationResult, PreparationStatus
 
 
@@ -106,14 +103,29 @@ def prepare_dataset(
     output_root: str | Path = "prepared",
 ) -> PreparationResult:
     loaded = load_preparation_config(config)
-    source_data = load_preparation_source(
-        source,
-        allow_partial_sweep=loaded.model.source_policy.allow_partial_sweep,
+    computation = compute_preparation(loaded, source)
+    return execute_preparation_computation(computation, output_root=output_root)
+
+
+def execute_preparation_computation(
+    computation: PreparationComputation,
+    *,
+    output_root: str | Path,
+    execution: ExecutionControl | None = None,
+    source_revalidator: Callable[[], None] | None = None,
+) -> PreparationResult:
+    """Fit, stage, serialize, revalidate, and atomically finalize one computation."""
+    if execution is not None:
+        execution.phase("baseline_fitting")
+    baseline_diagnostics = fit_preparation_baselines(
+        computation,
+        checkpoint=None if execution is None else execution.raise_if_cancelled,
     )
-    resolved = resolve_preparation_fields(loaded.model, source_data.tables)
-    reference_state = build_reference_state_summary(source_data, resolved)
-    normalized_bytes = normalized_preparation_bytes(loaded.model)
-    request_id = f"prep-{sha256_bytes(normalized_bytes)}"
+    verify_loaded_source_unchanged(computation.source_data)
+    if source_revalidator is not None:
+        source_revalidator()
+    if execution is not None:
+        execution.phase("staging")
     preparation_run_id = str(uuid4())
     created_at = datetime.now(UTC)
     layout = create_preparation_layout(
@@ -122,68 +134,83 @@ def prepare_dataset(
         created_at=created_at,
     )
     try:
+        if execution is not None:
+            execution.phase("serialization")
         result = _write_preparation_bundle(
-            loaded=loaded,
-            source_data=source_data,
-            resolved=resolved,
-            reference_state=reference_state,
+            computation=computation,
+            baseline_diagnostics=baseline_diagnostics,
             layout=layout,
-            request_id=request_id,
-            normalized_bytes=normalized_bytes,
             preparation_run_id=preparation_run_id,
             created_at=created_at,
+            execution=execution,
         )
+        verify_loaded_source_unchanged(computation.source_data)
+        if source_revalidator is not None:
+            source_revalidator()
+        if execution is not None:
+            execution.protected_phase("finalization")
         finalize_preparation_layout(layout)
-        return PreparationResult(
-            preparation_request_id=result.preparation_request_id,
-            preparation_context_id=result.preparation_context_id,
-            preparation_run_id=preparation_run_id,
-            status=result.status,
-            output_directory=layout.final_directory,
-            eligible_row_count=result.eligible_row_count,
-            excluded_row_count=result.excluded_row_count,
-            table_path=(
-                None
-                if result.table_path is None
-                else layout.final_directory / "data" / "table.parquet"
-            ),
-            provenance_path=layout.final_directory / "data" / "provenance.parquet",
-            source_diagnostics_path=layout.final_directory / "data" / "diagnostics.parquet",
-            exclusions_path=layout.final_directory / "data" / "exclusions.parquet",
-            manifest_path=layout.final_directory / "manifest.json",
-            diagnostics_path=layout.final_directory / "diagnostics.json",
-            dataset_card_path=layout.final_directory / "dataset_card.md",
-            scenario_report_path=(
-                None
-                if result.scenario_report_path is None
-                else layout.final_directory / "scenario_report.json"
-            ),
-            scenario_count=result.scenario_count,
-            partition_count=result.partition_count,
-        )
-    except Exception:
-        # The staging directory is intentionally left in place only if cleanup itself fails;
-        # source runs and sweep bundles are never modified.
-        cleanup_staging(layout.staging_directory)
+        return _preparation_result(result, layout, preparation_run_id)
+    except Exception as original:
+        try:
+            cleanup_preparation_layout(layout)
+        except Exception as cleanup_error:
+            raise OutputError(
+                f"preparation failed ({original}); staging cleanup failed: {cleanup_error}"
+            ) from cleanup_error
         raise
+
+
+def _preparation_result(
+    result: BundleWriteResult,
+    layout: PreparationLayout,
+    preparation_run_id: str,
+) -> PreparationResult:
+    return PreparationResult(
+        preparation_request_id=result.preparation_request_id,
+        preparation_context_id=result.preparation_context_id,
+        preparation_run_id=preparation_run_id,
+        status=result.status,
+        output_directory=layout.final_directory,
+        eligible_row_count=result.eligible_row_count,
+        excluded_row_count=result.excluded_row_count,
+        table_path=(
+            None if result.table_path is None else layout.final_directory / "data" / "table.parquet"
+        ),
+        provenance_path=layout.final_directory / "data" / "provenance.parquet",
+        source_diagnostics_path=layout.final_directory / "data" / "diagnostics.parquet",
+        exclusions_path=layout.final_directory / "data" / "exclusions.parquet",
+        manifest_path=layout.final_directory / "manifest.json",
+        diagnostics_path=layout.final_directory / "diagnostics.json",
+        dataset_card_path=layout.final_directory / "dataset_card.md",
+        scenario_report_path=(
+            None
+            if result.scenario_report_path is None
+            else layout.final_directory / "scenario_report.json"
+        ),
+        scenario_count=result.scenario_count,
+        partition_count=result.partition_count,
+    )
 
 
 def _write_preparation_bundle(
     *,
-    loaded: LoadedPreparationConfig,
-    source_data: LoadedPreparationSource,
-    resolved: ResolvedPreparation,
-    reference_state: dict[str, Any],
+    computation: PreparationComputation,
+    baseline_diagnostics: list[dict[str, Any]] | None,
     layout: PreparationLayout,
-    request_id: str,
-    normalized_bytes: bytes,
     preparation_run_id: str,
     created_at: datetime,
+    execution: ExecutionControl | None,
 ) -> BundleWriteResult:
+    loaded = computation.loaded
+    source_data = computation.source_data
+    resolved = computation.resolved
+    rows = computation.rows
+    prepared_frame = computation.prepared_frame
     data_directory = layout.staging_directory / "data"
     data_directory.mkdir()
-    rows = build_prepared_rows(loaded.model, source_data, resolved)
-    prepared_frame = pd.DataFrame(rows.prepared_rows)
+    if execution is not None:
+        execution.raise_if_cancelled()
     data_artifacts = _write_data_artifacts(
         rows,
         data_directory,
@@ -191,17 +218,25 @@ def _write_preparation_bundle(
         auxiliary_fields=loaded.model.auxiliary,
         resolved=resolved,
         array_config=loaded.model.outputs.arrays,
+        execution=execution,
     )
+    if execution is not None:
+        execution.raise_if_cancelled()
     scenario_result = _write_scenario_artifacts(
         loaded=loaded,
-        source_data=source_data,
         layout=layout,
         data_directory=data_directory,
         rows=rows,
-        prepared_frame=prepared_frame,
         public_table_columns=data_artifacts.table_columns,
         resolved=resolved,
+        outputs=computation.scenario_outputs,
+        target_summaries=computation.partition_target_summaries,
+        matrix_diagnostics=computation.matrix_diagnostics,
+        baseline_diagnostics=baseline_diagnostics,
+        execution=execution,
     )
+    if execution is not None:
+        execution.raise_if_cancelled()
     quality_report, quality_flags = build_quality_artifacts(
         frame=prepared_frame,
         rows=rows,
@@ -210,26 +245,24 @@ def _write_preparation_bundle(
         partition_target_summaries=(
             [] if scenario_result is None else scenario_result.partition_target_summaries
         ),
-        matrix_diagnostics=_matrix_diagnostics(
-            loaded=loaded,
-            frame=prepared_frame,
-            rows=rows,
-            resolved=resolved,
-            scenario_result=scenario_result,
-        ),
-        baseline_diagnostics=_baseline_diagnostics(
-            loaded=loaded,
-            scenario_result=scenario_result,
-        ),
+        matrix_diagnostics=computation.matrix_diagnostics,
+        baseline_diagnostics=baseline_diagnostics,
     )
     write_json(layout.staging_directory / "quality_report.json", quality_report)
+    if execution is not None:
+        execution.raise_if_cancelled()
     _write_parquet(quality_flags, data_directory / "quality_flags.parquet")
 
     write_bytes(layout.staging_directory / "preparation.original.yaml", loaded.raw_bytes)
-    write_bytes(layout.staging_directory / "preparation.normalized.json", normalized_bytes)
+    if execution is not None:
+        execution.raise_if_cancelled()
+    write_bytes(
+        layout.staging_directory / "preparation.normalized.json",
+        computation.normalized_bytes,
+    )
 
     context_id = preparation_context_id(
-        request_id=request_id,
+        request_id=computation.request_id,
         source_data=source_data,
         outputs=loaded.model.outputs,
     )
@@ -247,6 +280,8 @@ def _write_preparation_bundle(
     artifact_names.extend(data_artifacts.array_artifacts)
     if scenario_result is not None:
         artifact_names.extend(scenario_result.artifact_names)
+    if execution is not None:
+        execution.raise_if_cancelled()
     artifact_hashes = hash_artifacts(layout.staging_directory, artifact_names)
     manifest = build_manifest(
         loaded=loaded,
@@ -254,7 +289,7 @@ def _write_preparation_bundle(
         resolved=resolved,
         categories=rows.categories,
         status=rows.status,
-        request_id=request_id,
+        request_id=computation.request_id,
         context_id=context_id,
         preparation_run_id=preparation_run_id,
         created_at=created_at,
@@ -273,17 +308,21 @@ def _write_preparation_bundle(
         },
         table_columns=data_artifacts.table_columns,
         array_exports=data_artifacts.array_manifest,
-        reference_state=reference_state,
+        reference_state=computation.reference_state,
         scenario_summary=None if scenario_result is None else scenario_result.summary,
     )
     write_json(layout.staging_directory / "manifest.json", manifest)
+    if execution is not None:
+        execution.raise_if_cancelled()
     diagnostics = build_diagnostics(
         source_data,
         rows.status,
         rows.exclusion_rows,
-        reference_state=reference_state,
+        reference_state=computation.reference_state,
     )
     write_json(layout.staging_directory / "diagnostics.json", diagnostics)
+    if execution is not None:
+        execution.raise_if_cancelled()
     _write_text(
         layout.staging_directory / "dataset_card.md",
         build_dataset_card(manifest, diagnostics),
@@ -291,8 +330,10 @@ def _write_preparation_bundle(
     final_hash_names = [*artifact_names, "diagnostics.json", "dataset_card.md"]
     manifest["artifact_hashes"] = hash_artifacts(layout.staging_directory, final_hash_names)
     write_json(layout.staging_directory / "manifest.json", manifest)
+    if execution is not None:
+        execution.raise_if_cancelled()
     return BundleWriteResult(
-        preparation_request_id=request_id,
+        preparation_request_id=computation.request_id,
         preparation_context_id=context_id,
         status=rows.status,
         eligible_row_count=len(rows.prepared_rows),
@@ -314,10 +355,13 @@ def _write_data_artifacts(
     auxiliary_fields: tuple[str, ...],
     resolved: ResolvedPreparation,
     array_config: PreparationArrayOutputsConfig | None,
+    execution: ExecutionControl | None,
 ) -> DataArtifactPaths:
     table_path: Path | None = None
     table_columns = _public_table_columns(prepared_frame, auxiliary_fields=auxiliary_fields)
     if rows.prepared_rows:
+        if execution is not None:
+            execution.raise_if_cancelled()
         table_path = data_directory / "table.parquet"
         _write_parquet(prepared_frame.loc[:, table_columns], table_path)
     array_result = _write_table_arrays(
@@ -328,11 +372,18 @@ def _write_data_artifacts(
         auxiliary_fields=auxiliary_fields,
         resolved=resolved,
         array_config=array_config,
+        execution=execution,
     )
     provenance_path = data_directory / "provenance.parquet"
     source_diagnostics_path = data_directory / "diagnostics.parquet"
+    if execution is not None:
+        execution.raise_if_cancelled()
     _write_parquet(_provenance_frame(prepared_frame), provenance_path)
+    if execution is not None:
+        execution.raise_if_cancelled()
     _write_parquet(_source_diagnostics_frame(prepared_frame), source_diagnostics_path)
+    if execution is not None:
+        execution.raise_if_cancelled()
     _write_parquet(exclusions_frame(rows.exclusion_rows), data_directory / "exclusions.parquet")
     return DataArtifactPaths(
         table_path=table_path,
@@ -354,6 +405,7 @@ def _write_table_arrays(
     auxiliary_fields: tuple[str, ...],
     resolved: ResolvedPreparation,
     array_config: PreparationArrayOutputsConfig | None,
+    execution: ExecutionControl | None,
 ) -> ArrayExportResult:
     if not rows.prepared_rows:
         return ArrayExportResult(artifact_names=[], manifest={"enabled": False, "exports": []})
@@ -368,6 +420,7 @@ def _write_table_arrays(
         target_columns=[field.semantic_name for field in resolved.targets],
         auxiliary_columns=[field for field in auxiliary_fields if field in table_columns],
         units=_unit_mapping(resolved),
+        checkpoint=None if execution is None else execution.raise_if_cancelled,
     )
 
 
@@ -394,18 +447,20 @@ def _source_diagnostics_frame(prepared_frame: pd.DataFrame) -> pd.DataFrame:
 def _write_scenario_artifacts(
     *,
     loaded: LoadedPreparationConfig,
-    source_data: LoadedPreparationSource,
     layout: PreparationLayout,
     data_directory: Path,
     rows: PreparedRows,
-    prepared_frame: pd.DataFrame,
     public_table_columns: list[str],
     resolved: ResolvedPreparation,
+    outputs: tuple[ScenarioOutput, ...],
+    target_summaries: list[dict[str, Any]],
+    matrix_diagnostics: list[dict[str, Any]] | None,
+    baseline_diagnostics: list[dict[str, Any]] | None,
+    execution: ExecutionControl | None,
 ) -> ScenarioWriteResult | None:
     if not loaded.model.scenarios:
         return None
     if not rows.prepared_rows:
-        diagnostics_config = loaded.model.quality.matrix_diagnostics
         return ScenarioWriteResult(
             report_path=None,
             artifact_names=[],
@@ -419,43 +474,16 @@ def _write_scenario_artifacts(
             scenario_count=0,
             partition_count=0,
             partition_target_summaries=[],
-            matrix_diagnostics=(
-                []
-                if diagnostics_config is None
-                else [
-                    {
-                        "scenario": scenario.name,
-                        "fit_partition": "all" if scenario.kind == "unsplit" else "train",
-                        "status": "skipped_no_eligible_rows",
-                    }
-                    for scenario in loaded.model.scenarios
-                ]
-            ),
-            baseline_diagnostics=(
-                []
-                if loaded.model.quality.baseline_diagnostics is None
-                else [
-                    {
-                        "scenario": scenario.name,
-                        "status": "skipped_no_eligible_rows",
-                    }
-                    for scenario in loaded.model.scenarios
-                ]
-            ),
+            matrix_diagnostics=matrix_diagnostics or [],
+            baseline_diagnostics=baseline_diagnostics or [],
         )
     scenario_root = data_directory / "scenarios"
     scenario_root.mkdir()
-    outputs = build_scenario_outputs(
-        loaded.model.scenarios,
-        prepared_frame,
-        source_kind=source_data.source_kind,
-    )
     artifact_names: list[str] = []
     report_scenarios: list[dict[str, Any]] = []
-    target_summaries: list[dict[str, Any]] = []
-    matrix_diagnostics: list[dict[str, Any]] = []
-    baseline_diagnostics: list[dict[str, Any]] = []
     for output in outputs:
+        if execution is not None:
+            execution.raise_if_cancelled()
         scenario_directory = scenario_root / output.name
         scenario_directory.mkdir()
         partition_result = _write_scenario_partitions(
@@ -466,55 +494,8 @@ def _write_scenario_artifacts(
             resolved=resolved,
             array_config=loaded.model.outputs.arrays,
             auxiliary_fields=loaded.model.auxiliary,
+            execution=execution,
         )
-        target_summaries.extend(
-            partition_target_summaries(
-                scenario_name=output.name,
-                partitions=output.partitions,
-                resolved=resolved,
-            )
-        )
-        diagnostics_config = loaded.model.quality.matrix_diagnostics
-        if diagnostics_config is not None:
-            fit_partition = "all" if output.kind == "unsplit" else "train"
-            if fit_partition not in output.partitions:
-                matrix_diagnostics.append(
-                    {
-                        "scenario": output.name,
-                        "fit_partition": fit_partition,
-                        "status": "skipped_missing_train_partition",
-                    }
-                )
-            else:
-                matrix_diagnostics.append(
-                    build_matrix_diagnostics(
-                        output.partitions[fit_partition],
-                        feature_columns=_scenario_feature_columns(
-                            rows,
-                            resolved,
-                            output.metadata.get("transformations", []),
-                        ),
-                        target_columns=[field.semantic_name for field in resolved.targets],
-                        config=diagnostics_config,
-                        scenario=output.name,
-                        fit_partition=fit_partition,
-                    )
-                )
-        baseline_config = loaded.model.quality.baseline_diagnostics
-        if baseline_config is not None:
-            baseline_diagnostics.append(
-                build_baseline_diagnostics(
-                    output.partitions,
-                    feature_columns=_scenario_feature_columns(
-                        rows,
-                        resolved,
-                        output.metadata.get("transformations", []),
-                    ),
-                    target_columns=[field.semantic_name for field in resolved.targets],
-                    config=baseline_config,
-                    scenario=output.name,
-                )
-            )
         partition_hashes = hash_artifacts(layout.staging_directory, partition_result.artifact_names)
         scenario_metadata = {
             **output.metadata,
@@ -522,6 +503,8 @@ def _write_scenario_artifacts(
             "array_exports": partition_result.array_manifests,
         }
         write_json(scenario_directory / "scenario.json", scenario_metadata)
+        if execution is not None:
+            execution.raise_if_cancelled()
         scenario_json = f"data/scenarios/{output.name}/scenario.json"
         artifact_names.extend([*partition_result.artifact_names, scenario_json])
         report_scenarios.append(
@@ -541,6 +524,8 @@ def _write_scenario_artifacts(
                 ),
             }
         )
+    if execution is not None:
+        execution.raise_if_cancelled()
     scenario_artifact_hashes = hash_artifacts(layout.staging_directory, artifact_names)
     report = {
         "scenario_report_schema_version": 1,
@@ -572,51 +557,9 @@ def _write_scenario_artifacts(
         scenario_count=len(outputs),
         partition_count=sum(len(output.partitions) for output in outputs),
         partition_target_summaries=target_summaries,
-        matrix_diagnostics=matrix_diagnostics,
-        baseline_diagnostics=baseline_diagnostics,
+        matrix_diagnostics=matrix_diagnostics or [],
+        baseline_diagnostics=baseline_diagnostics or [],
     )
-
-
-def _matrix_diagnostics(
-    *,
-    loaded: LoadedPreparationConfig,
-    frame: pd.DataFrame,
-    rows: PreparedRows,
-    resolved: ResolvedPreparation,
-    scenario_result: ScenarioWriteResult | None,
-) -> list[dict[str, Any]] | None:
-    config = loaded.model.quality.matrix_diagnostics
-    if config is None:
-        return None
-    if scenario_result is not None:
-        return scenario_result.matrix_diagnostics
-    return [
-        build_matrix_diagnostics(
-            frame,
-            feature_columns=_feature_columns(rows, resolved),
-            target_columns=[field.semantic_name for field in resolved.targets],
-            config=config,
-            scenario=None,
-            fit_partition="all",
-        )
-    ]
-
-
-def _baseline_diagnostics(
-    *,
-    loaded: LoadedPreparationConfig,
-    scenario_result: ScenarioWriteResult | None,
-) -> list[dict[str, Any]] | None:
-    if loaded.model.quality.baseline_diagnostics is None:
-        return None
-    if scenario_result is None:
-        return [
-            {
-                "scenario": None,
-                "status": "skipped_requires_evaluation_scenario",
-            }
-        ]
-    return scenario_result.baseline_diagnostics
 
 
 def _write_scenario_partitions(
@@ -628,6 +571,7 @@ def _write_scenario_partitions(
     resolved: ResolvedPreparation,
     array_config: PreparationArrayOutputsConfig | None,
     auxiliary_fields: tuple[str, ...],
+    execution: ExecutionControl | None,
 ) -> ScenarioPartitionWriteResult:
     artifacts: list[str] = []
     array_manifests: dict[str, dict[str, Any]] = {}
@@ -638,6 +582,8 @@ def _write_scenario_partitions(
     ]
     output_columns = list(dict.fromkeys([*public_table_columns, *transform_columns]))
     for partition, frame in output.partitions.items():
+        if execution is not None:
+            execution.raise_if_cancelled()
         path = scenario_directory / f"{partition}.parquet"
         clean_frame = frame.loc[:, [column for column in output_columns if column in frame.columns]]
         _write_parquet(clean_frame, path)
@@ -657,9 +603,12 @@ def _write_scenario_partitions(
             target_columns=[field.semantic_name for field in resolved.targets],
             auxiliary_columns=[field for field in auxiliary_fields if field in clean_frame.columns],
             units=_unit_mapping(resolved),
+            checkpoint=None if execution is None else execution.raise_if_cancelled,
         )
         artifacts.extend(array_result.artifact_names)
         array_manifests[partition] = array_result.manifest
+        if execution is not None:
+            execution.raise_if_cancelled()
     return ScenarioPartitionWriteResult(
         artifact_names=artifacts,
         array_manifests=array_manifests,
