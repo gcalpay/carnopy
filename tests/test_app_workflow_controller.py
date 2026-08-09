@@ -228,7 +228,7 @@ def test_sweep_controller_persists_only_execution_with_plan_identity(
     coordinator.shutdown()
 
 
-def test_failed_workflow_load_invalidates_previous_plan(
+def test_failed_workflow_load_retains_previous_plan_as_stale(
     tmp_path: Path,
     application: QCoreApplication,
 ) -> None:
@@ -256,13 +256,184 @@ def test_failed_workflow_load_invalidates_previous_plan(
     )
 
     assert controller.state == "failed"
-    assert controller.current_plan is None
+    assert controller.current_plan is not None
+    assert controller.get_has_plan()
+    assert controller.get_plan_id() == "b" * 64
+    assert not controller.get_plan_current()
     assert controller.loaded_config is None
     assert controller.config_path is None
     assert controller.config_sha256 == ""
     assert controller.validation is None
     assert not controller.can_plan
     assert not controller.can_execute
+    assert [issue.code for issue in controller.execution_blocking_reasons.issues] == [
+        "plan_configuration_changed",
+        "saved_configuration_required",
+    ]
+    coordinator.shutdown()
+
+
+def test_sweep_plan_currentness_follows_exact_saved_configuration_identity(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    workspace = initialize_workspace(tmp_path / "workspace")
+    config = _config(workspace)
+    original_bytes = config.read_bytes()
+    coordinator, transport = coordinator_for()
+    controller = SweepWorkflowController(coordinator)
+    controller.set_workspace(workspace)
+
+    assert controller.load_config(config)
+    digest = _finish_load(transport, config)
+    assert controller.plan()
+    _finish_plan(transport, digest=digest)
+
+    assert controller.get_has_plan()
+    assert controller.get_plan_id() == "b" * 64
+    assert controller.get_plan_current()
+    assert controller.can_execute
+
+    config.write_text("schema_version: 2\nchanged: true\n", encoding="utf-8")
+    controller.state_changed.emit()
+    assert not controller.get_plan_current()
+    assert not controller.can_execute
+    assert [issue.code for issue in controller.execution_blocking_reasons.issues] == [
+        "saved_configuration_unavailable"
+    ]
+
+    config.write_bytes(original_bytes)
+    assert controller.get_plan_current()
+    assert controller.can_execute
+
+    replacement = workspace.configs / "replacement.yaml"
+    replacement.write_text("schema_version: 2\nchanged: true\n", encoding="utf-8")
+    assert controller.load_config(replacement)
+    replacement_digest = _finish_load(transport, replacement)
+    assert replacement_digest != digest
+    assert controller.get_has_plan()
+    assert not controller.get_plan_current()
+    assert [issue.code for issue in controller.execution_blocking_reasons.issues] == [
+        "plan_configuration_changed"
+    ]
+
+    assert controller.load_config(config)
+    assert _finish_load(transport, config) == digest
+    assert controller.get_plan_current()
+    assert controller.can_execute
+
+    controller.set_workspace(initialize_workspace(tmp_path / "other-workspace"))
+    assert not controller.get_has_plan()
+    assert not controller.get_plan_current()
+    coordinator.shutdown()
+
+
+def test_cancelled_replan_keeps_the_last_semantically_current_plan(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    workspace = initialize_workspace(tmp_path / "workspace")
+    config = _config(workspace)
+    coordinator, transport = coordinator_for()
+    controller = SweepWorkflowController(coordinator)
+    controller.set_workspace(workspace)
+
+    assert controller.load_config(config)
+    digest = _finish_load(transport, config)
+    assert controller.plan()
+    _finish_plan(transport, digest=digest)
+    accepted_plan = controller.current_plan
+
+    assert controller.plan()
+    assert controller.current_plan == accepted_plan
+    assert controller.get_plan_current()
+    assert not controller.can_execute
+    transport.finish(
+        terminal_type="cancelled",
+        payload={"code": "cancelled", "message": "planning cancelled"},
+    )
+
+    assert controller.state == "cancelled"
+    assert controller.current_plan == accepted_plan
+    assert controller.get_plan_current()
+    assert controller.can_execute
+    coordinator.shutdown()
+
+
+def test_changed_saved_bytes_prevent_a_plan_response_from_replacing_the_last_plan(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    workspace = initialize_workspace(tmp_path / "workspace")
+    config = _config(workspace)
+    original_bytes = config.read_bytes()
+    coordinator, transport = coordinator_for()
+    controller = SweepWorkflowController(coordinator)
+    controller.set_workspace(workspace)
+
+    assert controller.load_config(config)
+    digest = _finish_load(transport, config)
+    assert controller.plan()
+    _finish_plan(transport, digest=digest)
+    accepted_plan = controller.current_plan
+
+    assert controller.plan()
+    config.write_text("schema_version: 2\nchanged: true\n", encoding="utf-8")
+    _finish_plan(transport, digest=digest, plan_id="c" * 64)
+
+    assert controller.state == "failed"
+    assert controller.failure["code"] == "stale_plan"
+    assert controller.current_plan == accepted_plan
+    assert controller.get_plan_id() == "b" * 64
+    assert not controller.get_plan_current()
+
+    config.write_bytes(original_bytes)
+    assert controller.get_plan_current()
+    assert controller.can_execute
+    coordinator.shutdown()
+
+
+@pytest.mark.parametrize("failure_code", ["stale_plan", "source_changed"])
+def test_worker_semantic_failure_retains_but_rejects_the_plan(
+    tmp_path: Path,
+    application: QCoreApplication,
+    failure_code: str,
+) -> None:
+    del application
+    workspace = initialize_workspace(tmp_path / "workspace")
+    config = _config(workspace)
+    coordinator, transport = coordinator_for()
+    controller = SweepWorkflowController(coordinator)
+    controller.set_workspace(workspace)
+
+    assert controller.load_config(config)
+    digest = _finish_load(transport, config)
+    assert controller.plan()
+    _finish_plan(transport, digest=digest)
+    accepted_plan = controller.current_plan
+
+    assert controller.execute()
+    transport.finish(
+        terminal_type="error",
+        payload={
+            "category": "config",
+            "code": failure_code,
+            "message": "execution-time planning produced a different identity",
+        },
+    )
+
+    assert controller.state == "failed"
+    assert controller.current_plan == accepted_plan
+    assert controller.get_has_plan()
+    assert not controller.get_plan_current()
+    assert not controller.can_execute
+    [reason] = controller.execution_blocking_reasons.issues
+    assert reason.code == "plan_rejected_by_worker"
+    assert reason.origin == "plan"
+    assert reason.message == "execution-time planning produced a different identity"
     coordinator.shutdown()
 
 
@@ -399,6 +570,69 @@ def test_preparation_controller_rejects_a_plan_for_replaced_inspection(
         "inspection_revision": new_revision,
         "inspection_descriptor": new_descriptor,
     }
+    coordinator.shutdown()
+
+
+def test_preparation_plan_currentness_uses_the_complete_inspection_context(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    workspace = initialize_workspace(tmp_path / "workspace")
+    config = _config(workspace, "preparation.yaml")
+    source = workspace.outputs / "dataset-run"
+    source.mkdir()
+    replacement = workspace.outputs / "replacement-run"
+    replacement.mkdir()
+    coordinator, transport = coordinator_for()
+    inspection = InspectionController(coordinator)
+    controller = PreparationWorkflowController(coordinator, inspection)
+    controller.set_workspace(workspace)
+
+    assert controller.load_config(config)
+    digest = _finish_load(transport, config)
+    revision = "a" * 64
+    descriptor = _accept_preparation_inspection(
+        inspection,
+        source,
+        revision=revision,
+    )
+    assert controller.plan()
+    _finish_plan(
+        transport,
+        digest=digest,
+        source_revision={
+            "inspection_revision": revision,
+            "inspection_descriptor": descriptor,
+            "consumed_source": {},
+        },
+    )
+
+    accepted_plan = controller.current_plan
+    assert controller.get_plan_current()
+    assert controller.can_execute
+
+    _accept_preparation_inspection(
+        inspection,
+        replacement,
+        revision=revision,
+    )
+    assert controller.current_plan == accepted_plan
+    assert not controller.get_plan_current()
+    assert not controller.can_execute
+    [reason] = controller.execution_blocking_reasons.issues
+    assert reason.code == "plan_context_changed"
+    assert reason.origin == "source"
+
+    restored_descriptor = _accept_preparation_inspection(
+        inspection,
+        source,
+        revision=revision,
+    )
+    assert restored_descriptor == descriptor
+    assert controller.current_plan == accepted_plan
+    assert controller.get_plan_current()
+    assert controller.can_execute
     coordinator.shutdown()
 
 

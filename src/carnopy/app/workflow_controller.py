@@ -61,6 +61,8 @@ class WorkflowController(QObject):
         self._validation: dict[str, Any] | None = None
         self._plan: dict[str, Any] | None = None
         self._plan_config_sha256 = ""
+        self._planned_context: dict[str, object] | None = None
+        self._plan_stale_reason = ""
         self._result: dict[str, Any] | None = None
         self._activity_persistence_issue = ""
         self._active_snapshot: SavedConfigSnapshot | None = None
@@ -109,6 +111,31 @@ class WorkflowController(QObject):
     @property
     def current_plan(self) -> dict[str, Any] | None:
         return copy.deepcopy(self._plan)
+
+    def get_has_plan(self) -> bool:
+        return self._plan is not None
+
+    hasPlan = Property(bool, get_has_plan, notify=state_changed)
+
+    def get_plan_id(self) -> str:
+        return _text((self._plan or {}).get("plan_id"))
+
+    planId = Property(str, get_plan_id, notify=state_changed)
+
+    @property
+    def plan_current(self) -> bool:
+        if self._plan is None or self._plan_stale_reason:
+            return False
+        try:
+            snapshot = self._saved_snapshot()
+        except ValueError:
+            return False
+        return snapshot.sha256 == self._plan_config_sha256 and self._plan_context_matches()
+
+    def get_plan_current(self) -> bool:
+        return self.plan_current
+
+    planCurrent = Property(bool, get_plan_current, notify=state_changed)
 
     @property
     def result(self) -> dict[str, Any] | None:
@@ -282,6 +309,16 @@ class WorkflowController(QObject):
                     field_id=f"{self.kind}.plan",
                 )
             )
+        elif self._plan_stale_reason:
+            issues.append(
+                self._blocking_issue(
+                    origin="plan",
+                    code="plan_rejected_by_worker",
+                    message=self._plan_stale_reason,
+                    section="plan",
+                    field_id=f"{self.kind}.plan",
+                )
+            )
         elif self._plan_config_sha256 != self._config_sha256:
             issues.append(
                 self._blocking_issue(
@@ -397,7 +434,7 @@ class WorkflowController(QObject):
         self._config_sha256 = ""
         self._validation = None
         self._result = None
-        self._invalidate_plan("workspace changed")
+        self._clear_plan()
         self._set_activity_persistence_issue("")
         self._state = "ready" if workspace is not None else "unavailable"
         self.state_changed.emit()
@@ -514,8 +551,6 @@ class WorkflowController(QObject):
         except (RuntimeError, ValueError) as exc:
             self._set_local_failure("request", "request_unavailable", str(exc))
             return False
-        if operation in {"load", "plan"}:
-            self._invalidate_plan(f"{operation} started")
         self._set_activity_persistence_issue("")
         if persist_execution:
             try:
@@ -606,8 +641,11 @@ class WorkflowController(QObject):
             code = str(self._failure.get("code", "execution_failed"))
             if operation == "load":
                 self._clear_loaded_configuration()
-            if operation in {"load", "plan"} or code in {"source_changed", "stale_plan"}:
-                self._invalidate_plan(code)
+            if code in {"source_changed", "stale_plan"}:
+                message = _text(self._failure.get("message"))
+                self._mark_plan_stale(
+                    message or "The worker rejected the previously accepted plan."
+                )
             self._state = (
                 "cancelled"
                 if code == "cancelled"
@@ -625,7 +663,6 @@ class WorkflowController(QObject):
             try:
                 self._accept_plan(result)
             except ValueError as exc:
-                self._invalidate_plan("plan result no longer matches current inputs")
                 self._set_local_failure("request", "stale_plan", str(exc))
             else:
                 self._state = "planned"
@@ -654,18 +691,26 @@ class WorkflowController(QObject):
         self._config_path = Path(source).expanduser().resolve()
         self._config_sha256 = digest
         self._validation = None
-        self._invalidate_plan("configuration loaded")
 
     def _accept_plan(self, result: dict[str, object]) -> None:
         plan_id = result.get("plan_id")
         config_sha = result.get("configuration_sha256")
-        if not isinstance(plan_id, str) or config_sha != self._config_sha256:
+        active_snapshot = self._active_snapshot
+        if (
+            not isinstance(plan_id, str)
+            or active_snapshot is None
+            or config_sha != active_snapshot.sha256
+        ):
             raise ValueError("workflow plan result does not match the loaded configuration")
+        current_snapshot = self._saved_snapshot()
+        if current_snapshot.sha256 != active_snapshot.sha256:
+            raise ValueError("workflow plan result no longer matches the current configuration")
         if not self._plan_result_matches_current_context(result):
             raise ValueError("workflow plan result no longer matches the current inputs")
         self._plan = copy.deepcopy(result)
-        self._plan_config_sha256 = self._config_sha256
+        self._plan_config_sha256 = active_snapshot.sha256
         self._record_plan_context()
+        self._plan_stale_reason = ""
 
     def _saved_snapshot(self) -> SavedConfigSnapshot:
         workspace = self.workspace
@@ -696,10 +741,16 @@ class WorkflowController(QObject):
         return {}
 
     def _record_plan_context(self) -> None:
-        pass
+        self._planned_context = copy.deepcopy(self._plan_context())
 
     def _plan_context_matches(self) -> bool:
-        return True
+        if self._planned_context is None:
+            return False
+        try:
+            current_context = self._plan_context()
+        except ValueError:
+            return False
+        return current_context == self._planned_context
 
     def _plan_result_matches_current_context(self, _result: dict[str, object]) -> bool:
         return True
@@ -707,9 +758,15 @@ class WorkflowController(QObject):
     def _activity_source_identity(self) -> dict[str, Any] | None:
         return None
 
-    def _invalidate_plan(self, _reason: str) -> None:
+    def _mark_plan_stale(self, reason: str) -> None:
+        if self._plan is not None:
+            self._plan_stale_reason = reason
+
+    def _clear_plan(self) -> None:
         self._plan = None
         self._plan_config_sha256 = ""
+        self._planned_context = None
+        self._plan_stale_reason = ""
 
     def _clear_loaded_configuration(self) -> None:
         self._loaded_config = None
@@ -813,7 +870,6 @@ class PreparationWorkflowController(WorkflowController):
     ) -> None:
         super().__init__(coordinator, kind="preparation", parent=parent)
         self.inspection = inspection
-        self._planned_inspection_revision = ""
         inspection.inspection_changed.connect(self._inspection_changed)
         self._refresh_typed_projections()
 
@@ -828,14 +884,6 @@ class PreparationWorkflowController(WorkflowController):
             "inspection_revision": revision,
             "inspection_descriptor": descriptor,
         }
-
-    def _record_plan_context(self) -> None:
-        snapshot = self.inspection.preparation_source_snapshot()
-        self._planned_inspection_revision = "" if snapshot is None else snapshot[1]
-
-    def _plan_context_matches(self) -> bool:
-        snapshot = self.inspection.preparation_source_snapshot()
-        return snapshot is not None and snapshot[1] == self._planned_inspection_revision
 
     def _plan_result_matches_current_context(self, result: dict[str, object]) -> bool:
         snapshot = self.inspection.preparation_source_snapshot()
@@ -860,13 +908,7 @@ class PreparationWorkflowController(WorkflowController):
             "descriptor": descriptor,
         }
 
-    def _invalidate_plan(self, reason: str) -> None:
-        super()._invalidate_plan(reason)
-        self._planned_inspection_revision = ""
-
     def _inspection_changed(self, _payload: object) -> None:
-        if self._session is None or self._operation != "execute":
-            self._invalidate_plan("inspection changed")
         self.state_changed.emit()
 
 
