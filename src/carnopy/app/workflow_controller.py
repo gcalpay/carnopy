@@ -7,7 +7,12 @@ from typing import Any, Literal, cast
 
 from PySide6.QtCore import QObject, Signal
 
-from carnopy.app.config_document import SavedConfigSnapshot, is_path_within, source_matches
+from carnopy.app.config_document import (
+    DocumentType,
+    SavedConfigSnapshot,
+    is_path_within,
+    source_matches,
+)
 from carnopy.app.inspection_controller import InspectionController
 from carnopy.app.jobs import JobStore
 from carnopy.app.protocol import RequestType, WorkerEvent
@@ -440,7 +445,13 @@ class WorkflowController(QObject):
         yaml_bytes = path.read_bytes()
         if hashlib.sha256(yaml_bytes).hexdigest() != digest:
             raise ValueError("saved workflow configuration changed; load it again")
-        return SavedConfigSnapshot(path=path, yaml_bytes=yaml_bytes, sha256=digest)
+        document_type: DocumentType = "model_sweep" if self.kind == "sweep" else "preparation"
+        return SavedConfigSnapshot(
+            path=path,
+            yaml_bytes=yaml_bytes,
+            sha256=digest,
+            document_type=document_type,
+        )
 
     def _plan_context(self) -> dict[str, object]:
         return {}

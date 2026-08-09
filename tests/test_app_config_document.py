@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import os
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -10,16 +12,21 @@ import yaml
 import carnopy.app.config_document as config_documents
 from carnopy.app.config_document import (
     ConfigDocumentError,
+    ConfigurationDocument,
     DatasetConfigDocument,
     ExternalModificationError,
     document_from_worker_payload,
     new_document,
     replace_config_atomic,
+    serialize_configuration,
     serialize_dataset_config,
+    serialize_preparation_config,
+    serialize_sweep_config,
     source_matches,
     write_new_config,
 )
-from carnopy.config.io import load_config_bytes
+from carnopy.config.io import load_config_bytes, load_sweep_config_bytes
+from carnopy.preparation.models import load_preparation_config_bytes
 from carnopy.templates import template_text
 
 
@@ -155,6 +162,230 @@ def test_dataset_output_formats_use_canonical_order() -> None:
     assert serialized["outputs"]["dataset_formats"] == ["csv", "parquet"]
 
 
+@pytest.mark.parametrize(
+    ("template", "serializer", "schema_version"),
+    [
+        ("property_table", serialize_dataset_config, 2),
+        ("model_sweep", serialize_sweep_config, 2),
+        ("preparation", serialize_preparation_config, 1),
+    ],
+)
+def test_configuration_documents_serialize_deterministically_by_discriminator(
+    template: str,
+    serializer: Callable[[dict[str, Any]], bytes],
+    schema_version: int,
+) -> None:
+    payload = yaml.safe_load(template_text(template))
+
+    first = serializer(payload)
+    second = serialize_configuration(payload)
+
+    assert first == second
+    assert yaml.safe_load(first)["document_type"] == payload["document_type"]
+    assert yaml.safe_load(first)["schema_version"] == schema_version
+    document = new_document(payload)
+    assert isinstance(document, ConfigurationDocument)
+    assert isinstance(document, DatasetConfigDocument)
+    assert document.document_type == payload["document_type"]
+    assert document.yaml_bytes == first
+
+
+def test_sweep_serialization_preserves_complete_current_schema() -> None:
+    payload = yaml.safe_load(template_text("model_sweep"))
+    payload["grid"] = {
+        "pressure": payload["grid"]["pressure"],
+        "temperature": payload["grid"]["temperature"],
+    }
+    payload["outputs"]["dataset_formats"] = ["parquet", "csv"]
+    payload["comparison_plots"] = {
+        "format": "svg",
+        "plots": [
+            {
+                "name": "density-comparison",
+                "kind": "property_comparison",
+                "fluid": "Propane",
+                "property": "mass_density",
+                "x": "temperature",
+                "group_by": "pressure",
+                "filters": {"phase": "gas", "pressure": 100000.0},
+                "models": ["srk", "heos", "pr"],
+                "value_scale": "log",
+                "format": "pdf",
+            },
+            {
+                "name": "density-delta",
+                "kind": "property_delta",
+                "fluid": "Propane",
+                "property": "mass_density",
+                "x": "pressure",
+                "models": ["pr", "srk"],
+                "delta_metric": "signed_absolute_difference",
+            },
+        ],
+    }
+
+    first = serialize_sweep_config(payload)
+    second = serialize_sweep_config(payload)
+    expected = load_sweep_config_bytes(
+        yaml.safe_dump(payload).encode("utf-8"),
+        source_name="rich-sweep-input.yaml",
+    ).model
+    loaded = load_sweep_config_bytes(first, source_name="rich-sweep-output.yaml").model
+    serialized = yaml.safe_load(first)
+
+    assert first == second
+    assert loaded == expected
+    assert list(serialized) == [
+        "schema_version",
+        "document_type",
+        "backend",
+        "mode",
+        "fluids",
+        "grid",
+        "properties",
+        "outputs",
+        "comparison_plots",
+    ]
+    assert list(serialized["grid"]) == ["temperature", "pressure"]
+    assert serialized["outputs"]["dataset_formats"] == ["csv", "parquet"]
+    assert list(serialized["comparison_plots"]["plots"][0]) == [
+        "name",
+        "kind",
+        "fluid",
+        "property",
+        "x",
+        "group_by",
+        "filters",
+        "models",
+        "delta_metric",
+        "value_scale",
+        "format",
+    ]
+
+
+def test_preparation_serialization_preserves_complete_current_schema() -> None:
+    payload = {
+        "schema_version": 1,
+        "document_type": "preparation",
+        "source_policy": {"allow_partial_sweep": True},
+        "features": {
+            "numeric": ["temperature", "pressure"],
+            "derived": ["specific_volume"],
+        },
+        "categorical_features": [
+            {
+                "field": "phase",
+                "encoding": "one_hot",
+                "categories": ["gas", "liquid"],
+            },
+            {"field": "fluid", "encoding": "one_hot", "categories": "observed"},
+        ],
+        "targets": ["mass_density"],
+        "auxiliary": ["backend_model", "run_id"],
+        "scenarios": [
+            {
+                "name": "stratified",
+                "kind": "stratified_hash",
+                "seed": 9,
+                "partitions": {"test": 0.2, "train": 0.7, "validation": 0.1},
+                "strata": {
+                    "numeric_bins": {"temperature": [280.0, 320.0]},
+                    "categorical": ["phase"],
+                },
+                "transformations": [
+                    {"field": "pressure", "methods": ["log10", "standard"]},
+                    {"field": "temperature", "methods": ["minmax"]},
+                ],
+            },
+            {
+                "name": "coordinate-block",
+                "kind": "coordinate_block",
+                "holdouts": {
+                    "test": {
+                        "pressure": {"min": 100000.0, "max": 200000.0},
+                        "temperature": {"min": 280.0, "max": 300.0},
+                    }
+                },
+                "remainder": "train",
+                "transformations": [{"field": "pressure", "methods": ["robust"]}],
+            },
+        ],
+        "quality": {
+            "matrix_diagnostics": {
+                "correlation_threshold": 0.99,
+                "near_constant_relative_spread": 1e-10,
+            },
+            "baseline_diagnostics": {
+                "models": ["hist_gradient_boosting", "dummy_mean", "ridge"],
+                "random_seed": 7,
+                "ridge_alpha": 0.5,
+                "histogram_max_iterations": 50,
+            },
+        },
+        "outputs": {
+            "formats": ["parquet"],
+            "parquet": True,
+            "arrays": {
+                "formats": ["safetensors", "npy", "npz"],
+                "dtype": "float64",
+                "include_auxiliary": True,
+            },
+        },
+    }
+
+    first = serialize_preparation_config(payload)
+    second = serialize_preparation_config(payload)
+    expected = load_preparation_config_bytes(
+        yaml.safe_dump(payload).encode("utf-8"),
+        source_name="rich-preparation-input.yaml",
+    ).model
+    loaded = load_preparation_config_bytes(
+        first,
+        source_name="rich-preparation-output.yaml",
+    ).model
+    serialized = yaml.safe_load(first)
+
+    assert first == second
+    assert loaded == expected
+    assert list(serialized) == [
+        "schema_version",
+        "document_type",
+        "source_policy",
+        "features",
+        "categorical_features",
+        "targets",
+        "auxiliary",
+        "scenarios",
+        "quality",
+        "outputs",
+    ]
+    assert [item["name"] for item in serialized["scenarios"]] == [
+        "stratified",
+        "coordinate-block",
+    ]
+    assert serialized["scenarios"][0]["transformations"] == [
+        {"field": "pressure", "methods": ["log10", "standard"]},
+        {"field": "temperature", "methods": ["minmax"]},
+    ]
+    assert serialized["outputs"]["arrays"]["formats"] == [
+        "npy",
+        "npz",
+        "safetensors",
+    ]
+
+
+@pytest.mark.parametrize("document_type", [None, "sweep", "PREPARATION"])
+def test_generic_document_rejects_missing_or_unknown_discriminator(
+    document_type: str | None,
+) -> None:
+    payload: dict[str, object] = {"schema_version": 2}
+    if document_type is not None:
+        payload["document_type"] = document_type
+
+    with pytest.raises(ConfigDocumentError, match="document_type"):
+        new_document(payload)
+
+
 def test_document_tracks_unsaved_and_dirty_state_without_exposing_mutable_payload() -> None:
     payload = yaml.safe_load(template_text("property_table"))
     document = new_document(payload)
@@ -189,6 +420,27 @@ def test_worker_document_identity_and_workspace_ownership(tmp_path: Path) -> Non
     assert document.imported
     assert not document.dirty
     assert source_matches(source, document.source_sha256 or "")
+
+
+def test_worker_document_rejects_an_inconsistent_top_level_discriminator(
+    tmp_path: Path,
+) -> None:
+    configs = tmp_path / "configs"
+    configs.mkdir()
+    source = configs / "sweep.yaml"
+    content = serialize_sweep_config(yaml.safe_load(template_text("model_sweep")))
+    source.write_bytes(content)
+
+    with pytest.raises(ConfigDocumentError, match="document type is inconsistent"):
+        document_from_worker_payload(
+            {
+                "document_type": "preparation",
+                "config": yaml.safe_load(content),
+                "source_name": str(source),
+                "source_sha256": hashlib.sha256(content).hexdigest(),
+            },
+            configs_root=configs,
+        )
 
 
 def test_new_and_atomic_save_refuse_overwrite_and_external_modification(tmp_path: Path) -> None:
@@ -279,11 +531,23 @@ def test_mark_saved_updates_document_identity(tmp_path: Path) -> None:
     assert not document.dirty
 
 
-def test_execution_snapshot_requires_exact_saved_workspace_bytes(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("template", "document_type"),
+    [
+        ("property_table", "dataset"),
+        ("model_sweep", "model_sweep"),
+        ("preparation", "preparation"),
+    ],
+)
+def test_execution_snapshot_requires_exact_saved_workspace_bytes(
+    tmp_path: Path,
+    template: str,
+    document_type: str,
+) -> None:
     configs = tmp_path / "configs"
     configs.mkdir()
-    document = new_document(yaml.safe_load(template_text("property_table")))
-    destination = configs / "dataset.yaml"
+    document = new_document(yaml.safe_load(template_text(template)))
+    destination = configs / f"{document_type}.yaml"
     content = document.yaml_bytes
     destination.write_bytes(content)
     document.mark_saved(destination, content)
@@ -293,6 +557,7 @@ def test_execution_snapshot_requires_exact_saved_workspace_bytes(tmp_path: Path)
     assert snapshot.path == destination.resolve()
     assert snapshot.yaml_bytes == content
     assert snapshot.sha256 == hashlib.sha256(content).hexdigest()
+    assert snapshot.document_type == document_type
 
     destination.write_bytes(content + b"# changed\n")
     with pytest.raises(ExternalModificationError, match="outside Carnopy"):

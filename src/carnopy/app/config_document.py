@@ -8,7 +8,7 @@ import tempfile
 from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import yaml
 
@@ -43,6 +43,32 @@ DEFAULT_PLOT_VALUES: dict[str, object] = {
     "x_scale": "linear",
     "y_scale": "linear",
 }
+DocumentType = Literal["dataset", "model_sweep", "preparation"]
+
+SWEEP_PLOT_FIELD_ORDER = (
+    "name",
+    "kind",
+    "fluid",
+    "property",
+    "x",
+    "group_by",
+    "filters",
+    "models",
+    "delta_metric",
+    "value_scale",
+    "format",
+)
+SCENARIO_FIELD_ORDER = (
+    "name",
+    "kind",
+    "seed",
+    "partitions",
+    "field",
+    "holdouts",
+    "remainder",
+    "strata",
+    "transformations",
+)
 
 
 class ConfigDocumentError(ValueError):
@@ -60,10 +86,11 @@ class SavedConfigSnapshot:
     path: Path
     yaml_bytes: bytes
     sha256: str
+    document_type: DocumentType
 
 
 @dataclass
-class DatasetConfigDocument:
+class ConfigurationDocument:
     _payload: dict[str, Any]
     source_path: Path | None = None
     source_sha256: str | None = None
@@ -73,7 +100,11 @@ class DatasetConfigDocument:
 
     def __post_init__(self) -> None:
         self._payload = copy.deepcopy(self._payload)
-        self._baseline_yaml = serialize_dataset_config(self._payload)
+        self._baseline_yaml = serialize_configuration(self._payload)
+
+    @property
+    def document_type(self) -> DocumentType:
+        return document_type_from_payload(self._payload)
 
     @property
     def payload(self) -> dict[str, Any]:
@@ -81,7 +112,7 @@ class DatasetConfigDocument:
 
     @property
     def yaml_bytes(self) -> bytes:
-        return serialize_dataset_config(self._payload)
+        return serialize_configuration(self._payload)
 
     @property
     def yaml_text(self) -> str:
@@ -126,7 +157,35 @@ class DatasetConfigDocument:
             raise ExternalModificationError(
                 f"saved configuration bytes no longer match the open document: {path}"
             )
-        return SavedConfigSnapshot(path=path, yaml_bytes=content, sha256=digest)
+        return SavedConfigSnapshot(
+            path=path,
+            yaml_bytes=content,
+            sha256=digest,
+            document_type=self.document_type,
+        )
+
+
+# Keep the dataset-only private name as a compatibility alias until the
+# controller migration lands in a later independently verified unit.
+DatasetConfigDocument = ConfigurationDocument
+
+
+def document_type_from_payload(payload: dict[str, Any]) -> DocumentType:
+    value = payload.get("document_type")
+    if value not in {"dataset", "model_sweep", "preparation"}:
+        raise ConfigDocumentError(
+            "configuration document_type must be dataset, model_sweep, or preparation"
+        )
+    return cast(DocumentType, value)
+
+
+def serialize_configuration(payload: dict[str, Any]) -> bytes:
+    document_type = document_type_from_payload(payload)
+    if document_type == "dataset":
+        return serialize_dataset_config(payload)
+    if document_type == "model_sweep":
+        return serialize_sweep_config(payload)
+    return serialize_preparation_config(payload)
 
 
 def serialize_dataset_config(payload: dict[str, Any]) -> bytes:
@@ -170,33 +229,115 @@ def serialize_dataset_config(payload: dict[str, Any]) -> bytes:
     if visualization is not None:
         ordered["visualization"] = visualization
 
-    text = cast(
-        str,
-        yaml.safe_dump(
-            ordered,
-            allow_unicode=True,
-            default_flow_style=False,
-            sort_keys=False,
-            width=100,
+    return _dump_yaml(ordered)
+
+
+def serialize_sweep_config(payload: dict[str, Any]) -> bytes:
+    """Serialize one valid model-sweep payload in deterministic public order."""
+
+    from carnopy.config.sweep import ModelSweepConfig
+
+    model = ModelSweepConfig.model_validate(payload)
+    value = model.model_dump(mode="json", by_alias=True, exclude_none=True)
+    ordered: dict[str, Any] = {
+        "schema_version": value["schema_version"],
+        "document_type": value["document_type"],
+        "backend": _ordered_mapping(value["backend"], ("name", "models", "reference_model")),
+        "mode": value["mode"],
+        "fluids": copy.deepcopy(value["fluids"]),
+        "grid": _ordered_grid(cast(dict[str, Any], value["grid"])),
+        "properties": copy.deepcopy(value["properties"]),
+        "outputs": _ordered_mapping(value["outputs"], ("dataset_formats",)),
+    }
+    comparisons = value.get("comparison_plots")
+    if isinstance(comparisons, dict):
+        plots = comparisons.get("plots")
+        ordered_comparisons: dict[str, Any] = {}
+        if comparisons.get("format") not in (None, "png"):
+            ordered_comparisons["format"] = comparisons["format"]
+        if isinstance(plots, list):
+            ordered_comparisons["plots"] = [
+                _ordered_mapping(plot, SWEEP_PLOT_FIELD_ORDER)
+                for plot in plots
+                if isinstance(plot, dict)
+            ]
+        if ordered_comparisons:
+            ordered["comparison_plots"] = ordered_comparisons
+    return _dump_yaml(ordered)
+
+
+def serialize_preparation_config(payload: dict[str, Any]) -> bytes:
+    """Serialize one valid preparation payload in deterministic public order."""
+
+    from carnopy.preparation.models import PreparationConfig
+
+    model = PreparationConfig.model_validate(payload)
+    value = model.model_dump(mode="json", by_alias=True, exclude_none=True)
+    features = cast(dict[str, Any], value["features"])
+    ordered: dict[str, Any] = {
+        "schema_version": value["schema_version"],
+        "document_type": value["document_type"],
+        "source_policy": _ordered_mapping(
+            cast(dict[str, Any], value["source_policy"]),
+            ("allow_partial_sweep",),
         ),
-    )
-    return text.encode("utf-8")
+        "features": _ordered_mapping(features, ("numeric", "derived")),
+        "categorical_features": [
+            _ordered_mapping(item, ("field", "encoding", "categories"))
+            for item in cast(list[dict[str, Any]], value["categorical_features"])
+        ],
+        "targets": copy.deepcopy(value["targets"]),
+        "auxiliary": copy.deepcopy(value["auxiliary"]),
+    }
+    scenarios = cast(list[dict[str, Any]], value["scenarios"])
+    if scenarios:
+        ordered["scenarios"] = [_ordered_scenario(item) for item in scenarios]
+    quality = cast(dict[str, Any], value["quality"])
+    ordered_quality: dict[str, Any] = {}
+    matrix = quality.get("matrix_diagnostics")
+    if isinstance(matrix, dict):
+        ordered_quality["matrix_diagnostics"] = _ordered_mapping(
+            matrix,
+            ("correlation_threshold", "near_constant_relative_spread"),
+        )
+    baseline = quality.get("baseline_diagnostics")
+    if isinstance(baseline, dict):
+        ordered_quality["baseline_diagnostics"] = _ordered_mapping(
+            baseline,
+            ("models", "random_seed", "ridge_alpha", "histogram_max_iterations"),
+        )
+    if ordered_quality:
+        ordered["quality"] = ordered_quality
+    outputs = cast(dict[str, Any], value["outputs"])
+    ordered_outputs = _ordered_mapping(outputs, ("formats", "parquet"))
+    arrays = outputs.get("arrays")
+    if isinstance(arrays, dict):
+        ordered_outputs["arrays"] = _ordered_mapping(
+            arrays,
+            ("formats", "dtype", "include_auxiliary"),
+        )
+    ordered["outputs"] = ordered_outputs
+    return _dump_yaml(ordered)
 
 
 def document_from_worker_payload(
     worker_payload: dict[str, Any],
     *,
     configs_root: Path,
-) -> DatasetConfigDocument:
+) -> ConfigurationDocument:
     config = worker_payload.get("config")
     source_name = worker_payload.get("source_name")
     source_sha256 = worker_payload.get("source_sha256")
     if not isinstance(config, dict):
-        raise ConfigDocumentError("worker response does not contain a dataset configuration")
+        raise ConfigDocumentError("worker response does not contain a configuration")
     if not isinstance(source_name, str) or not isinstance(source_sha256, str):
         raise ConfigDocumentError("worker response does not contain source identity")
     source_path = Path(source_name).expanduser().resolve()
-    return DatasetConfigDocument(
+    response_type = worker_payload.get("document_type", config.get("document_type"))
+    if response_type != config.get("document_type"):
+        raise ConfigDocumentError("worker response document type is inconsistent")
+    document_type_from_payload(config)
+    return ConfigurationDocument(
         config,
         source_path=source_path,
         source_sha256=source_sha256,
@@ -205,8 +346,8 @@ def document_from_worker_payload(
     )
 
 
-def new_document(payload: dict[str, Any]) -> DatasetConfigDocument:
-    return DatasetConfigDocument(payload)
+def new_document(payload: dict[str, Any]) -> ConfigurationDocument:
+    return ConfigurationDocument(payload)
 
 
 def write_new_config(path: Path, content: bytes, *, configs_root: Path) -> Path:
@@ -339,6 +480,46 @@ def _ordered_visualization(value: object) -> dict[str, Any] | None:
     if isinstance(plots, (list, tuple)) and plots:
         ordered["plots"] = [_ordered_plot(plot) for plot in plots if isinstance(plot, dict)]
     return ordered or None
+
+
+def _ordered_grid(value: dict[str, Any]) -> dict[str, Any]:
+    ordered: dict[str, Any] = {}
+    for axis in GRID_AXIS_ORDER:
+        sampler = value.get(axis)
+        if not isinstance(sampler, dict):
+            continue
+        field_order = SAMPLER_FIELD_ORDER.get(str(sampler.get("kind")), tuple(sampler))
+        ordered[axis] = _ordered_mapping(sampler, field_order)
+    return ordered
+
+
+def _ordered_scenario(value: dict[str, Any]) -> dict[str, Any]:
+    ordered = _ordered_mapping(value, SCENARIO_FIELD_ORDER)
+    strata = ordered.get("strata")
+    if isinstance(strata, dict):
+        ordered["strata"] = _ordered_mapping(strata, ("categorical", "numeric_bins"))
+    transformations = ordered.get("transformations")
+    if isinstance(transformations, list):
+        ordered["transformations"] = [
+            _ordered_mapping(item, ("field", "methods"))
+            for item in transformations
+            if isinstance(item, dict)
+        ]
+    return ordered
+
+
+def _dump_yaml(value: dict[str, Any]) -> bytes:
+    text = cast(
+        str,
+        yaml.safe_dump(
+            value,
+            allow_unicode=True,
+            default_flow_style=False,
+            sort_keys=False,
+            width=100,
+        ),
+    )
+    return text.encode("utf-8")
 
 
 def _ordered_plot(plot: dict[str, Any]) -> dict[str, Any]:

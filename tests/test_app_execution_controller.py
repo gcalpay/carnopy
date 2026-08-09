@@ -153,9 +153,10 @@ def controller_for(
     content = b"schema_version: 2\n"
     config_path.write_bytes(content)
     snapshot = SavedConfigSnapshot(
-        config_path.resolve(),
-        content,
-        hashlib.sha256(content).hexdigest(),
+        path=config_path.resolve(),
+        yaml_bytes=content,
+        sha256=hashlib.sha256(content).hexdigest(),
+        document_type="dataset",
     )
     config = StubConfigController(snapshot)
     transport = StubTransport()
