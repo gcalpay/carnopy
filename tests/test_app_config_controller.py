@@ -8,22 +8,25 @@ from typing import Any, cast
 from uuid import UUID, uuid4
 
 import pytest
+import yaml
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QCoreApplication, QEvent, QObject, Signal
 
-from carnopy.app.config_controller import DatasetConfigController
+from carnopy.app.config_controller import ConfigurationController, DatasetConfigController
 from carnopy.app.config_document import (
     ConfigDocumentError,
     DatasetConfigDocument,
     new_document,
+    serialize_configuration,
     serialize_dataset_config,
     sha256_bytes,
 )
 from carnopy.app.request_coordinator import DesktopRequestCoordinator, RequestSession
 from carnopy.app.workspace import initialize_workspace
+from carnopy.templates import template_text
 
 
 class StubSession(QObject):
@@ -623,3 +626,105 @@ for name in (
     )
 
     assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
+@pytest.mark.parametrize(
+    ("document_type", "default_filename"),
+    [
+        ("model_sweep", "model-sweep.yaml"),
+        ("preparation", "preparation.yaml"),
+    ],
+)
+def test_generic_controller_owns_non_dataset_file_lifecycle(
+    tmp_path: Path,
+    application: QCoreApplication,
+    document_type: str,
+    default_filename: str,
+) -> None:
+    del application
+    controller, coordinator = configured_controller(tmp_path)
+    source = tmp_path / f"external-{document_type}.yaml"
+    source_bytes = template_text(cast(Any, document_type)).encode("utf-8")
+    source.write_bytes(source_bytes)
+    source_payload = yaml.safe_load(source_bytes)
+    assert isinstance(source_payload, dict)
+
+    assert controller.import_configuration(str(source))
+    assert coordinator.calls[-1] == (
+        "configuration",
+        "load_configuration",
+        {"config_path": str(source.resolve())},
+    )
+    coordinator.succeed(
+        {
+            "document_type": document_type,
+            "config": source_payload,
+            "source_name": str(source),
+            "source_sha256": sha256_bytes(source_bytes),
+        }
+    )
+
+    assert controller.get_document_kind() == document_type
+    assert controller.get_reformat_required()
+    assert controller.get_yaml_available()
+    assert controller.get_default_save_path().endswith(default_filename)
+    assert controller.document is not None
+    expected_bytes = serialize_configuration(source_payload)
+    assert controller.document.yaml_bytes == expected_bytes
+
+    assert controller.request_validation()
+    assert coordinator.calls[-1] == (
+        "configuration",
+        "validate_configuration",
+        {
+            "yaml_text": expected_bytes.decode("utf-8"),
+            "source_name": str(source.resolve()),
+            "expected_document_type": document_type,
+        },
+    )
+    coordinator.succeed({"document_type": document_type})
+
+    destination = controller.workspace.configs / f"saved-{document_type}.yaml"
+    assert controller.request_save_as(allow_reformat=True)
+    assert controller.save_path_selected(str(destination))
+    assert coordinator.calls[-1] == (
+        "configuration",
+        "validate_configuration",
+        {
+            "yaml_text": expected_bytes.decode("utf-8"),
+            "source_name": str(destination),
+            "expected_document_type": document_type,
+        },
+    )
+    coordinator.succeed({"document_type": document_type})
+
+    assert destination.read_bytes() == expected_bytes
+    assert not controller.get_dirty()
+    assert not controller.get_reformat_required()
+    snapshot = controller.execution_snapshot(expected_document_type=cast(Any, document_type))
+    assert snapshot.document_type == document_type
+    assert snapshot.path == destination.resolve()
+    with pytest.raises(ConfigDocumentError, match="open configuration is"):
+        controller.execution_snapshot()
+
+    assert controller.reload_source()
+    assert coordinator.calls[-1] == (
+        "configuration",
+        "load_configuration",
+        {"config_path": str(destination.resolve())},
+    )
+    coordinator.succeed(
+        {
+            "document_type": document_type,
+            "config": source_payload,
+            "source_name": str(destination),
+            "source_sha256": sha256_bytes(expected_bytes),
+        }
+    )
+    assert controller.get_document_kind() == document_type
+    assert controller.document is not None
+    assert controller.document.source_path == destination.resolve()
+
+
+def test_dataset_controller_name_remains_a_compatibility_alias() -> None:
+    assert DatasetConfigController is ConfigurationController
