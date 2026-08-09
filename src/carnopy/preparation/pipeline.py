@@ -121,7 +121,10 @@ def execute_preparation_computation(
         computation,
         checkpoint=None if execution is None else execution.raise_if_cancelled,
     )
-    verify_loaded_source_unchanged(computation.source_data)
+    verify_loaded_source_unchanged(
+        computation.source_data,
+        cancellation_checkpoint=(None if execution is None else execution.raise_if_cancelled),
+    )
     if source_revalidator is not None:
         source_revalidator()
     if execution is not None:
@@ -144,7 +147,10 @@ def execute_preparation_computation(
             created_at=created_at,
             execution=execution,
         )
-        verify_loaded_source_unchanged(computation.source_data)
+        verify_loaded_source_unchanged(
+            computation.source_data,
+            cancellation_checkpoint=(None if execution is None else execution.raise_if_cancelled),
+        )
         if source_revalidator is not None:
             source_revalidator()
         if execution is not None:

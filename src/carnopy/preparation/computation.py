@@ -71,6 +71,7 @@ def compute_preparation(
         source,
         allow_partial_sweep=loaded.model.source_policy.allow_partial_sweep,
         accepted_descriptor=accepted_descriptor,
+        cancellation_checkpoint=cancellation_checkpoint,
     )
     _cancel(cancellation_checkpoint)
     resolved = resolve_preparation_fields(loaded.model, source_data.tables)
@@ -126,7 +127,10 @@ def compute_preparation(
         checkpoint=cancellation_checkpoint,
     )
     _cancel(cancellation_checkpoint)
-    verify_loaded_source_unchanged(source_data)
+    verify_loaded_source_unchanged(
+        source_data,
+        cancellation_checkpoint=cancellation_checkpoint,
+    )
     return PreparationComputation(
         loaded=loaded,
         source_data=source_data,

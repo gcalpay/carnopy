@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import stat
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import IO, Any, Literal, cast
@@ -44,6 +45,7 @@ class SourceTable:
     artifact_relative_path: str
     artifact_sha256: str
     artifact_descriptor: SourceArtifactDescriptor
+    metadata_descriptor: SourceArtifactDescriptor
     frame: pd.DataFrame
     metadata: dict[str, Any]
     run_id: str
@@ -57,6 +59,7 @@ class LoadedPreparationSource:
     requested_path: Path
     source_kind: Literal["dataset_run", "model_sweep"]
     tables: tuple[SourceTable, ...]
+    metadata_descriptors: tuple[SourceArtifactDescriptor, ...]
     source_identity: dict[str, Any]
     partial_sweep_source: bool
     included_child_models: tuple[str, ...]
@@ -67,6 +70,7 @@ class LoadedPreparationSource:
             "source_path": str(self.requested_path),
             "source_kind": self.source_kind,
             "source_identity": self.source_identity,
+            "metadata": [descriptor.as_dict() for descriptor in self.metadata_descriptors],
             "tables": [
                 {
                     "artifact": table.artifact_relative_path,
@@ -82,7 +86,9 @@ def load_preparation_source(
     *,
     allow_partial_sweep: bool,
     accepted_descriptor: dict[str, Any] | None = None,
+    cancellation_checkpoint: Callable[[], None] | None = None,
 ) -> LoadedPreparationSource:
+    _cancel(cancellation_checkpoint)
     requested_input = Path(source).expanduser().absolute()
     if requested_input.is_symlink():
         raise ConfigError("preparation source must not be a symbolic link")
@@ -99,33 +105,62 @@ def load_preparation_source(
             requested,
             allow_partial_sweep=allow_partial_sweep,
             accepted_descriptor=accepted_descriptor,
+            cancellation_checkpoint=cancellation_checkpoint,
         )
     else:
         loaded = _load_dataset_run_source(
             requested,
             accepted_descriptor=accepted_descriptor,
+            cancellation_checkpoint=cancellation_checkpoint,
         )
+    _cancel(cancellation_checkpoint)
     _verify_accepted_source_identity(loaded, accepted_descriptor)
     return loaded
 
 
-def verify_loaded_source_unchanged(source: LoadedPreparationSource) -> None:
-    """Revalidate every consumed table against its accepted descriptor."""
+def verify_loaded_source_unchanged(
+    source: LoadedPreparationSource,
+    *,
+    cancellation_checkpoint: Callable[[], None] | None = None,
+) -> None:
+    """Revalidate every consumed table and metadata file."""
+    for descriptor in source.metadata_descriptors:
+        _cancel(cancellation_checkpoint)
+        _verify_metadata_unchanged(
+            descriptor,
+            cancellation_checkpoint=cancellation_checkpoint,
+        )
     for table in source.tables:
-        _verify_artifact_unchanged(table.artifact_descriptor)
+        _cancel(cancellation_checkpoint)
+        _verify_artifact_unchanged(
+            table.artifact_descriptor,
+            cancellation_checkpoint=cancellation_checkpoint,
+        )
 
 
 def _load_dataset_run_source(
     source: Path,
     *,
     accepted_descriptor: dict[str, Any] | None,
+    cancellation_checkpoint: Callable[[], None] | None,
 ) -> LoadedPreparationSource:
-    metadata = _read_json(source / "metadata.json", label="dataset metadata")
+    metadata, metadata_descriptor = _read_verified_metadata(
+        source / "metadata.json",
+        label="dataset metadata",
+        accepted_descriptor=accepted_descriptor,
+        cancellation_checkpoint=cancellation_checkpoint,
+    )
+    _cancel(cancellation_checkpoint)
     artifact = _select_dataset_artifact(source)
     frame, descriptor = _read_verified_dataset(
         artifact,
         metadata,
         accepted_descriptor=accepted_descriptor,
+        cancellation_checkpoint=cancellation_checkpoint,
+    )
+    _verify_metadata_unchanged(
+        metadata_descriptor,
+        cancellation_checkpoint=cancellation_checkpoint,
     )
     run_id = _metadata_text(metadata, "run_id")
     table = SourceTable(
@@ -136,6 +171,7 @@ def _load_dataset_run_source(
         artifact_relative_path=artifact.name,
         artifact_sha256=descriptor.sha256,
         artifact_descriptor=descriptor,
+        metadata_descriptor=metadata_descriptor,
         frame=frame,
         metadata=metadata,
         run_id=run_id,
@@ -145,6 +181,7 @@ def _load_dataset_run_source(
         requested_path=source,
         source_kind="dataset_run",
         tables=(table,),
+        metadata_descriptors=(metadata_descriptor,),
         source_identity={
             "source_kind": "dataset_run",
             "run_id": run_id,
@@ -164,8 +201,14 @@ def _load_sweep_source(
     *,
     allow_partial_sweep: bool,
     accepted_descriptor: dict[str, Any] | None,
+    cancellation_checkpoint: Callable[[], None] | None,
 ) -> LoadedPreparationSource:
-    metadata = _read_json(source / "metadata.json", label="sweep metadata")
+    metadata, sweep_metadata_descriptor = _read_verified_metadata(
+        source / "metadata.json",
+        label="sweep metadata",
+        accepted_descriptor=accepted_descriptor,
+        cancellation_checkpoint=cancellation_checkpoint,
+    )
     status = _metadata_text(metadata, "sweep_status")
     models = _metadata_string_tuple(metadata, "models")
     child_runs = metadata.get("child_runs")
@@ -184,7 +227,9 @@ def _load_sweep_source(
             "to prepare completed child runs"
         )
     tables: list[SourceTable] = []
+    metadata_descriptors = [sweep_metadata_descriptor]
     for model in models:
+        _cancel(cancellation_checkpoint)
         model_root = source / "models" / model
         if model_root.is_symlink():
             raise ConfigError(f"sweep model {model!r} directory must not be a symbolic link")
@@ -198,12 +243,22 @@ def _load_sweep_source(
         if len(child_dirs) != 1:
             raise ConfigError(f"sweep model {model!r} must contain exactly one child run")
         child = child_dirs[0]
-        child_metadata = _read_json(child / "metadata.json", label=f"{model} child metadata")
+        child_metadata, child_metadata_descriptor = _read_verified_metadata(
+            child / "metadata.json",
+            label=f"{model} child metadata",
+            accepted_descriptor=accepted_descriptor,
+            cancellation_checkpoint=cancellation_checkpoint,
+        )
         artifact = _select_dataset_artifact(child)
         frame, descriptor = _read_verified_dataset(
             artifact,
             child_metadata,
             accepted_descriptor=accepted_descriptor,
+            cancellation_checkpoint=cancellation_checkpoint,
+        )
+        _verify_metadata_unchanged(
+            child_metadata_descriptor,
+            cancellation_checkpoint=cancellation_checkpoint,
         )
         relative = _relative_posix(artifact, source)
         tables.append(
@@ -215,6 +270,7 @@ def _load_sweep_source(
                 artifact_relative_path=relative,
                 artifact_sha256=descriptor.sha256,
                 artifact_descriptor=descriptor,
+                metadata_descriptor=child_metadata_descriptor,
                 frame=frame,
                 metadata=child_metadata,
                 run_id=_metadata_text(child_metadata, "run_id"),
@@ -223,12 +279,14 @@ def _load_sweep_source(
                 sweep_run_id=_optional_metadata_text(metadata, "sweep_run_id"),
             )
         )
+        metadata_descriptors.append(child_metadata_descriptor)
     if not tables:
         raise ConfigError("model-sweep source contains no readable completed child runs")
     return LoadedPreparationSource(
         requested_path=source,
         source_kind="model_sweep",
         tables=tuple(tables),
+        metadata_descriptors=tuple(metadata_descriptors),
         source_identity={
             "source_kind": "model_sweep",
             "sweep_id": metadata.get("sweep_id"),
@@ -266,6 +324,7 @@ def _read_verified_dataset(
     metadata: dict[str, Any],
     *,
     accepted_descriptor: dict[str, Any] | None,
+    cancellation_checkpoint: Callable[[], None] | None,
 ) -> tuple[pd.DataFrame, SourceArtifactDescriptor]:
     expected_digest = _metadata_artifact_digest(path, metadata)
     accepted = _accepted_table_descriptor(path, accepted_descriptor)
@@ -274,7 +333,7 @@ def _read_verified_dataset(
             before = os.fstat(stream.fileno())
             if not stat.S_ISREG(before.st_mode):
                 raise ConfigError(f"source dataset is not a regular file: {path}")
-            digest = _hash_stream(stream)
+            digest = _hash_stream(stream, checkpoint=cancellation_checkpoint)
             descriptor = SourceArtifactDescriptor(
                 path=path.resolve(strict=True),
                 sha256=digest,
@@ -286,19 +345,24 @@ def _read_verified_dataset(
             if digest != expected_digest:
                 raise ConfigError(f"source artifact hash mismatch for {path.name}")
             _compare_accepted_table(descriptor, accepted)
+            _cancel(cancellation_checkpoint)
             stream.seek(0)
             frame = _read_dataset_stream(path, stream)
+            _cancel(cancellation_checkpoint)
             after = os.fstat(stream.fileno())
             if _stat_identity(after) != _stat_identity(before):
                 raise ConfigError(f"source artifact changed while loading {path.name}")
             stream.seek(0)
-            if _hash_stream(stream) != digest:
+            if _hash_stream(stream, checkpoint=cancellation_checkpoint) != digest:
                 raise ConfigError(f"source artifact digest changed while loading {path.name}")
     except ConfigError:
         raise
     except OSError as exc:
         raise ConfigError(f"could not load source dataset {path}: {exc}") from exc
-    _verify_artifact_unchanged(descriptor)
+    _verify_artifact_unchanged(
+        descriptor,
+        cancellation_checkpoint=cancellation_checkpoint,
+    )
     return frame, descriptor
 
 
@@ -311,14 +375,26 @@ def _read_dataset_stream(path: Path, stream: IO[bytes]) -> pd.DataFrame:
         raise ConfigError(f"could not load source dataset {path}: {exc}") from exc
 
 
-def _hash_stream(stream: IO[bytes]) -> str:
+def _hash_stream(
+    stream: IO[bytes],
+    *,
+    checkpoint: Callable[[], None] | None = None,
+) -> str:
     digest = hashlib.sha256()
-    for block in iter(lambda: stream.read(1024 * 1024), b""):
+    while True:
+        _cancel(checkpoint)
+        block = stream.read(1024 * 1024)
+        if not block:
+            break
         digest.update(block)
     return digest.hexdigest()
 
 
-def _verify_artifact_unchanged(descriptor: SourceArtifactDescriptor) -> None:
+def _verify_artifact_unchanged(
+    descriptor: SourceArtifactDescriptor,
+    *,
+    cancellation_checkpoint: Callable[[], None] | None = None,
+) -> None:
     path = descriptor.path
     if path.is_symlink():
         raise ConfigError(f"source artifact was replaced by a symbolic link: {path}")
@@ -326,7 +402,7 @@ def _verify_artifact_unchanged(descriptor: SourceArtifactDescriptor) -> None:
         path_info = path.stat(follow_symlinks=False)
         with path.open("rb") as stream:
             descriptor_info = os.fstat(stream.fileno())
-            digest = _hash_stream(stream)
+            digest = _hash_stream(stream, checkpoint=cancellation_checkpoint)
     except OSError as exc:
         raise ConfigError(f"could not revalidate source artifact {path}: {exc}") from exc
     expected_stat = (
@@ -408,21 +484,123 @@ def _stat_identity(value: os.stat_result) -> tuple[int, int, int, int]:
     return value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns
 
 
-def _read_json(path: Path, *, label: str) -> dict[str, Any]:
+def _read_verified_metadata(
+    path: Path,
+    *,
+    label: str,
+    accepted_descriptor: dict[str, Any] | None,
+    cancellation_checkpoint: Callable[[], None] | None,
+) -> tuple[dict[str, Any], SourceArtifactDescriptor]:
     if path.is_symlink():
         raise ConfigError(f"{label} must not be a symbolic link: {path}")
+    accepted = _accepted_metadata_descriptor(path, accepted_descriptor)
     try:
-        info = path.stat(follow_symlinks=False)
-        if not stat.S_ISREG(info.st_mode):
+        with path.open("rb") as stream:
+            before = os.fstat(stream.fileno())
+            if not stat.S_ISREG(before.st_mode):
+                raise ConfigError(f"{label} is not a regular file: {path}")
+            blocks: list[bytes] = []
+            digest = hashlib.sha256()
+            while True:
+                _cancel(cancellation_checkpoint)
+                block = stream.read(1024 * 1024)
+                if not block:
+                    break
+                blocks.append(block)
+                digest.update(block)
+            after = os.fstat(stream.fileno())
+        current = path.stat(follow_symlinks=False)
+        if not stat.S_ISREG(current.st_mode):
             raise ConfigError(f"{label} is not a regular file: {path}")
-        value = json.loads(path.read_text(encoding="utf-8"))
+        descriptor = SourceArtifactDescriptor(
+            path=path.resolve(strict=True),
+            sha256=digest.hexdigest(),
+            device=before.st_dev,
+            inode=before.st_ino,
+            size=before.st_size,
+            modified_ns=before.st_mtime_ns,
+        )
     except ConfigError:
         raise
-    except (OSError, json.JSONDecodeError) as exc:
+    except OSError as exc:
+        raise ConfigError(f"could not read {label} {path}: {exc}") from exc
+    if _stat_identity(before) != _stat_identity(after) or _stat_identity(before) != _stat_identity(
+        current
+    ):
+        raise ConfigError(f"{label} changed while loading: {path}")
+    try:
+        value = json.loads(b"".join(blocks).decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ConfigError(f"could not read {label} {path}: {exc}") from exc
     if not isinstance(value, dict):
         raise ConfigError(f"{label} root must be an object")
-    return cast(dict[str, Any], value)
+    _compare_accepted_metadata_descriptor(descriptor, accepted)
+    return cast(dict[str, Any], value), descriptor
+
+
+def _accepted_metadata_descriptor(
+    path: Path,
+    accepted_descriptor: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if accepted_descriptor is None:
+        return None
+    resolved = str(path.resolve(strict=True))
+    controls = accepted_descriptor.get("controls")
+    if isinstance(controls, dict):
+        for value in controls.values():
+            if isinstance(value, dict) and value.get("path") == resolved:
+                return value
+    tables = accepted_descriptor.get("tables")
+    if isinstance(tables, list):
+        for value in tables:
+            metadata = value.get("metadata") if isinstance(value, dict) else None
+            if isinstance(metadata, dict) and metadata.get("path") == resolved:
+                return metadata
+    raise ConfigError(f"source metadata is absent from the accepted inspection: {path.name}")
+
+
+def _compare_accepted_metadata_descriptor(
+    descriptor: SourceArtifactDescriptor,
+    accepted: dict[str, Any] | None,
+) -> None:
+    if accepted is None:
+        return
+    actual = descriptor.as_dict()
+    for key, value in actual.items():
+        if accepted.get(key) is not None and accepted.get(key) != value:
+            raise ConfigError(
+                f"source metadata identity changed after inspection: {descriptor.path.name}"
+            )
+
+
+def _verify_metadata_unchanged(
+    descriptor: SourceArtifactDescriptor,
+    *,
+    cancellation_checkpoint: Callable[[], None] | None,
+) -> None:
+    path = descriptor.path
+    if path.is_symlink():
+        raise ConfigError(f"source metadata was replaced by a symbolic link: {path}")
+    try:
+        path_info = path.stat(follow_symlinks=False)
+        with path.open("rb") as stream:
+            descriptor_info = os.fstat(stream.fileno())
+            digest = _hash_stream(stream, checkpoint=cancellation_checkpoint)
+    except OSError as exc:
+        raise ConfigError(f"could not revalidate source metadata {path}: {exc}") from exc
+    expected_stat = (
+        descriptor.device,
+        descriptor.inode,
+        descriptor.size,
+        descriptor.modified_ns,
+    )
+    if (
+        _stat_identity(path_info) != expected_stat
+        or _stat_identity(descriptor_info) != expected_stat
+    ):
+        raise ConfigError(f"source metadata changed after loading: {path.name}")
+    if digest != descriptor.sha256:
+        raise ConfigError(f"source metadata digest changed after loading: {path.name}")
 
 
 def _metadata_text(metadata: dict[str, Any], key: str) -> str:
@@ -430,6 +608,11 @@ def _metadata_text(metadata: dict[str, Any], key: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ConfigError(f"source metadata is missing required text field {key!r}")
     return value
+
+
+def _cancel(checkpoint: Callable[[], None] | None) -> None:
+    if checkpoint is not None:
+        checkpoint()
 
 
 def _optional_metadata_text(metadata: dict[str, Any], key: str) -> str | None:

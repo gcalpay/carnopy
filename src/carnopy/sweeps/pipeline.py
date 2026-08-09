@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -173,6 +174,7 @@ def _run_model_sweep(
             comparison_plot_directory=comparison_plot_directory,
             comparison_report_path=comparison_report_path,
             failure_message=failure_message,
+            checkpoint=(None if execution is None else execution.raise_if_cancelled),
         )
         if execution is not None:
             execution.protected_phase("finalization")
@@ -261,6 +263,7 @@ def _write_sweep_reports(
     comparison_plot_directory: Path | None,
     comparison_report_path: Path | None,
     failure_message: str | None,
+    checkpoint: Callable[[], None] | None,
 ) -> dict[str, str]:
     hashed_names = ["sweep.original.yaml", "sweep.normalized.json"]
     if comparison is not None:
@@ -292,8 +295,12 @@ def _write_sweep_reports(
         "failure_message": failure_message,
         "output_directory": str(layout.final_directory),
     }
+    if checkpoint is not None:
+        checkpoint()
     write_json(layout.staging_directory / "report.json", report)
     hashed_names.append("report.json")
+    if checkpoint is not None:
+        checkpoint()
     artifact_hashes = hash_artifacts(layout.staging_directory, hashed_names)
     metadata = {
         "sweep_metadata_schema_version": SWEEP_METADATA_SCHEMA_VERSION,
@@ -324,7 +331,11 @@ def _write_sweep_reports(
         "output_directory": str(layout.final_directory),
         "artifact_hashes": artifact_hashes,
     }
+    if checkpoint is not None:
+        checkpoint()
     write_json(layout.staging_directory / "metadata.json", metadata)
+    if checkpoint is not None:
+        checkpoint()
     return artifact_hashes
 
 

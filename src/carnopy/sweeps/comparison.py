@@ -7,6 +7,7 @@ from typing import Any
 
 import pandas as pd
 
+from carnopy._execution import ExecutionCancelled
 from carnopy.domain.failures import OutputError
 from carnopy.domain.properties import PROPERTY_REGISTRY, REFERENCE_DEPENDENT_PROPERTIES
 from carnopy.provenance import sha256_file
@@ -50,12 +51,22 @@ def write_comparison_artifacts(
     values_path = comparison_directory / "values.parquet"
     deltas_path = comparison_directory / "deltas.parquet"
     try:
+        if checkpoint is not None:
+            checkpoint()
         values.to_parquet(values_path, index=False)
+        if checkpoint is not None:
+            checkpoint()
         deltas.to_parquet(deltas_path, index=False)
+        if checkpoint is not None:
+            checkpoint()
         hashes = {
             "comparison/values.parquet": sha256_file(values_path),
             "comparison/deltas.parquet": sha256_file(deltas_path),
         }
+        if checkpoint is not None:
+            checkpoint()
+    except ExecutionCancelled:
+        raise
     except Exception as exc:
         raise OutputError(f"could not write comparison artifacts: {exc}") from exc
     return ComparisonArtifacts(

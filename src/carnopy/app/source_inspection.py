@@ -25,6 +25,8 @@ class ResolvedTable:
     source_format: str
     units: dict[str, str]
     sha256: str
+    metadata_path: Path | None = None
+    metadata_sha256: str | None = None
 
     def public_descriptor(self) -> dict[str, object]:
         return {
@@ -35,15 +37,20 @@ class ResolvedTable:
         }
 
     def private_descriptor(self) -> dict[str, object]:
-        info = self.path.stat(follow_symlinks=False)
-        return {
+        descriptor: dict[str, object] = {
             **self.public_descriptor(),
             "path": str(self.path.resolve(strict=True)),
-            "device": info.st_dev,
-            "inode": info.st_ino,
-            "size": info.st_size,
-            "modified_ns": info.st_mtime_ns,
         }
+        descriptor.update(_file_identity_descriptor(self.path, self.sha256))
+        if self.metadata_path is not None:
+            metadata_digest = self.metadata_sha256
+            if metadata_digest is None:
+                metadata_digest = sha256_file(self.metadata_path)
+            descriptor["metadata"] = {
+                "path": str(self.metadata_path.resolve(strict=True)),
+                **_file_identity_descriptor(self.metadata_path, metadata_digest),
+            }
+        return descriptor
 
 
 @dataclass(frozen=True)
@@ -230,6 +237,8 @@ def _dataset_table(source: Path) -> ResolvedTable:
         source_format=dataset.suffix.removeprefix("."),
         units=units,
         sha256=digest,
+        metadata_path=metadata_path if metadata_path.is_file() else None,
+        metadata_sha256=(sha256_file(metadata_path) if metadata_path.is_file() else None),
     )
 
 
@@ -264,7 +273,8 @@ def _sweep_tables(root: Path, metadata: dict[str, Any]) -> tuple[ResolvedTable, 
                 f"model {model} child run",
             )
             dataset = _preferred_dataset(child_root)
-            child_metadata = _read_json(child_root / "metadata.json", "child metadata")
+            child_metadata_path = child_root / "metadata.json"
+            child_metadata = _read_json(child_metadata_path, "child metadata")
             child_hashes = child_metadata.get("artifact_hashes")
             expected = child_hashes.get(dataset.name) if isinstance(child_hashes, dict) else None
             digest = sha256_file(dataset)
@@ -283,6 +293,8 @@ def _sweep_tables(root: Path, metadata: dict[str, Any]) -> tuple[ResolvedTable, 
                         else {}
                     ),
                     sha256=digest,
+                    metadata_path=child_metadata_path,
+                    metadata_sha256=sha256_file(child_metadata_path),
                 )
             )
     return tuple(tables)
@@ -479,7 +491,18 @@ def _catalog_revision(
 ) -> str:
     value = {
         "source_kind": source_kind,
-        "tables": [{"id": item.table_id, "sha256": item.sha256} for item in tables],
+        "tables": [
+            {
+                "id": item.table_id,
+                "sha256": item.sha256,
+                **(
+                    {"metadata_sha256": item.metadata_sha256}
+                    if item.metadata_sha256 is not None
+                    else {}
+                ),
+            }
+            for item in tables
+        ],
         "controls": controls,
     }
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -499,6 +522,17 @@ def _control_descriptor(path: Path) -> dict[str, Any]:
     return {
         "path": str(path.resolve(strict=True)),
         "sha256": sha256_file(path),
+        "device": info.st_dev,
+        "inode": info.st_ino,
+        "size": info.st_size,
+        "modified_ns": info.st_mtime_ns,
+    }
+
+
+def _file_identity_descriptor(path: Path, digest: str) -> dict[str, object]:
+    info = path.stat(follow_symlinks=False)
+    return {
+        "sha256": digest,
         "device": info.st_dev,
         "inode": info.st_ino,
         "size": info.st_size,

@@ -8,6 +8,7 @@ from pathlib import Path
 from uuid import UUID
 
 from carnopy.domain.failures import OutputError
+from carnopy.outputs.finalization import rename_directory_no_replace
 
 
 @dataclass(frozen=True)
@@ -60,7 +61,7 @@ def finalize_sweep_layout(layout: SweepLayout) -> None:
         )
     _verify_sweep_staging(layout)
     try:
-        layout.staging_directory.rename(layout.final_directory)
+        rename_directory_no_replace(layout.staging_directory, layout.final_directory)
     except OSError as exc:
         raise OutputError(f"could not finalize sweep directory: {exc}") from exc
 

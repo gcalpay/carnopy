@@ -8,6 +8,7 @@ from pathlib import Path
 from uuid import UUID
 
 from carnopy.domain.failures import OutputError
+from carnopy.outputs.finalization import rename_directory_no_replace
 
 
 @dataclass(frozen=True)
@@ -58,7 +59,7 @@ def finalize_preparation_layout(layout: PreparationLayout) -> None:
         raise OutputError(f"refusing to overwrite preparation directory {layout.final_directory}")
     _verify_preparation_staging(layout)
     try:
-        layout.staging_directory.rename(layout.final_directory)
+        rename_directory_no_replace(layout.staging_directory, layout.final_directory)
     except OSError as exc:
         raise OutputError(f"could not finalize preparation directory: {exc}") from exc
 
