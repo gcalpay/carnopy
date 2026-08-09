@@ -83,16 +83,32 @@ class JobStore:
         terminal_type = terminal.get("type") if isinstance(terminal, dict) else None
         payload = terminal.get("payload") if isinstance(terminal, dict) else None
         client_failure = envelope.get("client_failure")
-        if not isinstance(payload, dict) and isinstance(client_failure, dict):
+        if isinstance(client_failure, dict):
             payload = client_failure
+        clean_transport = (
+            client_failure is None
+            and envelope.get("exit_code") == 0
+            and envelope.get("exit_status") == "normal"
+            and not envelope.get("force_stopped")
+            and envelope.get("cleanup_error") is None
+        )
         if envelope.get("force_stopped"):
             status = "force_stopped"
-        elif terminal_type == "result":
+        elif terminal_type == "result" and clean_transport:
             status = "completed"
-        elif terminal_type == "cancelled":
+        elif terminal_type == "cancelled" and clean_transport:
             status = "cancelled"
         else:
             status = "failed"
+            if not isinstance(client_failure, dict) and terminal_type == "result":
+                payload = {
+                    "category": "process",
+                    "code": "execution_failed",
+                    "message": (
+                        "worker returned a result but exited with status "
+                        f"{envelope.get('exit_status')} and code {envelope.get('exit_code')}"
+                    ),
+                }
         now = _utc_now()
         record["status"] = status
         record["updated_at_utc"] = now

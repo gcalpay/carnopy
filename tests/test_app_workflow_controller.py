@@ -228,6 +228,79 @@ def test_sweep_controller_persists_only_execution_with_plan_identity(
     coordinator.shutdown()
 
 
+def test_failed_workflow_load_invalidates_previous_plan(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    workspace = initialize_workspace(tmp_path / "workspace")
+    config = _config(workspace)
+    coordinator, transport = coordinator_for()
+    controller = SweepWorkflowController(coordinator)
+    controller.set_workspace(workspace)
+
+    assert controller.load_config(config)
+    digest = _finish_load(transport, config)
+    assert controller.plan()
+    _finish_plan(transport, digest=digest)
+    assert controller.can_execute
+
+    assert controller.load_config(workspace.configs / "missing.yaml")
+    transport.finish(
+        terminal_type="error",
+        payload={
+            "category": "config",
+            "code": "invalid_config",
+            "message": "configuration is invalid",
+        },
+    )
+
+    assert controller.state == "failed"
+    assert controller.current_plan is None
+    assert controller.loaded_config is None
+    assert controller.config_path is None
+    assert controller.config_sha256 == ""
+    assert controller.validation is None
+    assert not controller.can_plan
+    assert not controller.can_execute
+    coordinator.shutdown()
+
+
+def test_workflow_terminal_activity_persistence_failure_is_reported(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    from carnopy.app.jobs import JobStore
+
+    workspace = initialize_workspace(tmp_path / "workspace")
+    config = _config(workspace)
+    coordinator, transport = coordinator_for()
+    controller = SweepWorkflowController(coordinator)
+    controller.set_workspace(workspace)
+
+    assert controller.load_config(config)
+    digest = _finish_load(transport, config)
+    assert controller.plan()
+    _finish_plan(transport, digest=digest)
+    assert controller.execute()
+
+    store = controller._store
+    assert isinstance(store, JobStore)
+
+    def fail_persistence(*_args: object, **_kwargs: object) -> None:
+        raise OSError("disk unavailable")
+
+    monkeypatch.setattr(store, "finish", fail_persistence)
+    monkeypatch.setattr(store, "write", fail_persistence)
+    transport.finish(payload={"output_directory": str(workspace.outputs / "sweep")})
+
+    assert controller.state == "succeeded"
+    assert "disk unavailable" in controller.activity_persistence_issue
+    coordinator.shutdown()
+
+
 def test_worker_start_failure_does_not_leak_activity_record_into_next_request(
     tmp_path: Path,
     application: QCoreApplication,

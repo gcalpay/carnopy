@@ -56,6 +56,7 @@ class WorkflowController(QObject):
         self._plan: dict[str, Any] | None = None
         self._plan_config_sha256 = ""
         self._result: dict[str, Any] | None = None
+        self._activity_persistence_issue = ""
         self._active_snapshot: SavedConfigSnapshot | None = None
         self._active_record: dict[str, Any] | None = None
         coordinator.busy_changed.connect(lambda _busy: self.state_changed.emit())
@@ -105,6 +106,10 @@ class WorkflowController(QObject):
         return copy.deepcopy(self._result)
 
     @property
+    def activity_persistence_issue(self) -> str:
+        return self._activity_persistence_issue
+
+    @property
     def can_cancel(self) -> bool:
         return self._session is not None and self._session.cooperative_cancel_available
 
@@ -139,7 +144,17 @@ class WorkflowController(QObject):
             return
         self.workspace = workspace
         self._store = None if workspace is None else JobStore(workspace.private_directory)
+        self._operation = ""
+        self._phase = ""
+        self._progress = {}
+        self._failure = {}
+        self._loaded_config = None
+        self._config_path = None
+        self._config_sha256 = ""
+        self._validation = None
+        self._result = None
         self._invalidate_plan("workspace changed")
+        self._set_activity_persistence_issue("")
         self._state = "ready" if workspace is not None else "unavailable"
         self.state_changed.emit()
 
@@ -255,11 +270,17 @@ class WorkflowController(QObject):
         except (RuntimeError, ValueError) as exc:
             self._set_local_failure("request", "request_unavailable", str(exc))
             return False
+        if operation in {"load", "plan"}:
+            self._invalidate_plan(f"{operation} started")
+        self._set_activity_persistence_issue("")
         if persist_execution:
             try:
                 self._start_activity(reservation, snapshot)
             except (OSError, UnicodeError, ValueError) as exc:
                 self.coordinator.abandon_reserved_request(reservation)
+                self._set_activity_persistence_issue(
+                    f"could not persist workflow Activity record: {exc}"
+                )
                 self._set_local_failure(
                     "process",
                     "activity_persistence_failed",
@@ -271,6 +292,8 @@ class WorkflowController(QObject):
         except Exception as exc:
             self.coordinator.abandon_reserved_request(reservation)
             self._finish_start_failure(reservation, exc)
+            if operation == "load":
+                self._clear_loaded_configuration()
             self._set_local_failure("process", "worker_start_failed", str(exc))
             return False
         self._session = session
@@ -337,7 +360,9 @@ class WorkflowController(QObject):
         if result is None:
             self._failure = outcome.failure_payload or {}
             code = str(self._failure.get("code", "execution_failed"))
-            if code in {"source_changed", "stale_plan"}:
+            if operation == "load":
+                self._clear_loaded_configuration()
+            if operation in {"load", "plan"} or code in {"source_changed", "stale_plan"}:
                 self._invalidate_plan(code)
             self._state = (
                 "cancelled"
@@ -436,6 +461,12 @@ class WorkflowController(QObject):
         self._plan = None
         self._plan_config_sha256 = ""
 
+    def _clear_loaded_configuration(self) -> None:
+        self._loaded_config = None
+        self._config_path = None
+        self._config_sha256 = ""
+        self._validation = None
+
     def _persist_event(self, event: WorkerEvent) -> None:
         store = self._store
         record = self._active_record
@@ -443,9 +474,11 @@ class WorkflowController(QObject):
             return
         try:
             store.update_event(record, event.type, event.payload)
-        except (OSError, ValueError):
-            return
-        self.activity_record_changed.emit()
+        except (OSError, ValueError) as exc:
+            self._set_activity_persistence_issue(f"could not update workflow Activity: {exc}")
+        else:
+            self._set_activity_persistence_issue("")
+            self.activity_record_changed.emit()
 
     def _finish_activity(self, outcome: RequestOutcome) -> None:
         store = self._store
@@ -455,8 +488,18 @@ class WorkflowController(QObject):
         try:
             store.finish(record, cast(dict[str, Any], outcome.terminal_envelope))
         except (OSError, ValueError):
-            return
-        self.activity_record_changed.emit()
+            try:
+                store.write(record)
+            except (OSError, ValueError) as retry_exc:
+                self._set_activity_persistence_issue(
+                    f"could not persist terminal workflow Activity after one retry: {retry_exc}"
+                )
+            else:
+                self._set_activity_persistence_issue("")
+                self.activity_record_changed.emit()
+        else:
+            self._set_activity_persistence_issue("")
+            self.activity_record_changed.emit()
 
     def _finish_start_failure(
         self,
@@ -476,12 +519,28 @@ class WorkflowController(QObject):
                 message=str(error),
             )
         except (OSError, ValueError):
-            return
-        self.activity_record_changed.emit()
+            try:
+                store.write(record)
+            except (OSError, ValueError) as retry_exc:
+                self._set_activity_persistence_issue(
+                    f"could not persist workflow start failure after one retry: {retry_exc}"
+                )
+            else:
+                self._set_activity_persistence_issue("")
+                self.activity_record_changed.emit()
+        else:
+            self._set_activity_persistence_issue("")
+            self.activity_record_changed.emit()
 
     def _set_local_failure(self, category: str, code: str, message: str) -> None:
         self._failure = {"category": category, "code": code, "message": message}
         self._state = "failed"
+        self.state_changed.emit()
+
+    def _set_activity_persistence_issue(self, issue: str) -> None:
+        if issue == self._activity_persistence_issue:
+            return
+        self._activity_persistence_issue = issue
         self.state_changed.emit()
 
 

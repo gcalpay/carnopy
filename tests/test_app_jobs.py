@@ -47,6 +47,72 @@ def test_job_store_persists_exact_snapshot_progress_and_terminal_envelope(
     assert loaded[0].data["status"] == "completed"
 
 
+@pytest.mark.parametrize(
+    ("envelope_update", "expected_summary"),
+    [
+        (
+            {"exit_code": 11, "exit_status": "crash"},
+            {
+                "category": "process",
+                "code": "execution_failed",
+                "message": "worker returned a result but exited with status crash and code 11",
+            },
+        ),
+        (
+            {
+                "client_failure": {
+                    "category": "protocol",
+                    "code": "invalid_terminal_sequence",
+                    "message": "result was followed by another terminal event",
+                }
+            },
+            {
+                "category": "protocol",
+                "code": "invalid_terminal_sequence",
+                "message": "result was followed by another terminal event",
+            },
+        ),
+    ],
+)
+def test_job_store_does_not_complete_an_unsuccessful_result_transport(
+    tmp_path: Path,
+    envelope_update: dict[str, object],
+    expected_summary: dict[str, str],
+) -> None:
+    store = JobStore(tmp_path / ".carnopy-gui")
+    record = store.start(
+        request_id="00000000-0000-0000-0000-000000000013",
+        operation="execute_sweep",
+        config_relative_path="configs/sweep.yaml",
+        yaml_snapshot="schema_version: 2\n",
+        config_sha256="f" * 64,
+    )
+    envelope: dict[str, object] = {
+        "request_id": record["request_id"],
+        "request_type": "execute_sweep",
+        "terminal_event": {
+            "protocol_version": 1,
+            "request_id": record["request_id"],
+            "type": "result",
+            "payload": {"sweep_status": "completed"},
+        },
+        "client_failure": None,
+        "stderr": "",
+        "exit_code": 0,
+        "exit_status": "normal",
+        "force_stopped": False,
+        "cleanup_error": None,
+    }
+    envelope.update(envelope_update)
+
+    store.finish(record, envelope)
+
+    loaded = store.load()[0].data
+    assert loaded is not None
+    assert loaded["status"] == "failed"
+    assert loaded["summary"] == expected_summary
+
+
 def test_job_store_retains_records_and_reports_malformed_records(tmp_path: Path) -> None:
     store = JobStore(tmp_path / ".carnopy-gui")
     for index in range(2):
