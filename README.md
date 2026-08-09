@@ -6,9 +6,7 @@
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21709965.svg)](https://doi.org/10.5281/zenodo.21709965)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Reproducible thermophysical datasets from scientific backends with
-visualization, provenance, and leakage-aware preparation for physics-informed
-machine-learning and engineering workflows.
+Reproducible thermophysical data pipelines integrating property models, simulation backends and validated reference data, with inspection, visualization, provenance and leakage aware preparation for physics-informed machine learning workflows.
 
 Carnopy is an open and auditable thermophysical-data workbench. It turns an
 explicit YAML sampling specification into immutable CSV and Parquet datasets,
