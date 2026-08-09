@@ -263,8 +263,9 @@ def test_public_roadmap_separates_current_contracts_from_future_direction() -> N
     assert "Detailed source and model candidates are maintainer planning" in normalized_readme
     assert "it is neither implemented nor the current product priority" in normalized_readme
     assert "PRODUCT_SCOPE.md" not in readme
-    assert "| 4 | Approved next |" in gui_plan
-    assert "| 4 | Add controlled sweep and preparation worker operations | Approved next" in desktop
+    assert "| 5 | Approved next |" in gui_plan
+    assert "| 4 | Add controlled sweep and preparation worker operations | Complete" in desktop
+    assert "| 5 | Add structured sweep and preparation QML workflows | Approved next" in desktop
 
 
 def test_readme_documents_published_and_source_release_boundaries() -> None:

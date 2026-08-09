@@ -988,9 +988,13 @@ force-stopped staging. `DesktopController` composes nonvisual workflow
 controllers, while Activity persists executions only and can hand every
 finalized inspectable result back to Inspect. Public APIs, YAML schemas,
 scientific result models, output layouts, dependencies, and visible QML were
-unchanged. The complete required implementation gate passed with 820 tests,
-preflight, lock, formatting, typing, and dependency checks. Stage 4 has no
-native UI acceptance surface; structured editors and visible workflow pages
+unchanged. The original required implementation gate passed with 820 tests,
+preflight, lock, formatting, typing, and dependency checks. A post-acceptance
+repair baseline passed with 825 tests. The independent audit remediation passed
+the complete gate on 2026-08-09 with 836 tests, adding regressions for stable
+metadata consumption, atomic no-replace finalization, cancellation, Activity,
+controller state, runtime fingerprints, and all worker lifecycles. Stage 4 has
+no native UI acceptance surface; structured editors and visible workflow pages
 remain Stage 5.
 
 ## Known current limitations
@@ -1011,6 +1015,10 @@ remain Stage 5.
 - The current WSLg development host can use CPU rendering through Mesa
   llvmpipe, which affects perceived QML scrolling and animation performance.
   A database would not correct that rendering limitation.
+- The current WSLg software-rendering, stale-lock, and window-activation
+  hardening is a separate desktop-maintenance follow-up, not a retroactive Stage
+  4 deliverable. Automated offscreen startup does not replace manual native
+  acceptance of that follow-up.
 - The packaged Carnopy mark is provisional and will be refined through an
   explicit branding decision rather than automatic tracing.
 

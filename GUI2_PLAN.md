@@ -150,12 +150,13 @@ Do not replace the published distributions or move the release tag.
 
 No Stage 4–8 functionality or native VTK is part of the `0.1.0a4` gate.
 
-Stage 4 is the approved next implementation stage. It begins the accepted
-workflow-depth milestone by exposing the existing sweep and preparation
-contracts through controlled worker operations without changing their public
-schemas or output layouts. Stage 5 follows only after Stage 4 acceptance and
-adds the corresponding structured QML workflows. Their numbers, dependencies,
-and reviewed technical content remain unchanged by this reprioritization.
+At the `0.1.0a4` checkpoint, Stage 4 was the approved next implementation
+stage. It began the accepted workflow-depth milestone by exposing the existing
+sweep and preparation contracts through controlled worker operations without
+changing their public schemas or output layouts. Stage 4 has since completed;
+Stage 5 now adds the corresponding structured QML workflows. Their numbers,
+dependencies, and reviewed technical content remain unchanged by this
+reprioritization.
 
 ## Stage 4: sweep and preparation worker operations
 
@@ -180,9 +181,16 @@ non-cooperative phases, so the existing force-only plot behavior remains
 unchanged. Public APIs, YAML schemas, result models, output layouts,
 dependencies, and visible QML are unchanged.
 
-The complete required implementation gate and preflight passed on 2026-08-08
-(820 tests). No screenshot or native UI acceptance was required because this
-stage has no visible QML changes. Stage 5 is now the approved next stage.
+The original complete implementation gate and preflight passed on 2026-08-08
+with 820 tests. A post-acceptance repair baseline passed with 825 tests. The
+independent Stage 4 audit remediation then passed the complete gate on
+2026-08-09 with 836 tests, including stable metadata consumption, atomic
+no-replace finalization, cancellation, Activity, controller-state, runtime
+fingerprint, and complete worker-lifecycle regressions. No screenshot or native
+UI acceptance was required for Stage 4 because it made no visible QML changes.
+The separate WSLg launch-hardening follow-up remains desktop maintenance with
+its own manual native-acceptance boundary. Stage 5 is now the approved next
+stage.
 
 ## Stage 5: sweep and preparation QML workflows
 

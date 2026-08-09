@@ -35,10 +35,16 @@ layouts, dependencies, or visible QML.
 
 ## Verification
 
-The complete required implementation gate passed on 2026-08-08: locked
+The original complete implementation gate passed on 2026-08-08: locked
 resolution, Ruff check and format, strict mypy, dependency compatibility,
-preflight, and **820 tests**. No screenshot or native UI acceptance was
-required because Stage 4 has no visible QML changes.
+preflight, and **820 tests**. A post-acceptance repair baseline passed with 825
+tests. After an independent audit, the remediation gate passed on 2026-08-09
+with **836 tests**, adding explicit coverage for stable metadata consumption,
+atomic no-replace finalization, cancellation between artifact writes, Activity
+terminal truth, failed-load state, runtime fingerprint invalidation, and the
+preparation worker lifecycle. No screenshot or native UI acceptance was
+required for Stage 4 because it has no visible QML changes. The separate WSLg
+launch-hardening follow-up retains its own manual native-acceptance boundary.
 
 Stage 5 structured sweep and preparation QML workflows are the approved next
 stage.
