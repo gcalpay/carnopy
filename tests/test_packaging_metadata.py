@@ -244,9 +244,28 @@ def test_public_and_community_markdown_have_intentional_distribution_boundaries(
     assert "/CITATION.cff" in sdist_includes
     assert "/DESKTOP_ARCHITECTURE.md" in sdist_includes
     assert "/ML_PREPARATION_ROADMAP.md" in sdist_includes
+    assert "/PRODUCT_SCOPE.md" not in sdist_includes
     assert "/docs/agent-guides" in sdist_includes
     assert not any(path.startswith("/.github") for path in sdist_includes)
     assert "/docs" not in sdist_includes
+
+
+def test_public_roadmap_separates_current_contracts_from_future_direction() -> None:
+    root = Path(__file__).resolve().parents[1]
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    normalized_readme = " ".join(readme.split())
+    gui_plan = (root / "GUI2_PLAN.md").read_text(encoding="utf-8")
+    desktop = (root / "DESKTOP_ARCHITECTURE.md").read_text(encoding="utf-8")
+
+    assert "workflow depth now, source breadth next, and advanced model breadth later" in (
+        normalized_readme
+    )
+    assert "Detailed source and model candidates are maintainer planning" in normalized_readme
+    assert "it is neither implemented nor the current product priority" in normalized_readme
+    assert "PRODUCT_SCOPE.md" not in readme
+    assert "| 5 | Approved next |" in gui_plan
+    assert "| 4 | Add controlled sweep and preparation worker operations | Complete" in desktop
+    assert "| 5 | Add structured sweep and preparation QML workflows | Approved next" in desktop
 
 
 def test_readme_documents_published_and_source_release_boundaries() -> None:
@@ -327,6 +346,8 @@ def test_public_agents_bootstraps_ignored_local_policy() -> None:
     agents = (root / "AGENTS.md").read_text(encoding="utf-8")
     gitignore = (root / ".gitignore").read_text(encoding="utf-8")
     assert "<repository-root>/.agents/local.md" in agents
+    assert "<repository-root>/PRODUCT_SCOPE.md" in agents
+    assert "<repository-root>/.agents/private/PRODUCT_STRATEGY.md" in agents
     assert "highest-priority repository instruction" in agents
     for guide in (
         "DELEGATION.md",
@@ -336,3 +357,5 @@ def test_public_agents_bootstraps_ignored_local_policy() -> None:
     ):
         assert f"docs/agent-guides/{guide}" in agents
     assert ".agents/local.md" in gitignore
+    assert "/PRODUCT_SCOPE.md" in gitignore
+    assert ".agents/private/" in gitignore

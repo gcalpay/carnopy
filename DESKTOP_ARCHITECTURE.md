@@ -64,8 +64,7 @@ planned `0.1.0a4` alpha checkpoint. Later sweep, preparation, and native-3D
 stages are not prerequisites for that release. Stage 3 implementation, remote
 CI, the complete local gate, and native acceptance passed on 2026-07-30. Its
 accepted screenshot and historical implementation index are tracked under
-`docs/`. The public Graphify artifacts now represent this accepted Stage 3
-architecture and remain governed by the repository freshness gate.
+`docs/`, and this document records the accepted Stage 3 architecture.
 
 ## Authority map
 
@@ -75,10 +74,10 @@ Use the narrowest applicable authority:
 | --- | --- |
 | `AGENTS.md` and its routed agent guides | Public scientific, data, architecture, packaging, and contribution contracts |
 | `.agents/local.md` | Checkout-local execution, environment, credential, dependency, and Git restrictions |
+| `PRODUCT_SCOPE.md` and `.agents/private/PRODUCT_STRATEGY.md`, when present | Maintainer-local product identity, future direction, and cross-roadmap priority |
 | `GUI2_PLAN.md` | Temporary GUI-2 scope, sequencing, decisions, and acceptance status |
 | `DESKTOP_ARCHITECTURE.md` | Durable implemented desktop structure and evolution |
-| `README.md` | User-facing installation and workflow guidance |
-| `graphify-out/` | Generated navigation aid; never stronger than source or tracked contracts |
+| `README.md` | Public product summary plus user-facing installation and workflow guidance |
 
 When these disagree, do not silently blend them. Repository source and tests
 establish current behavior, while `AGENTS.md`, its task-routed authoritative
@@ -647,6 +646,9 @@ Startup ordering is deliberate:
 Missing mandatory resources, font registration failures, QML startup warnings,
 load failures, and zero root objects are fatal. Later runtime warnings are
 logged and surfaced without unconditionally terminating the application.
+Installed smoke mode exits immediately when startup is idle. When an initial
+workspace starts capability discovery, smoke teardown waits for that request's
+terminal coordinator state instead of destroying an active worker process.
 
 QML views emit root-level request signals. `QmlApplicationRuntime` connects
 them to Python with queued Qt connections, avoiding re-entrant model mutation
@@ -909,7 +911,7 @@ GUI-1 established the permanent desktop boundary in seven development stages:
 5. worker-rendered manual plots, no-overwrite promotion, and Qt-only PNG/SVG
    preview with explicit PDF opening;
 6. CI, distribution, documentation, and release hardening; and
-7. architecture boundary review and generated Graphify map.
+7. architecture boundary review and durable architecture documentation.
 
 The temporary GUI-1 plan was deleted when that migration completed. Its final
 tracked content remains recoverable for archaeology with:
@@ -928,9 +930,9 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 0 | Qualified a same-repository `QQuickVTKItem` companion bridge on the pinned Linux/Qt/VTK baseline | Complete |
 | 1 | Extracted request ownership, workspace state, dataset/visualization drafts, and complete configuration workflow into QML-ready QtCore controllers | Complete |
 | 2 | Package the Precision Grid QML Workspace, Dataset, Visualization, and YAML/Save workflows | Complete; automated, remote, and native acceptance passed |
-| 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete; graph refreshed |
-| 4 | Add controlled sweep and preparation worker operations | Active after the `0.1.0a4` checkpoint |
-| 5 | Add structured sweep and preparation QML workflows | Pending |
+| 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete |
+| 4 | Add controlled sweep and preparation worker operations | Complete |
+| 5 | Add structured sweep and preparation QML workflows | Approved next |
 | 6 | Build exact emitted-value 3D scene contracts | Pending |
 | 7 | Integrate native interactive 3D into QML | Pending |
 | 8 | Complete native-3D platform, distribution, documentation, and later-release qualification | Pending |
@@ -981,6 +983,26 @@ Inspect, configured and session Visualization, Activity, Recovery, lifecycle,
 theme, and window-state behavior. This is bounded alpha qualification, not the
 full native-3D and platform qualification reserved for Stage 8.
 
+Stage 4 acceptance passed on 2026-08-08. The private worker boundary now
+supports revision-bound sweep and preparation planning and execution, exact
+configuration identities, runtime fingerprints, stable preparation reads,
+sticky protected finalization, guarded staging cleanup, and recovery of
+force-stopped staging. `DesktopController` composes nonvisual workflow
+controllers, while Activity persists executions only and can hand every
+finalized inspectable result back to Inspect. Public APIs, YAML schemas,
+scientific result models, output layouts, dependencies, and visible QML were
+unchanged. The original required implementation gate passed with 820 tests,
+preflight, lock, formatting, typing, and dependency checks. A post-acceptance
+repair baseline passed with 825 tests. The independent audit remediation passed
+the complete gate on 2026-08-09 with 836 tests, adding regressions for stable
+metadata consumption, atomic no-replace finalization, cancellation, Activity,
+controller state, runtime fingerprints, and all worker lifecycles. Stage 4 has
+no native UI acceptance surface; structured editors and visible workflow pages
+remain Stage 5. The separate WSLg maintenance acceptance then exercised a real
+six-row generation, configured plot, verified inspection, clean workspace
+reopen, and workspace-scoped installed smoke. Its lifecycle regression raised
+the exhaustively verified suite to 837 tests.
+
 ## Known current limitations
 
 - Both public desktop commands launch the single QML presentation.
@@ -991,12 +1013,18 @@ full native-3D and platform qualification reserved for Stage 8.
   arrays, diagnostics, and bounded tables. It also presents configured plot
   evidence, explicit session rendering, private Run activity, and guarded
   staging recovery.
-- Sweep creation, preparation creation, and 3D presentation are not implemented.
+- The visible QML application does not yet provide sweep or preparation
+  editors; Stage 4 supplies their nonvisual worker and controller foundation.
+  Exact emitted-value 3D presentation remains a later stage.
 - Native folder dialogs and compositor behavior require human acceptance;
   headless tests do not automate them.
 - The current WSLg development host can use CPU rendering through Mesa
   llvmpipe, which affects perceived QML scrolling and animation performance.
   A database would not correct that rendering limitation.
+- The current WSLg software-rendering, stale-lock, window-activation, and
+  workspace-smoke hardening is a separate desktop-maintenance follow-up, not a
+  retroactive Stage 4 deliverable. Native XCB/WSLg acceptance passed on
+  2026-08-09; it does not broaden Stage 8's cross-platform qualification.
 - The packaged Carnopy mark is provisional and will be refined through an
   explicit branding decision rather than automatic tracing.
 
@@ -1048,37 +1076,6 @@ distribution, and preflight gates at stage or release boundaries, or earlier
 when a cross-cutting change warrants them. This keeps verification complete
 without repeatedly executing the same repository suite through both a direct
 test command and the aggregate preflight wrapper.
-
-Graphify is optional generated navigation, never implementation authority. A
-refreshed public graph must record the exact source revision used to build it.
-Determine freshness from Git history, not a manually edited counter:
-
-```bash
-git log -1 --format=%H -- graphify-out/graph.json
-git rev-list --count <graph-source-revision>..HEAD
-```
-
-For legacy artifacts without an embedded source revision, use the latest commit
-that changed the complete public artifact set (`GRAPH_REPORT.md`, `graph.html`,
-and `graph.json`) as a conservative baseline. The repository-wide gate is
-defined in `docs/agent-guides/DEVELOPMENT.md`; for clarity it is:
-
-- zero intervening commits: the graph may guide navigation, with source
-  verification for exact behavior;
-- one through five intervening commits: the graph is navigation-only and
-  every conclusion must be checked against current source;
-- six or more intervening commits, or any completed architecture stage not
-  represented in the graph: the graph is hard-stale and must not be queried for
-  current architecture or implementation work;
-- a hard-stale graph is either refreshed intentionally and atomically or simply
-  bypassed in favor of source, tests, and scoped text search.
-
-The public artifacts were refreshed on 2026-07-30 in
-`08053757551d89fa7bd9a181411ddb99a91886f4` from exact source revision
-`2f5aa8aa39c9ce28f12941c8d67432e7694c0c8c`. They represent the accepted Stage
-3 architecture. Subsequent documentation, merge, and release commits determine
-their current navigation status through the same Git-history freshness gate;
-do not refresh them repeatedly during ordinary implementation churn.
 
 GitHub Issues are enabled for `gcalpay/carnopy`; the repository had no open or
 closed issues in the 2026-07-23 audit. Create an issue only for reproducible,

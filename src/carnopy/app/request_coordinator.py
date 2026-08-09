@@ -10,7 +10,7 @@ from PySide6.QtCore import QObject, QTimer, Signal
 from carnopy.app.client import TransportOutcome, WorkerClient
 from carnopy.app.protocol import ErrorCategory, RequestType, WorkerErrorPayload, WorkerEvent
 
-RequestOwner = Literal["configuration", "execution", "inspection", "plot"]
+RequestOwner = Literal["configuration", "execution", "inspection", "plot", "sweep", "preparation"]
 RequestState = Literal[
     "starting",
     "running",
@@ -28,6 +28,17 @@ _OWNER_REQUESTS: dict[RequestOwner, frozenset[RequestType]] = {
     "execution": frozenset({"validate_config", "generate_dataset"}),
     "inspection": frozenset({"inspect_source", "preview_table"}),
     "plot": frozenset({"render_plot"}),
+    "sweep": frozenset(
+        {"load_sweep_config", "validate_sweep_config", "plan_sweep", "execute_sweep"}
+    ),
+    "preparation": frozenset(
+        {
+            "load_preparation_config",
+            "validate_preparation_config",
+            "plan_preparation",
+            "execute_preparation",
+        }
+    ),
 }
 
 
@@ -132,6 +143,7 @@ class RequestSession(QObject):
         self._phase: str | None = None
         self._worker_cancellable = False
         self._force_stop_available = cancellation_mode == "force_only"
+        self._termination_protected = False
         self._terminal_seen = False
         self._outcome: RequestOutcome | None = None
 
@@ -162,11 +174,16 @@ class RequestSession(QObject):
             and self._worker_cancellable
             and self._state in {"starting", "running"}
             and not self._terminal_seen
+            and not self._termination_protected
         )
 
     @property
     def force_stop_available(self) -> bool:
-        return self._force_stop_available and not self._terminal_seen
+        return (
+            self._force_stop_available
+            and not self._terminal_seen
+            and not self._termination_protected
+        )
 
     @property
     def outcome(self) -> RequestOutcome | None:
@@ -183,7 +200,16 @@ class RequestSession(QObject):
             self._set_state("running")
         elif event.type == "phase":
             self._phase = str(event.payload.get("name", "unknown"))
-            self._worker_cancellable = bool(event.payload.get("cancellable", False))
+            if bool(event.payload.get("termination_protected", False)):
+                self._termination_protected = True
+                self._worker_cancellable = False
+                self._force_stop_available = False
+                self._coordinator._termination_protected(self)
+            elif self._termination_protected:
+                self._worker_cancellable = False
+                self._force_stop_available = False
+            else:
+                self._worker_cancellable = bool(event.payload.get("cancellable", False))
             self.phase_changed.emit(self._phase, self._worker_cancellable)
             self.policy_changed.emit()
         elif event.type == "progress":
@@ -202,7 +228,11 @@ class RequestSession(QObject):
         self.policy_changed.emit()
 
     def _enable_force_stop(self) -> None:
-        if self._state == "cancellation_requested" and not self._terminal_seen:
+        if (
+            self._state == "cancellation_requested"
+            and not self._terminal_seen
+            and not self._termination_protected
+        ):
             self._force_stop_available = True
             self.policy_changed.emit()
 
@@ -314,7 +344,7 @@ class DesktopRequestCoordinator(QObject):
             raise ValueError("parent export finalizers are supported only for render_plot")
 
         cancellation_mode: CancellationMode
-        if owner == "execution":
+        if owner in {"execution", "sweep", "preparation"}:
             cancellation_mode = "cooperative"
         elif owner == "plot":
             cancellation_mode = "force_only"
@@ -385,6 +415,11 @@ class DesktopRequestCoordinator(QObject):
             return None
         return session
 
+    def _termination_protected(self, session: RequestSession) -> None:
+        if session is not self._active_session:
+            return
+        self._force_timer.stop()
+
     def _event_received(self, value: object) -> None:
         event = value if isinstance(value, WorkerEvent) else None
         session = self._active_session
@@ -399,7 +434,7 @@ class DesktopRequestCoordinator(QObject):
 
     def _enable_delayed_force_stop(self) -> None:
         session = self._active_session
-        if session is not None and session.owner == "execution":
+        if session is not None and session.owner in {"execution", "sweep", "preparation"}:
             session._enable_force_stop()
 
     def _transport_finished(self, value: object) -> None:

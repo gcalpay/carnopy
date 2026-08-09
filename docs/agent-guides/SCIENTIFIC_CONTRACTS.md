@@ -7,6 +7,11 @@ provenance, preparation, visualization, or core architecture. It must be
 combined with the active stage plan and more specific architecture guidance
 when those scopes apply.
 
+The tracked README provides the public high-level direction. Maintainer-local
+`PRODUCT_SCOPE.md` and `.agents/private/PRODUCT_STRATEGY.md`, when present,
+may prioritize future work, but they do not override this document's current
+scientific and public contracts or make an unimplemented direction available.
+
 ## Purpose and scope
 
 Carnopy generates reproducible, backend-derived synthetic thermophysical
@@ -62,12 +67,12 @@ previews, and explicit PDF opening.
 [GUI2_PLAN.md](../../GUI2_PLAN.md) is the temporary source of truth for unfinished
 GUI-2 stages. Read it before changing desktop controllers, QML, native 3D, or
 desktop packaging. Delete it only after GUI-2 is complete and permanent
-documentation and Graphify outputs describe the final design.
+documentation describes the final design.
 [DESKTOP_ARCHITECTURE.md](../../DESKTOP_ARCHITECTURE.md) is the durable record of the
 implemented desktop structure and evolution; update it when accepted work
 changes a major ownership or process boundary.
 
-Out of scope for now:
+Outside the current implemented contract:
 
 - mixtures;
 - ORC generation;
@@ -77,7 +82,9 @@ Out of scope for now:
 - web/API services or databases;
 - ThermoML, OCR, RAG, or literature mining.
 
-Do not broaden scope without maintainer approval.
+The product-scope document distinguishes planned, research, and external work.
+Do not interpret those classifications as implementation authority or broaden
+this contract without maintainer approval.
 
 ## Public interfaces
 
@@ -118,12 +125,21 @@ The supported Python API intentionally remains narrow:
 
 Keep CLI handlers thin and scientific logic outside `cli.py`.
 
-The desktop frontend follows the same boundary. Qt widgets must communicate
-with one short-lived worker process through the private, versioned JSON Lines
-protocol under `carnopy.app`; they must not invoke or parse the public CLI.
+The desktop frontend follows the same boundary. Desktop presentation code must
+communicate with one short-lived worker process through the private, versioned
+JSON Lines protocol under `carnopy.app`; it must not invoke or parse the public
+CLI.
 Only the worker may import CoolProp, generation pipelines, pandas, PyArrow, or
 Matplotlib. Progress and cooperative cancellation use private execution hooks;
 do not add these hooks to the public Python API.
+
+GUI-2 Stage 4 extends this private boundary with revision-bound, non-writing
+planning and controlled execution for model sweeps and preparation. Planning
+does not create output paths or fit baseline estimators. Execution recomputes
+and verifies the current plan in its short-lived worker, persists Activity only
+for execution, and protects the final immutable rename after all source,
+serialization, and hashing checks succeed. Visible sweep and preparation QML
+workflows remain Stage 5.
 
 Manual desktop plots must use the inspected dataset source and its integrity
 revision. The GUI supplies a session-only public-shaped request; the worker
@@ -202,11 +218,14 @@ deterministic numeric transformations (`log10`, `standard`, `minmax`,
 partitions. Parquet remains canonical. Optional NumPy and
 SafeTensors exports are derived ML-consumption files and must record feature
 and target order, units, shapes, dtype, hashes, and conversion-error summaries.
-Carnopy is not a training framework and does not optimize, depend on PyTorch,
-or export `.pt`/`.pth` files. The optional `analysis` extra may fit disposable
-scikit-learn baseline estimators for train/evaluation diagnostics only. It must
-not persist models or predictions, tune hyperparameters, alter prepared rows,
-or leak validation/test statistics into fitting.
+Carnopy is not a training framework. The current implementation does not
+optimize, depend on PyTorch, or export `.pt`/`.pth` files. The product scope
+records a reviewed but unscheduled optional PyTorch dataset-export direction;
+this current contract remains unchanged until a separate stage is approved,
+implemented, verified, and accepted. The optional `analysis` extra may fit
+disposable scikit-learn baseline estimators for train/evaluation diagnostics
+only. It must not persist models or predictions, tune hyperparameters, alter
+prepared rows, or leak validation/test statistics into fitting.
 
 If preparation selects reference-dependent properties (`specific_enthalpy`,
 `specific_entropy`, or `specific_internal_energy`) as features, targets, or

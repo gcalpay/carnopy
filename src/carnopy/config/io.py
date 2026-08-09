@@ -60,6 +60,25 @@ def _load_config_payload(
 
 def load_sweep_config_file(path: str | Path) -> LoadedSweepConfig:
     config_path, raw_bytes, payload = _load_yaml_mapping(path)
+    return _load_sweep_config_payload(config_path, raw_bytes, payload)
+
+
+def load_sweep_config_bytes(
+    raw_bytes: bytes,
+    *,
+    source_name: str = "<memory>",
+) -> LoadedSweepConfig:
+    """Load one model-sweep configuration from exact in-memory YAML bytes."""
+    config_path = Path(source_name)
+    payload = _parse_yaml_mapping(config_path, raw_bytes)
+    return _load_sweep_config_payload(config_path, raw_bytes, payload)
+
+
+def _load_sweep_config_payload(
+    config_path: Path,
+    raw_bytes: bytes,
+    payload: dict[str, Any],
+) -> LoadedSweepConfig:
     if payload.get("document_type") == "dataset":
         raise ConfigError("dataset documents must be run with `carnopy generate`")
     try:

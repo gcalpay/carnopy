@@ -1,19 +1,26 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from carnopy._execution import ExecutionCancelled, ExecutionControl
 from carnopy._version import __version__
 from carnopy.backends.coolprop import CoolPropBackend
 from carnopy.config.io import LoadedSweepConfig
-from carnopy.domain.failures import CarnopyError
+from carnopy.domain.failures import CarnopyError, OutputError
 from carnopy.outputs import hash_artifacts, write_bytes, write_json
 from carnopy.pipeline import run_generation
 from carnopy.provenance import sha256_bytes
 from carnopy.results import RunResult, SweepResult, SweepStatus
 from carnopy.sweeps.comparison import ComparisonArtifacts, write_comparison_artifacts
-from carnopy.sweeps.layout import SweepLayout, create_sweep_layout, finalize_sweep_layout
+from carnopy.sweeps.layout import (
+    SweepLayout,
+    cleanup_sweep_layout,
+    create_sweep_layout,
+    finalize_sweep_layout,
+)
 from carnopy.sweeps.normalize import NormalizedSweep, normalize_sweep_config
 from carnopy.sweeps.plots import render_comparison_plots
 from carnopy.visualization.render import import_matplotlib
@@ -25,10 +32,30 @@ SWEEP_REPORT_SCHEMA_VERSION = 1
 def run_model_sweep(
     loaded: LoadedSweepConfig,
     output_root: Path,
+    *,
+    execution: ExecutionControl | None = None,
 ) -> SweepResult:
-    normalized = normalize_sweep_config(loaded)
+    return _run_model_sweep(
+        loaded,
+        normalize_sweep_config(loaded),
+        output_root,
+        execution=execution,
+    )
+
+
+def _run_model_sweep(
+    loaded: LoadedSweepConfig,
+    normalized: NormalizedSweep,
+    output_root: Path,
+    *,
+    execution: ExecutionControl | None = None,
+) -> SweepResult:
+    if execution is not None:
+        execution.phase("validation")
     if loaded.model.comparison_plots is not None:
         import_matplotlib()
+    if execution is not None:
+        execution.raise_if_cancelled()
     sweep_run_id = str(uuid4())
     sweep_id = f"sweep-{sha256_bytes(normalized.normalized_bytes)}"
     created_at = datetime.now(UTC)
@@ -46,77 +73,120 @@ def run_model_sweep(
     comparison_plot_failure_count = 0
     status: SweepStatus = "failed"
     try:
+        if execution is not None:
+            execution.phase("sweep_configuration")
         write_bytes(layout.staging_directory / "sweep.original.yaml", loaded.raw_bytes)
+        if execution is not None:
+            execution.raise_if_cancelled()
         write_bytes(layout.staging_directory / "sweep.normalized.json", normalized.normalized_bytes)
         models_root = layout.staging_directory / "models"
         public_models_root = layout.final_directory / "models"
-        for model in loaded.model.backend.models:
-            child_parent = models_root / model
-            public_child_parent = public_models_root / model
-            result = run_generation(
-                normalized.child_configs[model],
-                child_parent,
-                public_output_root=public_child_parent,
-                add_state_keys=True,
-            )
-            child_results[model] = result
-            child_paths[model] = child_parent / result.output_directory.name
-        status = "completed"
-        comparison = write_comparison_artifacts(
-            sweep_id=sweep_id,
-            reference_model=loaded.model.backend.reference_model,
-            child_run_paths=child_paths,
-            child_results=child_results,
-            properties=normalized.child_normalized[loaded.model.backend.reference_model].properties,
-            comparison_directory=layout.staging_directory / "comparison",
-        )
-        if loaded.model.comparison_plots is not None:
-            (
-                comparison_plot_directory,
-                comparison_report_path,
-                comparison_plot_failure_count,
-            ) = render_comparison_plots(
-                comparison_plots=loaded.model.comparison_plots,
-                values_path=comparison.values_path,
-                deltas_path=comparison.deltas_path,
-                output_directory=layout.staging_directory / "comparison_plots",
-                sweep_identity=_sweep_identity(
-                    sweep_id=sweep_id,
-                    sweep_run_id=sweep_run_id,
-                    normalized=normalized,
-                ),
-                selected_models=loaded.model.backend.models,
-                reference_model=loaded.model.backend.reference_model,
-                fluid_aliases=_fluid_aliases(normalized),
-            )
-            if comparison_plot_failure_count:
-                status = "incomplete"
-                failure_message = (
-                    f"{comparison_plot_failure_count} comparison plot request(s) failed"
+        projected_by_model = {
+            model: normalized.child_normalized[model].projected_rows
+            for model in loaded.model.backend.models
+        }
+        projected_total = sum(projected_by_model.values())
+        completed_before_model = 0
+        try:
+            for model in loaded.model.backend.models:
+                if execution is not None:
+                    execution.phase(f"model:{model}")
+                child_parent = models_root / model
+                public_child_parent = public_models_root / model
+                result = run_generation(
+                    normalized.child_configs[model],
+                    child_parent,
+                    public_output_root=public_child_parent,
+                    add_state_keys=True,
+                    execution=_child_execution(
+                        execution,
+                        model=model,
+                        completed_before_model=completed_before_model,
+                        projected_total=projected_total,
+                    ),
                 )
-    except CarnopyError as exc:
-        status = "incomplete" if child_results else "failed"
-        failure_message = str(exc)
-    except Exception as exc:
-        status = "incomplete" if child_results else "failed"
-        failure_message = str(exc)
+                child_results[model] = result
+                child_paths[model] = child_parent / result.output_directory.name
+                completed_before_model += projected_by_model[model]
+                if execution is not None:
+                    execution.checkpoint(completed_before_model, projected_total)
+            status = "completed"
+            if execution is not None:
+                execution.phase("comparison")
+            comparison = write_comparison_artifacts(
+                sweep_id=sweep_id,
+                reference_model=loaded.model.backend.reference_model,
+                child_run_paths=child_paths,
+                child_results=child_results,
+                properties=normalized.child_normalized[
+                    loaded.model.backend.reference_model
+                ].properties,
+                comparison_directory=layout.staging_directory / "comparison",
+                checkpoint=(None if execution is None else execution.raise_if_cancelled),
+            )
+            if loaded.model.comparison_plots is not None:
+                if execution is not None:
+                    execution.phase("comparison_plots")
+                (
+                    comparison_plot_directory,
+                    comparison_report_path,
+                    comparison_plot_failure_count,
+                ) = render_comparison_plots(
+                    comparison_plots=loaded.model.comparison_plots,
+                    values_path=comparison.values_path,
+                    deltas_path=comparison.deltas_path,
+                    output_directory=layout.staging_directory / "comparison_plots",
+                    sweep_identity=_sweep_identity(
+                        sweep_id=sweep_id,
+                        sweep_run_id=sweep_run_id,
+                        normalized=normalized,
+                    ),
+                    selected_models=loaded.model.backend.models,
+                    reference_model=loaded.model.backend.reference_model,
+                    fluid_aliases=_fluid_aliases(normalized),
+                    checkpoint=(None if execution is None else execution.raise_if_cancelled),
+                )
+                if execution is not None:
+                    execution.raise_if_cancelled()
+                if comparison_plot_failure_count:
+                    status = "incomplete"
+                    failure_message = (
+                        f"{comparison_plot_failure_count} comparison plot request(s) failed"
+                    )
+        except ExecutionCancelled:
+            raise
+        except CarnopyError as exc:
+            status = "incomplete" if child_results else "failed"
+            failure_message = str(exc)
 
-    artifact_hashes = _write_sweep_reports(
-        loaded=loaded,
-        normalized=normalized,
-        layout=layout,
-        sweep_id=sweep_id,
-        sweep_run_id=sweep_run_id,
-        status=status,
-        created_at=created_at,
-        child_results=child_results,
-        comparison=comparison,
-        comparison_plot_directory=comparison_plot_directory,
-        comparison_report_path=comparison_report_path,
-        failure_message=failure_message,
-    )
-    _ = artifact_hashes
-    finalize_sweep_layout(layout)
+        if execution is not None:
+            execution.phase("reporting")
+        _write_sweep_reports(
+            loaded=loaded,
+            normalized=normalized,
+            layout=layout,
+            sweep_id=sweep_id,
+            sweep_run_id=sweep_run_id,
+            status=status,
+            created_at=created_at,
+            child_results=child_results,
+            comparison=comparison,
+            comparison_plot_directory=comparison_plot_directory,
+            comparison_report_path=comparison_report_path,
+            failure_message=failure_message,
+            checkpoint=(None if execution is None else execution.raise_if_cancelled),
+        )
+        if execution is not None:
+            execution.protected_phase("finalization")
+        finalize_sweep_layout(layout)
+    except Exception as original:
+        try:
+            cleanup_sweep_layout(layout)
+        except Exception as cleanup_error:
+            raise OutputError(
+                f"model sweep failed ({original}); staging cleanup failed: {cleanup_error}"
+            ) from cleanup_error
+        raise
     return SweepResult(
         sweep_id=sweep_id,
         sweep_run_id=sweep_run_id,
@@ -152,6 +222,33 @@ def run_model_sweep(
     )
 
 
+def _child_execution(
+    parent: ExecutionControl | None,
+    *,
+    model: str,
+    completed_before_model: int,
+    projected_total: int,
+) -> ExecutionControl | None:
+    if parent is None:
+        return None
+    return ExecutionControl(
+        cancellation_requested=parent.cancellation_requested,
+        on_phase=lambda name, cancellable: parent.phase(
+            f"model:{model}:{name}",
+            cancellable=cancellable,
+        ),
+        on_progress=lambda completed, _total: parent.checkpoint(
+            completed_before_model + completed,
+            projected_total,
+        ),
+        on_protected_phase=lambda name: parent.on_phase(
+            f"model:{model}:{name}",
+            False,
+        ),
+        minimum_progress_interval=parent.minimum_progress_interval,
+    )
+
+
 def _write_sweep_reports(
     *,
     loaded: LoadedSweepConfig,
@@ -166,6 +263,7 @@ def _write_sweep_reports(
     comparison_plot_directory: Path | None,
     comparison_report_path: Path | None,
     failure_message: str | None,
+    checkpoint: Callable[[], None] | None,
 ) -> dict[str, str]:
     hashed_names = ["sweep.original.yaml", "sweep.normalized.json"]
     if comparison is not None:
@@ -197,8 +295,12 @@ def _write_sweep_reports(
         "failure_message": failure_message,
         "output_directory": str(layout.final_directory),
     }
+    if checkpoint is not None:
+        checkpoint()
     write_json(layout.staging_directory / "report.json", report)
     hashed_names.append("report.json")
+    if checkpoint is not None:
+        checkpoint()
     artifact_hashes = hash_artifacts(layout.staging_directory, hashed_names)
     metadata = {
         "sweep_metadata_schema_version": SWEEP_METADATA_SCHEMA_VERSION,
@@ -229,7 +331,11 @@ def _write_sweep_reports(
         "output_directory": str(layout.final_directory),
         "artifact_hashes": artifact_hashes,
     }
+    if checkpoint is not None:
+        checkpoint()
     write_json(layout.staging_directory / "metadata.json", metadata)
+    if checkpoint is not None:
+        checkpoint()
     return artifact_hashes
 
 

@@ -156,6 +156,63 @@ def test_activity_selected_generation_exposes_typed_actions_and_diagnostic_text(
     assert '"terminal_envelope"' in controller.get_selected_diagnostic_text()
 
 
+@pytest.mark.parametrize(
+    ("operation", "owner", "run_key", "run_id"),
+    [
+        ("execute_sweep", "sweep", "sweep_run_id", "sweep-run"),
+        ("execute_preparation", "preparation", "preparation_run_id", "preparation-run"),
+    ],
+)
+def test_activity_projects_finalized_workflow_outputs_as_inspectable(
+    tmp_path: Path,
+    application: QCoreApplication,
+    operation: str,
+    owner: str,
+    run_key: str,
+    run_id: str,
+) -> None:
+    del application
+    workspace = initialize_workspace(tmp_path / owner)
+    store = JobStore(workspace.private_directory)
+    record = store.start(
+        request_id=f"00000000-0000-0000-0000-{len(owner):012d}",
+        operation=operation,
+        config_relative_path="configs/workflow.yaml",
+        yaml_snapshot="schema_version: 2\n",
+        config_sha256="a" * 64,
+        owner=owner,
+        plan_identity={"plan_id": "b" * 64},
+        preparation_source_identity=(
+            {"inspection_revision": "c" * 64} if owner == "preparation" else None
+        ),
+    )
+    request_id = str(record["request_id"])
+    output = workspace.outputs / run_id
+    store.finish(
+        record,
+        {
+            "request_id": request_id,
+            "request_type": operation,
+            "terminal_event": {
+                "protocol_version": 1,
+                "request_id": request_id,
+                "type": "result",
+                "payload": {run_key: run_id, "output_directory": str(output)},
+            },
+            "stderr": "",
+            "exit_code": 0,
+            "exit_status": "normal",
+            "force_stopped": False,
+        },
+    )
+
+    controller, _coordinator = controller_for(workspace)
+    assert controller.select_record(request_id)
+    assert controller.get_can_inspect_run()
+    assert controller.get_selected_record_summary()["runId"] == run_id
+    assert controller.get_selected_record_summary()["outputDirectory"] == str(output)
+
+
 def test_activity_record_removal_never_removes_generated_artifacts(
     tmp_path: Path,
     application: QCoreApplication,

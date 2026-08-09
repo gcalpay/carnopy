@@ -34,9 +34,12 @@ def build_scenario_outputs(
     frame: pd.DataFrame,
     *,
     source_kind: str,
+    checkpoint: Callable[[], None] | None = None,
 ) -> list[ScenarioOutput]:
     outputs: list[ScenarioOutput] = []
     for scenario in scenarios:
+        if checkpoint is not None:
+            checkpoint()
         partitions, partition_metadata = _partition_frame(
             scenario,
             frame,
@@ -63,6 +66,8 @@ def build_scenario_outputs(
                 },
             )
         )
+        if checkpoint is not None:
+            checkpoint()
     return outputs
 
 

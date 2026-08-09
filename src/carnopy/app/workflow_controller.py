@@ -1,0 +1,618 @@
+from __future__ import annotations
+
+import copy
+import hashlib
+from pathlib import Path
+from typing import Any, Literal, cast
+
+from PySide6.QtCore import QObject, Signal
+
+from carnopy.app.config_document import SavedConfigSnapshot, is_path_within, source_matches
+from carnopy.app.inspection_controller import InspectionController
+from carnopy.app.jobs import JobStore
+from carnopy.app.protocol import RequestType, WorkerEvent
+from carnopy.app.request_coordinator import (
+    DesktopRequestCoordinator,
+    RequestOutcome,
+    RequestOwner,
+    RequestReservation,
+    RequestSession,
+)
+from carnopy.app.workspace import Workspace
+
+WorkflowKind = Literal["sweep", "preparation"]
+
+
+class WorkflowController(QObject):
+    """Private nonvisual load/validate/plan/execute state for one workflow."""
+
+    state_changed = Signal()
+    activity_record_changed = Signal()
+    output_finalized = Signal(object)
+
+    def __init__(
+        self,
+        coordinator: DesktopRequestCoordinator,
+        *,
+        kind: WorkflowKind,
+        parent: QObject | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.coordinator = coordinator
+        self.kind = kind
+        self.owner: RequestOwner = kind
+        self.workspace: Workspace | None = None
+        self._store: JobStore | None = None
+        self._session: RequestSession | None = None
+        self._operation = ""
+        self._state = "unavailable"
+        self._phase = ""
+        self._progress: dict[str, Any] = {}
+        self._failure: dict[str, Any] = {}
+        self._loaded_config: dict[str, Any] | None = None
+        self._config_path: Path | None = None
+        self._config_sha256 = ""
+        self._validation: dict[str, Any] | None = None
+        self._plan: dict[str, Any] | None = None
+        self._plan_config_sha256 = ""
+        self._result: dict[str, Any] | None = None
+        self._activity_persistence_issue = ""
+        self._active_snapshot: SavedConfigSnapshot | None = None
+        self._active_record: dict[str, Any] | None = None
+        coordinator.busy_changed.connect(lambda _busy: self.state_changed.emit())
+
+    @property
+    def state(self) -> str:
+        return self._state
+
+    @property
+    def operation(self) -> str:
+        return self._operation
+
+    @property
+    def phase(self) -> str:
+        return self._phase
+
+    @property
+    def progress(self) -> dict[str, Any]:
+        return copy.deepcopy(self._progress)
+
+    @property
+    def failure(self) -> dict[str, Any]:
+        return copy.deepcopy(self._failure)
+
+    @property
+    def loaded_config(self) -> dict[str, Any] | None:
+        return copy.deepcopy(self._loaded_config)
+
+    @property
+    def config_path(self) -> Path | None:
+        return self._config_path
+
+    @property
+    def config_sha256(self) -> str:
+        return self._config_sha256
+
+    @property
+    def validation(self) -> dict[str, Any] | None:
+        return copy.deepcopy(self._validation)
+
+    @property
+    def current_plan(self) -> dict[str, Any] | None:
+        return copy.deepcopy(self._plan)
+
+    @property
+    def result(self) -> dict[str, Any] | None:
+        return copy.deepcopy(self._result)
+
+    @property
+    def activity_persistence_issue(self) -> str:
+        return self._activity_persistence_issue
+
+    @property
+    def can_cancel(self) -> bool:
+        return self._session is not None and self._session.cooperative_cancel_available
+
+    @property
+    def can_force_stop(self) -> bool:
+        return self._session is not None and self._session.force_stop_available
+
+    @property
+    def can_plan(self) -> bool:
+        try:
+            self._saved_snapshot()
+            self._plan_context()
+        except ValueError:
+            return False
+        return self._session is None and not self.coordinator.is_busy
+
+    @property
+    def can_execute(self) -> bool:
+        if self._plan is None or self._plan_config_sha256 != self._config_sha256:
+            return False
+        if not self._plan_context_matches():
+            return False
+        try:
+            self._saved_snapshot()
+        except ValueError:
+            return False
+        return self._session is None and not self.coordinator.is_busy
+
+    def set_workspace(self, workspace: Workspace | None) -> None:
+        if workspace == self.workspace:
+            self.state_changed.emit()
+            return
+        self.workspace = workspace
+        self._store = None if workspace is None else JobStore(workspace.private_directory)
+        self._operation = ""
+        self._phase = ""
+        self._progress = {}
+        self._failure = {}
+        self._loaded_config = None
+        self._config_path = None
+        self._config_sha256 = ""
+        self._validation = None
+        self._result = None
+        self._invalidate_plan("workspace changed")
+        self._set_activity_persistence_issue("")
+        self._state = "ready" if workspace is not None else "unavailable"
+        self.state_changed.emit()
+
+    def load_config(self, path: str | Path) -> bool:
+        return self._start(
+            "load",
+            cast(RequestType, f"load_{self.kind}_config"),
+            {"config_path": str(Path(path).expanduser().absolute())},
+        )
+
+    def validate_text(self, yaml_text: str, *, source_name: str = "<gui>") -> bool:
+        return self._start(
+            "validate",
+            cast(RequestType, f"validate_{self.kind}_config"),
+            {"yaml_text": yaml_text, "source_name": source_name},
+        )
+
+    def plan(self) -> bool:
+        try:
+            snapshot = self._saved_snapshot()
+            context = self._plan_context()
+        except ValueError as exc:
+            self._set_local_failure("request", "plan_unavailable", str(exc))
+            return False
+        workspace = self.workspace
+        if workspace is None:
+            return False
+        payload: dict[str, object] = {
+            "config_path": str(snapshot.path),
+            "expected_config_sha256": snapshot.sha256,
+            "configs_root": str(workspace.configs),
+            **context,
+        }
+        return self._start(
+            "plan",
+            cast(RequestType, f"plan_{self.kind}"),
+            payload,
+            snapshot=snapshot,
+        )
+
+    def execute(self) -> bool:
+        plan = self._plan
+        if plan is None or not self.can_execute:
+            self._set_local_failure(
+                "request",
+                "execute_unavailable",
+                "create a current plan before execution",
+            )
+            return False
+        try:
+            snapshot = self._saved_snapshot()
+            context = self._plan_context()
+        except ValueError as exc:
+            self._set_local_failure("request", "execute_unavailable", str(exc))
+            return False
+        workspace = self.workspace
+        if workspace is None:
+            return False
+        payload: dict[str, object] = {
+            "config_path": str(snapshot.path),
+            "expected_config_sha256": snapshot.sha256,
+            "configs_root": str(workspace.configs),
+            "expected_plan_id": str(plan["plan_id"]),
+            "output_root": str(workspace.outputs),
+            **context,
+        }
+        return self._start(
+            "execute",
+            cast(RequestType, f"execute_{self.kind}"),
+            payload,
+            snapshot=snapshot,
+            persist_execution=True,
+        )
+
+    def cancel(self) -> bool:
+        session = self._session
+        if session is None or not session.cancel():
+            return False
+        self._state = "cancellation_requested"
+        self.state_changed.emit()
+        return True
+
+    def force_stop(self) -> bool:
+        session = self._session
+        if session is None or not session.force_stop():
+            return False
+        self._state = "force_stopping"
+        self.state_changed.emit()
+        return True
+
+    def _start(
+        self,
+        operation: str,
+        request_type: RequestType,
+        payload: dict[str, object],
+        *,
+        snapshot: SavedConfigSnapshot | None = None,
+        persist_execution: bool = False,
+    ) -> bool:
+        if self._session is not None or self.coordinator.is_busy:
+            return False
+        self._operation = operation
+        self._state = "starting"
+        self._phase = ""
+        self._progress = {}
+        self._failure = {}
+        self._result = None
+        self._active_record = None
+        self._active_snapshot = snapshot
+        reservation: RequestReservation
+        try:
+            reservation = self.coordinator.reserve_request(self.owner, request_type)
+        except (RuntimeError, ValueError) as exc:
+            self._set_local_failure("request", "request_unavailable", str(exc))
+            return False
+        if operation in {"load", "plan"}:
+            self._invalidate_plan(f"{operation} started")
+        self._set_activity_persistence_issue("")
+        if persist_execution:
+            try:
+                self._start_activity(reservation, snapshot)
+            except (OSError, UnicodeError, ValueError) as exc:
+                self.coordinator.abandon_reserved_request(reservation)
+                self._set_activity_persistence_issue(
+                    f"could not persist workflow Activity record: {exc}"
+                )
+                self._set_local_failure(
+                    "process",
+                    "activity_persistence_failed",
+                    f"could not persist workflow Activity record: {exc}",
+                )
+                return False
+        try:
+            session = self.coordinator.start_reserved_request(reservation, payload)
+        except Exception as exc:
+            self.coordinator.abandon_reserved_request(reservation)
+            self._finish_start_failure(reservation, exc)
+            if operation == "load":
+                self._clear_loaded_configuration()
+            self._set_local_failure("process", "worker_start_failed", str(exc))
+            return False
+        self._session = session
+        session.event_received.connect(self._event_received)
+        session.state_changed.connect(self._session_state_changed)
+        session.policy_changed.connect(self.state_changed)
+        session.completed.connect(self._request_completed)
+        self.state_changed.emit()
+        return True
+
+    def _start_activity(
+        self,
+        reservation: RequestReservation,
+        snapshot: SavedConfigSnapshot | None,
+    ) -> None:
+        workspace = self.workspace
+        store = self._store
+        plan = self._plan
+        if workspace is None or store is None or snapshot is None or plan is None:
+            raise ValueError("workflow execution Activity context is incomplete")
+        relative = snapshot.path.relative_to(workspace.root).as_posix()
+        self._active_record = store.start(
+            request_id=str(reservation.request_id),
+            operation=f"execute_{self.kind}",
+            config_relative_path=relative,
+            yaml_snapshot=snapshot.yaml_bytes.decode("utf-8"),
+            config_sha256=snapshot.sha256,
+            owner=self.owner,
+            plan_identity={
+                "plan_id": plan.get("plan_id"),
+                "plan_schema_version": plan.get("plan_schema_version"),
+                "fingerprint": plan.get("fingerprint"),
+            },
+            preparation_source_identity=(
+                self._activity_source_identity() if self.kind == "preparation" else None
+            ),
+        )
+        self.activity_record_changed.emit()
+
+    def _event_received(self, value: object) -> None:
+        event = cast(WorkerEvent, value)
+        if event.type == "phase":
+            self._phase = str(event.payload.get("name", "unknown"))
+            self._persist_event(event)
+        elif event.type == "progress":
+            self._progress = dict(event.payload)
+            self._persist_event(event)
+        self.state_changed.emit()
+
+    def _session_state_changed(self, state: str) -> None:
+        if state in {"starting", "running", "cancellation_requested", "force_stopping"}:
+            self._state = state
+            self.state_changed.emit()
+
+    def _request_completed(self, value: object) -> None:
+        outcome = cast(RequestOutcome, value)
+        session = self._session
+        if session is None or outcome.request_id != session.request_id:
+            return
+        if self._active_record is not None:
+            self._finish_activity(outcome)
+        result = outcome.result_payload
+        operation = self._operation
+        if result is None:
+            self._failure = outcome.failure_payload or {}
+            code = str(self._failure.get("code", "execution_failed"))
+            if operation == "load":
+                self._clear_loaded_configuration()
+            if operation in {"load", "plan"} or code in {"source_changed", "stale_plan"}:
+                self._invalidate_plan(code)
+            self._state = (
+                "cancelled"
+                if code == "cancelled"
+                else "force_stopped"
+                if outcome.force_stopped
+                else "failed"
+            )
+        elif operation == "load":
+            self._accept_loaded(result)
+            self._state = "ready"
+        elif operation == "validate":
+            self._validation = copy.deepcopy(result)
+            self._state = "validated" if result.get("valid", True) else "invalid"
+        elif operation == "plan":
+            try:
+                self._accept_plan(result)
+            except ValueError as exc:
+                self._invalidate_plan("plan result no longer matches current inputs")
+                self._set_local_failure("request", "stale_plan", str(exc))
+            else:
+                self._state = "planned"
+        else:
+            self._result = copy.deepcopy(result)
+            self._state = "succeeded"
+            output = result.get("output_directory")
+            if isinstance(output, str) and output:
+                self.output_finalized.emit(Path(output))
+        self._session = None
+        self._active_snapshot = None
+        self._active_record = None
+        self.state_changed.emit()
+
+    def _accept_loaded(self, result: dict[str, object]) -> None:
+        source = result.get("source_name")
+        digest = result.get("source_sha256")
+        config = result.get("config")
+        if (
+            not isinstance(source, str)
+            or not isinstance(digest, str)
+            or not isinstance(config, dict)
+        ):
+            raise ValueError("workflow load result is missing configuration identity")
+        self._loaded_config = copy.deepcopy(config)
+        self._config_path = Path(source).expanduser().resolve()
+        self._config_sha256 = digest
+        self._validation = None
+        self._invalidate_plan("configuration loaded")
+
+    def _accept_plan(self, result: dict[str, object]) -> None:
+        plan_id = result.get("plan_id")
+        config_sha = result.get("configuration_sha256")
+        if not isinstance(plan_id, str) or config_sha != self._config_sha256:
+            raise ValueError("workflow plan result does not match the loaded configuration")
+        if not self._plan_result_matches_current_context(result):
+            raise ValueError("workflow plan result no longer matches the current inputs")
+        self._plan = copy.deepcopy(result)
+        self._plan_config_sha256 = self._config_sha256
+        self._record_plan_context()
+
+    def _saved_snapshot(self) -> SavedConfigSnapshot:
+        workspace = self.workspace
+        path = self._config_path
+        digest = self._config_sha256
+        if workspace is None:
+            raise ValueError("open a workspace first")
+        if path is None or not digest:
+            raise ValueError(f"load a {self.kind} configuration first")
+        if not is_path_within(path, workspace.configs):
+            raise ValueError(
+                "external workflow configurations must be saved under the workspace configs folder"
+            )
+        if not source_matches(path, digest):
+            raise ValueError("saved workflow configuration changed; load it again")
+        yaml_bytes = path.read_bytes()
+        if hashlib.sha256(yaml_bytes).hexdigest() != digest:
+            raise ValueError("saved workflow configuration changed; load it again")
+        return SavedConfigSnapshot(path=path, yaml_bytes=yaml_bytes, sha256=digest)
+
+    def _plan_context(self) -> dict[str, object]:
+        return {}
+
+    def _record_plan_context(self) -> None:
+        pass
+
+    def _plan_context_matches(self) -> bool:
+        return True
+
+    def _plan_result_matches_current_context(self, _result: dict[str, object]) -> bool:
+        return True
+
+    def _activity_source_identity(self) -> dict[str, Any] | None:
+        return None
+
+    def _invalidate_plan(self, _reason: str) -> None:
+        self._plan = None
+        self._plan_config_sha256 = ""
+
+    def _clear_loaded_configuration(self) -> None:
+        self._loaded_config = None
+        self._config_path = None
+        self._config_sha256 = ""
+        self._validation = None
+
+    def _persist_event(self, event: WorkerEvent) -> None:
+        store = self._store
+        record = self._active_record
+        if store is None or record is None:
+            return
+        try:
+            store.update_event(record, event.type, event.payload)
+        except (OSError, ValueError) as exc:
+            self._set_activity_persistence_issue(f"could not update workflow Activity: {exc}")
+        else:
+            self._set_activity_persistence_issue("")
+            self.activity_record_changed.emit()
+
+    def _finish_activity(self, outcome: RequestOutcome) -> None:
+        store = self._store
+        record = self._active_record
+        if store is None or record is None:
+            return
+        try:
+            store.finish(record, cast(dict[str, Any], outcome.terminal_envelope))
+        except (OSError, ValueError):
+            try:
+                store.write(record)
+            except (OSError, ValueError) as retry_exc:
+                self._set_activity_persistence_issue(
+                    f"could not persist terminal workflow Activity after one retry: {retry_exc}"
+                )
+            else:
+                self._set_activity_persistence_issue("")
+                self.activity_record_changed.emit()
+        else:
+            self._set_activity_persistence_issue("")
+            self.activity_record_changed.emit()
+
+    def _finish_start_failure(
+        self,
+        reservation: RequestReservation,
+        error: Exception,
+    ) -> None:
+        store = self._store
+        record = self._active_record
+        if store is None or record is None:
+            return
+        try:
+            store.finish_start_failure(
+                record,
+                request_type=reservation.request_type,
+                category="process",
+                code="worker_start_failed",
+                message=str(error),
+            )
+        except (OSError, ValueError):
+            try:
+                store.write(record)
+            except (OSError, ValueError) as retry_exc:
+                self._set_activity_persistence_issue(
+                    f"could not persist workflow start failure after one retry: {retry_exc}"
+                )
+            else:
+                self._set_activity_persistence_issue("")
+                self.activity_record_changed.emit()
+        else:
+            self._set_activity_persistence_issue("")
+            self.activity_record_changed.emit()
+
+    def _set_local_failure(self, category: str, code: str, message: str) -> None:
+        self._failure = {"category": category, "code": code, "message": message}
+        self._state = "failed"
+        self.state_changed.emit()
+
+    def _set_activity_persistence_issue(self, issue: str) -> None:
+        if issue == self._activity_persistence_issue:
+            return
+        self._activity_persistence_issue = issue
+        self.state_changed.emit()
+
+
+class SweepWorkflowController(WorkflowController):
+    def __init__(
+        self,
+        coordinator: DesktopRequestCoordinator,
+        parent: QObject | None = None,
+    ) -> None:
+        super().__init__(coordinator, kind="sweep", parent=parent)
+
+
+class PreparationWorkflowController(WorkflowController):
+    def __init__(
+        self,
+        coordinator: DesktopRequestCoordinator,
+        inspection: InspectionController,
+        parent: QObject | None = None,
+    ) -> None:
+        super().__init__(coordinator, kind="preparation", parent=parent)
+        self.inspection = inspection
+        self._planned_inspection_revision = ""
+        inspection.inspection_changed.connect(self._inspection_changed)
+
+    def _plan_context(self) -> dict[str, object]:
+        snapshot = self.inspection.preparation_source_snapshot()
+        if snapshot is None:
+            reason = self.inspection.get_preparation_ineligible_reason()
+            raise ValueError(reason or "inspect an eligible preparation source first")
+        source, revision, descriptor = snapshot
+        return {
+            "source_path": str(source),
+            "inspection_revision": revision,
+            "inspection_descriptor": descriptor,
+        }
+
+    def _record_plan_context(self) -> None:
+        snapshot = self.inspection.preparation_source_snapshot()
+        self._planned_inspection_revision = "" if snapshot is None else snapshot[1]
+
+    def _plan_context_matches(self) -> bool:
+        snapshot = self.inspection.preparation_source_snapshot()
+        return snapshot is not None and snapshot[1] == self._planned_inspection_revision
+
+    def _plan_result_matches_current_context(self, result: dict[str, object]) -> bool:
+        snapshot = self.inspection.preparation_source_snapshot()
+        source_revision = result.get("source_revision")
+        if snapshot is None or not isinstance(source_revision, dict):
+            return False
+        source, revision, descriptor = snapshot
+        return (
+            source_revision.get("inspection_revision") == revision
+            and source_revision.get("inspection_descriptor") == descriptor
+            and descriptor.get("source_path") == str(source)
+        )
+
+    def _activity_source_identity(self) -> dict[str, Any] | None:
+        snapshot = self.inspection.preparation_source_snapshot()
+        if snapshot is None:
+            return None
+        source, revision, descriptor = snapshot
+        return {
+            "source_path": str(source),
+            "inspection_revision": revision,
+            "descriptor": descriptor,
+        }
+
+    def _invalidate_plan(self, reason: str) -> None:
+        super()._invalidate_plan(reason)
+        self._planned_inspection_revision = ""
+
+    def _inspection_changed(self, _payload: object) -> None:
+        if self._session is None or self._operation != "execute":
+            self._invalidate_plan("inspection changed")
+        self.state_changed.emit()

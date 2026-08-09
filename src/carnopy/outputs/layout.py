@@ -8,6 +8,7 @@ from pathlib import Path
 from uuid import UUID
 
 from carnopy.domain.failures import OutputError
+from carnopy.outputs.finalization import rename_directory_no_replace
 
 MODE_SLUGS = {
     "property_table": "property",
@@ -74,7 +75,7 @@ def finalize_run_layout(layout: RunLayout) -> None:
         raise OutputError(f"refusing to overwrite existing run directory {layout.final_directory}")
     _verify_staging_directory(layout)
     try:
-        layout.staging_directory.rename(layout.final_directory)
+        rename_directory_no_replace(layout.staging_directory, layout.final_directory)
     except OSError as exc:
         raise OutputError(f"could not finalize run directory: {exc}") from exc
 

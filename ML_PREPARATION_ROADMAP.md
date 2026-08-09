@@ -40,14 +40,43 @@ requires its own reviewed plan before implementation.
   card.
 
 Parquet remains canonical. Array and tensor files are derived consumption
-formats. Carnopy does not export pickled arrays, `.pt`, or `.pth` files and does
-not require PyTorch. Scikit-learn is isolated in the optional `analysis` extra;
-the base and `ml` installations remain independent of it.
+formats. The current implementation does not export pickled arrays, `.pt`, or
+`.pth` files and does not require PyTorch. Scikit-learn is isolated in the
+optional `analysis` extra; the base and `ml` installations remain independent
+of it.
 
 Categorical auxiliary arrays may use deterministic integer codes only when
 auxiliary export is explicitly enabled. The manifest records the original
 column, vocabulary, code order, missing-value code, dtype, and output-array
 name.
+
+## Reviewed future direction — Optional PyTorch dataset export
+
+The product sequence now prioritizes desktop workflow depth and then source
+breadth. This bounded PyTorch consumption format remains reviewed but planned
+and unscheduled; it is not part of the current public interface.
+
+The reviewed boundary is:
+
+- configuration uses one `pytorch` format token under `outputs.arrays`;
+- one `.pt` artifact contains a plain dictionary of CPU tensors for features,
+  targets, and explicitly requested numeric or categorical auxiliary arrays;
+- `.pth` is not a second format and is not emitted as a duplicate;
+- custom Python objects, datasets, models, optimizers, predictions, and
+  checkpoints are forbidden from the artifact;
+- column order, units, dtype conversions, shapes, vocabularies, PyTorch
+  version, and artifact hash remain recorded in the existing manifest;
+- documented loading uses `map_location="cpu"` and restricted
+  `weights_only=True` behavior;
+- PyTorch is isolated in a dedicated optional dependency extra, while the base
+  and existing `ml` installations remain independent; and
+- Parquet remains canonical and SafeTensors remains the safer
+  framework-neutral tensor format.
+
+The implementation stage must qualify the optional dependency across Carnopy's
+supported Python and platform matrix before changing packaging or public
+templates. It must not narrow the supported base-install matrix merely to add
+this derived format.
 
 ## Durable preparation rules
 

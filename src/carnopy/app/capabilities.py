@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.metadata
 from dataclasses import asdict
 from typing import get_args
 
@@ -96,4 +97,45 @@ def describe_capabilities(model: CoolPropModel) -> dict[str, object]:
                 "saturation_endpoint": ["saturated_liquid", "saturated_vapor"],
             },
         },
+        "workflows": {
+            "sweep": {
+                "document_type": "model_sweep",
+                "schema_version": 2,
+                "models": list(MODEL_NAMES),
+                "modes": list(MODE_NAMES),
+                "dataset_formats": list(DATASET_FORMAT_ORDER),
+                "comparison_plots": _optional_dependency(
+                    "matplotlib",
+                    extra="app",
+                ),
+            },
+            "preparation": {
+                "document_type": "preparation",
+                "schema_version": 1,
+                "source_kinds": ["dataset_run", "model_sweep"],
+                "table_formats": ["parquet"],
+                "array_formats": ["npy", "npz", "safetensors"],
+                "safetensors": _optional_dependency(
+                    "safetensors",
+                    extra="ml",
+                ),
+                "baseline_diagnostics": _optional_dependency(
+                    "scikit-learn",
+                    extra="analysis",
+                ),
+            },
+        },
+    }
+
+
+def _optional_dependency(distribution: str, *, extra: str) -> dict[str, object]:
+    try:
+        version = importlib.metadata.version(distribution)
+    except importlib.metadata.PackageNotFoundError:
+        version = None
+    return {
+        "available": version is not None,
+        "version": version,
+        "extra": extra,
+        "guidance": f'Install the optional dependency with: pip install "carnopy[{extra}]"',
     }

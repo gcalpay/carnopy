@@ -32,12 +32,16 @@ class JobStore:
         config_relative_path: str,
         yaml_snapshot: str,
         config_sha256: str,
+        owner: str = "execution",
+        plan_identity: dict[str, Any] | None = None,
+        preparation_source_identity: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         now = _utc_now()
         record: dict[str, Any] = {
             "job_schema_version": JOB_SCHEMA_VERSION,
             "request_id": request_id,
             "operation": operation,
+            "owner": owner,
             "status": "running",
             "created_at_utc": now,
             "updated_at_utc": now,
@@ -52,6 +56,10 @@ class JobStore:
             "summary": {},
             "terminal_envelope": None,
         }
+        if plan_identity is not None:
+            record["plan_identity"] = plan_identity
+        if preparation_source_identity is not None:
+            record["preparation_source_identity"] = preparation_source_identity
         self.write(record)
         return record
 
@@ -75,16 +83,32 @@ class JobStore:
         terminal_type = terminal.get("type") if isinstance(terminal, dict) else None
         payload = terminal.get("payload") if isinstance(terminal, dict) else None
         client_failure = envelope.get("client_failure")
-        if not isinstance(payload, dict) and isinstance(client_failure, dict):
+        if isinstance(client_failure, dict):
             payload = client_failure
+        clean_transport = (
+            client_failure is None
+            and envelope.get("exit_code") == 0
+            and envelope.get("exit_status") == "normal"
+            and not envelope.get("force_stopped")
+            and envelope.get("cleanup_error") is None
+        )
         if envelope.get("force_stopped"):
             status = "force_stopped"
-        elif terminal_type == "result":
+        elif terminal_type == "result" and clean_transport:
             status = "completed"
-        elif terminal_type == "cancelled":
+        elif terminal_type == "cancelled" and clean_transport:
             status = "cancelled"
         else:
             status = "failed"
+            if not isinstance(client_failure, dict) and terminal_type == "result":
+                payload = {
+                    "category": "process",
+                    "code": "execution_failed",
+                    "message": (
+                        "worker returned a result but exited with status "
+                        f"{envelope.get('exit_status')} and code {envelope.get('exit_code')}"
+                    ),
+                }
         now = _utc_now()
         record["status"] = status
         record["updated_at_utc"] = now

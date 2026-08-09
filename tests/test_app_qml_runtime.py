@@ -345,6 +345,22 @@ def test_qml_instance_lock_rejects_overlapping_launches(
     replacement.unlock()
 
 
+def test_qml_instance_lock_reclaims_dead_process_lock(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(qml_runtime_module.tempfile, "gettempdir", lambda: str(tmp_path))
+    lock_path = tmp_path / f"carnopy-qml-desktop-{os.getuid()}.lock"
+    lock_path.write_text("999999\npython\nGCA\n\n", encoding="utf-8")
+    os.utime(lock_path, (1, 1))
+
+    lock = _acquire_instance_lock()
+    try:
+        assert lock.isLocked()
+    finally:
+        lock.unlock()
+
+
 def test_qml_close_event_uses_composition_guard(
     application: QApplication,
     monkeypatch: pytest.MonkeyPatch,
@@ -537,6 +553,33 @@ def test_module_qml_launcher_smoke_exits_cleanly() -> None:
     environment["QT_QPA_PLATFORM"] = "offscreen"
     completed = subprocess.run(
         [sys.executable, "-m", "carnopy.app.qml_launcher", "--smoke-test"],
+        cwd=ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert completed.stdout == ""
+    assert completed.stderr == ""
+
+
+def test_module_qml_launcher_workspace_smoke_waits_for_startup_request(
+    tmp_path: Path,
+) -> None:
+    workspace = initialize_workspace(tmp_path / "workspace")
+    environment = os.environ.copy()
+    environment["QT_QPA_PLATFORM"] = "offscreen"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "carnopy.app.qml_launcher",
+            "--workspace",
+            str(workspace.root),
+            "--smoke-test",
+        ],
         cwd=ROOT,
         env=environment,
         capture_output=True,

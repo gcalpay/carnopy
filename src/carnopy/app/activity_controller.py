@@ -389,7 +389,11 @@ class ActivityController(QObject):
             "phase": _text(data.get("phase")),
             "progressCompleted": _nonnegative_int(progress.get("completed")),
             "progressTotal": _nonnegative_int(progress.get("total")),
-            "runId": _text(summary.get("run_id")),
+            "runId": (
+                _text(summary.get("run_id"))
+                or _text(summary.get("sweep_run_id"))
+                or _text(summary.get("preparation_run_id"))
+            ),
             "outputDirectory": _text(summary.get("output_directory")),
             "visualizationStatus": _text(visualization.get("status")),
             "readable": True,
@@ -401,11 +405,8 @@ class ActivityController(QObject):
         if state != "running":
             return state
         session = self.coordinator.active_session
-        if (
-            session is not None
-            and session.owner == "execution"
-            and str(session.request_id) == record_id
-        ):
+        owner = _text(data.get("owner"), "execution")
+        if session is not None and session.owner == owner and str(session.request_id) == record_id:
             return "running"
         return "interrupted"
 
@@ -436,6 +437,11 @@ class ActivityController(QObject):
         completed_generation = (
             operation == "generate" and self._selected_record_state == "completed"
         )
+        completed_inspectable = (
+            operation in {"generate", "execute_sweep", "execute_preparation"}
+            and self._selected_record_state == "completed"
+            and bool(output_directory)
+        )
         self._selected_record_summary = {
             **row,
             "runStatus": _text(summary.get("run_status")),
@@ -450,7 +456,7 @@ class ActivityController(QObject):
             "visualizationReportPath": _text(visualization.get("report_path")),
         }
         self._selected_diagnostic_text = json.dumps(data, indent=2, sort_keys=True)
-        self._can_inspect_run = completed_generation and bool(output_directory)
+        self._can_inspect_run = completed_inspectable
         # Every completed generation can open the configured-results context. A run
         # without a visualization report intentionally lands on its evidence-empty
         # state, where the user may explicitly inspect and explore that exact run.

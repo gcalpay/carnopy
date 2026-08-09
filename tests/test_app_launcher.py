@@ -161,6 +161,8 @@ def test_auto_platform_prefers_xcb_for_wslg_native_dialogs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("QT_QPA_PLATFORM", raising=False)
+    for name in qml_launcher.WSLG_SOFTWARE_RENDERING:
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("WSL_INTEROP", "/run/WSL/test_interop")
     monkeypatch.setenv("WSL2_GUI_APPS_ENABLED", "1")
     monkeypatch.setenv("DISPLAY", ":0")
@@ -169,6 +171,29 @@ def test_auto_platform_prefers_xcb_for_wslg_native_dialogs(
     qml_launcher.configure_qt_platform("auto")
 
     assert os.environ["QT_QPA_PLATFORM"] == "xcb"
+    assert os.environ["LIBGL_ALWAYS_SOFTWARE"] == "1"
+    assert os.environ["QSG_RHI_BACKEND"] == "opengl"
+    assert os.environ["QT_OPENGL"] == "software"
+
+
+def test_auto_platform_preserves_explicit_wslg_rendering_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("QT_QPA_PLATFORM", raising=False)
+    monkeypatch.setenv("LIBGL_ALWAYS_SOFTWARE", "0")
+    monkeypatch.setenv("QSG_RHI_BACKEND", "software")
+    monkeypatch.setenv("QT_OPENGL", "desktop")
+    monkeypatch.setenv("WSL_INTEROP", "/run/WSL/test_interop")
+    monkeypatch.setenv("WSL2_GUI_APPS_ENABLED", "1")
+    monkeypatch.setenv("DISPLAY", ":0")
+    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
+
+    qml_launcher.configure_qt_platform("auto")
+
+    assert os.environ["QT_QPA_PLATFORM"] == "xcb"
+    assert os.environ["LIBGL_ALWAYS_SOFTWARE"] == "0"
+    assert os.environ["QSG_RHI_BACKEND"] == "software"
+    assert os.environ["QT_OPENGL"] == "desktop"
 
 
 def test_auto_platform_preserves_explicit_environment_on_wslg(

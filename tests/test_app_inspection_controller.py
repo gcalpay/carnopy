@@ -155,6 +155,58 @@ def test_dataset_projection_keeps_failure_aggregates_independent(tmp_path: Path)
     coordinator.shutdown()
 
 
+def test_preparation_eligibility_is_explicit_and_revision_bound(tmp_path: Path) -> None:
+    eligible_source = tmp_path / "generated-run"
+    eligible_source.mkdir()
+    descriptor = {
+        "source_path": str(eligible_source.resolve()),
+        "source_kind": "dataset_run",
+        "inspection_revision": REVISION,
+        "controls": {},
+        "tables": [],
+    }
+    controller, coordinator = controller_for()
+    prepare_payload(
+        controller,
+        eligible_source,
+        {
+            "source_kind": "dataset",
+            "summary": {},
+            "preparation_eligible": True,
+            "preparation_ineligible_reason": "",
+            "preparation_source_descriptor": descriptor,
+        },
+    )
+
+    assert controller.get_preparation_eligible()
+    assert controller.get_preparation_ineligible_reason() == ""
+    assert controller.preparation_source_snapshot() == (
+        eligible_source.resolve(),
+        REVISION,
+        descriptor,
+    )
+
+    standalone = tmp_path / "standalone.csv"
+    standalone.touch()
+    reason = "standalone CSV and Parquet files cannot be used as preparation sources"
+    prepare_payload(
+        controller,
+        standalone,
+        {
+            "source_kind": "dataset",
+            "summary": {},
+            "preparation_eligible": False,
+            "preparation_ineligible_reason": reason,
+            "preparation_source_descriptor": None,
+        },
+    )
+
+    assert not controller.get_preparation_eligible()
+    assert controller.get_preparation_ineligible_reason() == reason
+    assert controller.preparation_source_snapshot() is None
+    coordinator.shutdown()
+
+
 def test_arrays_project_each_logical_array_with_its_own_dtype(tmp_path: Path) -> None:
     source = tmp_path / "preparation"
     source.mkdir()

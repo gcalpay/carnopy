@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
+from carnopy._execution import ExecutionCancelled
 from carnopy.domain.failures import OutputError
 from carnopy.domain.properties import PROPERTY_REGISTRY, REFERENCE_DEPENDENT_PROPERTIES
 from carnopy.provenance import sha256_file
@@ -27,6 +29,7 @@ def write_comparison_artifacts(
     child_results: dict[str, RunResult],
     properties: list[str],
     comparison_directory: Path,
+    checkpoint: Callable[[], None] | None = None,
 ) -> ComparisonArtifacts:
     try:
         comparison_directory.mkdir(parents=True, exist_ok=False)
@@ -38,17 +41,32 @@ def write_comparison_artifacts(
         child_run_paths=child_run_paths,
         child_results=child_results,
         properties=properties,
+        checkpoint=checkpoint,
     )
-    deltas = _deltas_frame(values, reference_model=reference_model)
+    deltas = _deltas_frame(
+        values,
+        reference_model=reference_model,
+        checkpoint=checkpoint,
+    )
     values_path = comparison_directory / "values.parquet"
     deltas_path = comparison_directory / "deltas.parquet"
     try:
+        if checkpoint is not None:
+            checkpoint()
         values.to_parquet(values_path, index=False)
+        if checkpoint is not None:
+            checkpoint()
         deltas.to_parquet(deltas_path, index=False)
+        if checkpoint is not None:
+            checkpoint()
         hashes = {
             "comparison/values.parquet": sha256_file(values_path),
             "comparison/deltas.parquet": sha256_file(deltas_path),
         }
+        if checkpoint is not None:
+            checkpoint()
+    except ExecutionCancelled:
+        raise
     except Exception as exc:
         raise OutputError(f"could not write comparison artifacts: {exc}") from exc
     return ComparisonArtifacts(
@@ -65,14 +83,20 @@ def _values_frame(
     child_run_paths: dict[str, Path],
     child_results: dict[str, RunResult],
     properties: list[str],
+    checkpoint: Callable[[], None] | None,
 ) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
+    processed_rows = 0
     for model, run_path in child_run_paths.items():
+        if checkpoint is not None:
+            checkpoint()
         frame = _read_child_dataset(run_path)
         if "state_key" not in frame.columns or "state_key_version" not in frame.columns:
             raise OutputError(f"child run for model {model} is missing sweep state keys")
         result = child_results[model]
         for _, row in frame.iterrows():
+            if checkpoint is not None and processed_rows % 1_024 == 0:
+                checkpoint()
             for property_name in properties:
                 definition = PROPERTY_REGISTRY[property_name]
                 value = row.get(definition.column)
@@ -102,15 +126,25 @@ def _values_frame(
                         "failure_message": row.get("failure_message"),
                     }
                 )
+            processed_rows += 1
+    if checkpoint is not None:
+        checkpoint()
     return pd.DataFrame(rows)
 
 
-def _deltas_frame(values: pd.DataFrame, *, reference_model: str) -> pd.DataFrame:
+def _deltas_frame(
+    values: pd.DataFrame,
+    *,
+    reference_model: str,
+    checkpoint: Callable[[], None] | None = None,
+) -> pd.DataFrame:
     references = values.loc[values["backend_model"] == reference_model]
     ref_lookup = {(row.state_key, row.property): row for row in references.itertuples(index=False)}
     rows: list[dict[str, Any]] = []
     candidates = values.loc[values["backend_model"] != reference_model]
-    for row in candidates.itertuples(index=False):
+    for index, row in enumerate(candidates.itertuples(index=False)):
+        if checkpoint is not None and index % 1_024 == 0:
+            checkpoint()
         reference = ref_lookup.get((row.state_key, row.property))
         reason: str | None = None
         absolute: float | None = None
@@ -157,6 +191,8 @@ def _deltas_frame(values: pd.DataFrame, *, reference_model: str) -> pd.DataFrame
                 "unavailable_reason": reason,
             }
         )
+    if checkpoint is not None:
+        checkpoint()
     return pd.DataFrame(rows)
 
 

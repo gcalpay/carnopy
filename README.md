@@ -10,10 +10,10 @@ Reproducible thermophysical datasets from scientific backends with
 visualization, provenance, and leakage-aware preparation for physics-informed
 machine-learning and engineering workflows.
 
-Carnopy turns an explicit YAML sampling specification into immutable CSV and
-Parquet datasets, diagnostics, metadata, and optional figures. It is available
-as an automation-friendly CLI, a Python library, and an optional QML desktop
-workbench.
+Carnopy is an open and auditable thermophysical-data workbench. It turns an
+explicit YAML sampling specification into immutable CSV and Parquet datasets,
+diagnostics, metadata, and optional figures, with an automation-friendly CLI,
+a Python library, and an optional QML desktop application.
 
 ![Carnopy QML Dataset workbench](https://raw.githubusercontent.com/gcalpay/carnopy/main/docs/assets/carnopy-dataset-workbench-dark.png)
 
@@ -30,6 +30,9 @@ workbench.
   diagnostics instead of silently disappearing.
 - **One scientific core:** CLI, Python, and desktop workflows use the same
   validation, generation, inspection, and rendering contracts.
+- **Scientific visualization:** emitted states, gaps, phase changes, units,
+  scales, legends, and figure provenance remain explicit rather than being
+  silently repaired or invented.
 - **ML-ready preparation:** deterministic leakage-aware partitions,
   transformations, diagnostics, and optional array exports without becoming a
   model-training framework.
@@ -371,6 +374,8 @@ does not train, tune, register, or deploy production models.
 
 Implemented behavior and reviewed research directions are separated in the
 [ML preparation roadmap](https://github.com/gcalpay/carnopy/blob/main/ML_PREPARATION_ROADMAP.md).
+An optional manifest-backed PyTorch dataset export remains a reviewed future
+direction; it is neither implemented nor the current product priority.
 
 ## Python API
 
@@ -406,8 +411,11 @@ rather than maintaining separate scientific implementations.
 - PR/SRK transport properties, surface tension, and triple-point temperature
   are rejected because the cubic backends do not provide the required
   capability.
-- Mixtures, additional backends, ORC generation, ML training, web services,
-  databases, native 3D, and standalone desktop installers are deferred.
+- ML training, model hyperparameter sweeps, GPU orchestration, checkpoints, and
+  deployment are outside Carnopy core.
+- Mixtures, additional backends, ORC generation, web services, databases,
+  native 3D, and standalone desktop installers are not currently implemented;
+  the high-level public direction is summarized below.
 
 See the official [CoolProp documentation](https://coolprop.org/coolprop/) and
 [high-level API reference](https://coolprop.org/coolprop/HighLevelAPI.html) for
@@ -415,20 +423,28 @@ backend behavior.
 
 ## Future Scope
 
-Carnopy's current contracts remain intentionally narrower than its longer-term
-direction. Future work may add:
+Carnopy's current contracts remain intentionally narrower than its product
+direction:
 
-- additional thermophysical property libraries and databases;
-- simulation-backend and thermodynamic-cycle-calculator adapters;
-- experimental and operational data with explicit source, uncertainty,
-  licensing, and validation status;
-- user-supplied datasets through validated schema and provenance imports; and
-- preparation outputs for training physics-informed machine-learning models,
-  while model training remains outside Carnopy.
+```text
+thermophysical engines and data sources
+  → Carnopy configuration, generation/import, comparison, inspection,
+    visualization, preparation, export, and audit
+  → reproducible bundles and adapters
+  → external model-training frameworks and applications
+```
 
-These are roadmap directions, not capabilities promised by the current alpha.
-Each source type requires an explicit scientific, provenance, and validation
-contract before implementation.
+The accepted direction is workflow depth now, source breadth next, and advanced
+model breadth later. GUI-2 Stage 4 has now brought the existing model-sweep and
+preparation workflows into the desktop's controlled nonvisual worker boundary.
+Stage 5 adds their visible structured QML workflows. After that milestone,
+Carnopy will establish a validated import/source contract and one
+evidence-driven source expansion.
+
+Detailed source and model candidates are maintainer planning rather than public
+support promises. Optional PyTorch export, exact 3D, and automation remain
+unimplemented directions that require separately reviewed plans before they can
+change public behavior.
 
 ## Development and contribution
 
@@ -452,8 +468,6 @@ privately through the [security policy](https://github.com/gcalpay/carnopy/secur
 
 The implemented desktop ownership and worker boundary are documented in
 [DESKTOP_ARCHITECTURE.md](https://github.com/gcalpay/carnopy/blob/main/DESKTOP_ARCHITECTURE.md).
-The generated Graphify artifacts are navigation aids only and must pass the
-repository freshness gate before use.
 
 ## Release status
 
@@ -462,9 +476,9 @@ the accepted QML parity application. Its complete local and remote release
 gates, native acceptance, [PyPI publication](https://pypi.org/project/carnopy/0.1.0a4/),
 [GitHub prerelease](https://github.com/gcalpay/carnopy/releases/tag/v0.1.0a4),
 and [version-specific Zenodo archive](https://doi.org/10.5281/zenodo.21709965)
-are complete. The public Graphify artifacts describe the accepted Stage 3
-architecture and will be refreshed from the post-release `main` baseline
-before Stage 4 begins.
+are complete. GUI-2 Stage 4 is implemented on the current development branch
+without changing the published `0.1.0a4` artifacts; Stage 5 is the approved
+next stage for the visible sweep and preparation workflow-depth milestone.
 
 ## License
 

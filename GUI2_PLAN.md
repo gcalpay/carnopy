@@ -7,8 +7,8 @@ short indexes under `docs/archive/`; durable implemented ownership belongs in
 out of this mandatory reading path is an intentional context-budget safeguard.
 
 Delete this plan only after every GUI-2 stage is complete, permanent
-documentation and intentionally refreshed Graphify outputs describe the final
-architecture, and the maintainer accepts the finished application.
+documentation describes the final architecture, and the maintainer accepts the
+finished application.
 
 ## Release and frontend baseline
 
@@ -28,18 +28,18 @@ architecture, and the maintainer accepts the finished application.
 
 Stage 3 product implementation, remote CI, the complete local gate, and native
 acceptance passed on 2026-07-30. Its accepted implementation record is indexed
-in [`docs/archive/GUI2_STAGE3.md`](docs/archive/GUI2_STAGE3.md). The public
-Graphify artifacts were refreshed in commit
-`08053757551d89fa7bd9a181411ddb99a91886f4` from exact source revision
-`2f5aa8aa39c9ce28f12941c8d67432e7694c0c8c`. They represent the accepted
-Stage 3 architecture and remain subject to the repository freshness gate.
+in [`docs/archive/GUI2_STAGE3.md`](docs/archive/GUI2_STAGE3.md), and durable
+ownership is recorded in [`DESKTOP_ARCHITECTURE.md`](DESKTOP_ARCHITECTURE.md).
 
 ## Authority and permanent boundaries
 
 `AGENTS.md`, its routed guides, and `.agents/local.md` control scientific and
 public contracts, local authority, dependencies, verification, and release
-operations. `DESKTOP_ARCHITECTURE.md` records implemented desktop ownership.
-Repository source and tests establish exact current behavior.
+operations. The README records public direction; maintainer-local
+`PRODUCT_SCOPE.md` and `.agents/private/PRODUCT_STRATEGY.md` control private
+cross-roadmap priority when present. `DESKTOP_ARCHITECTURE.md` records
+implemented desktop ownership. Repository source and tests establish exact
+current behavior.
 
 Locked GUI-2 boundaries:
 
@@ -77,9 +77,9 @@ implementation.
 | 0 | Complete | Qualified the native Qt Quick and VTK bridge feasibility baseline |
 | 1 | Complete | Established request ownership and QML-ready dataset controllers |
 | 2 | Complete | Added the packaged QML shell and Dataset/YAML/Save workflows |
-| 3 | Complete; graph refreshed | Reached parity, migrated both launchers, retired Widgets, and qualified `0.1.0a4` |
-| 4 | Ready after the post-release Graphify refresh | Add controlled sweep and preparation worker operations |
-| 5 | Pending | Add structured sweep and preparation QML workflows |
+| 3 | Complete | Reached parity, migrated both launchers, retired Widgets, and qualified `0.1.0a4` |
+| 4 | Complete | Added controlled sweep and preparation worker operations for the existing public contracts |
+| 5 | Approved next | Add structured sweep and preparation QML workflows |
 | 6 | Pending | Build exact emitted-value 3D scenes |
 | 7 | Pending | Add native interactive 3D to QML |
 | 8 | Pending | Qualify native 3D packaging, platforms, and a later release |
@@ -146,27 +146,53 @@ protected publication workflow and produced the byte-identical
 was archived under the version-specific Zenodo DOI
 [`10.5281/zenodo.21709965`](https://doi.org/10.5281/zenodo.21709965).
 
-Refresh the public Graphify artifacts from the post-release `main` baseline
-before Stage 4 implementation begins. Do not replace the published
-distributions or move the release tag.
+Do not replace the published distributions or move the release tag.
 
 No Stage 4–8 functionality or native VTK is part of the `0.1.0a4` gate.
 
+At the `0.1.0a4` checkpoint, Stage 4 was the approved next implementation
+stage. It began the accepted workflow-depth milestone by exposing the existing
+sweep and preparation contracts through controlled worker operations without
+changing their public schemas or output layouts. Stage 4 has since completed;
+Stage 5 now adds the corresponding structured QML workflows. Their numbers,
+dependencies, and reviewed technical content remain unchanged by this
+reprioritization.
+
 ## Stage 4: sweep and preparation worker operations
 
-Add private worker operations for sweep and preparation capabilities, loading,
-exact-text validation, planning, execution, progress, and cancellation.
+Stage 4 is complete. The accepted implementation record is indexed in
+[`docs/archive/GUI2_STAGE4.md`](docs/archive/GUI2_STAGE4.md). It adds private
+worker operations for sweep and preparation loading, exact-text validation,
+non-writing planning, execution, progress, cancellation, protected
+finalization, and guarded recovery.
 
-Preparation planning must be non-writing and verify source identity,
-integrity, revision, semantic fields, units, derived dependencies,
-reference-state compatibility, scenarios, exact-state leakage protection,
-transformations, output formats, categorical coding, optional dependency
-availability, matrix diagnostics, and baseline feasibility.
+Preparation planning is revision-bound and non-writing. It classifies eligible
+sources explicitly, performs stable descriptor-backed reads, computes semantic
+resolution, exclusions, scenarios, transformations, leakage checks, matrix
+diagnostics, array feasibility, and baseline feasibility without fitting.
+Execution recomputes and verifies the plan in its short-lived worker, fits
+requested baselines only during execution, and writes only after the plan and
+source checks succeed.
 
-Add cancellation checkpoints to expensive phases and disable cancellation
-before immutable finalization. Handled failures clean staging; recognized
-staging left by force-stop remains recoverable. Do not change public schemas,
-APIs, or output layouts.
+The desktop now composes nonvisual sweep and preparation workflow controllers
+with execution-only Activity records, stale-input invalidation, and inspection
+handoff. Protected finalization is sticky and distinct from ordinary
+non-cooperative phases, so the existing force-only plot behavior remains
+unchanged. Public APIs, YAML schemas, result models, output layouts,
+dependencies, and visible QML are unchanged.
+
+The original complete implementation gate and preflight passed on 2026-08-08
+with 820 tests. A post-acceptance repair baseline passed with 825 tests. The
+independent Stage 4 audit remediation then passed the complete gate on
+2026-08-09 with 836 tests, including stable metadata consumption, atomic
+no-replace finalization, cancellation, Activity, controller-state, runtime
+fingerprint, and complete worker-lifecycle regressions. No screenshot or native
+UI acceptance was required for Stage 4 because it made no visible QML changes.
+The separate WSLg launch-hardening follow-up remains desktop maintenance. Its
+native XCB/WSLg acceptance passed on 2026-08-09 with a real six-row generation,
+configured plot, verified inspection, clean workspace reopen, and a fixed
+workspace-scoped smoke lifecycle; exhaustive verification now collects 837
+tests. Stage 5 is now the approved next stage.
 
 ## Stage 5: sweep and preparation QML workflows
 
@@ -260,7 +286,7 @@ Before each remaining stage PR merges:
 Before final GUI-2 completion, run complete source, distribution, installed-
 profile, cross-platform QML, Linux-native, and manual workflow qualification;
 obtain an independent explicitly configured review; refresh permanent
-documentation and Graphify from the final architecture; and delete this plan.
+documentation from the final architecture; and delete this plan.
 
 Manim, PyMC, SINDy, optimization, ORC/TFC workflows, mixtures, training
 infrastructure, deployment, additional backends, and standalone installers
