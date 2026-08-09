@@ -14,6 +14,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from carnopy._execution import ExecutionCancelled, ExecutionControl
+from carnopy.app.config_document import DocumentType
 from carnopy.app.protocol import (
     ErrorCategory,
     EventType,
@@ -66,6 +67,10 @@ class ValidateDatasetTextPayload(BaseModel):
 
     yaml_text: str
     source_name: str = "<gui>"
+
+
+class ValidateConfigurationTextPayload(ValidateDatasetTextPayload):
+    expected_document_type: DocumentType
 
 
 class GeneratePayload(ExecutionConfigPayload):
@@ -196,6 +201,27 @@ def _execute(
 
         capabilities = CapabilitiesPayload.model_validate(request.payload)
         return cast(dict[str, Any], describe_capabilities(capabilities.model))
+    if request.type == "load_configuration":
+        load_payload = ValidatePayload.model_validate(request.payload)
+        writer.emit("phase", {"name": "validation", "cancellable": True})
+        try:
+            raw_bytes = load_payload.config_path.read_bytes()
+        except OSError as exc:
+            raise ConfigError(
+                f"could not read configuration {load_payload.config_path}: {exc}"
+            ) from exc
+        return _validated_configuration_payload(
+            raw_bytes,
+            source_name=str(load_payload.config_path),
+        )
+    if request.type == "validate_configuration":
+        configuration_payload = ValidateConfigurationTextPayload.model_validate(request.payload)
+        writer.emit("phase", {"name": "validation", "cancellable": True})
+        return _validated_configuration_payload(
+            configuration_payload.yaml_text.encode("utf-8"),
+            source_name=configuration_payload.source_name,
+            expected_document_type=configuration_payload.expected_document_type,
+        )
     if request.type in WORKFLOW_REQUESTS:
         return execute_workflow_request(
             request.type,
@@ -304,6 +330,61 @@ def _validated_dataset_payload(loaded: LoadedConfig) -> dict[str, Any]:
         "requested_fluid_canonical_names": list(
             validated.normalized.requested_fluid_canonical_names
         ),
+    }
+
+
+def _validated_configuration_payload(
+    raw_bytes: bytes,
+    *,
+    source_name: str,
+    expected_document_type: DocumentType | None = None,
+) -> dict[str, Any]:
+    """Validate one desktop configuration selected by its discriminator."""
+
+    from carnopy.config.io import (
+        _load_config_payload,
+        _load_sweep_config_payload,
+        _parse_yaml_mapping,
+    )
+
+    config_path = Path(source_name)
+    payload = _parse_yaml_mapping(config_path, raw_bytes)
+    raw_document_type = payload.get("document_type")
+    if raw_document_type not in {"dataset", "model_sweep", "preparation"}:
+        if payload.get("schema_version") == 1 and raw_document_type is None:
+            raise ConfigError(
+                "configuration schema version 1 is no longer supported. Migrate to "
+                "schema_version: 2, add document_type: dataset, and replace "
+                "`backend: coolprop` with `backend: {name: coolprop, model: heos}`"
+            )
+        raise ConfigError(
+            "configuration document_type must be dataset, model_sweep, or preparation"
+        )
+    document_type = cast(DocumentType, raw_document_type)
+    if expected_document_type is not None and document_type != expected_document_type:
+        raise ConfigError(
+            f"expected a {expected_document_type} configuration, found {document_type}"
+        )
+
+    if document_type == "dataset":
+        loaded_dataset = _load_config_payload(config_path, raw_bytes, payload)
+        return {
+            "document_type": document_type,
+            **_validated_dataset_payload(loaded_dataset),
+        }
+    if document_type == "model_sweep":
+        loaded_configuration: Any = _load_sweep_config_payload(config_path, raw_bytes, payload)
+    else:
+        from carnopy.preparation.models import _load_preparation_config_payload
+
+        loaded_configuration = _load_preparation_config_payload(config_path, raw_bytes, payload)
+    return {
+        "document_type": document_type,
+        "config": loaded_configuration.model.model_dump(
+            mode="json", by_alias=True, exclude_none=True
+        ),
+        "source_name": str(loaded_configuration.path),
+        "source_sha256": hashlib.sha256(loaded_configuration.raw_bytes).hexdigest(),
     }
 
 

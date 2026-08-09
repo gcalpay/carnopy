@@ -266,6 +266,259 @@ def test_worker_reports_structured_dataset_config_issues(property_config_path: P
     assert "at least 1" in issue["message"]
 
 
+def test_worker_generic_load_dispatches_dataset_with_full_validation(
+    property_config_path: Path,
+) -> None:
+    raw_bytes = property_config_path.read_bytes()
+    request_id, line = _request(
+        "load_configuration",
+        {"config_path": str(property_config_path)},
+    )
+    stdout = io.StringIO()
+
+    assert main(io.StringIO(line + "\n"), stdout, io.StringIO()) == 0
+
+    events = _events(stdout)
+    assert [event["type"] for event in events] == ["accepted", "phase", "result"]
+    assert all(event["request_id"] == request_id for event in events)
+    payload = events[-1]["payload"]
+    assert isinstance(payload, dict)
+    assert payload["document_type"] == "dataset"
+    assert payload["config"]["document_type"] == "dataset"
+    assert payload["validation"]["projected_rows"] == 2
+    assert payload["source_sha256"] == hashlib.sha256(raw_bytes).hexdigest()
+
+
+def test_worker_generic_validation_accepts_expected_dataset(
+    property_config_path: Path,
+) -> None:
+    yaml_text = property_config_path.read_text(encoding="utf-8")
+    _, line = _request(
+        "validate_configuration",
+        {
+            "yaml_text": yaml_text,
+            "source_name": "dataset.yaml",
+            "expected_document_type": "dataset",
+        },
+    )
+    stdout = io.StringIO()
+
+    assert main(io.StringIO(line + "\n"), stdout, io.StringIO()) == 0
+
+    payload = _events(stdout)[-1]["payload"]
+    assert isinstance(payload, dict)
+    assert payload["document_type"] == "dataset"
+    assert payload["config"]["document_type"] == "dataset"
+    assert payload["validation"]["projected_rows"] == 2
+    assert payload["source_sha256"] == hashlib.sha256(yaml_text.encode("utf-8")).hexdigest()
+
+
+@pytest.mark.parametrize(
+    ("workflow_kind", "document_type"),
+    [("sweep", "model_sweep"), ("preparation", "preparation")],
+)
+def test_worker_generic_load_dispatches_workflow_by_document_type(
+    tmp_path: Path,
+    workflow_kind: str,
+    document_type: str,
+) -> None:
+    config_path = tmp_path / f"{workflow_kind}.yaml"
+    raw_bytes = _stage4_config_text(workflow_kind).encode("utf-8")
+    config_path.write_bytes(raw_bytes)
+    request_id, line = _request(
+        "load_configuration",
+        {"config_path": str(config_path)},
+    )
+    stdout = io.StringIO()
+
+    assert main(io.StringIO(line + "\n"), stdout, io.StringIO()) == 0
+
+    events = _events(stdout)
+    assert [event["type"] for event in events] == ["accepted", "phase", "result"]
+    assert all(event["request_id"] == request_id for event in events)
+    payload = events[-1]["payload"]
+    assert isinstance(payload, dict)
+    assert payload["document_type"] == document_type
+    assert payload["config"]["document_type"] == document_type
+    assert payload["source_name"] == str(config_path)
+    assert payload["source_sha256"] == hashlib.sha256(raw_bytes).hexdigest()
+
+
+@pytest.mark.parametrize(
+    ("workflow_kind", "document_type"),
+    [("sweep", "model_sweep"), ("preparation", "preparation")],
+)
+def test_worker_generic_validation_accepts_expected_document_type(
+    workflow_kind: str,
+    document_type: str,
+) -> None:
+    yaml_text = _stage4_config_text(workflow_kind)
+    _, line = _request(
+        "validate_configuration",
+        {
+            "yaml_text": yaml_text,
+            "source_name": f"{workflow_kind}.yaml",
+            "expected_document_type": document_type,
+        },
+    )
+    stdout = io.StringIO()
+
+    assert main(io.StringIO(line + "\n"), stdout, io.StringIO()) == 0
+
+    payload = _events(stdout)[-1]["payload"]
+    assert isinstance(payload, dict)
+    assert payload["document_type"] == document_type
+    assert payload["config"]["document_type"] == document_type
+    assert payload["source_sha256"] == hashlib.sha256(yaml_text.encode("utf-8")).hexdigest()
+
+
+@pytest.mark.parametrize(
+    ("yaml_text", "expected_document_type", "message"),
+    [
+        (
+            _stage4_config_text("sweep"),
+            "preparation",
+            "expected a preparation configuration, found model_sweep",
+        ),
+        ("schema_version: 2\n", "model_sweep", "document_type"),
+        (
+            "schema_version: 2\ndocument_type: unknown\n",
+            "model_sweep",
+            "document_type",
+        ),
+        ("document_type: [\n", "dataset", "invalid YAML"),
+        ("- dataset\n", "dataset", "root must be a YAML mapping"),
+        (
+            "schema_version: 1\nbackend: coolprop\n",
+            "dataset",
+            "schema version 1 is no longer supported",
+        ),
+    ],
+)
+def test_worker_generic_validation_rejects_unambiguous_dispatch_failures(
+    yaml_text: str,
+    expected_document_type: str,
+    message: str,
+) -> None:
+    _, line = _request(
+        "validate_configuration",
+        {
+            "yaml_text": yaml_text,
+            "source_name": "invalid.yaml",
+            "expected_document_type": expected_document_type,
+        },
+    )
+    stdout = io.StringIO()
+
+    assert main(io.StringIO(line + "\n"), stdout, io.StringIO()) == 1
+
+    event = _events(stdout)[-1]
+    assert event["type"] == "error"
+    payload = event["payload"]
+    assert isinstance(payload, dict)
+    assert payload["category"] == "config"
+    assert payload["code"] == "invalid_config"
+    assert message in payload["message"]
+
+
+def test_worker_generic_validation_requires_expected_document_type() -> None:
+    _, line = _request(
+        "validate_configuration",
+        {
+            "yaml_text": _stage4_config_text("sweep"),
+            "source_name": "sweep.yaml",
+        },
+    )
+    stdout = io.StringIO()
+
+    assert main(io.StringIO(line + "\n"), stdout, io.StringIO()) == 2
+
+    payload = _events(stdout)[-1]["payload"]
+    assert isinstance(payload, dict)
+    assert payload["category"] == "request"
+    assert payload["code"] == "invalid_payload"
+    assert payload["details"]["issues"][0]["path"] == "expected_document_type"
+
+
+def test_worker_generic_validation_preserves_structured_schema_issues() -> None:
+    yaml_text = _stage4_config_text("sweep").replace(
+        "properties: [mass_density, specific_enthalpy]",
+        "properties: []",
+    )
+    _, line = _request(
+        "validate_configuration",
+        {
+            "yaml_text": yaml_text,
+            "source_name": "invalid-sweep.yaml",
+            "expected_document_type": "model_sweep",
+        },
+    )
+    stdout = io.StringIO()
+
+    assert main(io.StringIO(line + "\n"), stdout, io.StringIO()) == 1
+
+    payload = _events(stdout)[-1]["payload"]
+    assert isinstance(payload, dict)
+    assert payload["category"] == "config"
+    assert payload["code"] == "invalid_config"
+    assert payload["details"]["issues"] == [
+        {
+            "path": "properties",
+            "code": "too_short",
+            "message": "List should have at least 1 item after validation, not 0",
+        }
+    ]
+
+
+def test_worker_generic_load_reads_and_parses_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import carnopy.config.io as config_io
+
+    config_path = tmp_path / "preparation.yaml"
+    config_path.write_text(_stage4_config_text("preparation"), encoding="utf-8")
+    original_read_bytes = Path.read_bytes
+    original_safe_load = config_io.yaml.safe_load
+    reads = 0
+    parses = 0
+
+    def read_bytes(path: Path) -> bytes:
+        nonlocal reads
+        if path == config_path:
+            reads += 1
+        return original_read_bytes(path)
+
+    def safe_load(stream: object) -> object:
+        nonlocal parses
+        parses += 1
+        return original_safe_load(stream)
+
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+    monkeypatch.setattr(config_io.yaml, "safe_load", safe_load)
+    _, line = _request("load_configuration", {"config_path": str(config_path)})
+
+    assert main(io.StringIO(line + "\n"), io.StringIO(), io.StringIO()) == 0
+    assert reads == 1
+    assert parses == 1
+
+
+def test_worker_generic_load_reports_missing_file_as_configuration_error(
+    tmp_path: Path,
+) -> None:
+    missing = tmp_path / "missing.yaml"
+    _, line = _request("load_configuration", {"config_path": str(missing)})
+    stdout = io.StringIO()
+
+    assert main(io.StringIO(line + "\n"), stdout, io.StringIO()) == 1
+
+    payload = _events(stdout)[-1]["payload"]
+    assert isinstance(payload, dict)
+    assert payload["category"] == "config"
+    assert payload["code"] == "invalid_config"
+    assert "could not read configuration" in payload["message"]
+
+
 @pytest.mark.parametrize(
     ("workflow_kind", "request_type"),
     [

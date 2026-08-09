@@ -9,6 +9,8 @@ PROTOCOL_VERSION: Final[Literal[1]] = 1
 
 RequestType = Literal[
     "describe_capabilities",
+    "load_configuration",
+    "validate_configuration",
     "load_dataset_config",
     "validate_dataset_config",
     "validate_config",
