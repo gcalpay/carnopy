@@ -63,6 +63,8 @@ EXPECTED_FONT_FAMILIES = {
     "resources/fonts/IBMPlexMono-Medium.ttf": "IBM Plex Mono",
 }
 
+INSTANCE_LOCK_STALE_TIME_MS = 30_000
+
 QML_PALETTE_COLORS: dict[str, dict[str, str]] = {
     "light": {
         "canvas": "#f3f5f4",
@@ -385,6 +387,12 @@ class QmlApplicationRuntime:
             window,
             self.controller.qml_settings.get_normal_screen_name(),
         )
+        # WSLg can map the X11 window without transferring focus to it.  Raise
+        # and activate again after the delayed geometry pass so a normal launch
+        # is presented as the foreground desktop window.
+        if self.application.platformName() != "offscreen":
+            window.raise_()
+        window.requestActivate()
         window.setProperty("geometryTrackingReady", True)
 
     def _begin_geometry_restoration(self, window: QWindow) -> None:
@@ -400,6 +408,8 @@ class QmlApplicationRuntime:
             else QWindow.Visibility.Windowed
         )
         window.setVisibility(visibility)
+        if self.application.platformName() != "offscreen":
+            window.raise_()
         window.requestActivate()
         if (
             self.application.platformName() == "offscreen"
@@ -818,8 +828,15 @@ def _acquire_instance_lock() -> QLockFile:
     user_suffix = f"-{os.getuid()}" if hasattr(os, "getuid") else ""
     lock_path = Path(tempfile.gettempdir()) / f"carnopy-qml-desktop{user_suffix}.lock"
     lock = QLockFile(str(lock_path))
-    lock.setStaleLockTime(0)
+    # A platform-plugin crash can bypass the Python finally block and leave
+    # the process lock behind.  Keep overlapping live launches rejected, but
+    # let Qt reclaim a lock owned by a process that has died.
+    lock.setStaleLockTime(INSTANCE_LOCK_STALE_TIME_MS)
     if not lock.tryLock(0):
+        # Be explicit because a platform-plugin abort can leave a lock whose
+        # owner is already gone before Qt's normal retry path observes it.
+        if lock.removeStaleLockFile() and lock.tryLock(0):
+            return lock
         raise QmlStartupError(
             "another Carnopy QML application is already running; close it before starting "
             "a second instance"

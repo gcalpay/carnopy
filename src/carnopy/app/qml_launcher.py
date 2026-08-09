@@ -17,6 +17,12 @@ With uv:
   uv tool install --force "carnopy[app]"
 """
 
+WSLG_SOFTWARE_RENDERING = {
+    "LIBGL_ALWAYS_SOFTWARE": "1",
+    "QSG_RHI_BACKEND": "opengl",
+    "QT_OPENGL": "software",
+}
+
 
 def build_parser(program: str) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -45,6 +51,11 @@ def configure_qt_platform(requested: str) -> None:
         return
     if "QT_QPA_PLATFORM" not in os.environ and _wslg_available():
         os.environ["QT_QPA_PLATFORM"] = "xcb"
+        # The repository's native Qt qualification uses this deterministic
+        # XCB path because WSLg/Xwayland may not expose a usable GBM device.
+        # Respect explicit caller overrides for all three variables.
+        for name, value in WSLG_SOFTWARE_RENDERING.items():
+            os.environ.setdefault(name, value)
 
 
 def _wslg_available() -> bool:

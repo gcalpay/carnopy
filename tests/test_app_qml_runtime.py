@@ -345,6 +345,22 @@ def test_qml_instance_lock_rejects_overlapping_launches(
     replacement.unlock()
 
 
+def test_qml_instance_lock_reclaims_dead_process_lock(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(qml_runtime_module.tempfile, "gettempdir", lambda: str(tmp_path))
+    lock_path = tmp_path / f"carnopy-qml-desktop-{os.getuid()}.lock"
+    lock_path.write_text("999999\npython\nGCA\n\n", encoding="utf-8")
+    os.utime(lock_path, (1, 1))
+
+    lock = _acquire_instance_lock()
+    try:
+        assert lock.isLocked()
+    finally:
+        lock.unlock()
+
+
 def test_qml_close_event_uses_composition_guard(
     application: QApplication,
     monkeypatch: pytest.MonkeyPatch,
