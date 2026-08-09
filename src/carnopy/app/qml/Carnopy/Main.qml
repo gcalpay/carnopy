@@ -120,7 +120,7 @@ ApplicationWindow {
                                                                               / 312)))
     readonly property bool controllerAvailable: desktopController !== null
     readonly property var configController: controllerAvailable
-                                            ? desktopController.datasetConfigController : null
+                                            ? desktopController.configurationController : null
     readonly property var executionController: controllerAvailable
                                                ? desktopController.executionController : null
     readonly property var inspectionController: controllerAvailable
@@ -966,7 +966,7 @@ ApplicationWindow {
         id: yamlPage
 
         YamlPreviewPage {
-            configController: root.desktopController.datasetConfigController
+            configController: root.desktopController.configurationController
             objectName: "yamlPreviewPage"
             onAttentionRequested: (section, field, row) => root.configurationAttentionRequested(
                                                                section, field, row)
@@ -1138,8 +1138,8 @@ ApplicationWindow {
             datasetDecisionDialog.open();
         }
 
-        function onDatasetDocumentOpened() {
-            root.routeTo("dataset");
+        function onConfigurationDocumentOpened(documentKind) {
+            root.routeTo(documentKind === "dataset" ? "dataset" : "yaml");
         }
 
         function onNavigationRequested(pageKey, detail) {

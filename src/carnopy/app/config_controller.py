@@ -40,7 +40,7 @@ class ConfigurationController(QObject):
     status_message_changed = Signal()
     draft_changed = Signal(bool)
     document_state_changed = Signal()
-    document_opened = Signal()
+    configuration_document_opened = Signal(str)
     warning_requested = Signal(str, str)
     mode_change_requested = Signal(str)
     save_path_requested = Signal(str)
@@ -537,7 +537,7 @@ class ConfigurationController(QObject):
             else f"Unsaved {label} configuration"
         )
         self._refresh_document()
-        self.document_opened.emit()
+        self.configuration_document_opened.emit(document.document_type)
         return True
 
     def clear_document(self, discard_confirmed: bool = False) -> bool:
@@ -1061,7 +1061,3 @@ def _structured_issues(value: object) -> list[dict[str, str]]:
         if issue:
             issues.append(issue)
     return issues
-
-
-# Retain the private Stage 2/3 name while Desktop/QML call sites migrate.
-DatasetConfigController = ConfigurationController

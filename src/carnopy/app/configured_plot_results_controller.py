@@ -8,7 +8,7 @@ from PySide6.QtCore import Property, QObject, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices
 
 from carnopy.app.activity_controller import ActivityController
-from carnopy.app.config_controller import DatasetConfigController
+from carnopy.app.config_controller import ConfigurationController
 from carnopy.app.inspection_models import InspectionListModel
 from carnopy.app.plot_artifacts import (
     PlotArtifactError,
@@ -55,7 +55,7 @@ class ConfiguredPlotResultsController(QObject):
     def __init__(
         self,
         activity: ActivityController,
-        configuration: DatasetConfigController,
+        configuration: ConfigurationController,
         previews: VerifiedPlotPreviewRegistry,
         parent: QObject | None = None,
     ) -> None:

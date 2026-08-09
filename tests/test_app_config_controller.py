@@ -15,10 +15,11 @@ pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QCoreApplication, QEvent, QObject, Signal
 
-from carnopy.app.config_controller import ConfigurationController, DatasetConfigController
+import carnopy.app.config_controller as config_controllers
+from carnopy.app.config_controller import ConfigurationController
 from carnopy.app.config_document import (
     ConfigDocumentError,
-    DatasetConfigDocument,
+    ConfigurationDocument,
     new_document,
     serialize_configuration,
     serialize_dataset_config,
@@ -210,9 +211,9 @@ def payload(*, visualization: bool = False) -> dict[str, Any]:
 
 def configured_controller(
     tmp_path: Path,
-) -> tuple[DatasetConfigController, StubCoordinator]:
+) -> tuple[ConfigurationController, StubCoordinator]:
     coordinator = StubCoordinator()
-    controller = DatasetConfigController(cast(DesktopRequestCoordinator, coordinator))
+    controller = ConfigurationController(cast(DesktopRequestCoordinator, coordinator))
     workspace = initialize_workspace(tmp_path / "workspace")
 
     controller.set_workspace(workspace)
@@ -220,6 +221,10 @@ def configured_controller(
     coordinator.succeed(capabilities())
 
     return controller, coordinator
+
+
+def test_dataset_specific_controller_alias_is_removed() -> None:
+    assert not hasattr(config_controllers, "DatasetConfigController")
 
 
 def test_controller_owns_complete_merge_dirty_and_execution_gates(
@@ -576,7 +581,7 @@ def test_controller_owns_reformat_external_change_and_replacement_guards(
     source = workspace.configs / "imported.yaml"
     content = serialize_dataset_config(payload(visualization=True))
     source.write_bytes(content)
-    document = DatasetConfigDocument(
+    document = ConfigurationDocument(
         payload(visualization=True),
         source_path=source,
         source_sha256=sha256_bytes(content),
@@ -724,7 +729,3 @@ def test_generic_controller_owns_non_dataset_file_lifecycle(
     assert controller.get_document_kind() == document_type
     assert controller.document is not None
     assert controller.document.source_path == destination.resolve()
-
-
-def test_dataset_controller_name_remains_a_compatibility_alias() -> None:
-    assert DatasetConfigController is ConfigurationController

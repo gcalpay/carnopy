@@ -15,8 +15,8 @@ from PySide6.QtWidgets import QApplication
 
 from carnopy.app.activity_controller import ActivityController
 from carnopy.app.client import WorkerClient
-from carnopy.app.config_controller import DatasetConfigController
-from carnopy.app.config_document import DatasetConfigDocument, sha256_bytes
+from carnopy.app.config_controller import ConfigurationController
+from carnopy.app.config_document import ConfigurationDocument, sha256_bytes
 from carnopy.app.configured_plot_results_controller import ConfiguredPlotResultsController
 from carnopy.app.jobs import JobStore
 from carnopy.app.plot_artifacts import (
@@ -226,7 +226,7 @@ def test_configured_results_controller_projects_only_activity_records(
 ) -> None:
     del application
     workspace, record, _report_path, _sidecar_path = _configured_bundle(tmp_path)
-    document = DatasetConfigDocument({"schema_version": 2, "document_type": "dataset"})
+    document = ConfigurationDocument({"schema_version": 2, "document_type": "dataset"})
     config_path = workspace.configs / "config.yaml"
     config_path.write_bytes(document.yaml_bytes)
     document.mark_saved(config_path, document.yaml_bytes)
@@ -236,7 +236,7 @@ def test_configured_results_controller_projects_only_activity_records(
     JobStore(workspace.private_directory).write(record)
     coordinator = DesktopRequestCoordinator(WorkerClient())
     activity = ActivityController(coordinator)
-    configuration = DatasetConfigController(coordinator)
+    configuration = ConfigurationController(coordinator)
     configuration.document = document
     controller = ConfiguredPlotResultsController(
         activity,

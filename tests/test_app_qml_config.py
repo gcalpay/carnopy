@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 
 import pytest
+import yaml
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
@@ -12,8 +13,10 @@ from PySide6.QtCore import QCoreApplication, QEventLoop, QObject, QSettings, QTi
 from PySide6.QtQuick import QQuickWindow
 from PySide6.QtWidgets import QApplication
 
+from carnopy.app.config_document import new_document
 from carnopy.app.qml_runtime import QmlApplicationRuntime, create_qml_runtime
 from carnopy.app.workspace import initialize_workspace
+from carnopy.templates import template_text
 
 
 @pytest.fixture
@@ -45,6 +48,19 @@ def _process_events() -> None:
         application.processEvents()
 
 
+def test_global_shell_routes_non_dataset_documents_to_yaml_preview(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    payload = yaml.safe_load(template_text("model_sweep"))
+
+    assert runtime.controller.configuration_controller.open_document(new_document(payload))
+    _process_events()
+
+    assert runtime.controller.configuration_controller.get_document_kind() == "model_sweep"
+    assert root.property("currentPage") == "yaml"
+
+
 def _wait_for_idle(runtime: QmlApplicationRuntime) -> None:
     if not runtime.controller.request_coordinator.is_busy:
         _process_events()
@@ -69,7 +85,7 @@ def test_yaml_page_projects_only_current_authoritative_document(
     assert root.setProperty("currentPage", "yaml")
     _process_events()
 
-    controller = desktop.dataset_config_controller
+    controller = desktop.configuration_controller
     page = root.findChild(QObject, "yamlPreviewPage")
     viewer = root.findChild(QObject, "yamlLineNumberedText")
     source = root.findChild(QObject, "yamlSourceText")
@@ -106,7 +122,7 @@ def test_inspector_runs_one_revision_bound_standalone_validation(
     runtime: QmlApplicationRuntime,
 ) -> None:
     desktop = runtime.controller
-    controller = desktop.dataset_config_controller
+    controller = desktop.configuration_controller
     root = runtime.engine.rootObjects()[0]
     assert isinstance(root, QQuickWindow)
     assert desktop.request_new_dataset("property_table")
@@ -138,7 +154,7 @@ def test_inspector_validation_is_blocked_by_local_invalidity(
     runtime: QmlApplicationRuntime,
 ) -> None:
     desktop = runtime.controller
-    controller = desktop.dataset_config_controller
+    controller = desktop.configuration_controller
     root = runtime.engine.rootObjects()[0]
     assert desktop.request_new_dataset("property_table")
     controller.dataset_draft.set_output_selected("csv", False)
@@ -166,7 +182,7 @@ def test_invalid_yaml_state_is_empty_and_routes_by_structured_field(
     desktop.dataset_draft.set_output_selected("parquet", False)
     _process_events()
 
-    controller = desktop.dataset_config_controller
+    controller = desktop.configuration_controller
     banner = root.findChild(QObject, "yamlBlockingBanner")
     assert banner is not None
     assert not controller.get_yaml_available()
@@ -191,7 +207,7 @@ def test_invalid_yaml_state_is_empty_and_routes_by_structured_field(
 def test_typed_operation_feedback_is_persistent_until_success_or_dismissal(
     runtime: QmlApplicationRuntime,
 ) -> None:
-    controller = runtime.controller.dataset_config_controller
+    controller = runtime.controller.configuration_controller
     root = runtime.engine.rootObjects()[0]
     feedback = root.findChild(QObject, "operationFeedback")
     toast = root.findChild(QObject, "toastHost")
@@ -228,16 +244,16 @@ def test_dirty_close_configuration_uses_qml_decision_and_facade(
     dialog = root.findChild(QObject, "configurationDiscardDialog")
     assert command_bar is not None
     assert dialog is not None
-    assert desktop.dataset_config_controller.get_dirty()
+    assert desktop.configuration_controller.get_dirty()
 
     command_bar.closeConfigurationRequested.emit()
     _process_events()
     assert dialog.property("opened") is True
-    assert desktop.dataset_config_controller.get_has_document()
+    assert desktop.configuration_controller.get_has_document()
 
     dialog.accept()
     _process_events()
-    assert not desktop.dataset_config_controller.get_has_document()
+    assert not desktop.configuration_controller.get_has_document()
     assert root.property("currentPage") == "dataset"
 
 
@@ -245,7 +261,7 @@ def test_qml_save_command_keeps_worker_validation_and_reformat_authoritative(
     runtime: QmlApplicationRuntime,
 ) -> None:
     desktop = runtime.controller
-    controller = desktop.dataset_config_controller
+    controller = desktop.configuration_controller
     root = runtime.engine.rootObjects()[0]
     workspace = controller.workspace
     assert workspace is not None

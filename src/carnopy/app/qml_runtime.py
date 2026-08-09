@@ -953,7 +953,7 @@ def _exercise_installed_qml_smoke(runtime: QmlApplicationRuntime) -> None:
     if len(roots) != 1:
         raise QmlStartupError("installed QML smoke lost its root object")
     root = roots[0]
-    if root.property("configController") is not runtime.controller.dataset_config_controller:
+    if root.property("configController") is not runtime.controller.configuration_controller:
         raise QmlStartupError("installed QML smoke did not bind the configuration controller")
     if not root.setProperty("width", 1024) or not root.setProperty("height", 768):
         raise QmlStartupError("installed QML smoke could not resize the workbench")
@@ -965,7 +965,7 @@ def _exercise_installed_qml_smoke(runtime: QmlApplicationRuntime) -> None:
         raise QmlStartupError("installed QML smoke did not apply responsive controller state")
     if root.findChild(QObject, "yamlPreviewPage") is None:
         raise QmlStartupError("installed QML smoke did not instantiate the YAML page")
-    if runtime.controller.dataset_config_controller.get_yaml_available():
+    if runtime.controller.configuration_controller.get_yaml_available():
         raise QmlStartupError("installed QML smoke unexpectedly exposed YAML without a document")
     if runtime.warning_capture.runtime_warnings:
         details = "\n".join(runtime.warning_capture.runtime_warnings)

@@ -345,7 +345,7 @@ Item {
 
                         AppButton {
                             enabled: root.controllerAvailable
-                                     && root.desktopController.datasetConfigController.canCreate
+                                     && root.desktopController.configurationController.canCreate
                             objectName: "newDatasetButton-" + value
                             onClicked: root.newDatasetRequested(value)
                             text: qsTr("New Dataset")
@@ -364,7 +364,7 @@ Item {
 
                 AppButton {
                     enabled: root.controllerAvailable
-                             && root.desktopController.datasetConfigController.canImport
+                             && root.desktopController.configurationController.canImport
                     objectName: "importDatasetButton"
                     onClicked: root.openImportDialog()
                     text: qsTr("Choose YAML")

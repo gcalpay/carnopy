@@ -6,7 +6,7 @@ from PySide6.QtCore import Property, QObject, QSettings, QTimer, QUrl, Signal, S
 
 from carnopy.app.activity_controller import ActivityController
 from carnopy.app.client import WorkerClient
-from carnopy.app.config_controller import DatasetConfigController
+from carnopy.app.config_controller import ConfigurationController
 from carnopy.app.configured_plot_results_controller import ConfiguredPlotResultsController
 from carnopy.app.dataset_draft import DatasetDraft
 from carnopy.app.execution_controller import DatasetExecutionController
@@ -37,7 +37,7 @@ class DesktopController(QObject):
     workspaceConfirmationRequested = Signal()
     datasetDecisionRequested = Signal()
     datasetDecisionChanged = Signal()
-    datasetDocumentOpened = Signal()
+    configurationDocumentOpened = Signal(str)
     attentionRequested = Signal(str, str, int)
     shutdownConfirmationRequested = Signal()
     transientEditShutdownConfirmationRequested = Signal(str)
@@ -59,7 +59,7 @@ class DesktopController(QObject):
         self.request_coordinator = DesktopRequestCoordinator(self.client, self)
         self.dataset_draft = DatasetDraft(self)
         self.visualization_draft = VisualizationDraft(self)
-        self.dataset_config_controller = DatasetConfigController(
+        self.configuration_controller = ConfigurationController(
             self.request_coordinator,
             self.dataset_draft,
             self.visualization_draft,
@@ -67,7 +67,7 @@ class DesktopController(QObject):
         )
         self.execution_controller = DatasetExecutionController(
             self.request_coordinator,
-            self.dataset_config_controller,
+            self.configuration_controller,
             self,
         )
         self.inspection_controller = InspectionController(
@@ -90,7 +90,7 @@ class DesktopController(QObject):
         self.plot_preview_registry = VerifiedPlotPreviewRegistry(self)
         self.configured_plot_results_controller = ConfiguredPlotResultsController(
             self.activity_controller,
-            self.dataset_config_controller,
+            self.configuration_controller,
             self.plot_preview_registry,
             self,
         )
@@ -128,7 +128,7 @@ class DesktopController(QObject):
         self.preparation_workflow_controller.output_finalized.connect(
             lambda _path: self.inspection_controller.refresh_sources()
         )
-        self.dataset_config_controller.set_lifecycle_guard(self._guard_active_plot_edit)
+        self.configuration_controller.set_lifecycle_guard(self._guard_active_plot_edit)
         self.workspace_controller = WorkspaceController(
             self.request_coordinator,
             self.settings,
@@ -142,8 +142,10 @@ class DesktopController(QObject):
         self.workspace_controller.pending_operation_changed.connect(
             self.workspace_confirmation_changed
         )
-        self.dataset_config_controller.state_changed.connect(self._configuration_state_changed)
-        self.dataset_config_controller.document_opened.connect(self.datasetDocumentOpened)
+        self.configuration_controller.state_changed.connect(self._configuration_state_changed)
+        self.configuration_controller.configuration_document_opened.connect(
+            self.configurationDocumentOpened
+        )
         self.request_coordinator.busy_changed.connect(self._request_state_changed)
         self.visualization_draft.active_plot_draft_changed.connect(self._active_plot_state_changed)
         self.session_plot_controller.active_edit_changed.connect(self._active_plot_state_changed)
@@ -179,10 +181,10 @@ class DesktopController(QObject):
     def get_workspace_state(self) -> str:
         if not self.workspace_controller.get_available():
             return "unavailable"
-        if self.dataset_config_controller.get_has_document():
+        if self.configuration_controller.get_has_document():
             return "editing"
         if (
-            not self.dataset_config_controller.get_editor_available()
+            not self.configuration_controller.get_editor_available()
             and self.request_coordinator.is_busy
             and self.request_coordinator.active_owner == "configuration"
         ):
@@ -267,7 +269,7 @@ class DesktopController(QObject):
             and self.workspace_controller.get_pending_path() == str(workspace.root)
         ):
             return False
-        return self.dataset_config_controller.needs_discard_confirmation()
+        return self.configuration_controller.needs_discard_confirmation()
 
     workspaceConfirmationRequired = Property(
         bool,
@@ -289,7 +291,7 @@ class DesktopController(QObject):
     def get_workspace_confirmation_message(self) -> str:
         operation = self.workspace_controller.get_pending_operation()
         path = self.workspace_controller.get_pending_path()
-        dirty = self.dataset_config_controller.needs_discard_confirmation()
+        dirty = self.configuration_controller.needs_discard_confirmation()
         if operation == "initialize_existing":
             message = f"Initialize this existing folder as a Carnopy workspace?\n\n{path}"
             if dirty:
@@ -358,12 +360,12 @@ class DesktopController(QObject):
         notify=workspace_state_changed,
     )
 
-    def get_dataset_config_controller(self) -> QObject:
-        return self.dataset_config_controller
+    def get_configuration_controller(self) -> QObject:
+        return self.configuration_controller
 
-    datasetConfigController = Property(
+    configurationController = Property(
         QObject,
-        get_dataset_config_controller,
+        get_configuration_controller,
         constant=True,
     )
 
@@ -449,13 +451,13 @@ class DesktopController(QObject):
     def request_new_dataset(self, mode: str, discard_confirmed: bool = False) -> bool:
         if not self._guard_active_plot_edit("New Dataset"):
             return False
-        return self.dataset_config_controller.new_dataset(mode, discard_confirmed)
+        return self.configuration_controller.new_dataset(mode, discard_confirmed)
 
     @Slot(str, bool, result=bool, name="requestImportDataset")
     def request_import_dataset(self, path: str, discard_confirmed: bool = False) -> bool:
         if not self._guard_active_plot_edit("Import"):
             return False
-        return self.dataset_config_controller.import_dataset(
+        return self.configuration_controller.import_dataset(
             _local_path(path),
             discard_confirmed,
         )
@@ -464,19 +466,19 @@ class DesktopController(QObject):
     def request_save(self, allow_reformat: bool = False) -> bool:
         if not self._guard_active_plot_edit("Save"):
             return False
-        return self.dataset_config_controller.request_save(allow_reformat)
+        return self.configuration_controller.request_save(allow_reformat)
 
     @Slot(bool, result=bool, name="requestSaveAs")
     def request_save_as(self, allow_reformat: bool = False) -> bool:
         if not self._guard_active_plot_edit("Save As"):
             return False
-        return self.dataset_config_controller.request_save_as(allow_reformat)
+        return self.configuration_controller.request_save_as(allow_reformat)
 
     @Slot(result=bool, name="requestValidateConfiguration")
     def request_validate_configuration(self) -> bool:
         if not self._guard_active_plot_edit("Validation"):
             return False
-        return self.dataset_config_controller.request_validation()
+        return self.configuration_controller.request_validation()
 
     @Slot(result=bool, name="requestExecutionValidation")
     def request_execution_validation(self) -> bool:
@@ -605,28 +607,28 @@ class DesktopController(QObject):
     def request_save_path_selected(self, path: str) -> bool:
         if not self._guard_active_plot_edit("Save As"):
             return False
-        return self.dataset_config_controller.save_path_selected(_local_path(path))
+        return self.configuration_controller.save_path_selected(_local_path(path))
 
     @Slot(name="requestCancelSavePath")
     def request_cancel_save_path(self) -> None:
-        self.dataset_config_controller.cancel_save_path()
+        self.configuration_controller.cancel_save_path()
 
     @Slot(str, name="requestConfirmReformat")
     def request_confirm_reformat(self, action: str) -> None:
         if self._guard_active_plot_edit("Save"):
-            self.dataset_config_controller.confirm_reformat(action)
+            self.configuration_controller.confirm_reformat(action)
 
     @Slot(bool, result=bool, name="requestReloadSource")
     def request_reload_source(self, discard_confirmed: bool = False) -> bool:
         if not self._guard_active_plot_edit("Reload"):
             return False
-        return self.dataset_config_controller.reload_source(discard_confirmed)
+        return self.configuration_controller.reload_source(discard_confirmed)
 
     @Slot(bool, result=bool, name="requestCloseConfiguration")
     def request_close_configuration(self, discard_confirmed: bool = False) -> bool:
         if not self._guard_active_plot_edit("Close Configuration"):
             return False
-        return self.dataset_config_controller.clear_document(discard_confirmed)
+        return self.configuration_controller.clear_document(discard_confirmed)
 
     @Slot(str, str, int, result=bool, name="requestConfigurationAttention")
     def request_configuration_attention(self, section: str, field: str, row: int) -> bool:
@@ -675,9 +677,9 @@ class DesktopController(QObject):
         self._pending_dataset_decision = None
         operation, value = decision
         if operation == "mode":
-            changed = self.dataset_config_controller.apply_mode_change(value)
+            changed = self.configuration_controller.apply_mode_change(value)
         else:
-            changed = self.dataset_config_controller.apply_coordinate_change(value)
+            changed = self.configuration_controller.apply_coordinate_change(value)
         self.datasetDecisionChanged.emit()
         return changed
 
@@ -1089,7 +1091,7 @@ class DesktopController(QObject):
             )
             return False
         if (
-            self.dataset_config_controller.needs_discard_confirmation()
+            self.configuration_controller.needs_discard_confirmation()
             and not self._shutdown_discard_confirmed
         ):
             self.shutdownConfirmationRequested.emit()
@@ -1155,7 +1157,7 @@ class DesktopController(QObject):
 
     def _workspace_activated(self, value: object) -> None:
         self._pending_explore_source = None
-        self.dataset_config_controller.set_workspace(value)
+        self.configuration_controller.set_workspace(value)
         self.execution_controller.set_workspace(value if isinstance(value, Workspace) else None)
         self.session_plot_controller.set_workspace(value if isinstance(value, Workspace) else None)
         self.inspection_controller.set_workspace(value if isinstance(value, Workspace) else None)

@@ -91,13 +91,13 @@ def test_desktop_controller_owns_one_composition_and_preserves_settings_identity
     assert desktop.request_coordinator.client is desktop.client
     assert desktop.dataset_draft.parent() is desktop
     assert desktop.visualization_draft.parent() is desktop
-    assert desktop.dataset_config_controller.parent() is desktop
-    assert desktop.dataset_config_controller.coordinator is desktop.request_coordinator
-    assert desktop.dataset_config_controller.dataset_draft is desktop.dataset_draft
-    assert desktop.dataset_config_controller.visualization_draft is desktop.visualization_draft
+    assert desktop.configuration_controller.parent() is desktop
+    assert desktop.configuration_controller.coordinator is desktop.request_coordinator
+    assert desktop.configuration_controller.dataset_draft is desktop.dataset_draft
+    assert desktop.configuration_controller.visualization_draft is desktop.visualization_draft
     assert desktop.execution_controller.parent() is desktop
     assert desktop.execution_controller.coordinator is desktop.request_coordinator
-    assert desktop.execution_controller.config_controller is desktop.dataset_config_controller
+    assert desktop.execution_controller.config_controller is desktop.configuration_controller
     assert desktop.activity_controller.parent() is desktop
     assert desktop.activity_controller.coordinator is desktop.request_coordinator
     assert desktop.sweep_workflow_controller.parent() is desktop
@@ -118,7 +118,9 @@ def test_desktop_controller_owns_one_composition_and_preserves_settings_identity
     assert desktop.property("qmlSettings") is desktop.qml_settings
     assert desktop.property("datasetDraft") is desktop.dataset_draft
     assert desktop.property("visualizationDraft") is desktop.visualization_draft
-    assert desktop.property("datasetConfigController") is desktop.dataset_config_controller
+    assert desktop.property("configurationController") is desktop.configuration_controller
+    assert not hasattr(desktop, "dataset_config_controller")
+    assert desktop.property("datasetConfigController") is None
     assert desktop.property("executionController") is desktop.execution_controller
     assert desktop.property("activityController") is desktop.activity_controller
     assert (
@@ -189,7 +191,7 @@ def test_qml_shutdown_requires_explicit_dirty_discard_confirmation(
     desktop.shutdownConfirmationRequested.connect(lambda: confirmations.append("confirm"))
     desktop.closeWindowRequested.connect(lambda: close_requests.append("close"))
     monkeypatch.setattr(
-        desktop.dataset_config_controller,
+        desktop.configuration_controller,
         "needs_discard_confirmation",
         lambda: True,
     )
@@ -523,7 +525,7 @@ def test_save_as_facade_converts_qml_file_urls_at_the_composition_boundary(
     destination = tmp_path / "workspace" / "configs" / "dataset.yaml"
     observed: list[str] = []
     monkeypatch.setattr(
-        desktop.dataset_config_controller,
+        desktop.configuration_controller,
         "save_path_selected",
         lambda path: observed.append(path) or True,
     )
@@ -542,7 +544,7 @@ def test_desktop_workspace_facade_validates_create_name_and_binds_configuration_
     desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
     activated: list[object] = []
     monkeypatch.setattr(
-        desktop.dataset_config_controller,
+        desktop.configuration_controller,
         "set_workspace",
         activated.append,
     )
@@ -573,7 +575,7 @@ def test_desktop_workspace_facade_requires_initialization_confirmation(
 ) -> None:
     del application
     desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
-    monkeypatch.setattr(desktop.dataset_config_controller, "set_workspace", lambda _value: None)
+    monkeypatch.setattr(desktop.configuration_controller, "set_workspace", lambda _value: None)
     target = tmp_path / "existing"
     target.mkdir()
 
@@ -596,9 +598,9 @@ def test_desktop_workspace_facade_rechecks_dirty_confirmation_before_commit(
 ) -> None:
     del application
     desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
-    monkeypatch.setattr(desktop.dataset_config_controller, "set_workspace", lambda _value: None)
+    monkeypatch.setattr(desktop.configuration_controller, "set_workspace", lambda _value: None)
     monkeypatch.setattr(
-        desktop.dataset_config_controller,
+        desktop.configuration_controller,
         "needs_discard_confirmation",
         lambda: True,
     )
@@ -686,7 +688,7 @@ def test_active_plot_edit_blocks_all_composition_lifecycle_paths(
         "apply_coordinate_change",
     ):
         monkeypatch.setattr(
-            desktop.dataset_config_controller,
+            desktop.configuration_controller,
             name,
             lambda *_args, operation=name: calls.append(operation) or True,
         )
@@ -704,7 +706,7 @@ def test_active_plot_edit_blocks_all_composition_lifecycle_paths(
     assert not desktop.request_visualization_edit_plot(0)
     assert not desktop.request_visualization_remove_plot(0)
     assert not desktop.request_visualization_move_plot(0, 1)
-    assert not desktop.dataset_config_controller.clear_document(discard_confirmed=True)
+    assert not desktop.configuration_controller.clear_document(discard_confirmed=True)
     assert not desktop.shutdown()
 
     assert calls == []
@@ -737,7 +739,7 @@ def test_session_plot_edit_guards_replacement_but_not_configuration_save(
     )
     save_calls: list[str] = []
     monkeypatch.setattr(
-        desktop.dataset_config_controller,
+        desktop.configuration_controller,
         "request_save",
         lambda *_args: save_calls.append("save") or True,
     )
@@ -840,12 +842,12 @@ def test_dataset_replacement_decisions_are_owned_by_desktop_facade(
     monkeypatch.setattr(desktop.dataset_draft, "get_coordinate_name", lambda: "temperature")
     applied: list[tuple[str, str]] = []
     monkeypatch.setattr(
-        desktop.dataset_config_controller,
+        desktop.configuration_controller,
         "apply_mode_change",
         lambda value: applied.append(("mode", value)) or True,
     )
     monkeypatch.setattr(
-        desktop.dataset_config_controller,
+        desktop.configuration_controller,
         "apply_coordinate_change",
         lambda value: applied.append(("coordinate", value)) or True,
     )

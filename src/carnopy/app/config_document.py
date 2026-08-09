@@ -165,11 +165,6 @@ class ConfigurationDocument:
         )
 
 
-# Keep the dataset-only private name as a compatibility alias until the
-# controller migration lands in a later independently verified unit.
-DatasetConfigDocument = ConfigurationDocument
-
-
 def document_type_from_payload(payload: dict[str, Any]) -> DocumentType:
     value = payload.get("document_type")
     if value not in {"dataset", "model_sweep", "preparation"}:

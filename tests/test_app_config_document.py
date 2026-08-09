@@ -13,7 +13,6 @@ import carnopy.app.config_document as config_documents
 from carnopy.app.config_document import (
     ConfigDocumentError,
     ConfigurationDocument,
-    DatasetConfigDocument,
     ExternalModificationError,
     document_from_worker_payload,
     new_document,
@@ -28,6 +27,10 @@ from carnopy.app.config_document import (
 from carnopy.config.io import load_config_bytes, load_sweep_config_bytes
 from carnopy.preparation.models import load_preparation_config_bytes
 from carnopy.templates import template_text
+
+
+def test_dataset_specific_document_alias_is_removed() -> None:
+    assert not hasattr(config_documents, "DatasetConfigDocument")
 
 
 @pytest.mark.parametrize(
@@ -185,7 +188,6 @@ def test_configuration_documents_serialize_deterministically_by_discriminator(
     assert yaml.safe_load(first)["schema_version"] == schema_version
     document = new_document(payload)
     assert isinstance(document, ConfigurationDocument)
-    assert isinstance(document, DatasetConfigDocument)
     assert document.document_type == payload["document_type"]
     assert document.yaml_bytes == first
 
@@ -518,7 +520,7 @@ def test_save_rejects_invalid_or_escaping_destinations(tmp_path: Path) -> None:
 
 def test_mark_saved_updates_document_identity(tmp_path: Path) -> None:
     payload = yaml.safe_load(template_text("property_table"))
-    document = DatasetConfigDocument(payload, imported=True)
+    document = ConfigurationDocument(payload, imported=True)
     destination = tmp_path / "dataset.yaml"
     content = document.yaml_bytes
 

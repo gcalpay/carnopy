@@ -136,7 +136,7 @@ def test_workspace_page_starts_unavailable_and_uses_only_composition_facade(
     assert "prepare_create" not in _method_names(runtime.controller.workspace_controller)
     assert "prepare_open" not in _method_names(runtime.controller.workspace_controller)
     assert "commit_pending" not in _method_names(runtime.controller.workspace_controller)
-    assert "set_workspace" not in _method_names(runtime.controller.dataset_config_controller)
+    assert "set_workspace" not in _method_names(runtime.controller.configuration_controller)
 
     initialize_dialog = root.findChild(QObject, "initializeFolderDialog")
     open_dialog = root.findChild(QObject, "openFolderDialog")
