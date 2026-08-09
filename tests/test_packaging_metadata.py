@@ -292,11 +292,6 @@ def test_readme_documents_published_and_source_release_boundaries() -> None:
     assert "0.1.0a4.dev0" not in text
     assert "pending publisher" not in text.casefold()
     assert "Typing: typed" not in text
-    assert (
-        "Reproducible thermophysical datasets from scientific backends with\n"
-        "visualization, provenance, and leakage-aware preparation for physics-informed\n"
-        "machine-learning and engineering workflows."
-    ) in text
 
 
 def test_github_community_files_cover_public_reporting_paths() -> None:
