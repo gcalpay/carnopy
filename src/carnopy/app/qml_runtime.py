@@ -894,7 +894,7 @@ def run_qml_application(
                     settings=settings,
                 )
                 _exercise_installed_qml_smoke(runtime)
-                QTimer.singleShot(0, runtime.application.quit)
+                _schedule_smoke_exit(runtime)
                 result = _execute_qml_event_loop(runtime)
                 if not runtime.close():
                     raise QmlStartupError(
@@ -908,6 +908,24 @@ def run_qml_application(
         return result
     finally:
         instance_lock.unlock()
+
+
+def _schedule_smoke_exit(runtime: QmlApplicationRuntime) -> None:
+    """Quit after any startup workspace request has reached its terminal state."""
+
+    coordinator = runtime.controller.request_coordinator
+    if not coordinator.is_busy:
+        QTimer.singleShot(0, runtime.application.quit)
+        return
+
+    def request_finished(busy: bool) -> None:
+        if busy:
+            return
+        with suppress(RuntimeError):
+            coordinator.busy_changed.disconnect(request_finished)
+        QTimer.singleShot(0, runtime.application.quit)
+
+    coordinator.busy_changed.connect(request_finished)
 
 
 def _execute_qml_event_loop(runtime: QmlApplicationRuntime) -> int:

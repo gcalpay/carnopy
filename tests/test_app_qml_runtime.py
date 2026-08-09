@@ -565,6 +565,33 @@ def test_module_qml_launcher_smoke_exits_cleanly() -> None:
     assert completed.stderr == ""
 
 
+def test_module_qml_launcher_workspace_smoke_waits_for_startup_request(
+    tmp_path: Path,
+) -> None:
+    workspace = initialize_workspace(tmp_path / "workspace")
+    environment = os.environ.copy()
+    environment["QT_QPA_PLATFORM"] = "offscreen"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "carnopy.app.qml_launcher",
+            "--workspace",
+            str(workspace.root),
+            "--smoke-test",
+        ],
+        cwd=ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert completed.stdout == ""
+    assert completed.stderr == ""
+
+
 def test_guarded_sigint_closes_without_python_override_traceback(tmp_path: Path) -> None:
     code = """
 import os

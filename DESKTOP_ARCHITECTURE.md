@@ -646,6 +646,9 @@ Startup ordering is deliberate:
 Missing mandatory resources, font registration failures, QML startup warnings,
 load failures, and zero root objects are fatal. Later runtime warnings are
 logged and surfaced without unconditionally terminating the application.
+Installed smoke mode exits immediately when startup is idle. When an initial
+workspace starts capability discovery, smoke teardown waits for that request's
+terminal coordinator state instead of destroying an active worker process.
 
 QML views emit root-level request signals. `QmlApplicationRuntime` connects
 them to Python with queued Qt connections, avoiding re-entrant model mutation
@@ -995,7 +998,10 @@ the complete gate on 2026-08-09 with 836 tests, adding regressions for stable
 metadata consumption, atomic no-replace finalization, cancellation, Activity,
 controller state, runtime fingerprints, and all worker lifecycles. Stage 4 has
 no native UI acceptance surface; structured editors and visible workflow pages
-remain Stage 5.
+remain Stage 5. The separate WSLg maintenance acceptance then exercised a real
+six-row generation, configured plot, verified inspection, clean workspace
+reopen, and workspace-scoped installed smoke. Its lifecycle regression raised
+the exhaustively verified suite to 837 tests.
 
 ## Known current limitations
 
@@ -1015,10 +1021,10 @@ remain Stage 5.
 - The current WSLg development host can use CPU rendering through Mesa
   llvmpipe, which affects perceived QML scrolling and animation performance.
   A database would not correct that rendering limitation.
-- The current WSLg software-rendering, stale-lock, and window-activation
-  hardening is a separate desktop-maintenance follow-up, not a retroactive Stage
-  4 deliverable. Automated offscreen startup does not replace manual native
-  acceptance of that follow-up.
+- The current WSLg software-rendering, stale-lock, window-activation, and
+  workspace-smoke hardening is a separate desktop-maintenance follow-up, not a
+  retroactive Stage 4 deliverable. Native XCB/WSLg acceptance passed on
+  2026-08-09; it does not broaden Stage 8's cross-platform qualification.
 - The packaged Carnopy mark is provisional and will be refined through an
   explicit branding decision rather than automatic tracing.
 

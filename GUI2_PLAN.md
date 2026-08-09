@@ -188,9 +188,11 @@ independent Stage 4 audit remediation then passed the complete gate on
 no-replace finalization, cancellation, Activity, controller-state, runtime
 fingerprint, and complete worker-lifecycle regressions. No screenshot or native
 UI acceptance was required for Stage 4 because it made no visible QML changes.
-The separate WSLg launch-hardening follow-up remains desktop maintenance with
-its own manual native-acceptance boundary. Stage 5 is now the approved next
-stage.
+The separate WSLg launch-hardening follow-up remains desktop maintenance. Its
+native XCB/WSLg acceptance passed on 2026-08-09 with a real six-row generation,
+configured plot, verified inspection, clean workspace reopen, and a fixed
+workspace-scoped smoke lifecycle; exhaustive verification now collects 837
+tests. Stage 5 is now the approved next stage.
 
 ## Stage 5: sweep and preparation QML workflows
 

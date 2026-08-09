@@ -44,7 +44,10 @@ atomic no-replace finalization, cancellation between artifact writes, Activity
 terminal truth, failed-load state, runtime fingerprint invalidation, and the
 preparation worker lifecycle. No screenshot or native UI acceptance was
 required for Stage 4 because it has no visible QML changes. The separate WSLg
-launch-hardening follow-up retains its own manual native-acceptance boundary.
+launch-hardening follow-up subsequently passed native XCB/WSLg acceptance with
+a real six-row generation, configured plot, verified inspection, clean
+workspace reopen, and corrected workspace-scoped smoke teardown. Exhaustive
+verification for that follow-up collects **837 tests**.
 
 Stage 5 structured sweep and preparation QML workflows are the approved next
 stage.
