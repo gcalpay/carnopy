@@ -5,7 +5,7 @@ import hashlib
 from pathlib import Path
 from typing import Any, Literal, cast
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import Property, QObject, Signal
 
 from carnopy.app.config_document import (
     DocumentType,
@@ -23,6 +23,7 @@ from carnopy.app.request_coordinator import (
     RequestReservation,
     RequestSession,
 )
+from carnopy.app.workflow_models import WorkflowIssue, WorkflowIssueModel
 from carnopy.app.workspace import Workspace
 
 WorkflowKind = Literal["sweep", "preparation"]
@@ -64,7 +65,10 @@ class WorkflowController(QObject):
         self._activity_persistence_issue = ""
         self._active_snapshot: SavedConfigSnapshot | None = None
         self._active_record: dict[str, Any] | None = None
+        self.plan_blocking_reasons = WorkflowIssueModel(self)
+        self.execution_blocking_reasons = WorkflowIssueModel(self)
         coordinator.busy_changed.connect(lambda _busy: self.state_changed.emit())
+        self.state_changed.connect(self._refresh_typed_projections)
 
     @property
     def state(self) -> str:
@@ -114,34 +118,269 @@ class WorkflowController(QObject):
     def activity_persistence_issue(self) -> str:
         return self._activity_persistence_issue
 
+    def get_workflow_kind(self) -> str:
+        return self.kind
+
+    workflowKind = Property(str, get_workflow_kind, constant=True)
+
+    def get_document_kind(self) -> str:
+        return "model_sweep" if self.kind == "sweep" else "preparation"
+
+    documentKind = Property(str, get_document_kind, constant=True)
+
+    def get_workflow_state(self) -> str:
+        return self._state
+
+    workflowState = Property(str, get_workflow_state, notify=state_changed)
+
+    def get_workflow_operation(self) -> str:
+        return self._operation
+
+    workflowOperation = Property(str, get_workflow_operation, notify=state_changed)
+
+    def get_workflow_phase(self) -> str:
+        return self._phase
+
+    workflowPhase = Property(str, get_workflow_phase, notify=state_changed)
+
+    def get_operation_active(self) -> bool:
+        return self._session is not None
+
+    operationActive = Property(bool, get_operation_active, notify=state_changed)
+
+    def get_progress_available(self) -> bool:
+        return bool(self._progress)
+
+    progressAvailable = Property(bool, get_progress_available, notify=state_changed)
+
+    def get_progress_completed(self) -> int:
+        return _nonnegative_int(self._progress.get("completed"))
+
+    progressCompleted = Property(int, get_progress_completed, notify=state_changed)
+
+    def get_progress_total(self) -> int:
+        return _nonnegative_int(self._progress.get("total"))
+
+    progressTotal = Property(int, get_progress_total, notify=state_changed)
+
+    def get_failure_category(self) -> str:
+        return _text(self._failure.get("category"))
+
+    failureCategory = Property(str, get_failure_category, notify=state_changed)
+
+    def get_failure_code(self) -> str:
+        return _text(self._failure.get("code"))
+
+    failureCode = Property(str, get_failure_code, notify=state_changed)
+
+    def get_failure_message(self) -> str:
+        return _text(self._failure.get("message"))
+
+    failureMessage = Property(str, get_failure_message, notify=state_changed)
+
+    def get_activity_persistence_issue(self) -> str:
+        return self._activity_persistence_issue
+
+    activityPersistenceIssue = Property(
+        str,
+        get_activity_persistence_issue,
+        notify=state_changed,
+    )
+
+    def get_plan_blocking_reasons(self) -> QObject:
+        return self.plan_blocking_reasons
+
+    planBlockingReasons = Property(QObject, get_plan_blocking_reasons, constant=True)
+
+    def get_execution_blocking_reasons(self) -> QObject:
+        return self.execution_blocking_reasons
+
+    executionBlockingReasons = Property(
+        QObject,
+        get_execution_blocking_reasons,
+        constant=True,
+    )
+
     @property
     def can_cancel(self) -> bool:
         return self._session is not None and self._session.cooperative_cancel_available
+
+    def get_cancellation_available(self) -> bool:
+        return self.can_cancel
+
+    cancellationAvailable = Property(bool, get_cancellation_available, notify=state_changed)
 
     @property
     def can_force_stop(self) -> bool:
         return self._session is not None and self._session.force_stop_available
 
+    def get_force_stop_available(self) -> bool:
+        return self.can_force_stop
+
+    forceStopAvailable = Property(bool, get_force_stop_available, notify=state_changed)
+
+    def get_protected_finalization(self) -> bool:
+        return self._session is not None and self._session.termination_protected
+
+    protectedFinalization = Property(bool, get_protected_finalization, notify=state_changed)
+
     @property
     def can_plan(self) -> bool:
-        try:
-            self._saved_snapshot()
-            self._plan_context()
-        except ValueError:
-            return False
-        return self._session is None and not self.coordinator.is_busy
+        return not self._plan_blocking_issues()
+
+    def get_can_plan(self) -> bool:
+        return self.can_plan
+
+    canPlan = Property(bool, get_can_plan, notify=state_changed)
 
     @property
     def can_execute(self) -> bool:
-        if self._plan is None or self._plan_config_sha256 != self._config_sha256:
-            return False
-        if not self._plan_context_matches():
-            return False
+        return not self._execution_blocking_issues()
+
+    def get_can_execute(self) -> bool:
+        return self.can_execute
+
+    canExecute = Property(bool, get_can_execute, notify=state_changed)
+
+    def _plan_blocking_issues(self) -> tuple[WorkflowIssue, ...]:
+        issues: list[WorkflowIssue] = []
+        if issue := self._saved_configuration_issue():
+            issues.append(issue)
+        try:
+            self._plan_context()
+        except ValueError as exc:
+            issues.append(
+                self._blocking_issue(
+                    origin="source" if self.kind == "preparation" else "local",
+                    code=(
+                        "preparation_source_unavailable"
+                        if self.kind == "preparation"
+                        else "plan_context_unavailable"
+                    ),
+                    message=str(exc),
+                    section="source" if self.kind == "preparation" else "plan",
+                    field_id=(
+                        "preparation.source"
+                        if self.kind == "preparation"
+                        else f"{self.kind}.configuration"
+                    ),
+                )
+            )
+        if issue := self._worker_availability_issue():
+            issues.append(issue)
+        return tuple(issues)
+
+    def _execution_blocking_issues(self) -> tuple[WorkflowIssue, ...]:
+        issues: list[WorkflowIssue] = []
+        if self._plan is None:
+            issues.append(
+                self._blocking_issue(
+                    origin="plan",
+                    code="current_plan_required",
+                    message="Create a current plan before execution.",
+                    section="plan",
+                    field_id=f"{self.kind}.plan",
+                )
+            )
+        elif self._plan_config_sha256 != self._config_sha256:
+            issues.append(
+                self._blocking_issue(
+                    origin="plan",
+                    code="plan_configuration_changed",
+                    message="The plan belongs to a different saved configuration.",
+                    section="plan",
+                    field_id=f"{self.kind}.plan",
+                )
+            )
+        elif not self._plan_context_matches():
+            issues.append(
+                self._blocking_issue(
+                    origin="source" if self.kind == "preparation" else "plan",
+                    code="plan_context_changed",
+                    message="The plan no longer matches the current workflow context.",
+                    section="source" if self.kind == "preparation" else "plan",
+                    field_id=(
+                        "preparation.source" if self.kind == "preparation" else f"{self.kind}.plan"
+                    ),
+                )
+            )
+        if issue := self._saved_configuration_issue():
+            issues.append(issue)
+        if issue := self._worker_availability_issue():
+            issues.append(issue)
+        return tuple(issues)
+
+    def _saved_configuration_issue(self) -> WorkflowIssue | None:
+        if self.workspace is None:
+            return self._blocking_issue(
+                origin="local",
+                code="workspace_required",
+                message="Open a workspace first.",
+                section="workspace",
+                field_id="workspace",
+            )
+        if self._config_path is None or not self._config_sha256:
+            return self._blocking_issue(
+                origin="local",
+                code="saved_configuration_required",
+                message=f"Load a {self.kind} configuration first.",
+                section="configuration",
+                field_id=f"{self.kind}.configuration",
+            )
         try:
             self._saved_snapshot()
-        except ValueError:
-            return False
-        return self._session is None and not self.coordinator.is_busy
+        except ValueError as exc:
+            return self._blocking_issue(
+                origin="local",
+                code="saved_configuration_unavailable",
+                message=str(exc),
+                section="configuration",
+                field_id=f"{self.kind}.configuration",
+            )
+        return None
+
+    def _worker_availability_issue(self) -> WorkflowIssue | None:
+        if self._session is not None:
+            operation = self._operation.replace("_", " ") or "workflow"
+            return self._blocking_issue(
+                origin="runtime",
+                code="operation_active",
+                message=f"The {operation} operation is already active.",
+                section="operation",
+                field_id=f"{self.kind}.operation",
+            )
+        if self.coordinator.is_busy:
+            return self._blocking_issue(
+                origin="runtime",
+                code="desktop_worker_busy",
+                message="Another desktop worker operation is active.",
+                section="operation",
+                field_id=f"{self.kind}.operation",
+            )
+        return None
+
+    def _blocking_issue(
+        self,
+        *,
+        origin: Literal["local", "source", "plan", "runtime"],
+        code: str,
+        message: str,
+        section: str,
+        field_id: str,
+    ) -> WorkflowIssue:
+        return WorkflowIssue(
+            origin=origin,
+            severity="blocking",
+            code=code,
+            message=message,
+            document_kind=self.get_document_kind(),
+            section=section,
+            field_id=field_id,
+        )
+
+    def _refresh_typed_projections(self) -> None:
+        self.plan_blocking_reasons.replace(self._plan_blocking_issues())
+        self.execution_blocking_reasons.replace(self._execution_blocking_issues())
 
     def set_workspace(self, workspace: Workspace | None) -> None:
         if workspace == self.workspace:
@@ -562,6 +801,7 @@ class SweepWorkflowController(WorkflowController):
         parent: QObject | None = None,
     ) -> None:
         super().__init__(coordinator, kind="sweep", parent=parent)
+        self._refresh_typed_projections()
 
 
 class PreparationWorkflowController(WorkflowController):
@@ -575,6 +815,7 @@ class PreparationWorkflowController(WorkflowController):
         self.inspection = inspection
         self._planned_inspection_revision = ""
         inspection.inspection_changed.connect(self._inspection_changed)
+        self._refresh_typed_projections()
 
     def _plan_context(self) -> dict[str, object]:
         snapshot = self.inspection.preparation_source_snapshot()
@@ -627,3 +868,11 @@ class PreparationWorkflowController(WorkflowController):
         if self._session is None or self._operation != "execute":
             self._invalidate_plan("inspection changed")
         self.state_changed.emit()
+
+
+def _text(value: object) -> str:
+    return value if isinstance(value, str) else ""
+
+
+def _nonnegative_int(value: object) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0

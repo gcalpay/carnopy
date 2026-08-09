@@ -192,6 +192,10 @@ class RequestSession(QObject):
         )
 
     @property
+    def termination_protected(self) -> bool:
+        return self._termination_protected
+
+    @property
     def outcome(self) -> RequestOutcome | None:
         return self._outcome
 

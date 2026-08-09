@@ -400,3 +400,128 @@ def test_preparation_controller_rejects_a_plan_for_replaced_inspection(
         "inspection_descriptor": new_descriptor,
     }
     coordinator.shutdown()
+
+
+def test_workflow_qml_projections_expose_existing_state_without_changing_eligibility(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    workspace = initialize_workspace(tmp_path / "workspace")
+    coordinator, _transport = coordinator_for()
+    controller = SweepWorkflowController(coordinator)
+
+    assert controller.get_workflow_kind() == "sweep"
+    assert controller.get_document_kind() == "model_sweep"
+    assert controller.get_workflow_state() == "unavailable"
+    assert not controller.get_operation_active()
+    assert not controller.get_can_plan()
+    assert not controller.get_can_execute()
+    assert [issue.code for issue in controller.plan_blocking_reasons.issues] == [
+        "workspace_required"
+    ]
+    assert [issue.code for issue in controller.execution_blocking_reasons.issues] == [
+        "current_plan_required",
+        "workspace_required",
+    ]
+
+    controller.set_workspace(workspace)
+
+    assert controller.get_workflow_state() == "ready"
+    [reason] = controller.plan_blocking_reasons.issues
+    assert reason.code == "saved_configuration_required"
+    assert reason.origin == "local"
+    assert reason.severity == "blocking"
+    assert reason.document_kind == "model_sweep"
+    assert reason.section == "configuration"
+    assert reason.field_id == "sweep.configuration"
+    coordinator.shutdown()
+
+
+def test_workflow_operation_progress_and_protected_finalization_are_typed(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    workspace = initialize_workspace(tmp_path / "workspace")
+    config = _config(workspace)
+    coordinator, transport = coordinator_for()
+    controller = SweepWorkflowController(coordinator)
+    controller.set_workspace(workspace)
+    assert controller.load_config(config)
+    digest = _finish_load(transport, config)
+    assert controller.get_can_plan()
+    assert controller.plan_blocking_reasons.issues == ()
+    assert controller.plan()
+    _finish_plan(transport, digest=digest)
+    assert controller.get_can_execute()
+    assert controller.execution_blocking_reasons.issues == ()
+
+    assert controller.execute()
+    assert controller.get_operation_active()
+    assert controller.get_workflow_operation() == "execute"
+    assert [issue.code for issue in controller.execution_blocking_reasons.issues] == [
+        "operation_active"
+    ]
+    transport.emit_event("accepted", {})
+    transport.emit_event(
+        "phase",
+        {"name": "generation", "cancellable": True},
+    )
+    transport.emit_event("progress", {"completed": 7, "total": 10})
+
+    assert controller.get_workflow_state() == "running"
+    assert controller.get_workflow_phase() == "generation"
+    assert controller.get_progress_available()
+    assert controller.get_progress_completed() == 7
+    assert controller.get_progress_total() == 10
+    assert controller.get_cancellation_available()
+    assert not controller.get_force_stop_available()
+    assert not controller.get_protected_finalization()
+
+    transport.emit_event(
+        "phase",
+        {
+            "name": "finalization",
+            "cancellable": False,
+            "termination_protected": True,
+        },
+    )
+
+    assert controller.get_protected_finalization()
+    assert not controller.get_cancellation_available()
+    assert not controller.get_force_stop_available()
+    transport.finish(payload={"output_directory": str(workspace.outputs / "sweep")})
+    assert not controller.get_operation_active()
+    assert not controller.get_protected_finalization()
+    coordinator.shutdown()
+
+
+def test_workflow_failure_and_preparation_source_blockers_are_typed(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    workspace = initialize_workspace(tmp_path / "workspace")
+    config = _config(workspace, "preparation.yaml")
+    coordinator, transport = coordinator_for()
+    inspection = InspectionController(coordinator)
+    controller = PreparationWorkflowController(coordinator, inspection)
+    controller.set_workspace(workspace)
+    assert controller.load_config(config)
+    _finish_load(transport, config)
+
+    assert not controller.get_can_plan()
+    [reason] = controller.plan_blocking_reasons.issues
+    assert reason.code == "preparation_source_unavailable"
+    assert reason.origin == "source"
+    assert reason.document_kind == "preparation"
+    assert reason.section == "source"
+    assert reason.field_id == "preparation.source"
+
+    assert not controller.plan()
+    assert controller.get_workflow_state() == "failed"
+    assert controller.get_failure_category() == "request"
+    assert controller.get_failure_code() == "plan_unavailable"
+    assert "eligible preparation source" in controller.get_failure_message()
+    coordinator.shutdown()
