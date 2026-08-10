@@ -151,6 +151,21 @@ def _finish_plan(
     transport.finish(payload=payload)
 
 
+def _finish_execution(
+    transport: StubTransport,
+    output_directory: Path,
+    *,
+    run_id: str = "workflow-run",
+) -> None:
+    transport.finish(
+        payload={
+            "run_id": run_id,
+            "output_directory": str(output_directory),
+            "status": "completed",
+        }
+    )
+
+
 def _accept_preparation_inspection(
     inspection: InspectionController,
     source: Path,
@@ -217,6 +232,9 @@ def test_sweep_controller_persists_only_execution_with_plan_identity(
 
     assert controller.state == "succeeded"
     assert finalized == [output]
+    assert controller.get_has_result()
+    assert controller.get_result_relation() == "current"
+    assert controller.get_result_output_directory() == str(output)
     [record] = coordinator_for_job_records(workspace)
     assert record["owner"] == "sweep"
     assert record["operation"] == "execute_sweep"
@@ -225,6 +243,118 @@ def test_sweep_controller_persists_only_execution_with_plan_identity(
         "plan_schema_version": None,
         "fingerprint": None,
     }
+    coordinator.shutdown()
+
+
+def test_finalized_result_survives_later_failed_and_cancelled_attempts(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    workspace = initialize_workspace(tmp_path / "workspace")
+    config = _config(workspace)
+    coordinator, transport = coordinator_for()
+    controller = SweepWorkflowController(coordinator)
+    controller.set_workspace(workspace)
+
+    assert not controller.get_has_result()
+    assert controller.get_result_relation() == "unavailable"
+    assert controller.get_result_output_directory() == ""
+    assert controller.load_config(config)
+    digest = _finish_load(transport, config)
+    assert controller.plan()
+    _finish_plan(transport, digest=digest)
+
+    first_output = workspace.outputs / "first-output"
+    first_output.mkdir()
+    assert controller.execute()
+    _finish_execution(transport, first_output, run_id="first-run")
+    first_result = controller.result
+    assert controller.get_result_relation() == "current"
+
+    assert controller.execute()
+    assert controller.result == first_result
+    assert controller.get_result_relation() == "current"
+    transport.finish(
+        terminal_type="error",
+        payload={
+            "category": "execution",
+            "code": "execution_failed",
+            "message": "simulated later failure",
+        },
+    )
+    assert controller.state == "failed"
+    assert controller.result == first_result
+    assert controller.get_result_relation() == "current"
+    assert controller.get_result_output_directory() == str(first_output)
+
+    assert controller.execute()
+    assert controller.result == first_result
+    transport.finish(
+        terminal_type="cancelled",
+        payload={"code": "cancelled", "message": "simulated cancellation"},
+    )
+    assert controller.state == "cancelled"
+    assert controller.result == first_result
+    assert controller.get_result_relation() == "current"
+
+    second_output = workspace.outputs / "second-output"
+    second_output.mkdir()
+    assert controller.execute()
+    _finish_execution(transport, second_output, run_id="second-run")
+    assert controller.result != first_result
+    assert controller.get_result_relation() == "current"
+    assert controller.get_result_output_directory() == str(second_output)
+    coordinator.shutdown()
+
+
+def test_sweep_result_relation_uses_saved_identity_and_clears_with_workspace(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    workspace = initialize_workspace(tmp_path / "workspace")
+    config = _config(workspace)
+    original_bytes = config.read_bytes()
+    coordinator, transport = coordinator_for()
+    controller = SweepWorkflowController(coordinator)
+    controller.set_workspace(workspace)
+
+    assert controller.load_config(config)
+    digest = _finish_load(transport, config)
+    assert controller.plan()
+    _finish_plan(transport, digest=digest)
+    output = workspace.outputs / "sweep-output"
+    output.mkdir()
+    assert controller.execute()
+    _finish_execution(transport, output)
+    finalized_result = controller.result
+
+    config.write_text("schema_version: 2\nchanged: true\n", encoding="utf-8")
+    controller.state_changed.emit()
+    assert controller.result == finalized_result
+    assert controller.get_result_relation() == "stale"
+
+    config.write_bytes(original_bytes)
+    assert controller.get_result_relation() == "current"
+
+    replacement = workspace.configs / "replacement.yaml"
+    replacement.write_text("schema_version: 2\nchanged: true\n", encoding="utf-8")
+    assert controller.load_config(replacement)
+    _finish_load(transport, replacement)
+    assert controller.result == finalized_result
+    assert controller.get_result_relation() == "stale"
+
+    assert controller.load_config(config)
+    assert _finish_load(transport, config) == digest
+    assert controller.result == finalized_result
+    assert controller.get_result_relation() == "current"
+
+    controller.set_workspace(initialize_workspace(tmp_path / "other-workspace"))
+    assert controller.result is None
+    assert not controller.get_has_result()
+    assert controller.get_result_relation() == "unavailable"
+    assert controller.get_result_output_directory() == ""
     coordinator.shutdown()
 
 
@@ -633,6 +763,66 @@ def test_preparation_plan_currentness_uses_the_complete_inspection_context(
     assert controller.current_plan == accepted_plan
     assert controller.get_plan_current()
     assert controller.can_execute
+    coordinator.shutdown()
+
+
+def test_preparation_result_keeps_the_source_context_used_by_execution(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    workspace = initialize_workspace(tmp_path / "workspace")
+    config = _config(workspace, "preparation.yaml")
+    source = workspace.outputs / "dataset-run"
+    source.mkdir()
+    replacement = workspace.outputs / "replacement-run"
+    replacement.mkdir()
+    coordinator, transport = coordinator_for()
+    inspection = InspectionController(coordinator)
+    controller = PreparationWorkflowController(coordinator, inspection)
+    controller.set_workspace(workspace)
+
+    assert controller.load_config(config)
+    digest = _finish_load(transport, config)
+    revision = "a" * 64
+    descriptor = _accept_preparation_inspection(
+        inspection,
+        source,
+        revision=revision,
+    )
+    assert controller.plan()
+    _finish_plan(
+        transport,
+        digest=digest,
+        source_revision={
+            "inspection_revision": revision,
+            "inspection_descriptor": descriptor,
+            "consumed_source": {},
+        },
+    )
+
+    output = workspace.outputs / "preparation-output"
+    output.mkdir()
+    assert controller.execute()
+    _accept_preparation_inspection(
+        inspection,
+        replacement,
+        revision=revision,
+    )
+    _finish_execution(transport, output)
+
+    assert controller.state == "succeeded"
+    assert controller.get_has_result()
+    assert controller.get_result_output_directory() == str(output)
+    assert controller.get_result_relation() == "stale"
+
+    restored_descriptor = _accept_preparation_inspection(
+        inspection,
+        source,
+        revision=revision,
+    )
+    assert restored_descriptor == descriptor
+    assert controller.get_result_relation() == "current"
     coordinator.shutdown()
 
 

@@ -27,6 +27,7 @@ from carnopy.app.workflow_models import WorkflowIssue, WorkflowIssueModel
 from carnopy.app.workspace import Workspace
 
 WorkflowKind = Literal["sweep", "preparation"]
+ResultRelation = Literal["unavailable", "current", "stale"]
 
 
 class WorkflowController(QObject):
@@ -64,8 +65,11 @@ class WorkflowController(QObject):
         self._planned_context: dict[str, object] | None = None
         self._plan_stale_reason = ""
         self._result: dict[str, Any] | None = None
+        self._result_config_sha256 = ""
+        self._result_context: dict[str, object] | None = None
         self._activity_persistence_issue = ""
         self._active_snapshot: SavedConfigSnapshot | None = None
+        self._active_plan_context: dict[str, object] | None = None
         self._active_record: dict[str, Any] | None = None
         self.plan_blocking_reasons = WorkflowIssueModel(self)
         self.execution_blocking_reasons = WorkflowIssueModel(self)
@@ -140,6 +144,35 @@ class WorkflowController(QObject):
     @property
     def result(self) -> dict[str, Any] | None:
         return copy.deepcopy(self._result)
+
+    def get_has_result(self) -> bool:
+        return self._result is not None
+
+    hasResult = Property(bool, get_has_result, notify=state_changed)
+
+    def get_result_output_directory(self) -> str:
+        return _text((self._result or {}).get("output_directory"))
+
+    resultOutputDirectory = Property(
+        str,
+        get_result_output_directory,
+        notify=state_changed,
+    )
+
+    def get_result_relation(self) -> ResultRelation:
+        if self._result is None:
+            return "unavailable"
+        try:
+            snapshot = self._saved_snapshot()
+        except ValueError:
+            return "stale"
+        if snapshot.sha256 != self._result_config_sha256:
+            return "stale"
+        if not self._context_matches(self._result_context):
+            return "stale"
+        return "current"
+
+    resultRelation = Property(str, get_result_relation, notify=state_changed)
 
     @property
     def activity_persistence_issue(self) -> str:
@@ -433,7 +466,7 @@ class WorkflowController(QObject):
         self._config_path = None
         self._config_sha256 = ""
         self._validation = None
-        self._result = None
+        self._clear_result()
         self._clear_plan()
         self._set_activity_persistence_issue("")
         self._state = "ready" if workspace is not None else "unavailable"
@@ -542,9 +575,11 @@ class WorkflowController(QObject):
         self._phase = ""
         self._progress = {}
         self._failure = {}
-        self._result = None
         self._active_record = None
         self._active_snapshot = snapshot
+        self._active_plan_context = (
+            copy.deepcopy(self._planned_context) if persist_execution else None
+        )
         reservation: RequestReservation
         try:
             reservation = self.coordinator.reserve_request(self.owner, request_type)
@@ -668,12 +703,16 @@ class WorkflowController(QObject):
                 self._state = "planned"
         else:
             self._result = copy.deepcopy(result)
+            active_snapshot = self._active_snapshot
+            self._result_config_sha256 = "" if active_snapshot is None else active_snapshot.sha256
+            self._result_context = copy.deepcopy(self._active_plan_context)
             self._state = "succeeded"
             output = result.get("output_directory")
             if isinstance(output, str) and output:
                 self.output_finalized.emit(Path(output))
         self._session = None
         self._active_snapshot = None
+        self._active_plan_context = None
         self._active_record = None
         self.state_changed.emit()
 
@@ -744,13 +783,16 @@ class WorkflowController(QObject):
         self._planned_context = copy.deepcopy(self._plan_context())
 
     def _plan_context_matches(self) -> bool:
-        if self._planned_context is None:
+        return self._context_matches(self._planned_context)
+
+    def _context_matches(self, expected: dict[str, object] | None) -> bool:
+        if expected is None:
             return False
         try:
             current_context = self._plan_context()
         except ValueError:
             return False
-        return current_context == self._planned_context
+        return current_context == expected
 
     def _plan_result_matches_current_context(self, _result: dict[str, object]) -> bool:
         return True
@@ -767,6 +809,11 @@ class WorkflowController(QObject):
         self._plan_config_sha256 = ""
         self._planned_context = None
         self._plan_stale_reason = ""
+
+    def _clear_result(self) -> None:
+        self._result = None
+        self._result_config_sha256 = ""
+        self._result_context = None
 
     def _clear_loaded_configuration(self) -> None:
         self._loaded_config = None
