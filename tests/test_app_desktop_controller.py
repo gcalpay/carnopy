@@ -494,6 +494,44 @@ def test_sweep_workflow_facade_routes_only_the_integrated_workflow(
     assert desktop.shutdown()
 
 
+def test_sweep_editor_facade_enforces_document_and_worker_edit_guards(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    selections: list[tuple[str, bool]] = []
+    monkeypatch.setattr(
+        desktop.configuration_controller.sweep_draft,
+        "set_model_selected",
+        lambda model, selected: selections.append((model, selected)) or True,
+    )
+    monkeypatch.setattr(
+        desktop.configuration_controller,
+        "get_document_kind",
+        lambda: "dataset",
+    )
+    monkeypatch.setattr(desktop.configuration_controller, "get_can_edit", lambda: True)
+
+    desktop.request_sweep_model_selection("pr", True)
+    assert selections == []
+
+    monkeypatch.setattr(
+        desktop.configuration_controller,
+        "get_document_kind",
+        lambda: "model_sweep",
+    )
+    desktop.request_sweep_model_selection("pr", True)
+    assert selections == [("pr", True)]
+
+    monkeypatch.setattr(desktop.configuration_controller, "get_can_edit", lambda: False)
+    desktop.request_sweep_model_selection("srk", True)
+    assert selections == [("pr", True)]
+    assert "active worker request" in desktop.get_workspace_error_message()
+    assert desktop.shutdown()
+
+
 def test_sweep_result_handoff_inspects_the_exact_finalized_output(
     tmp_path: Path,
     application: QCoreApplication,

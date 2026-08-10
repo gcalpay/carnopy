@@ -6,6 +6,7 @@ from PySide6.QtCore import Property, QObject, QSettings, QTimer, QUrl, Signal, S
 
 from carnopy.app.activity_controller import ActivityController
 from carnopy.app.client import WorkerClient
+from carnopy.app.comparison_plot_draft import ComparisonPlotDraft
 from carnopy.app.config_controller import ConfigurationController
 from carnopy.app.configured_plot_results_controller import ConfiguredPlotResultsController
 from carnopy.app.dataset_draft import DatasetDraft
@@ -792,6 +793,218 @@ class DesktopController(QObject):
         if sampler is not None:
             sampler.requestUnitChange(unit)
 
+    @Slot(str, bool, name="requestSweepModelSelection")
+    def request_sweep_model_selection(self, model: str, selected: bool) -> None:
+        if self._can_edit_sweep_document():
+            self.configuration_controller.sweep_draft.set_model_selected(model, selected)
+
+    @Slot(str, name="requestSweepReferenceModel")
+    def request_sweep_reference_model(self, model: str) -> None:
+        if self._can_edit_sweep_document():
+            self.configuration_controller.sweep_draft.set_reference_model(model)
+
+    @Slot(str, bool, name="requestSweepModeChange")
+    def request_sweep_mode_change(self, mode: str, confirmed: bool) -> None:
+        if self._can_edit_sweep_document():
+            self.configuration_controller.sweep_draft.apply_mode_change(mode, confirmed)
+
+    @Slot(str, bool, name="requestSweepCoordinateChange")
+    def request_sweep_coordinate_change(self, axis: str, confirmed: bool) -> None:
+        if self._can_edit_sweep_document():
+            self.configuration_controller.sweep_draft.apply_coordinate_change(axis, confirmed)
+
+    @Slot(str, bool, name="requestSweepFluidSelection")
+    def request_sweep_fluid_selection(self, value: str, selected: bool) -> None:
+        if not self._can_edit_sweep_document():
+            return
+        draft = self.configuration_controller.sweep_draft.dataset_draft
+        if selected:
+            draft.add_fluid(value)
+        else:
+            draft.remove_fluid_value(value)
+
+    @Slot(int, int, name="requestSweepFluidMove")
+    def request_sweep_fluid_move(self, row: int, offset: int) -> None:
+        if self._can_edit_sweep_document():
+            self.configuration_controller.sweep_draft.dataset_draft.move_fluid(row, offset)
+
+    @Slot(int, name="requestSweepFluidRemove")
+    def request_sweep_fluid_remove(self, row: int) -> None:
+        if self._can_edit_sweep_document():
+            self.configuration_controller.sweep_draft.dataset_draft.remove_fluid(row)
+
+    @Slot(str, bool, name="requestSweepPropertySelection")
+    def request_sweep_property_selection(self, value: str, selected: bool) -> None:
+        if not self._can_edit_sweep_document():
+            return
+        draft = self.configuration_controller.sweep_draft.dataset_draft
+        if selected:
+            draft.add_property(value)
+        else:
+            draft.remove_property_value(value)
+
+    @Slot(int, int, name="requestSweepPropertyMove")
+    def request_sweep_property_move(self, row: int, offset: int) -> None:
+        if self._can_edit_sweep_document():
+            self.configuration_controller.sweep_draft.dataset_draft.move_property(row, offset)
+
+    @Slot(int, name="requestSweepPropertyRemove")
+    def request_sweep_property_remove(self, row: int) -> None:
+        if self._can_edit_sweep_document():
+            self.configuration_controller.sweep_draft.dataset_draft.remove_property(row)
+
+    @Slot(str, bool, name="requestSweepOutputSelection")
+    def request_sweep_output_selection(self, output_format: str, selected: bool) -> None:
+        if self._can_edit_sweep_document():
+            self.configuration_controller.sweep_draft.dataset_draft.set_output_selected(
+                output_format,
+                selected,
+            )
+
+    @Slot(QObject, str, name="requestSweepSamplerKindChange")
+    def request_sweep_sampler_kind_change(self, candidate: QObject, kind: str) -> None:
+        sampler = self._owned_sweep_sampler(candidate)
+        if sampler is not None and self._can_edit_sweep_document():
+            sampler.set_kind(kind)
+
+    @Slot(QObject, str, str, name="requestSweepSamplerTextChange")
+    def request_sweep_sampler_text_change(
+        self,
+        candidate: QObject,
+        field: str,
+        text: str,
+    ) -> None:
+        sampler = self._owned_sweep_sampler(candidate)
+        if sampler is not None and self._can_edit_sweep_document():
+            sampler.set_text(field, text)
+
+    @Slot(QObject, str, name="requestSweepSamplerUnitChange")
+    def request_sweep_sampler_unit_change(self, candidate: QObject, unit: str) -> None:
+        sampler = self._owned_sweep_sampler(candidate)
+        if sampler is not None and self._can_edit_sweep_document():
+            sampler.requestUnitChange(unit)
+
+    @Slot(str, name="requestSweepComparisonFormat")
+    def request_sweep_comparison_format(self, output_format: str) -> None:
+        if self._can_edit_sweep_document():
+            self.configuration_controller.sweep_draft.set_comparison_format(output_format)
+
+    @Slot(result=bool, name="requestSweepAddComparison")
+    def request_sweep_add_comparison(self) -> bool:
+        return self._can_edit_sweep_document() and (
+            self.configuration_controller.sweep_draft.begin_add_comparison()
+        )
+
+    @Slot(int, result=bool, name="requestSweepEditComparison")
+    def request_sweep_edit_comparison(self, row: int) -> bool:
+        return self._can_edit_sweep_document() and (
+            self.configuration_controller.sweep_draft.begin_edit_comparison(row)
+        )
+
+    @Slot(result=bool, name="requestSweepCommitComparison")
+    def request_sweep_commit_comparison(self) -> bool:
+        return self._can_edit_sweep_document() and (
+            self.configuration_controller.sweep_draft.commit_comparison()
+        )
+
+    @Slot(result=bool, name="requestSweepCancelComparison")
+    def request_sweep_cancel_comparison(self) -> bool:
+        return self._can_edit_sweep_document() and (
+            self.configuration_controller.sweep_draft.cancel_comparison()
+        )
+
+    @Slot(int, result=bool, name="requestSweepRemoveComparison")
+    def request_sweep_remove_comparison(self, row: int) -> bool:
+        return self._can_edit_sweep_document() and (
+            self.configuration_controller.sweep_draft.remove_comparison(row)
+        )
+
+    @Slot(int, int, result=bool, name="requestSweepMoveComparison")
+    def request_sweep_move_comparison(self, source: int, destination: int) -> bool:
+        return self._can_edit_sweep_document() and (
+            self.configuration_controller.sweep_draft.move_comparison(source, destination)
+        )
+
+    @Slot(QObject, str, str, name="requestSweepComparisonFieldChange")
+    def request_sweep_comparison_field_change(
+        self,
+        candidate: QObject,
+        field: str,
+        value: str,
+    ) -> None:
+        draft = self._owned_sweep_comparison(candidate)
+        if draft is None or not self._can_edit_sweep_document():
+            return
+        setters = {
+            "name": draft.set_name,
+            "kind": draft.set_kind,
+            "fluid": draft.set_fluid,
+            "property": draft.set_property_name,
+            "x": draft.set_x_field,
+            "group_by": draft.set_group_by,
+            "delta_metric": draft.set_delta_metric,
+            "value_scale": draft.set_value_scale,
+            "format": draft.set_output_format,
+        }
+        setter = setters.get(field)
+        if setter is not None:
+            setter(value)
+
+    @Slot(QObject, bool, name="requestSweepComparisonExplicitModels")
+    def request_sweep_comparison_explicit_models(
+        self,
+        candidate: QObject,
+        enabled: bool,
+    ) -> None:
+        draft = self._owned_sweep_comparison(candidate)
+        if draft is not None and self._can_edit_sweep_document():
+            draft.set_explicit_models(enabled)
+
+    @Slot(QObject, str, bool, name="requestSweepComparisonModelSelection")
+    def request_sweep_comparison_model_selection(
+        self,
+        candidate: QObject,
+        model: str,
+        selected: bool,
+    ) -> None:
+        draft = self._owned_sweep_comparison(candidate)
+        if draft is not None and self._can_edit_sweep_document():
+            draft.set_model_selected(model, selected)
+
+    @Slot(QObject, name="requestSweepComparisonFilterAdd")
+    def request_sweep_comparison_filter_add(self, candidate: QObject) -> None:
+        mapping = self._owned_sweep_comparison_mapping(candidate)
+        if mapping is not None and self._can_edit_sweep_document():
+            mapping.add_row()
+
+    @Slot(QObject, int, str, name="requestSweepComparisonFilterFieldChange")
+    def request_sweep_comparison_filter_field_change(
+        self,
+        candidate: QObject,
+        row: int,
+        field: str,
+    ) -> None:
+        mapping = self._owned_sweep_comparison_mapping(candidate)
+        if mapping is not None and self._can_edit_sweep_document():
+            mapping.set_field(row, field)
+
+    @Slot(QObject, int, str, name="requestSweepComparisonFilterValueChange")
+    def request_sweep_comparison_filter_value_change(
+        self,
+        candidate: QObject,
+        row: int,
+        value: str,
+    ) -> None:
+        mapping = self._owned_sweep_comparison_mapping(candidate)
+        if mapping is not None and self._can_edit_sweep_document():
+            mapping.set_raw_value(row, value)
+
+    @Slot(QObject, int, name="requestSweepComparisonFilterRemove")
+    def request_sweep_comparison_filter_remove(self, candidate: QObject, row: int) -> None:
+        mapping = self._owned_sweep_comparison_mapping(candidate)
+        if mapping is not None and self._can_edit_sweep_document():
+            mapping.remove_row(row)
+
     @Slot(bool, name="requestVisualizationEnabled")
     def request_visualization_enabled(self, enabled: bool) -> None:
         if self._guard_active_plot_edit("visualization enable or disable"):
@@ -961,6 +1174,38 @@ class DesktopController(QObject):
             (sampler for sampler in self.dataset_draft.samplers.drafts if sampler is candidate),
             None,
         )
+
+    def _can_edit_sweep_document(self) -> bool:
+        if self.configuration_controller.get_document_kind() != "model_sweep":
+            return False
+        if self.configuration_controller.get_can_edit():
+            return True
+        self.workspace_controller.report_error(
+            "Wait for the active worker request before editing the Model Sweep configuration."
+        )
+        return False
+
+    def _owned_sweep_sampler(self, candidate: QObject) -> SamplerDraft | None:
+        samplers = self.configuration_controller.sweep_draft.dataset_draft.samplers.drafts
+        return next((sampler for sampler in samplers if sampler is candidate), None)
+
+    def _owned_sweep_comparison(
+        self,
+        candidate: QObject,
+    ) -> ComparisonPlotDraft | None:
+        active = self.configuration_controller.sweep_draft.get_active_comparison_draft()
+        return active if isinstance(active, ComparisonPlotDraft) and active is candidate else None
+
+    def _owned_sweep_comparison_mapping(
+        self,
+        candidate: QObject,
+    ) -> MappingDraftModel | None:
+        active = self.configuration_controller.sweep_draft.get_active_comparison_draft()
+        if not isinstance(active, ComparisonPlotDraft):
+            return None
+        if candidate is not active.filters:
+            return None
+        return candidate if isinstance(candidate, MappingDraftModel) else None
 
     def _owned_active_plot(self, candidate: QObject) -> PlotDraft | None:
         active_drafts = (
