@@ -44,6 +44,8 @@ class StubTransport(QObject):
         self.request_type: RequestType | None = None
         self.payload: dict[str, object] | None = None
         self.raise_on_start = False
+        self.cancelled: list[UUID] = []
+        self.force_stopped: list[UUID] = []
 
     def start_request(
         self,
@@ -61,10 +63,16 @@ class StubTransport(QObject):
         self.payload = dict(payload or {})
 
     def send_cancel(self, request_id: UUID) -> bool:
-        return self.is_busy and request_id == self.request_id
+        accepted = self.is_busy and request_id == self.request_id
+        if accepted:
+            self.cancelled.append(request_id)
+        return accepted
 
     def force_stop(self, request_id: UUID) -> bool:
-        return self.is_busy and request_id == self.request_id
+        accepted = self.is_busy and request_id == self.request_id
+        if accepted:
+            self.force_stopped.append(request_id)
+        return accepted
 
     def shutdown(self) -> None:
         if self.is_busy:
@@ -82,6 +90,7 @@ class StubTransport(QObject):
         *,
         payload: dict[str, object] | None = None,
         terminal_type: EventType = "result",
+        force_stopped: bool = False,
     ) -> None:
         request_id = self.request_id
         request_type = self.request_type
@@ -102,9 +111,9 @@ class StubTransport(QObject):
                 terminal_event=terminal,
                 client_failure=None,
                 stderr="",
-                exit_code=0,
-                exit_status="normal",
-                force_stopped=False,
+                exit_code=9 if force_stopped else 0,
+                exit_status="crash" if force_stopped else "normal",
+                force_stopped=force_stopped,
             )
         )
 
@@ -292,7 +301,8 @@ def test_sweep_planning_uses_the_global_configuration_snapshot(
         configuration_controller=configuration,
     )
     controller.set_workspace(workspace)
-    digest = sha256_bytes(document.yaml_bytes)
+    saved_bytes = document.yaml_bytes
+    digest = sha256_bytes(saved_bytes)
 
     assert controller.loaded_config is None
     assert controller.config_path is None
@@ -376,6 +386,143 @@ def test_sweep_planning_uses_the_global_configuration_snapshot(
     assert not controller.get_plan_current()
     assert configuration.sweep_draft.set_reference_model("heos")
     assert controller.get_plan_current()
+    coordinator.shutdown()
+
+
+def test_sweep_execution_retains_its_global_snapshot_while_the_draft_changes(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    workspace = initialize_workspace(tmp_path / "workspace")
+    coordinator, transport = coordinator_for()
+    configuration = ConfigurationController(coordinator)
+    configuration.set_workspace(workspace)
+    transport.finish(payload=_sweep_capabilities())
+    document = _saved_sweep_document(workspace)
+    assert configuration.open_document(document)
+    controller = SweepWorkflowController(
+        coordinator,
+        configuration_controller=configuration,
+    )
+    controller.set_workspace(workspace)
+    saved_bytes = document.yaml_bytes
+    digest = sha256_bytes(saved_bytes)
+    assert controller.plan()
+    _finish_plan(transport, digest=digest)
+
+    finalized: list[Path] = []
+    controller.output_finalized.connect(finalized.append)
+    output = workspace.outputs / "sweep-output"
+    output.mkdir()
+    assert controller.execute()
+    active_request_id = transport.request_id
+    assert active_request_id is not None
+    assert transport.payload == {
+        "config_path": str(document.source_path),
+        "expected_config_sha256": digest,
+        "configs_root": str(workspace.configs),
+        "expected_plan_id": "b" * 64,
+        "output_root": str(workspace.outputs),
+    }
+    transport.emit_event("accepted", {})
+    transport.emit_event("phase", {"name": "models", "cancellable": True})
+    transport.emit_event("progress", {"completed": 1, "total": 3})
+
+    assert configuration.get_can_edit()
+    assert configuration.sweep_draft.set_reference_model("pr")
+    assert configuration.get_dirty()
+    assert controller.get_operation_active()
+    assert controller.get_progress_completed() == 1
+    assert controller.get_progress_total() == 3
+
+    _finish_execution(transport, output, run_id="sweep-run")
+
+    assert controller.state == "succeeded"
+    assert finalized == [output]
+    assert controller.get_result_output_directory() == str(output)
+    assert controller.get_result_relation() == "stale"
+    [record] = coordinator_for_job_records(workspace)
+    assert record["request_id"] == str(active_request_id)
+    assert record["status"] == "completed"
+    assert record["phase"] == "models"
+    assert record["progress"] == {"completed": 1, "total": 3}
+    assert record["configuration"] == {
+        "relative_path": "configs/sweep.yaml",
+        "yaml_snapshot": saved_bytes.decode("utf-8"),
+        "sha256": digest,
+    }
+    summary = record["summary"]
+    assert isinstance(summary, dict)
+    assert summary["output_directory"] == str(output)
+    coordinator.shutdown()
+
+
+def test_sweep_execution_cancel_force_stop_and_finalization_policy_use_one_session(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    workspace = initialize_workspace(tmp_path / "workspace")
+    config = _config(workspace)
+    coordinator, transport = coordinator_for()
+    controller = SweepWorkflowController(coordinator)
+    controller.set_workspace(workspace)
+    assert controller.load_config(config)
+    digest = _finish_load(transport, config)
+    assert controller.plan()
+    _finish_plan(transport, digest=digest)
+
+    assert controller.execute()
+    request_id = transport.request_id
+    assert request_id is not None
+    transport.emit_event("accepted", {})
+    transport.emit_event("phase", {"name": "models", "cancellable": True})
+    assert controller.get_cancellation_available()
+    assert controller.cancel()
+    assert controller.state == "cancellation_requested"
+    assert transport.cancelled == [request_id]
+    assert not controller.get_cancellation_available()
+    coordinator._enable_delayed_force_stop()
+    assert controller.get_force_stop_available()
+    assert controller.force_stop()
+    assert controller.state == "force_stopping"
+    assert transport.force_stopped == [request_id]
+    transport.finish(
+        terminal_type="error",
+        payload={
+            "category": "process",
+            "code": "force_stopped",
+            "message": "worker process was force-stopped",
+        },
+        force_stopped=True,
+    )
+    assert controller.state == "force_stopped"
+    assert not controller.get_operation_active()
+
+    assert controller.execute()
+    transport.emit_event("accepted", {})
+    transport.emit_event(
+        "phase",
+        {
+            "name": "finalization",
+            "cancellable": False,
+            "termination_protected": True,
+        },
+    )
+    assert controller.get_protected_finalization()
+    assert not controller.cancel()
+    coordinator._enable_delayed_force_stop()
+    assert not controller.get_force_stop_available()
+    assert not controller.force_stop()
+    output = workspace.outputs / "finalized-sweep"
+    _finish_execution(transport, output)
+    assert controller.state == "succeeded"
+    assert controller.get_result_output_directory() == str(output)
+    assert sorted(str(record["status"]) for record in coordinator_for_job_records(workspace)) == [
+        "completed",
+        "force_stopped",
+    ]
     coordinator.shutdown()
 
 
@@ -804,6 +951,9 @@ def test_worker_start_failure_does_not_leak_activity_record_into_next_request(
 
     transport.raise_on_start = True
     assert not controller.execute()
+    assert controller._active_snapshot is None
+    assert controller._active_plan_context is None
+    assert controller._active_record is None
     failed_records = JobStore(workspace.private_directory).load()
     [failed] = [item.data for item in failed_records if item.data is not None]
     assert failed["operation"] == "execute_sweep"

@@ -114,6 +114,7 @@ class DesktopController(QObject):
             self.activity_controller.refresh_records
         )
         self.execution_controller.state_changed.connect(self._continue_pending_busy_shutdown)
+        self.sweep_workflow_controller.state_changed.connect(self._continue_pending_busy_shutdown)
         self.execution_controller.run_finalized.connect(
             lambda _path: self.inspection_controller.refresh_sources()
         )
@@ -379,6 +380,15 @@ class DesktopController(QObject):
         constant=True,
     )
 
+    def get_sweep_workflow_controller(self) -> QObject:
+        return self.sweep_workflow_controller
+
+    sweepWorkflowController = Property(
+        QObject,
+        get_sweep_workflow_controller,
+        constant=True,
+    )
+
     def get_inspection_controller(self) -> QObject:
         return self.inspection_controller
 
@@ -496,6 +506,38 @@ class DesktopController(QObject):
     @Slot(result=bool, name="requestExecutionForceStop")
     def request_execution_force_stop(self) -> bool:
         return self.execution_controller.force_stop()
+
+    @Slot(str, result=bool, name="requestWorkflowPlan")
+    def request_workflow_plan(self, workflow: str) -> bool:
+        controller = self._workflow_controller(workflow)
+        return False if controller is None else controller.plan()
+
+    @Slot(str, result=bool, name="requestWorkflowExecute")
+    def request_workflow_execute(self, workflow: str) -> bool:
+        controller = self._workflow_controller(workflow)
+        return False if controller is None else controller.execute()
+
+    @Slot(str, result=bool, name="requestWorkflowCancel")
+    def request_workflow_cancel(self, workflow: str) -> bool:
+        controller = self._workflow_controller(workflow)
+        return False if controller is None else controller.cancel()
+
+    @Slot(str, result=bool, name="requestWorkflowForceStop")
+    def request_workflow_force_stop(self, workflow: str) -> bool:
+        controller = self._workflow_controller(workflow)
+        return False if controller is None else controller.force_stop()
+
+    @Slot(str, result=bool, name="requestWorkflowInspectResult")
+    def request_workflow_inspect_result(self, workflow: str) -> bool:
+        controller = self._workflow_controller(workflow)
+        output = "" if controller is None else controller.get_result_output_directory()
+        if not output:
+            self.activityActionFailed.emit(
+                "Inspect Result",
+                "Complete this workflow successfully before inspecting its finalized output.",
+            )
+            return False
+        return self._inspect_run(output, navigate=True)
 
     @Slot(str, result=bool, name="requestInspectSource")
     def request_inspect_source(self, source: str) -> bool:
@@ -1060,6 +1102,12 @@ class DesktopController(QObject):
                     "Dataset generation is active. Cancel it cooperatively and close "
                     "Carnopy after the worker and activity record finish safely?",
                 )
+            elif active_session.owner == "sweep" and active_session.request_type == "execute_sweep":
+                self.busyShutdownConfirmationRequested.emit(
+                    "cancel_sweep",
+                    "Model Sweep execution is active. Cancel it cooperatively and close "
+                    "Carnopy after the worker and activity record finish safely?",
+                )
             elif (
                 active_session.owner == "plot"
                 and active_session.request_type == "render_plot"
@@ -1110,6 +1158,10 @@ class DesktopController(QObject):
             return False
         if session.owner == "execution" and session.request_type == "generate_dataset":
             self._pending_busy_shutdown = "generation_waiting"
+            self._continue_pending_busy_shutdown()
+            return True
+        if session.owner == "sweep" and session.request_type == "execute_sweep":
+            self._pending_busy_shutdown = "sweep_waiting"
             self._continue_pending_busy_shutdown()
             return True
         if session.owner == "plot" and session.request_type == "render_plot":
@@ -1185,19 +1237,32 @@ class DesktopController(QObject):
             QTimer.singleShot(0, self._complete_busy_shutdown)
 
     def _continue_pending_busy_shutdown(self) -> None:
-        if self._pending_busy_shutdown != "generation_waiting":
+        mode = self._pending_busy_shutdown
+        if mode not in {"generation_waiting", "sweep_waiting"}:
             return
         session = self.request_coordinator.active_session
+        if session is None:
+            return
+        if mode == "generation_waiting":
+            if (
+                session.owner != "execution"
+                or session.request_type != "generate_dataset"
+                or not self.execution_controller.get_can_cancel()
+            ):
+                return
+            self._pending_busy_shutdown = "generation"
+            if not self.execution_controller.cancel():
+                self._pending_busy_shutdown = mode
+            return
         if (
-            session is None
-            or session.owner != "execution"
-            or session.request_type != "generate_dataset"
-            or not self.execution_controller.get_can_cancel()
+            session.owner != "sweep"
+            or session.request_type != "execute_sweep"
+            or not self.sweep_workflow_controller.get_cancellation_available()
         ):
             return
-        self._pending_busy_shutdown = "generation"
-        if not self.execution_controller.cancel():
-            self._pending_busy_shutdown = "generation_waiting"
+        self._pending_busy_shutdown = "sweep"
+        if not self.sweep_workflow_controller.cancel():
+            self._pending_busy_shutdown = mode
 
     def _complete_busy_shutdown(self) -> None:
         mode, self._pending_busy_shutdown = self._pending_busy_shutdown, ""
@@ -1255,6 +1320,11 @@ class DesktopController(QObject):
 
     def _plot_commit_rejected(self, field: str, row: int, _message: str) -> None:
         self.attentionRequested.emit("visualization", field, row)
+
+    def _workflow_controller(self, workflow: str) -> SweepWorkflowController | None:
+        if workflow in {"sweep", "model_sweep"}:
+            return self.sweep_workflow_controller
+        return None
 
     def _inspect_run(self, source: str, *, navigate: bool) -> bool:
         if not source:

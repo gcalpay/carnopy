@@ -131,6 +131,7 @@ def test_desktop_controller_owns_one_composition_and_preserves_settings_identity
     assert not hasattr(desktop, "dataset_config_controller")
     assert desktop.property("datasetConfigController") is None
     assert desktop.property("executionController") is desktop.execution_controller
+    assert desktop.property("sweepWorkflowController") is desktop.sweep_workflow_controller
     assert desktop.property("activityController") is desktop.activity_controller
     assert (
         desktop.property("configuredPlotResultsController")
@@ -282,6 +283,51 @@ def test_qml_shutdown_cancels_generation_then_closes_after_safe_completion(
     assert close_requests == ["close"]
 
 
+def test_qml_shutdown_cancels_sweep_then_closes_after_safe_completion(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    confirmations: list[tuple[str, str]] = []
+    cancellations: list[str] = []
+    close_requests: list[str] = []
+    desktop.busyShutdownConfirmationRequested.connect(
+        lambda mode, message: confirmations.append((mode, message))
+    )
+    desktop.closeWindowRequested.connect(lambda: close_requests.append("close"))
+    desktop.request_coordinator._active_session = SimpleNamespace(
+        owner="sweep",
+        request_type="execute_sweep",
+    )
+    monkeypatch.setattr(
+        desktop.sweep_workflow_controller,
+        "get_cancellation_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        desktop.sweep_workflow_controller,
+        "cancel",
+        lambda: cancellations.append("cancel") or True,
+    )
+
+    assert not desktop.request_shutdown()
+    assert confirmations == [
+        (
+            "cancel_sweep",
+            "Model Sweep execution is active. Cancel it cooperatively and close Carnopy "
+            "after the worker and activity record finish safely?",
+        )
+    ]
+    assert desktop.confirm_busy_shutdown(True)
+    assert cancellations == ["cancel"]
+    desktop.request_coordinator._active_session = None
+    desktop._complete_busy_shutdown()
+
+    assert close_requests == ["close"]
+
+
 def test_plot_cleanup_failure_aborts_pending_busy_shutdown(
     tmp_path: Path,
     application: QCoreApplication,
@@ -406,6 +452,84 @@ def test_execution_facade_routes_qml_intent_to_the_authoritative_controller(
     assert desktop.request_execution_cancel()
     assert desktop.request_execution_force_stop()
     assert calls == ["validate", "generate", "cancel", "force_stop"]
+    assert desktop.shutdown()
+
+
+def test_sweep_workflow_facade_routes_only_the_integrated_workflow(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    calls: list[str] = []
+    monkeypatch.setattr(
+        desktop.sweep_workflow_controller,
+        "plan",
+        lambda: calls.append("plan") or True,
+    )
+    monkeypatch.setattr(
+        desktop.sweep_workflow_controller,
+        "execute",
+        lambda: calls.append("execute") or True,
+    )
+    monkeypatch.setattr(
+        desktop.sweep_workflow_controller,
+        "cancel",
+        lambda: calls.append("cancel") or True,
+    )
+    monkeypatch.setattr(
+        desktop.sweep_workflow_controller,
+        "force_stop",
+        lambda: calls.append("force_stop") or True,
+    )
+
+    assert desktop.request_workflow_plan("sweep")
+    assert desktop.request_workflow_execute("model_sweep")
+    assert desktop.request_workflow_cancel("sweep")
+    assert desktop.request_workflow_force_stop("model_sweep")
+    assert not desktop.request_workflow_plan("preparation")
+    assert not desktop.request_workflow_execute("unknown")
+    assert calls == ["plan", "execute", "cancel", "force_stop"]
+    assert desktop.shutdown()
+
+
+def test_sweep_result_handoff_inspects_the_exact_finalized_output(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    output = tmp_path / "workspace" / "outputs" / "sweep-run"
+    inspected: list[str] = []
+    navigation: list[tuple[str, str]] = []
+    failures: list[tuple[str, str]] = []
+    desktop.navigationRequested.connect(lambda page, detail: navigation.append((page, detail)))
+    desktop.activityActionFailed.connect(lambda title, message: failures.append((title, message)))
+    monkeypatch.setattr(
+        desktop.sweep_workflow_controller,
+        "get_result_output_directory",
+        lambda: str(output),
+    )
+    monkeypatch.setattr(
+        desktop.inspection_controller,
+        "inspect_source",
+        lambda value: inspected.append(str(value)) or True,
+    )
+
+    assert desktop.request_workflow_inspect_result("sweep")
+    assert inspected == [str(output)]
+    assert navigation == [("inspect", "")]
+    assert failures == []
+
+    assert not desktop.request_workflow_inspect_result("preparation")
+    assert failures == [
+        (
+            "Inspect Result",
+            "Complete this workflow successfully before inspecting its finalized output.",
+        )
+    ]
     assert desktop.shutdown()
 
 

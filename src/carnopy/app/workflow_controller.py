@@ -619,6 +619,7 @@ class WorkflowController(QObject):
         try:
             reservation = self.coordinator.reserve_request(self.owner, request_type)
         except (RuntimeError, ValueError) as exc:
+            self._clear_active_attempt()
             self._set_local_failure("request", "request_unavailable", str(exc))
             return False
         self._set_activity_persistence_issue("")
@@ -627,6 +628,7 @@ class WorkflowController(QObject):
                 self._start_activity(reservation, snapshot)
             except (OSError, UnicodeError, ValueError) as exc:
                 self.coordinator.abandon_reserved_request(reservation)
+                self._clear_active_attempt()
                 self._set_activity_persistence_issue(
                     f"could not persist workflow Activity record: {exc}"
                 )
@@ -641,6 +643,7 @@ class WorkflowController(QObject):
         except Exception as exc:
             self.coordinator.abandon_reserved_request(reservation)
             self._finish_start_failure(reservation, exc)
+            self._clear_active_attempt()
             if operation == "load":
                 self._clear_loaded_configuration()
             self._set_local_failure("process", "worker_start_failed", str(exc))
@@ -746,9 +749,7 @@ class WorkflowController(QObject):
             if isinstance(output, str) and output:
                 self.output_finalized.emit(Path(output))
         self._session = None
-        self._active_snapshot = None
-        self._active_plan_context = None
-        self._active_record = None
+        self._clear_active_attempt()
         self.state_changed.emit()
 
     def _accept_loaded(self, result: dict[str, object]) -> None:
@@ -868,6 +869,11 @@ class WorkflowController(QObject):
         self._result = None
         self._result_config_sha256 = ""
         self._result_context = None
+
+    def _clear_active_attempt(self) -> None:
+        self._active_snapshot = None
+        self._active_plan_context = None
+        self._active_record = None
 
     def _clear_loaded_configuration(self) -> None:
         self._loaded_config = None
