@@ -77,6 +77,7 @@ class DesktopController(QObject):
         self.sweep_workflow_controller = SweepWorkflowController(
             self.request_coordinator,
             self,
+            configuration_controller=self.configuration_controller,
         )
         self.preparation_workflow_controller = PreparationWorkflowController(
             self.request_coordinator,

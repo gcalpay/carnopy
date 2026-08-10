@@ -4,7 +4,7 @@ import hashlib
 import os
 from collections.abc import Iterator, Mapping
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 from uuid import UUID
 
 import pytest
@@ -15,6 +15,13 @@ pytest.importorskip("PySide6")
 from PySide6.QtCore import QCoreApplication, QEvent, QObject, Signal
 
 from carnopy.app.client import TransportOutcome, WorkerClient
+from carnopy.app.config_controller import ConfigurationController
+from carnopy.app.config_document import (
+    ConfigurationDocument,
+    new_document,
+    serialize_configuration,
+    sha256_bytes,
+)
 from carnopy.app.inspection_controller import InspectionController
 from carnopy.app.protocol import EventType, RequestType, WorkerEvent
 from carnopy.app.request_coordinator import DesktopRequestCoordinator
@@ -35,6 +42,7 @@ class StubTransport(QObject):
         self.is_busy = False
         self.request_id: UUID | None = None
         self.request_type: RequestType | None = None
+        self.payload: dict[str, object] | None = None
         self.raise_on_start = False
 
     def start_request(
@@ -43,7 +51,6 @@ class StubTransport(QObject):
         request_type: RequestType,
         payload: Mapping[str, object] | None = None,
     ) -> None:
-        del payload
         if self.raise_on_start:
             raise RuntimeError("simulated start failure")
         if self.is_busy:
@@ -51,6 +58,7 @@ class StubTransport(QObject):
         self.is_busy = True
         self.request_id = request_id
         self.request_type = request_type
+        self.payload = dict(payload or {})
 
     def send_cancel(self, request_id: UUID) -> bool:
         return self.is_busy and request_id == self.request_id
@@ -121,6 +129,74 @@ def _config(workspace: Workspace, name: str = "workflow.yaml") -> Path:
     path = workspace.configs / name
     path.write_text("schema_version: 2\n", encoding="utf-8")
     return path
+
+
+def _sweep_payload() -> dict[str, Any]:
+    return {
+        "schema_version": 2,
+        "document_type": "model_sweep",
+        "backend": {
+            "name": "coolprop",
+            "models": ["heos", "pr", "srk"],
+            "reference_model": "heos",
+        },
+        "mode": "property_table",
+        "fluids": ["Propane"],
+        "grid": {
+            "temperature": {
+                "kind": "linspace",
+                "start": 280.0,
+                "stop": 340.0,
+                "num": 5,
+                "unit": "K",
+            },
+            "pressure": {
+                "kind": "linspace",
+                "start": 1.0,
+                "stop": 5.0,
+                "num": 5,
+                "unit": "bar",
+            },
+        },
+        "properties": ["mass_density"],
+        "outputs": {"dataset_formats": ["csv", "parquet"]},
+    }
+
+
+def _sweep_capabilities() -> dict[str, Any]:
+    return {
+        "model": "heos",
+        "models": ["heos", "pr", "srk"],
+        "modes": ["property_table", "saturation_table", "vapor_mass_fraction_table"],
+        "units_by_axis": {
+            "temperature": ["K"],
+            "pressure": ["bar"],
+            "vapor_mass_fraction": ["1"],
+        },
+        "dataset_formats": ["csv", "parquet"],
+        "fluids": [{"name": "Propane", "aliases": ["R290"]}],
+        "property_catalog": [
+            {
+                "name": "mass_density",
+                "supported_models": ["heos", "pr", "srk"],
+            }
+        ],
+        "reference_dependent_fields": [],
+        "visualization": {"categorical_values": {}},
+    }
+
+
+def _saved_sweep_document(workspace: Workspace) -> ConfigurationDocument:
+    value = _sweep_payload()
+    content = serialize_configuration(value)
+    path = workspace.configs / "sweep.yaml"
+    path.write_bytes(content)
+    return ConfigurationDocument(
+        value,
+        source_path=path,
+        source_sha256=sha256_bytes(content),
+        workspace_owned=True,
+    )
 
 
 def _finish_load(transport: StubTransport, path: Path) -> str:
@@ -195,6 +271,112 @@ def _accept_preparation_inspection(
         }
     )
     return descriptor
+
+
+def test_sweep_planning_uses_the_global_configuration_snapshot(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    workspace = initialize_workspace(tmp_path / "workspace")
+    coordinator, transport = coordinator_for()
+    configuration = ConfigurationController(coordinator)
+    configuration.set_workspace(workspace)
+    assert transport.request_type == "describe_capabilities"
+    transport.finish(payload=_sweep_capabilities())
+    document = _saved_sweep_document(workspace)
+    assert configuration.open_document(document)
+
+    controller = SweepWorkflowController(
+        coordinator,
+        configuration_controller=configuration,
+    )
+    controller.set_workspace(workspace)
+    digest = sha256_bytes(document.yaml_bytes)
+
+    assert controller.loaded_config is None
+    assert controller.config_path is None
+    assert controller.config_sha256 == ""
+    assert controller.can_plan
+    assert controller.plan_blocking_reasons.issues == ()
+    assert controller.plan()
+    assert transport.request_type == "plan_sweep"
+    assert transport.payload == {
+        "config_path": str(document.source_path),
+        "expected_config_sha256": digest,
+        "configs_root": str(workspace.configs),
+    }
+    _finish_plan(transport, digest=digest)
+
+    assert controller.get_plan_current()
+    assert controller.can_execute
+    accepted_plan = controller.current_plan
+    output = workspace.outputs / "sweep-output"
+    output.mkdir()
+    assert controller.execute()
+    assert transport.payload == {
+        "config_path": str(document.source_path),
+        "expected_config_sha256": digest,
+        "configs_root": str(workspace.configs),
+        "expected_plan_id": "b" * 64,
+        "output_root": str(workspace.outputs),
+    }
+    _finish_execution(transport, output)
+    assert controller.get_result_relation() == "current"
+
+    assert configuration.sweep_draft.set_reference_model("pr")
+    assert configuration.get_dirty()
+    assert controller.current_plan == accepted_plan
+    assert not controller.get_plan_current()
+    assert not controller.can_plan
+    assert not controller.can_execute
+    assert controller.get_result_relation() == "stale"
+    assert [issue.code for issue in controller.execution_blocking_reasons.issues] == [
+        "plan_configuration_changed",
+        "saved_configuration_unavailable",
+    ]
+
+    assert configuration.sweep_draft.set_reference_model("heos")
+    assert not configuration.get_dirty()
+    assert controller.get_plan_current()
+    assert controller.can_execute
+    assert controller.get_result_relation() == "current"
+
+    assert configuration.sweep_draft.begin_add_comparison()
+    assert not controller.get_plan_current()
+    assert not controller.can_plan
+    assert not controller.can_execute
+    assert controller.get_result_relation() == "stale"
+    assert configuration.sweep_draft.cancel_comparison()
+    assert controller.get_plan_current()
+    assert controller.get_result_relation() == "current"
+
+    dataset = _sweep_payload()
+    dataset["document_type"] = "dataset"
+    dataset["backend"] = {"name": "coolprop", "model": "heos"}
+    assert configuration.open_document(new_document(dataset))
+    assert configuration.get_document_kind() == "dataset"
+    assert not controller.get_plan_current()
+    assert not controller.can_plan
+    assert controller.get_result_relation() == "unrelated"
+    [reason] = controller.plan_blocking_reasons.issues
+    assert reason.code == "saved_configuration_required"
+
+    assert configuration.open_document(document)
+    assert controller.get_plan_current()
+    assert controller.get_result_relation() == "current"
+    assert controller.plan()
+    assert not configuration.get_can_edit()
+    assert configuration.sweep_draft.set_reference_model("pr")
+    _finish_plan(transport, digest=digest, plan_id="c" * 64)
+
+    assert controller.state == "failed"
+    assert controller.failure["code"] == "stale_plan"
+    assert controller.current_plan == accepted_plan
+    assert not controller.get_plan_current()
+    assert configuration.sweep_draft.set_reference_model("heos")
+    assert controller.get_plan_current()
+    coordinator.shutdown()
 
 
 def test_sweep_controller_persists_only_execution_with_plan_identity(

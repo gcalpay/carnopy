@@ -95,6 +95,7 @@ def test_desktop_controller_owns_one_composition_and_preserves_settings_identity
     assert desktop.configuration_controller.coordinator is desktop.request_coordinator
     assert desktop.configuration_controller.dataset_draft is desktop.dataset_draft
     assert desktop.configuration_controller.visualization_draft is desktop.visualization_draft
+    assert desktop.configuration_controller.sweep_draft.parent() is desktop.configuration_controller
     assert desktop.execution_controller.parent() is desktop
     assert desktop.execution_controller.coordinator is desktop.request_coordinator
     assert desktop.execution_controller.config_controller is desktop.configuration_controller
@@ -102,6 +103,10 @@ def test_desktop_controller_owns_one_composition_and_preserves_settings_identity
     assert desktop.activity_controller.coordinator is desktop.request_coordinator
     assert desktop.sweep_workflow_controller.parent() is desktop
     assert desktop.sweep_workflow_controller.kind == "sweep"
+    assert (
+        desktop.sweep_workflow_controller.configuration_controller
+        is desktop.configuration_controller
+    )
     assert desktop.preparation_workflow_controller.parent() is desktop
     assert desktop.preparation_workflow_controller.kind == "preparation"
     assert desktop.preparation_workflow_controller.inspection is desktop.inspection_controller
@@ -119,6 +124,10 @@ def test_desktop_controller_owns_one_composition_and_preserves_settings_identity
     assert desktop.property("datasetDraft") is desktop.dataset_draft
     assert desktop.property("visualizationDraft") is desktop.visualization_draft
     assert desktop.property("configurationController") is desktop.configuration_controller
+    assert (
+        desktop.configuration_controller.property("sweepDraft")
+        is desktop.configuration_controller.sweep_draft
+    )
     assert not hasattr(desktop, "dataset_config_controller")
     assert desktop.property("datasetConfigController") is None
     assert desktop.property("executionController") is desktop.execution_controller

@@ -3,11 +3,12 @@ from __future__ import annotations
 import copy
 import hashlib
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from PySide6.QtCore import Property, QObject, Signal
 
 from carnopy.app.config_document import (
+    ConfigDocumentError,
     DocumentType,
     SavedConfigSnapshot,
     is_path_within,
@@ -26,8 +27,11 @@ from carnopy.app.request_coordinator import (
 from carnopy.app.workflow_models import WorkflowIssue, WorkflowIssueModel
 from carnopy.app.workspace import Workspace
 
+if TYPE_CHECKING:
+    from carnopy.app.config_controller import ConfigurationController
+
 WorkflowKind = Literal["sweep", "preparation"]
-ResultRelation = Literal["unavailable", "current", "stale"]
+ResultRelation = Literal["unavailable", "current", "stale", "unrelated"]
 
 
 class WorkflowController(QObject):
@@ -42,11 +46,13 @@ class WorkflowController(QObject):
         coordinator: DesktopRequestCoordinator,
         *,
         kind: WorkflowKind,
+        configuration_controller: ConfigurationController | None = None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
         self.coordinator = coordinator
         self.kind = kind
+        self.configuration_controller = configuration_controller
         self.owner: RequestOwner = kind
         self.workspace: Workspace | None = None
         self._store: JobStore | None = None
@@ -74,6 +80,8 @@ class WorkflowController(QObject):
         self.plan_blocking_reasons = WorkflowIssueModel(self)
         self.execution_blocking_reasons = WorkflowIssueModel(self)
         coordinator.busy_changed.connect(lambda _busy: self.state_changed.emit())
+        if configuration_controller is not None:
+            configuration_controller.state_changed.connect(self.state_changed.emit)
         self.state_changed.connect(self._refresh_typed_projections)
 
     @property
@@ -162,6 +170,12 @@ class WorkflowController(QObject):
     def get_result_relation(self) -> ResultRelation:
         if self._result is None:
             return "unavailable"
+        controller = self.configuration_controller
+        if (
+            controller is not None
+            and controller.get_document_kind() != self._expected_document_type()
+        ):
+            return "unrelated"
         try:
             snapshot = self._saved_snapshot()
         except ValueError:
@@ -184,7 +198,7 @@ class WorkflowController(QObject):
     workflowKind = Property(str, get_workflow_kind, constant=True)
 
     def get_document_kind(self) -> str:
-        return "model_sweep" if self.kind == "sweep" else "preparation"
+        return self._expected_document_type()
 
     documentKind = Property(str, get_document_kind, constant=True)
 
@@ -352,7 +366,7 @@ class WorkflowController(QObject):
                     field_id=f"{self.kind}.plan",
                 )
             )
-        elif self._plan_config_sha256 != self._config_sha256:
+        elif not self._plan_configuration_matches():
             issues.append(
                 self._blocking_issue(
                     origin="plan",
@@ -389,6 +403,27 @@ class WorkflowController(QObject):
                 section="workspace",
                 field_id="workspace",
             )
+        controller = self.configuration_controller
+        if controller is not None:
+            if controller.get_document_kind() != self._expected_document_type():
+                return self._blocking_issue(
+                    origin="local",
+                    code="saved_configuration_required",
+                    message=f"Open and save a {self.kind} configuration first.",
+                    section="configuration",
+                    field_id=f"{self.kind}.configuration",
+                )
+            try:
+                self._saved_snapshot()
+            except ValueError as exc:
+                return self._blocking_issue(
+                    origin="local",
+                    code="saved_configuration_unavailable",
+                    message=str(exc),
+                    section="configuration",
+                    field_id=f"{self.kind}.configuration",
+                )
+            return None
         if self._config_path is None or not self._config_sha256:
             return self._blocking_issue(
                 origin="local",
@@ -752,6 +787,14 @@ class WorkflowController(QObject):
         self._plan_stale_reason = ""
 
     def _saved_snapshot(self) -> SavedConfigSnapshot:
+        controller = self.configuration_controller
+        if controller is not None:
+            try:
+                return controller.execution_snapshot(
+                    expected_document_type=self._expected_document_type()
+                )
+            except ConfigDocumentError as exc:
+                raise ValueError(str(exc)) from exc
         workspace = self.workspace
         path = self._config_path
         digest = self._config_sha256
@@ -768,13 +811,24 @@ class WorkflowController(QObject):
         yaml_bytes = path.read_bytes()
         if hashlib.sha256(yaml_bytes).hexdigest() != digest:
             raise ValueError("saved workflow configuration changed; load it again")
-        document_type: DocumentType = "model_sweep" if self.kind == "sweep" else "preparation"
         return SavedConfigSnapshot(
             path=path,
             yaml_bytes=yaml_bytes,
             sha256=digest,
-            document_type=document_type,
+            document_type=self._expected_document_type(),
         )
+
+    def _expected_document_type(self) -> DocumentType:
+        return "model_sweep" if self.kind == "sweep" else "preparation"
+
+    def _plan_configuration_matches(self) -> bool:
+        if self.configuration_controller is None:
+            return self._plan_config_sha256 == self._config_sha256
+        try:
+            snapshot = self._saved_snapshot()
+        except ValueError:
+            return False
+        return snapshot.sha256 == self._plan_config_sha256
 
     def _plan_context(self) -> dict[str, object]:
         return {}
@@ -903,8 +957,15 @@ class SweepWorkflowController(WorkflowController):
         self,
         coordinator: DesktopRequestCoordinator,
         parent: QObject | None = None,
+        *,
+        configuration_controller: ConfigurationController | None = None,
     ) -> None:
-        super().__init__(coordinator, kind="sweep", parent=parent)
+        super().__init__(
+            coordinator,
+            kind="sweep",
+            configuration_controller=configuration_controller,
+            parent=parent,
+        )
         self._refresh_typed_projections()
 
 

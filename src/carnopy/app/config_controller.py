@@ -28,6 +28,7 @@ from carnopy.app.request_coordinator import (
     RequestOutcome,
     RequestSession,
 )
+from carnopy.app.sweep_draft import SweepDraft
 from carnopy.app.visualization_draft import VisualizationDraft
 from carnopy.app.workspace import Workspace
 from carnopy.templates import template_text
@@ -59,6 +60,8 @@ class ConfigurationController(QObject):
         dataset_draft: DatasetDraft | None = None,
         visualization_draft: VisualizationDraft | None = None,
         parent: QObject | None = None,
+        *,
+        sweep_draft: SweepDraft | None = None,
     ) -> None:
         super().__init__(parent)
         self._owns_coordinator = coordinator is None
@@ -68,6 +71,7 @@ class ConfigurationController(QObject):
         self.coordinator = coordinator
         self.dataset_draft = dataset_draft or DatasetDraft(self)
         self.visualization_draft = visualization_draft or VisualizationDraft(self)
+        self.sweep_draft = sweep_draft or SweepDraft(self)
         self.workspace: Workspace | None = None
         self.document: ConfigurationDocument | None = None
         self.capabilities: dict[str, Any] | None = None
@@ -92,10 +96,14 @@ class ConfigurationController(QObject):
 
         self.dataset_draft.changed.connect(self._refresh_document)
         self.visualization_draft.changed.connect(self._refresh_document)
+        self.sweep_draft.changed.connect(self._refresh_document)
+        self.sweep_draft.validity_changed.connect(self._sweep_validity_changed)
         self.dataset_draft.mode_change_requested.connect(self.mode_change_requested)
         self.dataset_draft.message.connect(self._set_status)
         self.visualization_draft.message.connect(self._set_status)
         self.visualization_draft.active_plot_draft_changed.connect(self._active_plot_edit_changed)
+        self.sweep_draft.active_comparison_draft_changed.connect(self._active_nested_edit_changed)
+        self.sweep_draft.message.connect(self._set_status)
         self.coordinator.busy_changed.connect(self._worker_busy_changed)
 
     def set_lifecycle_guard(self, guard: Callable[[str], bool]) -> None:
@@ -134,6 +142,8 @@ class ConfigurationController(QObject):
         document = self.document
         if document is None:
             return False
+        if document.document_type == "model_sweep":
+            return document.needs_save or self.sweep_draft.get_dirty()
         if document.document_type != "dataset":
             return document.needs_save
         return (
@@ -158,7 +168,7 @@ class ConfigurationController(QObject):
         return (
             self.document is not None
             and self._locally_valid
-            and not self.visualization_draft.get_has_active_plot_edit()
+            and not self._has_active_nested_edit()
             and self._pending_action is None
             and not self.coordinator.is_busy
         )
@@ -193,7 +203,13 @@ class ConfigurationController(QObject):
     )
 
     def get_blocking_section(self) -> str:
-        if self.document is None or self._locally_valid:
+        if self.document is None:
+            return "none"
+        if self.document.document_type == "model_sweep" and (
+            not self._locally_valid or self.sweep_draft.get_has_active_comparison_edit()
+        ):
+            return "sweep"
+        if self._locally_valid:
             return "none"
         if not self.dataset_draft.get_locally_valid():
             return "dataset"
@@ -205,6 +221,8 @@ class ConfigurationController(QObject):
 
     def get_blocking_field(self) -> str:
         section = self.get_blocking_section()
+        if section == "sweep":
+            return self.sweep_draft.get_first_invalid_field()
         if section == "dataset":
             return self.dataset_draft.get_first_invalid_field()
         if section == "visualization":
@@ -215,6 +233,8 @@ class ConfigurationController(QObject):
 
     def get_blocking_row(self) -> int:
         section = self.get_blocking_section()
+        if section == "sweep":
+            return self.sweep_draft.get_first_invalid_row()
         if section == "dataset":
             return self.dataset_draft.get_first_invalid_row()
         if section == "visualization":
@@ -225,6 +245,8 @@ class ConfigurationController(QObject):
 
     def get_blocking_issue(self) -> str:
         section = self.get_blocking_section()
+        if section == "sweep":
+            return self.sweep_draft.get_issue()
         if section == "dataset":
             return self.dataset_draft.get_issue()
         if section == "visualization":
@@ -274,7 +296,7 @@ class ConfigurationController(QObject):
         return (
             self.get_editor_available()
             and not self.coordinator.is_busy
-            and not self.visualization_draft.get_has_active_plot_edit()
+            and not self._has_active_nested_edit()
         )
 
     canCreate = Property(bool, get_can_create, notify=state_changed)
@@ -283,15 +305,18 @@ class ConfigurationController(QObject):
         return (
             self.workspace is not None
             and not self.coordinator.is_busy
-            and not self.visualization_draft.get_has_active_plot_edit()
+            and not self._has_active_nested_edit()
         )
 
     canImport = Property(bool, get_can_import, notify=state_changed)
 
     def get_can_edit(self) -> bool:
-        return self.get_editor_available() and (
-            not self.coordinator.is_busy or self.coordinator.active_owner != "configuration"
-        )
+        if not self.get_editor_available():
+            return False
+        session = getattr(self.coordinator, "active_session", None)
+        if session is not None and session.owner == "sweep":
+            return bool(session.request_type == "execute_sweep")
+        return not self.coordinator.is_busy or self.coordinator.active_owner != "configuration"
 
     canEdit = Property(bool, get_can_edit, notify=state_changed)
 
@@ -301,7 +326,7 @@ class ConfigurationController(QObject):
             and self._locally_valid
             and self._pending_action is None
             and not self.coordinator.is_busy
-            and not self.visualization_draft.get_has_active_plot_edit()
+            and not self._has_active_nested_edit()
         )
 
     canSave = Property(bool, get_can_save, notify=state_changed)
@@ -334,10 +359,17 @@ class ConfigurationController(QObject):
 
     visualizationDraft = Property(QObject, get_visualization_draft, constant=True)
 
+    def get_sweep_draft(self) -> QObject:
+        return self.sweep_draft
+
+    sweepDraft = Property(QObject, get_sweep_draft, constant=True)
+
     def set_workspace(self, value: object) -> None:
         workspace = value if isinstance(value, Workspace) else None
         changed = self.workspace != workspace
-        if changed and not self._lifecycle_allowed("workspace replacement"):
+        if changed and (
+            self._has_active_sweep_edit() or not self._lifecycle_allowed("workspace replacement")
+        ):
             return
         self.workspace = workspace
         if changed:
@@ -362,12 +394,13 @@ class ConfigurationController(QObject):
     def new_dataset(self, mode: str, discard_confirmed: bool = False) -> bool:
         if not self._lifecycle_allowed("New Dataset"):
             return False
-        if self.workspace is None or self.capabilities is None:
+        capabilities = self.capabilities
+        if self.workspace is None or capabilities is None or self._has_active_sweep_edit():
             return False
         if self.needs_discard_confirmation() and not discard_confirmed:
             self._set_status("Confirm discarding the current configuration before replacing it.")
             return False
-        modes = self.capabilities.get("modes")
+        modes = capabilities.get("modes")
         if not isinstance(modes, list) or mode not in modes:
             self._set_status(f"Unsupported dataset mode: {mode}")
             return False
@@ -375,10 +408,20 @@ class ConfigurationController(QObject):
         self._set_status("New configuration. Save it under the workspace configs folder.")
         return True
 
+    def new_sweep(self, discard_confirmed: bool = False) -> bool:
+        if not self._lifecycle_allowed("New Model Sweep") or not self.get_can_create():
+            return False
+        if self.needs_discard_confirmation() and not discard_confirmed:
+            self._set_status("Confirm discarding the current configuration before replacing it.")
+            return False
+        self.open_document(new_document(_template_payload("model_sweep")))
+        self._set_status("New model sweep. Save it under the workspace configs folder.")
+        return True
+
     def import_dataset(self, path: str, discard_confirmed: bool = False) -> bool:
         if not self._lifecycle_allowed("Import"):
             return False
-        if self.workspace is None:
+        if self.workspace is None or self._has_active_sweep_edit():
             return False
         if self.needs_discard_confirmation() and not discard_confirmed:
             self._set_status("Confirm discarding the current configuration before replacing it.")
@@ -419,7 +462,12 @@ class ConfigurationController(QObject):
         if not self._lifecycle_allowed("Save"):
             return False
         document = self.document
-        if document is None or not self._locally_valid or self.coordinator.is_busy:
+        if (
+            document is None
+            or not self._locally_valid
+            or self.coordinator.is_busy
+            or self._has_active_sweep_edit()
+        ):
             return False
         if document.source_path is None or not document.workspace_owned:
             return self._request_save_as(allow_reformat=allow_reformat)
@@ -437,7 +485,12 @@ class ConfigurationController(QObject):
     def request_save_as(self, allow_reformat: bool = False) -> bool:
         if not self._lifecycle_allowed("Save As"):
             return False
-        if self.document is None or not self._locally_valid or self.coordinator.is_busy:
+        if (
+            self.document is None
+            or not self._locally_valid
+            or self.coordinator.is_busy
+            or self._has_active_sweep_edit()
+        ):
             return False
         return self._request_save_as(allow_reformat=allow_reformat)
 
@@ -450,6 +503,8 @@ class ConfigurationController(QObject):
     def save_path_selected(self, path: str) -> bool:
         if not self._lifecycle_allowed("Save As"):
             self._awaiting_save_path = False
+            return False
+        if self._has_active_sweep_edit():
             return False
         if not self._awaiting_save_path:
             self._set_status("Save As is not awaiting a destination.")
@@ -472,7 +527,12 @@ class ConfigurationController(QObject):
         if not self._lifecycle_allowed("Reload"):
             return False
         document = self.document
-        if document is None or document.source_path is None or self.coordinator.is_busy:
+        if (
+            document is None
+            or document.source_path is None
+            or self.coordinator.is_busy
+            or self._has_active_sweep_edit()
+        ):
             return False
         if self.needs_discard_confirmation() and not discard_confirmed:
             self._set_status("Confirm discarding local changes before reloading the source.")
@@ -514,20 +574,26 @@ class ConfigurationController(QObject):
         return self.dataset_draft.set_coordinate(selected)
 
     def open_document(self, document: ConfigurationDocument) -> bool:
-        if not self._lifecycle_allowed("document replacement"):
+        if self._has_active_sweep_edit() or not self._lifecycle_allowed("document replacement"):
             return False
         self.document = document
         self._reset_worker_validation("not_run")
         self._syncing_document = True
         try:
+            payload = document.payload
             if document.document_type == "dataset":
-                payload = document.payload
                 self.dataset_draft.load_payload(payload)
                 self.visualization_draft.set_dataset_context(payload)
                 self.visualization_draft.load_visualization(payload.get("visualization"))
+                self.sweep_draft.clear()
+            elif document.document_type == "model_sweep":
+                self.dataset_draft.clear()
+                self.visualization_draft.clear()
+                self.sweep_draft.load_payload(payload)
             else:
                 self.dataset_draft.clear()
                 self.visualization_draft.clear()
+                self.sweep_draft.clear()
         finally:
             self._syncing_document = False
         label = document.document_type.replace("_", " ")
@@ -541,7 +607,7 @@ class ConfigurationController(QObject):
         return True
 
     def clear_document(self, discard_confirmed: bool = False) -> bool:
-        if not self._lifecycle_allowed("Close Configuration"):
+        if self._has_active_sweep_edit() or not self._lifecycle_allowed("Close Configuration"):
             return False
         if self.needs_discard_confirmation() and not discard_confirmed:
             self._set_status("Confirm discarding the current configuration before closing it.")
@@ -564,10 +630,16 @@ class ConfigurationController(QObject):
                 f"the open configuration is {self.document.document_type}, not "
                 f"{expected_document_type}"
             )
-        dataset_drafts_valid = expected_document_type != "dataset" or (
-            self.dataset_draft.get_locally_valid() and self.visualization_draft.get_locally_valid()
+        drafts_valid = (
+            self.sweep_draft.get_locally_valid()
+            if expected_document_type == "model_sweep"
+            else expected_document_type != "dataset"
+            or (
+                self.dataset_draft.get_locally_valid()
+                and self.visualization_draft.get_locally_valid()
+            )
         )
-        if not self._locally_valid or not dataset_drafts_valid:
+        if not self._locally_valid or not drafts_valid or self._has_active_sweep_edit():
             raise ConfigDocumentError("complete the configuration form before execution")
         return self.document.execution_snapshot(configs_root=self.workspace.configs)
 
@@ -726,10 +798,19 @@ class ConfigurationController(QObject):
         self._update_worker_validation(validation_revision_changed=True)
         self.state_changed.emit()
 
+    def _active_nested_edit_changed(self) -> None:
+        self._update_worker_validation(validation_revision_changed=True)
+        self.state_changed.emit()
+
+    def _sweep_validity_changed(self) -> None:
+        if not self._syncing_document:
+            self.state_changed.emit()
+
     def _apply_capabilities(self, payload: dict[str, Any]) -> None:
         self.capabilities = payload
         self.dataset_draft.apply_capabilities(payload)
         self.visualization_draft.apply_capabilities(payload)
+        self.sweep_draft.apply_capabilities(payload)
         if self.document is not None:
             self._refresh_document()
         else:
@@ -742,6 +823,7 @@ class ConfigurationController(QObject):
         try:
             self.dataset_draft.clear()
             self.visualization_draft.clear()
+            self.sweep_draft.clear()
         finally:
             self._syncing_document = False
         self._locally_valid = False
@@ -820,7 +902,9 @@ class ConfigurationController(QObject):
             )
             return
         document.mark_saved(destination, content)
-        if document.document_type == "dataset":
+        if document.document_type == "model_sweep":
+            self.sweep_draft.mark_baseline()
+        elif document.document_type == "dataset":
             self.dataset_draft.mark_baseline()
             self.visualization_draft.mark_baseline()
         self._file_display = str(destination)
@@ -853,7 +937,11 @@ class ConfigurationController(QObject):
             self._emit_document_state()
             return
         try:
-            if document.document_type == "dataset":
+            if document.document_type == "model_sweep":
+                if not self.sweep_draft.get_locally_valid():
+                    raise ValueError(self.sweep_draft.get_issue())
+                document.set_payload(self.sweep_draft.payload())
+            elif document.document_type == "dataset":
                 payload = self.dataset_draft.merge_into(document.payload)
                 dataset_context = self.dataset_draft.dataset_payload()
                 self.visualization_draft.set_dataset_context(dataset_context)
@@ -916,7 +1004,7 @@ class ConfigurationController(QObject):
             or content is None
             or digest is None
             or not self._locally_valid
-            or self.visualization_draft.get_has_active_plot_edit()
+            or self._has_active_nested_edit()
         ):
             return False
         current = document.yaml_bytes
@@ -926,10 +1014,10 @@ class ConfigurationController(QObject):
         if self.document is None:
             self._set_worker_validation("unavailable", "", [])
             return
-        active_edit = self.visualization_draft.get_has_active_plot_edit()
+        active_edit = self._has_active_nested_edit()
         if not self._locally_valid or active_edit:
             issue = (
-                "Commit or cancel the active plot edit before validation."
+                "Commit or cancel the active nested edit before validation."
                 if active_edit
                 else self.get_blocking_issue()
             )
@@ -991,6 +1079,12 @@ class ConfigurationController(QObject):
 
     def _lifecycle_allowed(self, operation: str) -> bool:
         return self._lifecycle_guard is None or self._lifecycle_guard(operation)
+
+    def _has_active_nested_edit(self) -> bool:
+        return self.visualization_draft.get_has_active_plot_edit() or self._has_active_sweep_edit()
+
+    def _has_active_sweep_edit(self) -> bool:
+        return self.sweep_draft.get_has_active_comparison_edit()
 
 
 def _template_payload(mode: str) -> dict[str, Any]:

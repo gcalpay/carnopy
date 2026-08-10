@@ -209,6 +209,12 @@ def payload(*, visualization: bool = False) -> dict[str, Any]:
     return value
 
 
+def sweep_payload() -> dict[str, Any]:
+    value = yaml.safe_load(template_text("model_sweep"))
+    assert isinstance(value, dict)
+    return cast(dict[str, Any], value)
+
+
 def configured_controller(
     tmp_path: Path,
 ) -> tuple[ConfigurationController, StubCoordinator]:
@@ -729,3 +735,80 @@ def test_generic_controller_owns_non_dataset_file_lifecycle(
     assert controller.get_document_kind() == document_type
     assert controller.document is not None
     assert controller.document.source_path == destination.resolve()
+
+
+def test_sweep_draft_composes_the_global_saved_document_and_validation_snapshot(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    controller, coordinator = configured_controller(tmp_path)
+    workspace = controller.workspace
+    assert workspace is not None
+    sweep = controller.sweep_draft
+
+    assert controller.get_sweep_draft() is sweep
+    assert controller.property("sweepDraft") is sweep
+    assert controller.new_sweep()
+    assert controller.get_document_kind() == "model_sweep"
+    assert controller.get_locally_valid()
+    assert controller.get_dirty()
+    assert controller.document is not None
+    assert controller.document.payload == sweep.payload()
+
+    destination = workspace.configs / "sweep.yaml"
+    assert controller.request_save_as()
+    assert controller.save_path_selected(str(destination))
+    expected_bytes = controller.document.yaml_bytes
+    assert coordinator.calls[-1] == (
+        "configuration",
+        "validate_configuration",
+        {
+            "yaml_text": expected_bytes.decode("utf-8"),
+            "source_name": str(destination),
+            "expected_document_type": "model_sweep",
+        },
+    )
+    coordinator.succeed({"document_type": "model_sweep"})
+
+    snapshot = controller.execution_snapshot(expected_document_type="model_sweep")
+    assert snapshot.path == destination.resolve()
+    assert snapshot.yaml_bytes == expected_bytes
+    assert not controller.get_dirty()
+
+    assert sweep.set_reference_model("pr")
+    assert controller.get_dirty()
+    assert controller.document.payload["backend"]["reference_model"] == "pr"
+    with pytest.raises(ConfigDocumentError, match="save the current configuration changes"):
+        controller.execution_snapshot(expected_document_type="model_sweep")
+
+    assert controller.request_validation()
+    changed_bytes = controller.document.yaml_bytes
+    assert coordinator.calls[-1] == (
+        "configuration",
+        "validate_configuration",
+        {
+            "yaml_text": changed_bytes.decode("utf-8"),
+            "source_name": str(destination),
+            "expected_document_type": "model_sweep",
+        },
+    )
+    coordinator.succeed({"document_type": "model_sweep"})
+    assert controller.get_worker_validation_state() == "valid"
+
+    assert sweep.set_reference_model("heos")
+    assert not controller.get_dirty()
+    assert controller.execution_snapshot(expected_document_type="model_sweep") == snapshot
+
+    committed_preview = controller.get_yaml_preview()
+    assert sweep.begin_add_comparison()
+    assert controller.get_yaml_preview() == committed_preview
+    assert controller.get_blocking_section() == "sweep"
+    assert not controller.get_can_validate()
+    assert not controller.request_save()
+    assert not controller.clear_document(discard_confirmed=True)
+    with pytest.raises(ConfigDocumentError, match="complete the configuration form"):
+        controller.execution_snapshot(expected_document_type="model_sweep")
+
+    assert sweep.cancel_comparison()
+    assert controller.execution_snapshot(expected_document_type="model_sweep") == snapshot
