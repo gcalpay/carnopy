@@ -354,8 +354,21 @@ class DesktopController(QObject):
         notify=workspace_state_changed,
     )
 
+    def get_has_active_sweep_edit(self) -> bool:
+        return self.configuration_controller.sweep_draft.get_has_active_comparison_edit()
+
+    hasActiveSweepEdit = Property(
+        bool,
+        get_has_active_sweep_edit,
+        notify=workspace_state_changed,
+    )
+
     def get_has_any_transient_edit(self) -> bool:
-        return self.get_has_active_plot_edit() or self.get_has_session_plot_edit()
+        return (
+            self.get_has_active_plot_edit()
+            or self.get_has_session_plot_edit()
+            or self.get_has_active_sweep_edit()
+        )
 
     hasAnyTransientEdit = Property(
         bool,
@@ -464,6 +477,25 @@ class DesktopController(QObject):
         if not self._guard_active_plot_edit("New Dataset"):
             return False
         return self.configuration_controller.new_dataset(mode, discard_confirmed)
+
+    @Slot(bool, result=bool, name="requestNewSweep")
+    def request_new_sweep(self, discard_confirmed: bool = False) -> bool:
+        if not self._guard_active_plot_edit("New Model Sweep"):
+            return False
+        return self.configuration_controller.new_sweep(discard_confirmed)
+
+    @Slot(str, bool, result=bool, name="requestImportConfiguration")
+    def request_import_configuration(
+        self,
+        path: str,
+        discard_confirmed: bool = False,
+    ) -> bool:
+        if not self._guard_active_plot_edit("Open Configuration"):
+            return False
+        return self.configuration_controller.import_configuration(
+            _local_path(path),
+            discard_confirmed,
+        )
 
     @Slot(str, bool, result=bool, name="requestImportDataset")
     def request_import_dataset(self, path: str, discard_confirmed: bool = False) -> bool:
@@ -676,7 +708,7 @@ class DesktopController(QObject):
 
     @Slot(str, str, int, result=bool, name="requestConfigurationAttention")
     def request_configuration_attention(self, section: str, field: str, row: int) -> bool:
-        if section not in {"dataset", "visualization"}:
+        if section not in {"dataset", "sweep", "visualization"}:
             return False
         if not field.startswith(f"{section}.") and not (
             section == "visualization" and field.startswith("plot.")
@@ -1379,6 +1411,8 @@ class DesktopController(QObject):
                 edit_names.append("configured plot")
             if self.get_has_session_plot_edit():
                 edit_names.append("session plot")
+            if self.get_has_active_sweep_edit():
+                edit_names.append("Sweep comparison")
             description = " and ".join(edit_names)
             self.transientEditShutdownConfirmationRequested.emit(
                 f"A {description} edit is still open. Cancel the edit and close Carnopy?"
@@ -1431,6 +1465,11 @@ class DesktopController(QObject):
         if self.get_has_active_plot_edit() and not self.visualization_draft.cancel_plot():
             return False
         if self.get_has_session_plot_edit() and not self.session_plot_controller.cancel_edit():
+            return False
+        if (
+            self.get_has_active_sweep_edit()
+            and not self.configuration_controller.sweep_draft.cancel_comparison()
+        ):
             return False
         self.closeWindowRequested.emit()
         return True

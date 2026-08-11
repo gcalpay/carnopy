@@ -15,11 +15,14 @@ Control {
     property bool configurationDirty: false
     property string configurationFile: ""
     property bool configurationOpen: false
+    property var configController: null
     property bool datasetValid: false
     property string datasetIssue: ""
     property var executionController: null
     property var inspectionController: null
     property var activityController: null
+    property var sweepDraft: null
+    property var sweepWorkflowController: null
     property string pageKey: "workspace"
     property bool visualizationActiveEdit: false
     property string visualizationIssue: ""
@@ -100,7 +103,7 @@ Control {
             flickableDirection: Flickable.VerticalFlick
             pixelAligned: true
             visible: root.pageKey !== "run" && root.pageKey !== "inspect" && root.pageKey
-                     !== "activity"
+                     !== "activity" && root.pageKey !== "sweeps"
 
             ScrollBar.vertical: ScrollBar {
                 policy: ScrollBar.AsNeeded
@@ -321,6 +324,26 @@ Control {
             Layout.fillWidth: true
             activityController: root.activityController
             visible: root.pageKey === "activity" && root.activityController !== null
+        }
+
+        WorkflowContextInspector {
+            Layout.fillHeight: true
+            Layout.fillWidth: true
+            configController: root.configController
+            firstInvalidField: root.sweepDraft !== null ? root.sweepDraft.firstInvalidField : ""
+            firstInvalidRow: root.sweepDraft !== null ? root.sweepDraft.firstInvalidRow : -1
+            localIssue: root.sweepDraft !== null ? root.sweepDraft.issue : ""
+            localValid: root.sweepDraft !== null && root.sweepDraft.locallyValid
+            objectName: "sweepWorkflowContextInspector"
+            onAttentionRequested: (section, field, row) => root.attentionRequested(section, field,
+                                                                                   row)
+            onValidateRequested: root.validateRequested()
+            visible: root.pageKey === "sweeps" && root.sweepDraft !== null
+                     && root.sweepWorkflowController !== null
+            transientEditActive: root.sweepDraft !== null && root.sweepDraft.hasActiveComparisonEdit
+            workflowController: root.sweepWorkflowController
+            workflowSection: "sweep"
+            workflowTitle: qsTr("Model Sweep")
         }
     }
 }

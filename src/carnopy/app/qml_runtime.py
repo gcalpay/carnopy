@@ -488,7 +488,11 @@ class QmlApplicationRuntime:
             ("workspaceCommitRequested", self.controller.request_commit_workspace_operation),
             ("workspaceCancelRequested", self.controller.request_cancel_workspace_operation),
             ("datasetNewRequested", self.controller.request_new_dataset),
-            ("datasetImportRequested", self.controller.request_import_dataset),
+            ("sweepNewRequested", self.controller.request_new_sweep),
+            (
+                "configurationImportRequested",
+                self.controller.request_import_configuration,
+            ),
             ("datasetSaveRequested", self.controller.request_save),
             ("datasetSaveAsRequested", self.controller.request_save_as),
             (

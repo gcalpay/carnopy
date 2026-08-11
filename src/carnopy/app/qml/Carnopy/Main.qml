@@ -28,7 +28,7 @@ ApplicationWindow {
     signal configurationAttentionRequested(string section, string field, int row)
     signal datasetCloseRequested(bool discardConfirmed)
     signal datasetConfirmReformatRequested(string action)
-    signal datasetImportRequested(string path, bool discardConfirmed)
+    signal configurationImportRequested(string path, bool discardConfirmed)
     signal datasetModelChangeRequested(string model)
     signal datasetModeChangeRequested(string mode)
     signal datasetCoordinateChangeRequested(string axis)
@@ -46,6 +46,7 @@ ApplicationWindow {
     signal datasetSaveRequested(bool allowReformat)
     signal datasetValidateRequested
     signal datasetReloadRequested(bool discardConfirmed)
+    signal sweepNewRequested(bool discardConfirmed)
     signal runCancelRequested
     signal runForceStopRequested
     signal runGenerateRequested
@@ -123,6 +124,9 @@ ApplicationWindow {
                                             ? desktopController.configurationController : null
     readonly property var executionController: controllerAvailable
                                                ? desktopController.executionController : null
+    readonly property var sweepWorkflowController: controllerAvailable
+                                                   ? desktopController.sweepWorkflowController :
+                                                     null
     readonly property var inspectionController: controllerAvailable
                                                 ? desktopController.inspectionController : null
     readonly property var activityController: controllerAvailable
@@ -160,6 +164,8 @@ ApplicationWindow {
             return qsTr("Help");
         if (pageKey === "dataset")
             return qsTr("Dataset");
+        if (pageKey === "sweeps")
+            return qsTr("Model Sweeps");
         if (pageKey === "visualization")
             return qsTr("Visualization");
         if (pageKey === "yaml")
@@ -209,9 +215,9 @@ ApplicationWindow {
         root.datasetCloseRequested(false);
     }
 
-    function requestDatasetImport(path) {
+    function requestConfigurationImport(path) {
         if (controllerAvailable && desktopController.hasActivePlotEdit) {
-            root.datasetImportRequested(path, false);
+            root.configurationImportRequested(path, false);
             return;
         }
         if (configController !== null && configController.dirty) {
@@ -220,7 +226,7 @@ ApplicationWindow {
             configurationDiscardDialog.open();
             return;
         }
-        root.datasetImportRequested(path, false);
+        root.configurationImportRequested(path, false);
     }
 
     function requestDatasetNew(mode) {
@@ -235,6 +241,54 @@ ApplicationWindow {
             return;
         }
         root.datasetNewRequested(mode, false);
+    }
+
+    function requestSweepNew() {
+        if (controllerAvailable && (desktopController.hasActivePlotEdit
+                                    || desktopController.hasActiveSweepEdit)) {
+            root.sweepNewRequested(false);
+            return;
+        }
+        if (configController !== null && configController.dirty) {
+            pendingReplacementAction = "new_sweep";
+            configurationDiscardDialog.open();
+            return;
+        }
+        root.sweepNewRequested(false);
+    }
+
+    function sweepStatusLabel() {
+        if (sweepWorkflowController === null)
+            return qsTr("Unavailable");
+        if (controllerAvailable && desktopController.hasActiveSweepEdit)
+            return qsTr("Unfinished comparison edit");
+        if (sweepWorkflowController.operationActive)
+            return sweepWorkflowController.protectedFinalization ? qsTr("Finalizing safely") : qsTr(
+                                                                       "Sweep active");
+        if (configController === null || configController.documentKind !== "model_sweep")
+            return sweepWorkflowController.hasResult ? qsTr("Historical Sweep result") : qsTr(
+                                                           "No Sweep document");
+        if (sweepWorkflowController.planCurrent)
+            return qsTr("Plan current");
+        return configController.dirty ? qsTr("Unsaved Sweep") : qsTr("Sweep ready");
+    }
+
+    function sweepStatusTone() {
+        if (sweepWorkflowController === null)
+            return "neutral";
+        if (controllerAvailable && desktopController.hasActiveSweepEdit)
+            return "warning";
+        if (sweepWorkflowController.workflowState === "failed"
+                || sweepWorkflowController.workflowState === "invalid")
+            return "danger";
+        if (sweepWorkflowController.operationActive)
+            return sweepWorkflowController.protectedFinalization ? "warning" : "information";
+        if (sweepWorkflowController.planCurrent || sweepWorkflowController.resultRelation
+                === "current")
+            return "success";
+        if (sweepWorkflowController.hasPlan || sweepWorkflowController.hasResult)
+            return "warning";
+        return "neutral";
     }
 
     function requestCommandImport() {
@@ -440,6 +494,7 @@ ApplicationWindow {
             datasetAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
             inspectAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
             runAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
+            sweepsAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
             visualizationAvailable: root.controllerAvailable
                                     && root.desktopController.workspaceAvailable
             yamlAvailable: root.configController !== null && root.configController.hasDocument
@@ -496,6 +551,8 @@ ApplicationWindow {
                     showAppearanceSelector: !root.inspectorWideVisible
                     showRailMenu: root.shellMode === "narrow"
                     statusLabel: {
+                        if (root.currentPage === "sweeps")
+                        return root.sweepStatusLabel();
                         if (root.currentPage === "run" && root.executionController !== null)
                         return root.executionController.state === "running" ? qsTr("Running") : (
                                                                                   root.executionController.state
@@ -516,33 +573,37 @@ ApplicationWindow {
                         return qsTr("Workspace ready");
                         return qsTr("No workspace");
                     }
-                    statusTone: root.controllerAvailable && root.desktopController.workspaceState
-                                === "loading" ? "information" : (root.currentPage === "run"
-                                                                 && root.executionController
-                                                                 !== null ? (
-                                                                                root.executionController.state
-                                                                                === "succeeded"
-                                                                                ? "success" : (
-                                                                                      root.executionController.state
-                                                                                      === "invalid"
-                                                                                      || root.executionController.state
-                                                                                      === "failed"
-                                                                                      ? "danger" : (
-                                                                                            root.executionController.state
-                                                                                            === "running"
-                                                                                            || root.executionController.state
-                                                                                            === "starting"
-                                                                                            ? "information" :
-                                                                                              "neutral"))) :
-                                                                            (root.controllerAvailable
-                                                                             && root.desktopController.workspaceState
-                                                                             === "editing" &&
-                                                                             !root.desktopController.datasetDraft.locallyValid
-                                                                             ? "danger" : (
-                                                                                   root.controllerAvailable
-                                                                                   && root.desktopController.workspaceAvailable
-                                                                                   ? "success" :
-                                                                                     "neutral")))
+                    statusTone: root.currentPage === "sweeps" ? root.sweepStatusTone() : (
+                                                                    root.controllerAvailable
+                                                                    && root.desktopController.workspaceState
+                                                                    === "loading" ? "information" : (
+                                                                                        root.currentPage
+                                                                                        === "run"
+                                                                                        && root.executionController
+                                                                                        !== null ? (
+                                                                                                       root.executionController.state
+                                                                                                       === "succeeded"
+                                                                                                       ? "success" :
+                                                                                                         (root.executionController.state
+                                                                                                          === "invalid"
+                                                                                                          || root.executionController.state
+                                                                                                          === "failed"
+                                                                                                          ? "danger" :
+                                                                                                            (root.executionController.state
+                                                                                                             === "running"
+                                                                                                             || root.executionController.state
+                                                                                                             === "starting"
+                                                                                                             ? "information" :
+                                                                                                               "neutral"))) :
+                                                                                                   (root.controllerAvailable
+                                                                                                    && root.desktopController.workspaceState
+                                                                                                    === "editing"
+                                                                                                    && !root.desktopController.datasetDraft.locallyValid
+                                                                                                    ? "danger" :
+                                                                                                      (root.controllerAvailable
+                                                                                                       && root.desktopController.workspaceAvailable
+                                                                                                       ? "success" :
+                                                                                                         "neutral"))))
                     themeMode: root.qmlSettings.themeMode
                 }
 
@@ -641,6 +702,16 @@ ApplicationWindow {
                         objectName: "datasetPageLoader"
                         sourceComponent: datasetPage
                         visible: root.currentPage === "dataset"
+                    }
+
+                    Loader {
+                        id: modelSweepPageLoader
+
+                        active: root.currentPage === "sweeps" || item !== null
+                        anchors.fill: parent
+                        objectName: "modelSweepPageLoader"
+                        sourceComponent: modelSweepPage
+                        visible: root.currentPage === "sweeps"
                     }
 
                     Loader {
@@ -786,6 +857,7 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 Layout.fillWidth: true
                 closeButtonVisible: true
+                configController: root.configController
                 configurationDirty: root.configController !== null && root.configController.dirty
                 configurationFile: root.configController !== null
                                    ? root.configController.fileDisplay : ""
@@ -805,6 +877,8 @@ ApplicationWindow {
                 onInspectionExploreRequested: root.inspectionExploreRequested()
                 onValidateRequested: root.datasetValidateRequested()
                 pageKey: root.currentPage
+                sweepDraft: root.configController !== null ? root.configController.sweepDraft : null
+                sweepWorkflowController: root.sweepWorkflowController
                 workspacePath: root.controllerAvailable ? root.desktopController.workspaceRootPath :
                                                           ""
                 workspaceState: root.controllerAvailable ? root.desktopController.workspaceState :
@@ -844,6 +918,7 @@ ApplicationWindow {
             datasetAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
             inspectAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
             runAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
+            sweepsAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
             visualizationAvailable: root.controllerAvailable
                                     && root.desktopController.workspaceAvailable
             yamlAvailable: root.configController !== null && root.configController.hasDocument
@@ -869,6 +944,7 @@ ApplicationWindow {
             blockingSection: root.configController !== null ? root.configController.blockingSection :
                                                               "none"
             closeButtonVisible: true
+            configController: root.configController
             configurationDirty: root.configController !== null && root.configController.dirty
             configurationFile: root.configController !== null ? root.configController.fileDisplay :
                                                                 ""
@@ -886,6 +962,8 @@ ApplicationWindow {
             onInspectionExploreRequested: root.inspectionExploreRequested()
             onValidateRequested: root.datasetValidateRequested()
             pageKey: root.currentPage
+            sweepDraft: root.configController !== null ? root.configController.sweepDraft : null
+            sweepWorkflowController: root.sweepWorkflowController
             workspacePath: root.controllerAvailable ? root.desktopController.workspaceRootPath : ""
             workspaceState: root.controllerAvailable ? root.desktopController.workspaceState :
                                                        "unavailable"
@@ -922,8 +1000,9 @@ ApplicationWindow {
                                                                        parentPath, childName)
             onInitializeWorkspaceRequested: path => root.workspaceInitializeRequested(path)
             onOpenWorkspaceRequested: path => root.workspaceOpenRequested(path)
-            onImportDatasetRequested: path => root.requestDatasetImport(path)
+            onImportConfigurationRequested: path => root.requestConfigurationImport(path)
             onNewDatasetRequested: mode => root.requestDatasetNew(mode)
+            onNewSweepRequested: root.requestSweepNew()
         }
     }
 
@@ -971,6 +1050,23 @@ ApplicationWindow {
             onAttentionRequested: (section, field, row) => root.configurationAttentionRequested(
                                                                section, field, row)
             onCopyCompleted: toastHost.showMessage(qsTr("YAML copied to the clipboard."), "success")
+        }
+    }
+
+    Component {
+        id: modelSweepPage
+
+        ModelSweepPage {
+            attentionField: root.pendingAttentionField
+            attentionRow: root.pendingAttentionRow
+            attentionSerial: root.pendingAttentionSerial
+            configController: root.configController
+            desktopController: root.desktopController
+            expectedColumns: root.cardColumnCount
+            objectName: "modelSweepPage"
+            onWorkspaceRequested: root.routeTo("workspace")
+            sweepDraft: root.configController.sweepDraft
+            workflowController: root.sweepWorkflowController
         }
     }
 
@@ -1122,9 +1218,9 @@ ApplicationWindow {
         }
 
         function onAttentionRequested(section, field, row) {
-            if (section !== "dataset" && section !== "visualization")
+            if (section !== "dataset" && section !== "sweep" && section !== "visualization")
                 return;
-            root.routeTo(section);
+            root.routeTo(section === "sweep" ? "sweeps" : section);
             root.pendingAttentionField = field;
             root.pendingAttentionRow = row;
             root.pendingAttentionSerial += 1;
@@ -1139,7 +1235,8 @@ ApplicationWindow {
         }
 
         function onConfigurationDocumentOpened(documentKind) {
-            root.routeTo(documentKind === "dataset" ? "dataset" : "yaml");
+            root.routeTo(documentKind === "dataset" ? "dataset" : (documentKind === "model_sweep"
+                                                                   ? "sweeps" : "yaml"));
         }
 
         function onNavigationRequested(pageKey, detail) {
@@ -1169,7 +1266,7 @@ ApplicationWindow {
             const workspaceAvailable = root.desktopController.workspaceAvailable;
             if ((root.currentPage === "dataset" || root.currentPage === "run" || root.currentPage
                  === "inspect" || root.currentPage === "visualization" || root.currentPage
-                 === "activity") && !workspaceAvailable)
+                 === "activity" || root.currentPage === "sweeps") && !workspaceAvailable)
                 root.routeTo("workspace");
             if (root.currentPage === "yaml" && (root.configController === null ||
                                                 !root.configController.hasDocument))
@@ -1242,10 +1339,12 @@ ApplicationWindow {
                 const mode = root.pendingReplacementMode;
                 root.pendingReplacementMode = "";
                 root.datasetNewRequested(mode, true);
+            } else if (action === "new_sweep") {
+                root.sweepNewRequested(true);
             } else if (action === "import") {
                 const path = root.pendingReplacementPath;
                 root.pendingReplacementPath = "";
-                root.datasetImportRequested(path, true);
+                root.configurationImportRequested(path, true);
             } else if (action === "close") {
                 root.datasetCloseRequested(true);
             }
@@ -1312,7 +1411,7 @@ ApplicationWindow {
         onAccepted: root.transientEditShutdownConfirmed(true)
         onRejected: root.transientEditShutdownConfirmed(false)
         rejectText: qsTr("Keep open")
-        title: qsTr("Unfinished plot edit")
+        title: qsTr("Unfinished edit")
     }
 
     DecisionDialog {
@@ -1326,8 +1425,10 @@ ApplicationWindow {
         onAccepted: root.busyShutdownConfirmed(true)
         onRejected: root.busyShutdownConfirmed(false)
         rejectText: qsTr("Keep open")
-        title: busyMode === "force_stop_plot" ? qsTr("Stop plot render and close?") : qsTr(
-                                                    "Cancel generation and close?")
+        title: busyMode === "force_stop_plot" ? qsTr("Stop plot render and close?") : (busyMode
+                                                                                       === "cancel_sweep"
+                                                                                       ? qsTr("Cancel Model Sweep and close?") :
+                                                                                         qsTr("Cancel generation and close?"))
     }
 
     FileDialog {
@@ -1338,7 +1439,7 @@ ApplicationWindow {
         nameFilters: [qsTr("YAML configurations (*.yaml *.yml)")]
         objectName: "saveConfigurationDialog"
         parentWindow: root
-        title: qsTr("Save dataset configuration")
+        title: qsTr("Save configuration")
         onAccepted: {
             root.saveSelectionPath = selectedFile.toString();
             root.saveSelectionAccepted = true;

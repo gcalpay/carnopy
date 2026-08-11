@@ -29,6 +29,7 @@ ChoiceList 1.0 components/ChoiceList.qml
 SearchableChoiceList 1.0 components/SearchableChoiceList.qml
 SamplerEditor 1.0 components/SamplerEditor.qml
 ValidationIssue 1.0 components/ValidationIssue.qml
+WorkflowContextInspector 1.0 components/WorkflowContextInspector.qml
 WorkflowRunPanel 1.0 components/WorkflowRunPanel.qml
 EmptyStatePage 1.0 pages/EmptyStatePage.qml
 HelpPage 1.0 pages/HelpPage.qml

@@ -396,6 +396,37 @@ def test_qml_shutdown_explicitly_cancels_transient_plot_edits_before_close(
     assert close_requests == ["close"]
 
 
+def test_qml_shutdown_explicitly_cancels_a_transient_sweep_edit_before_close(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    confirmations: list[str] = []
+    close_requests: list[str] = []
+    cancellations: list[str] = []
+    desktop.transientEditShutdownConfirmationRequested.connect(confirmations.append)
+    desktop.closeWindowRequested.connect(lambda: close_requests.append("close"))
+    monkeypatch.setattr(desktop, "get_has_active_sweep_edit", lambda: True)
+    monkeypatch.setattr(
+        desktop.configuration_controller.sweep_draft,
+        "cancel_comparison",
+        lambda: cancellations.append("comparison") or True,
+    )
+
+    assert not desktop.request_shutdown()
+    assert confirmations == [
+        "A Sweep comparison edit is still open. Cancel the edit and close Carnopy?"
+    ]
+    assert not desktop.confirm_transient_edit_shutdown(False)
+    assert cancellations == []
+    assert close_requests == []
+    assert desktop.confirm_transient_edit_shutdown(True)
+    assert cancellations == ["comparison"]
+    assert close_requests == ["close"]
+
+
 def test_configuration_attention_facade_accepts_only_stable_sections(
     tmp_path: Path,
     application: QCoreApplication,
@@ -408,11 +439,13 @@ def test_configuration_attention_facade_accepts_only_stable_sections(
     )
 
     assert desktop.request_configuration_attention("dataset", "dataset.properties", 2)
+    assert desktop.request_configuration_attention("sweep", "sweep.backend.reference_model", -1)
     assert desktop.request_configuration_attention("visualization", "plot.name", -1)
     assert not desktop.request_configuration_attention("workspace", "dataset.mode", -1)
     assert not desktop.request_configuration_attention("dataset", "plot.name", -1)
     assert attention == [
         ("dataset", "dataset.properties", 2),
+        ("sweep", "sweep.backend.reference_model", -1),
         ("visualization", "plot.name", -1),
     ]
     assert desktop.shutdown()
@@ -491,6 +524,35 @@ def test_sweep_workflow_facade_routes_only_the_integrated_workflow(
     assert not desktop.request_workflow_plan("preparation")
     assert not desktop.request_workflow_execute("unknown")
     assert calls == ["plan", "execute", "cancel", "force_stop"]
+    assert desktop.shutdown()
+
+
+def test_sweep_creation_and_generic_open_facade_use_global_configuration_lifecycle(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    calls: list[tuple[object, ...]] = []
+    monkeypatch.setattr(
+        desktop.configuration_controller,
+        "new_sweep",
+        lambda confirmed: calls.append(("new_sweep", confirmed)) or True,
+    )
+    monkeypatch.setattr(
+        desktop.configuration_controller,
+        "import_configuration",
+        lambda path, confirmed: calls.append(("open", path, confirmed)) or True,
+    )
+    source = tmp_path / "sweep.yaml"
+
+    assert desktop.request_new_sweep(True)
+    assert desktop.request_import_configuration(QUrl.fromLocalFile(str(source)).toString(), True)
+    assert calls == [
+        ("new_sweep", True),
+        ("open", str(source), True),
+    ]
     assert desktop.shutdown()
 
 
@@ -850,7 +912,9 @@ def test_active_plot_edit_blocks_all_composition_lifecycle_paths(
     )
     for name in (
         "new_dataset",
+        "new_sweep",
         "import_dataset",
+        "import_configuration",
         "request_save",
         "request_save_as",
         "request_validation",
@@ -865,7 +929,9 @@ def test_active_plot_edit_blocks_all_composition_lifecycle_paths(
         )
 
     assert not desktop.request_new_dataset("property_table")
+    assert not desktop.request_new_sweep()
     assert not desktop.request_import_dataset("input.yaml")
+    assert not desktop.request_import_configuration("input.yaml")
     assert not desktop.request_save()
     assert not desktop.request_save_as()
     assert not desktop.request_validate_configuration()

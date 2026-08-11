@@ -48,7 +48,7 @@ def _process_events() -> None:
         application.processEvents()
 
 
-def test_global_shell_routes_non_dataset_documents_to_yaml_preview(
+def test_global_shell_routes_sweep_documents_to_the_structured_editor(
     runtime: QmlApplicationRuntime,
 ) -> None:
     root = runtime.engine.rootObjects()[0]
@@ -58,7 +58,8 @@ def test_global_shell_routes_non_dataset_documents_to_yaml_preview(
     _process_events()
 
     assert runtime.controller.configuration_controller.get_document_kind() == "model_sweep"
-    assert root.property("currentPage") == "yaml"
+    assert root.property("currentPage") == "sweeps"
+    assert root.findChild(QObject, "modelSweepPage") is not None
 
 
 def _wait_for_idle(runtime: QmlApplicationRuntime) -> None:

@@ -27,9 +27,11 @@ Item {
     property string samplerAttentionField: ""
     property int samplerAttentionSerial: 0
     readonly property var datasetDraft: sweepDraft.datasetDraft
-    readonly property bool locked: !configController.canEdit
+    readonly property bool documentActive: configController.documentKind === "model_sweep"
+    readonly property bool locked: !documentActive || !configController.canEdit
 
     signal shapeDialogRequested
+    signal workspaceRequested
 
     function reveal(item) {
         if (item === null || item === undefined)
@@ -143,14 +145,33 @@ Item {
                 }
 
                 StatusBadge {
-                    label: root.sweepDraft.hasActiveComparisonEdit ? qsTr("Comparison edit open") : (
-                                                                         root.sweepDraft.locallyValid
-                                                                         ? qsTr("Locally complete") :
-                                                                           qsTr("Needs attention"))
+                    label: !root.documentActive ? qsTr("No Sweep document") : (
+                                                      root.sweepDraft.hasActiveComparisonEdit ? qsTr(
+                                                                                                    "Comparison edit open") :
+                                                                                                (root.sweepDraft.locallyValid
+                                                                                                 ? qsTr("Locally complete") :
+                                                                                                   qsTr("Needs attention")))
                     objectName: "modelSweepLocalState"
-                    tone: root.sweepDraft.hasActiveComparisonEdit ? "warning" : (
-                                                                        root.sweepDraft.locallyValid
-                                                                        ? "success" : "danger")
+                    tone: !root.documentActive ? "neutral" : (
+                                                     root.sweepDraft.hasActiveComparisonEdit
+                                                     ? "warning" : (root.sweepDraft.locallyValid
+                                                                    ? "success" : "danger"))
+                }
+            }
+
+            Card {
+                Layout.fillWidth: true
+                objectName: "modelSweepNoDocumentCard"
+                subtitle: qsTr(
+                              "Create a Model Sweep or open one by its document_type discriminator. A retained finalized result remains inspectable below.")
+                title: qsTr("No Model Sweep configuration is active")
+                visible: !root.documentActive
+
+                AppButton {
+                    objectName: "modelSweepOpenWorkspaceButton"
+                    onClicked: root.workspaceRequested()
+                    text: qsTr("Open Workspace")
+                    tone: "primary"
                 }
             }
 
@@ -161,7 +182,7 @@ Item {
                 row: root.sweepDraft.firstInvalidRow
                 section: "sweep"
                 title: qsTr("Sweep configuration needs attention")
-                visible: !root.sweepDraft.locallyValid
+                visible: root.documentActive && !root.sweepDraft.locallyValid
                 onActionRequested: (section, field, row) => root.focusField(field, row)
             }
 
@@ -181,6 +202,7 @@ Item {
                 minimumCardWidth: 300
                 objectName: "modelSweepDefinitionGrid"
                 uniformHeights: false
+                visible: root.documentActive
 
                 Card {
                     id: modelCard
@@ -449,6 +471,7 @@ Item {
                 subtitle: qsTr(
                               "Committed order is serialized deterministically and participates in plan identity.")
                 title: qsTr("Comparison plots")
+                visible: root.documentActive
 
                 RowLayout {
                     Layout.fillWidth: true

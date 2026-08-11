@@ -603,6 +603,7 @@ def test_qml_uses_child_drafts_only_for_local_edits() -> None:
     assert "datasetDraft.applyModeChange" not in dataset_source
     assert "datasetDraft.setCoordinate" not in dataset_source
     assert "configurationController.newDataset" not in workspace_source
+    assert "configurationController.newSweep" not in workspace_source
     assert "configurationController.importDataset" not in workspace_source
     assert "datasetDraft.addFluid" not in dataset_source
     assert "datasetDraft.addProperty" not in dataset_source
@@ -613,7 +614,8 @@ def test_qml_uses_child_drafts_only_for_local_edits() -> None:
     assert "signal modeChangeRequested" in dataset_source
     assert "signal coordinateChangeRequested" in dataset_source
     assert "signal newDatasetRequested" in workspace_source
-    assert "signal importDatasetRequested" in workspace_source
+    assert "signal newSweepRequested" in workspace_source
+    assert "signal importConfigurationRequested" in workspace_source
     assert "unitChangeRequested" in sampler_source
     assert re.search(r"\bdraft\.unit\s*=(?!=)", sampler_source) is None
     assert re.search(r"\bdraft\.kind\s*=(?!=)", sampler_source) is None

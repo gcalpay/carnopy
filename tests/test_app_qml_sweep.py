@@ -9,7 +9,7 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QCoreApplication, QEventLoop, QSettings, QTimer
+from PySide6.QtCore import QCoreApplication, QEventLoop, QObject, QSettings, QTimer
 from PySide6.QtQml import QQmlComponent
 from PySide6.QtQuick import QQuickItem, QQuickWindow
 from PySide6.QtWidgets import QApplication
@@ -17,6 +17,7 @@ from PySide6.QtWidgets import QApplication
 from carnopy.app.qml_resources import MANDATORY_QML_FILES
 from carnopy.app.qml_runtime import QmlApplicationRuntime, create_qml_runtime
 from carnopy.app.workspace import initialize_workspace
+from carnopy.templates import template_text
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -126,6 +127,137 @@ def _visual_names(root: QQuickItem) -> set[str]:
     return names
 
 
+def _visible_item(root: QQuickWindow, object_name: str) -> QQuickItem:
+    pending = [root.contentItem()]
+    matches: list[QQuickItem] = []
+    while pending:
+        candidate = pending.pop()
+        if candidate.objectName() == object_name and candidate.isVisible():
+            matches.append(candidate)
+        pending.extend(candidate.childItems())
+    assert len(matches) == 1
+    return matches[0]
+
+
+def test_shell_creates_and_enables_the_structured_sweep_surface(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    desktop = runtime.controller
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    root.setWidth(1440)
+    root.setHeight(1200)
+    _process_events()
+
+    workspace_page = root.findChild(QObject, "workspacePage")
+    sweep_button = _visible_item(root, "newModelSweepButton")
+    sweep_navigation = _visible_item(root, "nav-sweeps")
+    assert workspace_page is not None
+    assert sweep_button.property("enabled") is True
+    assert sweep_navigation.property("enabled") is True
+
+    workspace_page.newSweepRequested.emit()
+    _process_events()
+
+    page = root.findChild(QObject, "modelSweepPage")
+    command_bar = root.findChild(QObject, "documentCommandBar")
+    inspector = _visible_item(root, "sweepWorkflowContextInspector")
+    assert page is not None
+    assert command_bar is not None
+    assert inspector is not None
+    assert desktop.configuration_controller.get_document_kind() == "model_sweep"
+    assert root.property("currentPage") == "sweeps"
+    assert page.property("visible") is True
+    assert page.property("documentActive") is True
+    assert page.property("sweepDraft") is desktop.configuration_controller.sweep_draft
+    assert page.property("workflowController") is desktop.sweep_workflow_controller
+    assert command_bar.property("pageTitle") == "Model Sweeps"
+    assert command_bar.property("statusLabel") == "Unsaved Sweep"
+    assert inspector.property("visible") is True
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_shell_uses_generic_open_and_dirty_replacement_for_sweeps(
+    runtime: QmlApplicationRuntime,
+    tmp_path: Path,
+) -> None:
+    desktop = runtime.controller
+    controller = desktop.configuration_controller
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    assert desktop.request_new_dataset("property_table")
+    assert controller.get_dirty()
+    assert root.setProperty("currentPage", "workspace")
+    _process_events()
+
+    workspace_page = root.findChild(QObject, "workspacePage")
+    discard_dialog = root.findChild(QObject, "configurationDiscardDialog")
+    assert workspace_page is not None
+    assert discard_dialog is not None
+    assert _visible_item(root, "newModelSweepButton").property("enabled") is True
+    workspace_page.newSweepRequested.emit()
+    _process_events()
+    assert discard_dialog.property("opened") is True
+    assert controller.get_document_kind() == "dataset"
+
+    discard_dialog.accept()
+    _process_events()
+    assert controller.get_document_kind() == "model_sweep"
+    assert root.property("currentPage") == "sweeps"
+
+    assert desktop.request_close_configuration(True)
+    source = tmp_path / "workspace" / "configs" / "opened-sweep.yaml"
+    source.write_text(template_text("model_sweep"), encoding="utf-8")
+    root.configurationImportRequested.emit(str(source), False)
+    _process_events()
+    _wait_for_idle(runtime)
+    _process_events()
+    assert controller.get_document_kind() == "model_sweep"
+    assert controller.document is not None
+    assert controller.document.source_path == source.resolve()
+    assert root.property("currentPage") == "sweeps"
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_integrated_sweep_result_remains_inspectable_after_document_replacement(
+    runtime: QmlApplicationRuntime,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    desktop = runtime.controller
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    assert desktop.request_new_sweep()
+    output = tmp_path / "workspace" / "outputs" / "finalized-sweep"
+    inspected: list[str] = []
+    monkeypatch.setattr(
+        desktop.inspection_controller,
+        "inspect_source",
+        lambda value: inspected.append(str(value)) or True,
+    )
+    desktop.sweep_workflow_controller._result = {"output_directory": str(output)}
+    desktop.sweep_workflow_controller.state_changed.emit()
+    _process_events()
+
+    assert desktop.request_new_dataset("property_table", True)
+    assert root.property("currentPage") == "dataset"
+    assert root.setProperty("currentPage", "sweeps")
+    _process_events()
+    page = root.findChild(QObject, "modelSweepPage")
+    assert page is not None
+    assert page.property("documentActive") is False
+    assert _visible_item(root, "modelSweepNoDocumentCard").isVisible()
+    assert desktop.sweep_workflow_controller.get_result_relation() == "unrelated"
+
+    inspect_button = _visible_item(root, "sweepInspectResultButton")
+    assert inspect_button.property("enabled") is True
+    assert desktop.request_workflow_inspect_result("sweep")
+    _process_events()
+    assert inspected == [str(output)]
+    assert root.property("currentPage") == "inspect"
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
 def test_hidden_model_sweep_page_binds_complete_authoritative_surface(
     runtime: QmlApplicationRuntime,
     sweep_page: QQuickItem,
@@ -231,14 +363,20 @@ def test_sweep_qml_resources_and_controller_boundary_are_explicit() -> None:
     qml_root = ROOT / "src/carnopy/app/qml/Carnopy"
     page_source = (qml_root / "pages/ModelSweepPage.qml").read_text(encoding="utf-8")
     editor_source = (qml_root / "components/ComparisonPlotEditor.qml").read_text(encoding="utf-8")
+    inspector_source = (qml_root / "components/WorkflowContextInspector.qml").read_text(
+        encoding="utf-8"
+    )
+    main_source = (qml_root / "Main.qml").read_text(encoding="utf-8")
     qmldir = (qml_root / "qmldir").read_text(encoding="utf-8")
 
     assert "ModelSweepPage 1.0 pages/ModelSweepPage.qml" in qmldir
     assert "ComparisonPlotEditor 1.0 components/ComparisonPlotEditor.qml" in qmldir
     assert "WorkflowRunPanel 1.0 components/WorkflowRunPanel.qml" in qmldir
+    assert "WorkflowContextInspector 1.0 components/WorkflowContextInspector.qml" in qmldir
     assert "qml/Carnopy/pages/ModelSweepPage.qml" in MANDATORY_QML_FILES
     assert "qml/Carnopy/components/ComparisonPlotEditor.qml" in MANDATORY_QML_FILES
     assert "qml/Carnopy/components/WorkflowRunPanel.qml" in MANDATORY_QML_FILES
+    assert "qml/Carnopy/components/WorkflowContextInspector.qml" in MANDATORY_QML_FILES
     assert "requestSweep" in page_source
     assert "requestWorkflow" in page_source
     assert "requestSweep" in editor_source
@@ -252,3 +390,7 @@ def test_sweep_qml_resources_and_controller_boundary_are_explicit() -> None:
     assert ".commitComparison(" not in page_source
     assert ".setName(" not in editor_source
     assert "yaml" not in editor_source.casefold()
+    assert 'pageKey: "sweeps"' in main_source or 'currentPage === "sweeps"' in main_source
+    assert "planBlockingReasons" in inspector_source
+    assert "resultRelation" in inspector_source
+    assert "JSON" not in inspector_source

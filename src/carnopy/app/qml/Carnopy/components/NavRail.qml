@@ -15,6 +15,7 @@ Control {
     property bool inspectAvailable: false
     property bool activityAvailable: false
     property bool runAvailable: false
+    property bool sweepsAvailable: false
     property bool visualizationAvailable: false
     property bool yamlAvailable: false
     readonly property alias collapseControl: railCollapseButton
@@ -103,8 +104,8 @@ Control {
             pageKey: "sweeps"
             title: qsTr("Model Sweeps")
             iconName: "git-compare-arrows"
-            available: false
-            unavailableReason: qsTr("Model-sweep workflow migration follows the core GUI-2 stages.")
+            available: true
+            unavailableReason: qsTr("Open a workspace before using Model Sweeps.")
         }
         ListElement {
             pageKey: "preparation"
@@ -208,7 +209,9 @@ Control {
                                                              && (pageKey !== "inspect"
                                                                  || root.inspectAvailable) && (
                                                                  pageKey !== "activity"
-                                                                 || root.activityAvailable)
+                                                                 || root.activityAvailable) && (
+                                                                 pageKey !== "sweeps"
+                                                                 || root.sweepsAvailable)
 
                 Accessible.description: effectivelyAvailable ? "" : unavailableReason
                 Accessible.name: title

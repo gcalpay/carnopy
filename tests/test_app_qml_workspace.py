@@ -230,6 +230,10 @@ def test_qml_facade_creates_workspace_from_parent_and_refreshes_bound_state(
     assert runtime.controller.get_workspace_root_path() == str(target.resolve())
     assert recent.rowCount() == 1
     assert root.findChild(QObject, "newDatasetModeGrid") is not None
+    assert root.findChild(QObject, "newModelSweepCard") is not None
+    sweep_button = root.findChild(QObject, "newModelSweepButton")
+    assert sweep_button is not None
+    assert sweep_button.property("enabled") is True
     assert runtime.warning_capture.runtime_warnings == ()
 
 

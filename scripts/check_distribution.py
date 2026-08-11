@@ -66,6 +66,7 @@ QML_SHELL_APP_FILES = {
     "qml/Carnopy/components/StatusBadge.qml",
     "qml/Carnopy/components/ToastHost.qml",
     "qml/Carnopy/components/ValidationIssue.qml",
+    "qml/Carnopy/components/WorkflowContextInspector.qml",
     "qml/Carnopy/components/WorkflowRunPanel.qml",
     "qml/Carnopy/components/WorkspaceOperationDialog.qml",
     "qml/Carnopy/pages/EmptyStatePage.qml",
