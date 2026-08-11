@@ -264,6 +264,53 @@ def _accept_preparation_inspection(
         "controls": {},
         "tables": [],
     }
+    profile: dict[str, object] = {
+        "profile_schema_version": 1,
+        "source_path": str(source.resolve()),
+        "source_kind": "dataset_run",
+        "inspection_revision": revision,
+        "source_identity": {"source_kind": "dataset_run"},
+        "completion": {
+            "status": "completed",
+            "partial": False,
+            "included_child_models": [],
+            "missing_child_models": [],
+        },
+        "available_models": ["heos"],
+        "declared_models": [],
+        "reference_model": "heos",
+        "numeric_candidates": [],
+        "target_candidates": [],
+        "categorical_candidates": [],
+        "auxiliary_candidates": [],
+        "observed_category_values": {},
+        "derived_features": [],
+        "model_holdout": {
+            "available": False,
+            "reason": "Model holdout scenarios require a model-sweep source.",
+        },
+        "reference_context": {
+            "compatible": True,
+            "compatible_context": {
+                "reference_state_policy": "coolprop_DEF",
+                "backend": "coolprop",
+                "backend_model": "heos",
+            },
+            "contexts": [
+                {
+                    "artifact": "dataset.parquet",
+                    "run_id": "run",
+                    "backend": "coolprop",
+                    "backend_model": "heos",
+                    "reference_state_policy": "coolprop_DEF",
+                    "reference_state_backend_model": "heos",
+                    "reference_state_targets": [],
+                }
+            ],
+            "reason_code": "",
+            "reason": "",
+        },
+    }
     inspection._clear_inspection(source=source.resolve(), state="loading")
     inspection._accept_inspection_payload(
         {
@@ -277,6 +324,7 @@ def _accept_preparation_inspection(
             "preparation_eligible": True,
             "preparation_ineligible_reason": "",
             "preparation_source_descriptor": descriptor,
+            "preparation_profile": profile,
         }
     )
     return descriptor

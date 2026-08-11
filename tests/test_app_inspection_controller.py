@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import subprocess
 import sys
@@ -47,6 +49,97 @@ def prepare_payload(
             **payload,
         }
     )
+
+
+def preparation_profile(
+    source: Path,
+    *,
+    revision: str = REVISION,
+    source_kind: str = "dataset_run",
+) -> dict[str, object]:
+    field = {
+        "name": "temperature",
+        "column": "temperature_K",
+        "unit": "K",
+        "source": "coordinate",
+        "reference_dependent": False,
+    }
+    return {
+        "profile_schema_version": 1,
+        "source_path": str(source.resolve()),
+        "source_kind": source_kind,
+        "inspection_revision": revision,
+        "source_identity": {"source_kind": source_kind},
+        "completion": {
+            "status": "completed",
+            "partial": False,
+            "included_child_models": [],
+            "missing_child_models": [],
+        },
+        "available_models": ["heos"],
+        "declared_models": [],
+        "reference_model": "heos",
+        "numeric_candidates": [field],
+        "target_candidates": [dict(field)],
+        "categorical_candidates": [
+            {
+                "name": "fluid",
+                "column": "fluid",
+                "unit": None,
+                "source": "categorical",
+                "reference_dependent": False,
+            }
+        ],
+        "auxiliary_candidates": [
+            {
+                "name": "run_id",
+                "column": "run_id",
+                "unit": None,
+                "source": "auxiliary",
+                "reference_dependent": False,
+            }
+        ],
+        "observed_category_values": {"fluid": ["Propane"]},
+        "derived_features": [
+            {
+                "name": "specific_volume",
+                "status": "ready",
+                "available": True,
+                "ready_row_count": 2,
+                "source_row_count": 2,
+                "reason": "",
+                "reason_codes": [],
+                "missing_dependencies": [],
+                "dependencies": ["mass_density"],
+                "unit": "m^3/kg",
+            }
+        ],
+        "model_holdout": {
+            "available": False,
+            "reason": "Model holdout scenarios require a model-sweep source.",
+        },
+        "reference_context": {
+            "compatible": True,
+            "compatible_context": {
+                "reference_state_policy": "coolprop_DEF",
+                "backend": "coolprop",
+                "backend_model": "heos",
+            },
+            "contexts": [
+                {
+                    "artifact": "dataset.parquet",
+                    "run_id": "run",
+                    "backend": "coolprop",
+                    "backend_model": "heos",
+                    "reference_state_policy": "coolprop_DEF",
+                    "reference_state_backend_model": "heos",
+                    "reference_state_targets": ["HEOS::Propane"],
+                }
+            ],
+            "reason_code": "",
+            "reason": "",
+        },
+    }
 
 
 def test_workspace_sources_are_direct_bounded_and_newest_first(tmp_path: Path) -> None:
@@ -175,6 +268,7 @@ def test_preparation_eligibility_is_explicit_and_revision_bound(tmp_path: Path) 
             "preparation_eligible": True,
             "preparation_ineligible_reason": "",
             "preparation_source_descriptor": descriptor,
+            "preparation_profile": preparation_profile(eligible_source),
         },
     )
 
@@ -185,6 +279,9 @@ def test_preparation_eligibility_is_explicit_and_revision_bound(tmp_path: Path) 
         REVISION,
         descriptor,
     )
+    assert controller.get_preparation_profile_available()
+    assert controller.get_preparation_profile_current()
+    assert controller.preparation_profile_snapshot() == preparation_profile(eligible_source)
 
     standalone = tmp_path / "standalone.csv"
     standalone.touch()
@@ -198,12 +295,179 @@ def test_preparation_eligibility_is_explicit_and_revision_bound(tmp_path: Path) 
             "preparation_eligible": False,
             "preparation_ineligible_reason": reason,
             "preparation_source_descriptor": None,
+            "preparation_profile": None,
         },
     )
 
     assert not controller.get_preparation_eligible()
     assert controller.get_preparation_ineligible_reason() == reason
     assert controller.preparation_source_snapshot() is None
+    assert controller.preparation_profile_snapshot() is None
+    coordinator.shutdown()
+
+
+def test_preparation_profile_projects_qml_safe_typed_state(tmp_path: Path) -> None:
+    source = tmp_path / "generated-run"
+    source.mkdir()
+    descriptor = {
+        "source_path": str(source.resolve()),
+        "source_kind": "dataset_run",
+        "inspection_revision": REVISION,
+        "controls": {},
+        "tables": [],
+    }
+    profile = preparation_profile(source)
+    controller, coordinator = controller_for()
+
+    prepare_payload(
+        controller,
+        source,
+        {
+            "source_kind": "dataset",
+            "summary": {},
+            "preparation_eligible": True,
+            "preparation_ineligible_reason": "",
+            "preparation_source_descriptor": descriptor,
+            "preparation_profile": profile,
+        },
+    )
+
+    assert controller.get_preparation_profile_source_kind() == "dataset_run"
+    assert controller.get_preparation_profile_revision() == REVISION
+    assert controller.get_preparation_completion_status() == "completed"
+    assert not controller.get_preparation_partial_source()
+    assert controller.get_preparation_reference_model() == "heos"
+    assert not controller.get_preparation_model_holdout_available()
+    assert controller.get_preparation_model_holdout_reason()
+    assert controller.get_preparation_reference_context_compatible()
+    assert controller.get_preparation_reference_context_reason_code() == ""
+    assert controller.get_preparation_reference_context_reason() == ""
+    assert controller.preparation_models_model.rows() == (
+        {
+            "name": "heos",
+            "available": True,
+            "declared": False,
+            "missing": False,
+            "reference": True,
+        },
+    )
+    assert controller.preparation_numeric_candidates_model.rows() == (
+        {
+            "name": "temperature",
+            "column": "temperature_K",
+            "unit": "K",
+            "source": "coordinate",
+            "referenceDependent": False,
+        },
+    )
+    assert (
+        controller.preparation_target_candidates_model.rows()
+        == controller.preparation_numeric_candidates_model.rows()
+    )
+    assert controller.preparation_categorical_candidates_model.rows()[0]["name"] == "fluid"
+    assert controller.preparation_auxiliary_candidates_model.rows()[0]["name"] == "run_id"
+    assert controller.preparation_observed_categories_model.rows() == (
+        {"field": "fluid", "values": ["Propane"], "count": 1},
+    )
+    assert controller.preparation_derived_features_model.rows()[0] == {
+        "name": "specific_volume",
+        "status": "ready",
+        "available": True,
+        "readyRowCount": 2,
+        "sourceRowCount": 2,
+        "reason": "",
+        "reasonCodes": [],
+        "missingDependencies": [],
+        "dependencies": ["mass_density"],
+        "unit": "m^3/kg",
+    }
+    assert controller.preparation_reference_contexts_model.rows()[0]["artifact"] == (
+        "dataset.parquet"
+    )
+
+    snapshot = controller.preparation_profile_snapshot()
+    assert snapshot is not None
+    cast(dict[str, list[str]], snapshot["observed_category_values"])["fluid"].append("n-Butane")
+    assert controller.preparation_profile_snapshot() == profile
+    controller._mark_stale("preview became stale")
+    assert controller.get_preparation_profile_available()
+    assert not controller.get_preparation_profile_current()
+    assert controller.preparation_profile_snapshot() is None
+    coordinator.shutdown()
+
+
+@pytest.mark.parametrize(
+    ("profile_key", "profile_value", "expected_issue"),
+    [
+        ("source_path", "/another/source", "source path"),
+        ("source_kind", "model_sweep", "source kind"),
+        ("inspection_revision", "b" * 64, "revision"),
+    ],
+)
+def test_preparation_profile_identity_mismatch_is_rejected(
+    tmp_path: Path,
+    profile_key: str,
+    profile_value: object,
+    expected_issue: str,
+) -> None:
+    source = tmp_path / "generated-run"
+    source.mkdir()
+    descriptor = {
+        "source_path": str(source.resolve()),
+        "source_kind": "dataset_run",
+        "inspection_revision": REVISION,
+        "controls": {},
+        "tables": [],
+    }
+    profile = preparation_profile(source)
+    profile[profile_key] = profile_value
+    controller, coordinator = controller_for()
+
+    prepare_payload(
+        controller,
+        source,
+        {
+            "source_kind": "dataset",
+            "summary": {},
+            "preparation_eligible": True,
+            "preparation_ineligible_reason": "",
+            "preparation_source_descriptor": descriptor,
+            "preparation_profile": profile,
+        },
+    )
+
+    assert controller.get_state() == "failed"
+    assert expected_issue in controller.get_issue()
+    assert not controller.get_preparation_eligible()
+    assert not controller.get_preparation_profile_available()
+    assert controller.preparation_models_model.get_count() == 0
+    coordinator.shutdown()
+
+
+def test_eligible_inspection_without_profile_is_rejected(tmp_path: Path) -> None:
+    source = tmp_path / "generated-run"
+    source.mkdir()
+    controller, coordinator = controller_for()
+
+    prepare_payload(
+        controller,
+        source,
+        {
+            "source_kind": "dataset",
+            "summary": {},
+            "preparation_eligible": True,
+            "preparation_ineligible_reason": "",
+            "preparation_source_descriptor": {
+                "source_path": str(source.resolve()),
+                "source_kind": "dataset_run",
+                "inspection_revision": REVISION,
+            },
+        },
+    )
+
+    assert controller.get_state() == "failed"
+    assert "required typed fields" in controller.get_issue()
+    assert controller.preparation_profile_snapshot() is None
     coordinator.shutdown()
 
 
@@ -334,7 +598,9 @@ def test_real_worker_inspection_automatically_loads_first_bounded_preview(
     application = QApplication.instance()
     if not isinstance(application, QApplication):
         application = QApplication([])
-    source = tmp_path / "dataset.parquet"
+    source = tmp_path / "dataset-run"
+    source.mkdir()
+    dataset = source / "dataset.parquet"
     pd.DataFrame(
         {
             "run_id": ["run"],
@@ -356,7 +622,25 @@ def test_real_worker_inspection_automatically_loads_first_bounded_preview(
             "temperature_K": [300.0],
             "pressure_Pa": [101325.0],
         }
-    ).to_parquet(source, index=False)
+    ).to_parquet(dataset, index=False)
+    (source / "metadata.json").write_text(
+        json.dumps(
+            {
+                "run_id": "run",
+                "run_status": "completed",
+                "backend": "coolprop",
+                "backend_model": "heos",
+                "reference_state_policy": "coolprop_DEF",
+                "reference_state_backend_model": "heos",
+                "reference_state_targets": ["HEOS::Propane"],
+                "canonical_units": {"temperature_K": "K", "pressure_Pa": "Pa"},
+                "artifact_hashes": {
+                    "dataset.parquet": hashlib.sha256(dataset.read_bytes()).hexdigest()
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     controller, coordinator = controller_for()
 
     assert controller.inspect_source(str(source))
@@ -377,6 +661,13 @@ def test_real_worker_inspection_automatically_loads_first_bounded_preview(
     assert controller.get_source_kind() == "dataset"
     assert controller.get_selected_table_id() == "dataset"
     assert controller.get_preview_state() == "ready"
+    assert controller.get_preparation_profile_current()
+    assert controller.get_preparation_profile_source_kind() == "dataset_run"
+    assert controller.get_preparation_reference_context_compatible()
+    assert [row["name"] for row in controller.preparation_numeric_candidates_model.rows()] == [
+        "temperature",
+        "pressure",
+    ]
     assert controller.table_model.total_rows == 1
     assert controller.table_model.first_row == 1
     assert controller.table_model.last_row == 1

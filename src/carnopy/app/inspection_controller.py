@@ -56,6 +56,7 @@ class InspectionController(QObject):
         self._preparation_eligible = False
         self._preparation_ineligible_reason = ""
         self._preparation_source_descriptor: dict[str, Any] | None = None
+        self._preparation_profile: dict[str, Any] | None = None
         self._integrity_status = ""
         self._integrity_label = ""
         self._issue = ""
@@ -69,6 +70,7 @@ class InspectionController(QObject):
         self._requested_block_offset = 0
         self._requested_revision = ""
         self._requested_table_id = ""
+        self._requested_inspection_source: Path | None = None
         self._source_candidates: tuple[SourceCandidate, ...] = ()
         self._source_issues: dict[Path, str] = {}
         self._revealed_source_count = SOURCE_PAGE_SIZE
@@ -96,6 +98,64 @@ class InspectionController(QObject):
         self.failure_property_counts_model = InspectionListModel(("property", "count"), self)
         self.sweep_delta_reason_counts_model = InspectionListModel(("reason", "count"), self)
         self.preparation_quality_errors_model = InspectionListModel(("message",), self)
+        preparation_field_roles = (
+            "name",
+            "column",
+            "unit",
+            "source",
+            "referenceDependent",
+        )
+        self.preparation_models_model = InspectionListModel(
+            ("name", "available", "declared", "missing", "reference"),
+            self,
+        )
+        self.preparation_numeric_candidates_model = InspectionListModel(
+            preparation_field_roles,
+            self,
+        )
+        self.preparation_target_candidates_model = InspectionListModel(
+            preparation_field_roles,
+            self,
+        )
+        self.preparation_categorical_candidates_model = InspectionListModel(
+            preparation_field_roles,
+            self,
+        )
+        self.preparation_auxiliary_candidates_model = InspectionListModel(
+            preparation_field_roles,
+            self,
+        )
+        self.preparation_observed_categories_model = InspectionListModel(
+            ("field", "values", "count"),
+            self,
+        )
+        self.preparation_derived_features_model = InspectionListModel(
+            (
+                "name",
+                "status",
+                "available",
+                "readyRowCount",
+                "sourceRowCount",
+                "reason",
+                "reasonCodes",
+                "missingDependencies",
+                "dependencies",
+                "unit",
+            ),
+            self,
+        )
+        self.preparation_reference_contexts_model = InspectionListModel(
+            (
+                "artifact",
+                "runId",
+                "backend",
+                "backendModel",
+                "referenceStatePolicy",
+                "referenceStateBackendModel",
+                "referenceStateTargets",
+            ),
+            self,
+        )
         self.diagnostics_model = InspectionListModel(
             ("section", "label", "value", "severity", "issue"),
             self,
@@ -154,6 +214,142 @@ class InspectionController(QObject):
         notify=state_changed,
     )
 
+    def get_preparation_profile_available(self) -> bool:
+        return self._preparation_profile is not None
+
+    preparationProfileAvailable = Property(
+        bool,
+        get_preparation_profile_available,
+        notify=state_changed,
+    )
+
+    def get_preparation_profile_current(self) -> bool:
+        profile = self._preparation_profile
+        return bool(
+            self._state == "ready"
+            and self._preparation_eligible
+            and isinstance(profile, dict)
+            and profile.get("inspection_revision") == self._revision
+        )
+
+    preparationProfileCurrent = Property(
+        bool,
+        get_preparation_profile_current,
+        notify=state_changed,
+    )
+
+    def get_preparation_profile_source_kind(self) -> str:
+        value = _profile_value(self._preparation_profile, "source_kind")
+        return value if isinstance(value, str) else ""
+
+    preparationProfileSourceKind = Property(
+        str,
+        get_preparation_profile_source_kind,
+        notify=state_changed,
+    )
+
+    def get_preparation_profile_revision(self) -> str:
+        value = _profile_value(self._preparation_profile, "inspection_revision")
+        return value if isinstance(value, str) else ""
+
+    preparationProfileRevision = Property(
+        str,
+        get_preparation_profile_revision,
+        notify=state_changed,
+    )
+
+    def get_preparation_completion_status(self) -> str:
+        value = _profile_nested_value(self._preparation_profile, "completion", "status")
+        return value if isinstance(value, str) else ""
+
+    preparationCompletionStatus = Property(
+        str,
+        get_preparation_completion_status,
+        notify=state_changed,
+    )
+
+    def get_preparation_partial_source(self) -> bool:
+        value = _profile_nested_value(self._preparation_profile, "completion", "partial")
+        return value if isinstance(value, bool) else False
+
+    preparationPartialSource = Property(
+        bool,
+        get_preparation_partial_source,
+        notify=state_changed,
+    )
+
+    def get_preparation_reference_model(self) -> str:
+        value = _profile_value(self._preparation_profile, "reference_model")
+        return value if isinstance(value, str) else ""
+
+    preparationReferenceModel = Property(
+        str,
+        get_preparation_reference_model,
+        notify=state_changed,
+    )
+
+    def get_preparation_model_holdout_available(self) -> bool:
+        value = _profile_nested_value(self._preparation_profile, "model_holdout", "available")
+        return value if isinstance(value, bool) else False
+
+    preparationModelHoldoutAvailable = Property(
+        bool,
+        get_preparation_model_holdout_available,
+        notify=state_changed,
+    )
+
+    def get_preparation_model_holdout_reason(self) -> str:
+        value = _profile_nested_value(self._preparation_profile, "model_holdout", "reason")
+        return value if isinstance(value, str) else ""
+
+    preparationModelHoldoutReason = Property(
+        str,
+        get_preparation_model_holdout_reason,
+        notify=state_changed,
+    )
+
+    def get_preparation_reference_context_compatible(self) -> bool:
+        value = _profile_nested_value(
+            self._preparation_profile,
+            "reference_context",
+            "compatible",
+        )
+        return value if isinstance(value, bool) else False
+
+    preparationReferenceContextCompatible = Property(
+        bool,
+        get_preparation_reference_context_compatible,
+        notify=state_changed,
+    )
+
+    def get_preparation_reference_context_reason_code(self) -> str:
+        value = _profile_nested_value(
+            self._preparation_profile,
+            "reference_context",
+            "reason_code",
+        )
+        return value if isinstance(value, str) else ""
+
+    preparationReferenceContextReasonCode = Property(
+        str,
+        get_preparation_reference_context_reason_code,
+        notify=state_changed,
+    )
+
+    def get_preparation_reference_context_reason(self) -> str:
+        value = _profile_nested_value(
+            self._preparation_profile,
+            "reference_context",
+            "reason",
+        )
+        return value if isinstance(value, str) else ""
+
+    preparationReferenceContextReason = Property(
+        str,
+        get_preparation_reference_context_reason,
+        notify=state_changed,
+    )
+
     def preparation_source_snapshot(self) -> tuple[Path, str, dict[str, Any]] | None:
         if (
             self._state != "ready"
@@ -164,6 +360,11 @@ class InspectionController(QObject):
         ):
             return None
         return self._source, self._revision, copy.deepcopy(self._preparation_source_descriptor)
+
+    def preparation_profile_snapshot(self) -> dict[str, Any] | None:
+        if not self.get_preparation_profile_current() or self._preparation_profile is None:
+            return None
+        return copy.deepcopy(self._preparation_profile)
 
     def get_integrity_status(self) -> str:
         return self._integrity_status
@@ -328,6 +529,74 @@ class InspectionController(QObject):
         constant=True,
     )
 
+    def get_preparation_models_model(self) -> QObject:
+        return self._model_property(self.preparation_models_model)
+
+    preparationModelsModel = Property(QObject, get_preparation_models_model, constant=True)
+
+    def get_preparation_numeric_candidates_model(self) -> QObject:
+        return self._model_property(self.preparation_numeric_candidates_model)
+
+    preparationNumericCandidatesModel = Property(
+        QObject,
+        get_preparation_numeric_candidates_model,
+        constant=True,
+    )
+
+    def get_preparation_target_candidates_model(self) -> QObject:
+        return self._model_property(self.preparation_target_candidates_model)
+
+    preparationTargetCandidatesModel = Property(
+        QObject,
+        get_preparation_target_candidates_model,
+        constant=True,
+    )
+
+    def get_preparation_categorical_candidates_model(self) -> QObject:
+        return self._model_property(self.preparation_categorical_candidates_model)
+
+    preparationCategoricalCandidatesModel = Property(
+        QObject,
+        get_preparation_categorical_candidates_model,
+        constant=True,
+    )
+
+    def get_preparation_auxiliary_candidates_model(self) -> QObject:
+        return self._model_property(self.preparation_auxiliary_candidates_model)
+
+    preparationAuxiliaryCandidatesModel = Property(
+        QObject,
+        get_preparation_auxiliary_candidates_model,
+        constant=True,
+    )
+
+    def get_preparation_observed_categories_model(self) -> QObject:
+        return self._model_property(self.preparation_observed_categories_model)
+
+    preparationObservedCategoriesModel = Property(
+        QObject,
+        get_preparation_observed_categories_model,
+        constant=True,
+    )
+
+    def get_preparation_derived_features_model(self) -> QObject:
+        return self._model_property(self.preparation_derived_features_model)
+
+    preparationDerivedFeaturesModel = Property(
+        QObject,
+        get_preparation_derived_features_model,
+        constant=True,
+    )
+
+    def get_preparation_reference_contexts_model(self) -> QObject:
+        return self._model_property(self.preparation_reference_contexts_model)
+
+    preparationReferenceContextsModel = Property(
+        QObject,
+        get_preparation_reference_contexts_model,
+        constant=True,
+    )
+
     def get_diagnostics_model(self) -> QObject:
         return self._model_property(self.diagnostics_model)
 
@@ -403,11 +672,13 @@ class InspectionController(QObject):
             return False
         path = Path(source).expanduser().resolve()
         self._clear_inspection(source=path, state="loading")
+        self._requested_inspection_source = path
         self._issue = ""
         self.state_changed.emit()
         try:
             self._start_request("inspect_source", {"source_path": str(path)}, kind="inspection")
         except Exception as exc:
+            self._requested_inspection_source = None
             self._state = "failed"
             self._issue = str(exc)
             self.state_changed.emit()
@@ -541,6 +812,7 @@ class InspectionController(QObject):
         preparation_eligible = payload.get("preparation_eligible", False)
         ineligible_reason = payload.get("preparation_ineligible_reason", "")
         preparation_descriptor = payload.get("preparation_source_descriptor")
+        preparation_profile = payload.get("preparation_profile")
         if (
             source_kind not in {"dataset", "model_sweep", "preparation"}
             or not isinstance(revision, str)
@@ -552,7 +824,9 @@ class InspectionController(QObject):
             or not isinstance(ineligible_reason, str)
             or (preparation_eligible and source_kind not in {"dataset", "model_sweep"})
             or (preparation_eligible and not isinstance(preparation_descriptor, dict))
+            or (preparation_eligible and not isinstance(preparation_profile, dict))
             or (not preparation_eligible and preparation_descriptor is not None)
+            or (not preparation_eligible and preparation_profile is not None)
         ):
             self._accept_failure(
                 "inspection",
@@ -562,22 +836,42 @@ class InspectionController(QObject):
             )
             return
         inspected_source = Path(source_value).expanduser().resolve()
-        if self._source is None or inspected_source != self._source:
+        requested_source = self._requested_inspection_source or self._source
+        if requested_source is None or inspected_source != requested_source:
             self._accept_failure(
                 "inspection",
-                {"message": "worker inspection result belongs to another source"},
+                {"message": "worker inspection result does not match its requested source"},
             )
             return
+        if self._source != requested_source:
+            return
+        self._requested_inspection_source = None
+        normalized_profile: dict[str, Any] | None = None
         if preparation_eligible:
             assert isinstance(preparation_descriptor, dict)
+            assert isinstance(preparation_profile, dict)
             expected_kind = "model_sweep" if source_kind == "model_sweep" else "dataset_run"
             if (
                 preparation_descriptor.get("source_path") != str(inspected_source)
                 or preparation_descriptor.get("source_kind") != expected_kind
+                or preparation_descriptor.get("inspection_revision") != revision
             ):
                 self._accept_failure(
                     "inspection",
                     {"message": "worker preparation eligibility descriptor is inconsistent"},
+                )
+                return
+            try:
+                normalized_profile = _validated_preparation_profile(
+                    preparation_profile,
+                    source=inspected_source,
+                    source_kind=expected_kind,
+                    revision=revision,
+                )
+            except ValueError as exc:
+                self._accept_failure(
+                    "inspection",
+                    {"message": f"worker preparation profile is inconsistent: {exc}"},
                 )
                 return
         self._payload = copy.deepcopy(payload)
@@ -590,6 +884,7 @@ class InspectionController(QObject):
             if isinstance(preparation_descriptor, dict)
             else None
         )
+        self._preparation_profile = normalized_profile
         self._plot_context = (
             copy.deepcopy(payload.get("plot_context"))
             if isinstance(payload.get("plot_context"), dict)
@@ -599,6 +894,8 @@ class InspectionController(QObject):
         self._state = "ready"
         self._preview_state = "empty"
         self._project_payload(payload)
+        if normalized_profile is not None:
+            self._project_preparation_profile(normalized_profile)
         first = self.tables_model.get(0)
         self._selected_table_id = str(first["id"]) if isinstance(first.get("id"), str) else ""
         self.mark_inspectable(inspected_source)
@@ -640,6 +937,8 @@ class InspectionController(QObject):
         self._preparation_eligible = False
         self._preparation_ineligible_reason = ""
         self._preparation_source_descriptor = None
+        self._preparation_profile = None
+        self._requested_inspection_source = None
         self._plot_context = None
         self._reset_projection()
         self.inspection_changed.emit(None)
@@ -672,6 +971,7 @@ class InspectionController(QObject):
         self._preparation_eligible = False
         self._preparation_ineligible_reason = ""
         self._preparation_source_descriptor = None
+        self._preparation_profile = None
         self._integrity_status = ""
         self._integrity_label = ""
         self._issue = ""
@@ -681,6 +981,7 @@ class InspectionController(QObject):
         self._plot_context = None
         self._session = None
         self._request_kind = ""
+        self._requested_inspection_source = None
         self.table_model.clear()
         self._reset_projection()
         if had_payload:
@@ -699,6 +1000,14 @@ class InspectionController(QObject):
             self.failure_property_counts_model,
             self.sweep_delta_reason_counts_model,
             self.preparation_quality_errors_model,
+            self.preparation_models_model,
+            self.preparation_numeric_candidates_model,
+            self.preparation_target_candidates_model,
+            self.preparation_categorical_candidates_model,
+            self.preparation_auxiliary_candidates_model,
+            self.preparation_observed_categories_model,
+            self.preparation_derived_features_model,
+            self.preparation_reference_contexts_model,
             self.diagnostics_model,
             self.tables_model,
             self.arrays_model,
@@ -893,6 +1202,51 @@ class InspectionController(QObject):
         self._integrity_status = "worker_inspected"
         self._integrity_label = "Worker-inspected preparation bundle"
 
+    def _project_preparation_profile(self, profile: dict[str, Any]) -> None:
+        available_models = cast(list[str], profile["available_models"])
+        declared_models = cast(list[str], profile["declared_models"])
+        completion = cast(dict[str, Any], profile["completion"])
+        missing_models = cast(list[str], completion["missing_child_models"])
+        reference_model = profile.get("reference_model")
+        model_names = tuple(dict.fromkeys((*declared_models, *available_models, *missing_models)))
+        self.preparation_models_model.set_rows(
+            (
+                {
+                    "name": name,
+                    "available": name in available_models,
+                    "declared": name in declared_models,
+                    "missing": name in missing_models,
+                    "reference": name == reference_model,
+                }
+                for name in model_names
+            ),
+            available=True,
+        )
+        for key, model in (
+            ("numeric_candidates", self.preparation_numeric_candidates_model),
+            ("target_candidates", self.preparation_target_candidates_model),
+            ("categorical_candidates", self.preparation_categorical_candidates_model),
+            ("auxiliary_candidates", self.preparation_auxiliary_candidates_model),
+        ):
+            model.set_rows(_preparation_field_rows(profile[key]), available=True)
+        observed = cast(dict[str, list[str]], profile["observed_category_values"])
+        self.preparation_observed_categories_model.set_rows(
+            (
+                {"field": field, "values": list(values), "count": len(values)}
+                for field, values in observed.items()
+            ),
+            available=True,
+        )
+        self.preparation_derived_features_model.set_rows(
+            _preparation_derived_rows(profile["derived_features"]),
+            available=True,
+        )
+        reference_context = cast(dict[str, Any], profile["reference_context"])
+        self.preparation_reference_contexts_model.set_rows(
+            _preparation_reference_context_rows(reference_context["contexts"]),
+            available=True,
+        )
+
     def _update_workspace_sources_model(self) -> None:
         rows = (
             {
@@ -994,6 +1348,287 @@ def _summary_model(parent: QObject) -> InspectionListModel:
 
 def _mapping(value: object) -> dict[str, Any]:
     return cast(dict[str, Any], value) if isinstance(value, dict) else {}
+
+
+def _profile_value(profile: dict[str, Any] | None, key: str) -> object:
+    return None if profile is None else profile.get(key)
+
+
+def _profile_nested_value(
+    profile: dict[str, Any] | None,
+    section: str,
+    key: str,
+) -> object:
+    value = _profile_value(profile, section)
+    return value.get(key) if isinstance(value, dict) else None
+
+
+def _validated_preparation_profile(
+    value: dict[str, Any],
+    *,
+    source: Path,
+    source_kind: str,
+    revision: str,
+) -> dict[str, Any]:
+    schema_version = value.get("profile_schema_version")
+    if schema_version != 1 or isinstance(schema_version, bool):
+        raise ValueError("unsupported profile schema version")
+    if value.get("source_path") != str(source):
+        raise ValueError("source path does not match the inspection")
+    if value.get("source_kind") != source_kind:
+        raise ValueError("source kind does not match the eligibility descriptor")
+    if value.get("inspection_revision") != revision:
+        raise ValueError("revision does not match the inspection")
+
+    source_identity = _required_profile_mapping(value, "source_identity")
+    if source_identity.get("source_kind") != source_kind:
+        raise ValueError("source identity kind is inconsistent")
+    completion = _required_profile_mapping(value, "completion")
+    if not _nonempty_string(completion.get("status")):
+        raise ValueError("completion status must be non-empty text")
+    if not isinstance(completion.get("partial"), bool):
+        raise ValueError("completion partial state must be boolean")
+    _profile_string_list(completion, "included_child_models")
+    _profile_string_list(completion, "missing_child_models")
+
+    available_models = _profile_string_list(value, "available_models")
+    declared_models = _profile_string_list(value, "declared_models")
+    reference_model = value.get("reference_model")
+    if reference_model is not None and not _nonempty_string(reference_model):
+        raise ValueError("reference model must be non-empty text or null")
+    if (
+        isinstance(reference_model, str)
+        and reference_model not in available_models
+        and reference_model not in declared_models
+    ):
+        raise ValueError("reference model is absent from the source model lists")
+
+    numeric = _validated_field_candidates(value.get("numeric_candidates"), "numeric")
+    targets = _validated_field_candidates(value.get("target_candidates"), "target")
+    if targets != numeric:
+        raise ValueError("target candidates must match numeric candidates")
+    _validated_field_candidates(value.get("categorical_candidates"), "categorical")
+    _validated_field_candidates(value.get("auxiliary_candidates"), "auxiliary")
+    _validated_observed_categories(value.get("observed_category_values"))
+    _validated_derived_features(value.get("derived_features"))
+    _validated_model_holdout(value.get("model_holdout"))
+    _validated_reference_context(value.get("reference_context"))
+    return copy.deepcopy(value)
+
+
+def _required_profile_mapping(mapping: dict[str, Any], key: str) -> dict[str, Any]:
+    value = mapping.get(key)
+    if not isinstance(value, dict):
+        raise ValueError(f"{key} must be a mapping")
+    return cast(dict[str, Any], value)
+
+
+def _profile_string_list(mapping: dict[str, Any], key: str) -> list[str]:
+    value = mapping.get(key)
+    if (
+        not isinstance(value, list)
+        or not all(_nonempty_string(item) for item in value)
+        or len(set(cast(list[str], value))) != len(value)
+    ):
+        raise ValueError(f"{key} must be a unique list of non-empty strings")
+    return cast(list[str], value)
+
+
+def _nonempty_string(value: object) -> bool:
+    return isinstance(value, str) and bool(value)
+
+
+def _validated_field_candidates(value: object, label: str) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        raise ValueError(f"{label} candidates must be a list")
+    names: set[str] = set()
+    normalized: list[dict[str, Any]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            raise ValueError(f"{label} candidate entries must be mappings")
+        candidate = cast(dict[str, Any], item)
+        name = candidate.get("name")
+        if not _nonempty_string(name) or name in names:
+            raise ValueError(f"{label} candidate names must be non-empty and unique")
+        if not _nonempty_string(candidate.get("column")):
+            raise ValueError(f"{label} candidate columns must be non-empty text")
+        unit = candidate.get("unit")
+        if unit is not None and not isinstance(unit, str):
+            raise ValueError(f"{label} candidate units must be text or null")
+        if candidate.get("source") not in {
+            "coordinate",
+            "property",
+            "categorical",
+            "auxiliary",
+        }:
+            raise ValueError(f"{label} candidate source is unknown")
+        if not isinstance(candidate.get("reference_dependent"), bool):
+            raise ValueError(f"{label} candidate reference state must be boolean")
+        names.add(cast(str, name))
+        normalized.append(candidate)
+    return normalized
+
+
+def _validated_observed_categories(value: object) -> None:
+    if not isinstance(value, dict):
+        raise ValueError("observed category values must be a mapping")
+    for field, values in value.items():
+        if not _nonempty_string(field):
+            raise ValueError("observed category fields must be non-empty text")
+        if (
+            not isinstance(values, list)
+            or not all(isinstance(item, str) for item in values)
+            or len(set(values)) != len(values)
+        ):
+            raise ValueError("observed category values must be unique strings")
+
+
+def _validated_derived_features(value: object) -> None:
+    if not isinstance(value, list):
+        raise ValueError("derived features must be a list")
+    names: set[str] = set()
+    for item in value:
+        if not isinstance(item, dict):
+            raise ValueError("derived feature entries must be mappings")
+        feature = cast(dict[str, Any], item)
+        name = feature.get("name")
+        if not _nonempty_string(name) or name in names:
+            raise ValueError("derived feature names must be non-empty and unique")
+        status = feature.get("status")
+        available = feature.get("available")
+        ready_rows = feature.get("ready_row_count")
+        source_rows = feature.get("source_row_count")
+        reason = feature.get("reason")
+        if status not in {"ready", "partial", "unavailable"}:
+            raise ValueError("derived feature status is unknown")
+        if not isinstance(available, bool) or not isinstance(reason, str):
+            raise ValueError("derived feature availability is malformed")
+        if not _nonnegative_int(ready_rows) or not _nonnegative_int(source_rows):
+            raise ValueError("derived feature row counts must be non-negative integers")
+        assert isinstance(ready_rows, int)
+        assert isinstance(source_rows, int)
+        if ready_rows > source_rows:
+            raise ValueError("derived feature ready rows exceed source rows")
+        if status == "ready" and not (
+            available and source_rows > 0 and ready_rows == source_rows and not reason
+        ):
+            raise ValueError("ready derived feature state is inconsistent")
+        if status == "partial" and not (available and 0 < ready_rows < source_rows and reason):
+            raise ValueError("partial derived feature state is inconsistent")
+        if status == "unavailable" and not (not available and ready_rows == 0 and reason):
+            raise ValueError("unavailable derived feature state is inconsistent")
+        _profile_string_list(feature, "reason_codes")
+        _profile_string_list(feature, "missing_dependencies")
+        _profile_string_list(feature, "dependencies")
+        if not _nonempty_string(feature.get("unit")):
+            raise ValueError("derived feature unit must be non-empty text")
+        names.add(cast(str, name))
+
+
+def _nonnegative_int(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _validated_model_holdout(value: object) -> None:
+    if not isinstance(value, dict):
+        raise ValueError("model holdout state must be a mapping")
+    available = value.get("available")
+    reason = value.get("reason")
+    if not isinstance(available, bool) or not isinstance(reason, str):
+        raise ValueError("model holdout state is malformed")
+    if available == bool(reason):
+        raise ValueError("model holdout reason is inconsistent with availability")
+
+
+def _validated_reference_context(value: object) -> None:
+    if not isinstance(value, dict):
+        raise ValueError("reference context must be a mapping")
+    compatible = value.get("compatible")
+    compatible_context = value.get("compatible_context")
+    reason_code = value.get("reason_code")
+    reason = value.get("reason")
+    contexts = value.get("contexts")
+    if (
+        not isinstance(compatible, bool)
+        or not isinstance(reason_code, str)
+        or not isinstance(reason, str)
+        or not isinstance(contexts, list)
+    ):
+        raise ValueError("reference context state is malformed")
+    if compatible:
+        if not isinstance(compatible_context, dict) or reason_code or reason:
+            raise ValueError("compatible reference context is inconsistent")
+        for key in ("reference_state_policy", "backend", "backend_model"):
+            if not _nonempty_string(compatible_context.get(key)):
+                raise ValueError("compatible reference context is incomplete")
+    elif compatible_context is not None or not reason_code or not reason:
+        raise ValueError("incompatible reference context is inconsistent")
+    for item in contexts:
+        if not isinstance(item, dict):
+            raise ValueError("reference context entries must be mappings")
+        context = cast(dict[str, Any], item)
+        if not _nonempty_string(context.get("artifact")) or not _nonempty_string(
+            context.get("run_id")
+        ):
+            raise ValueError("reference context identity is incomplete")
+        for key in (
+            "backend",
+            "backend_model",
+            "reference_state_policy",
+            "reference_state_backend_model",
+        ):
+            item_value = context.get(key)
+            if item_value is not None and not _nonempty_string(item_value):
+                raise ValueError("reference context text values must be non-empty or null")
+        targets = context.get("reference_state_targets")
+        if not isinstance(targets, list) or not all(isinstance(item, str) for item in targets):
+            raise ValueError("reference-state targets must be strings")
+
+
+def _preparation_field_rows(value: object) -> list[dict[str, object]]:
+    return [
+        {
+            "name": item["name"],
+            "column": item["column"],
+            "unit": item["unit"] or "",
+            "source": item["source"],
+            "referenceDependent": item["reference_dependent"],
+        }
+        for item in cast(list[dict[str, Any]], value)
+    ]
+
+
+def _preparation_derived_rows(value: object) -> list[dict[str, object]]:
+    return [
+        {
+            "name": item["name"],
+            "status": item["status"],
+            "available": item["available"],
+            "readyRowCount": item["ready_row_count"],
+            "sourceRowCount": item["source_row_count"],
+            "reason": item["reason"],
+            "reasonCodes": list(item["reason_codes"]),
+            "missingDependencies": list(item["missing_dependencies"]),
+            "dependencies": list(item["dependencies"]),
+            "unit": item["unit"],
+        }
+        for item in cast(list[dict[str, Any]], value)
+    ]
+
+
+def _preparation_reference_context_rows(value: object) -> list[dict[str, object]]:
+    return [
+        {
+            "artifact": item["artifact"],
+            "runId": item["run_id"],
+            "backend": item["backend"] or "",
+            "backendModel": item["backend_model"] or "",
+            "referenceStatePolicy": item["reference_state_policy"] or "",
+            "referenceStateBackendModel": item["reference_state_backend_model"] or "",
+            "referenceStateTargets": list(item["reference_state_targets"]),
+        }
+        for item in cast(list[dict[str, Any]], value)
+    ]
 
 
 def _display(value: object) -> str:
