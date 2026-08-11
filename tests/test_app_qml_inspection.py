@@ -13,6 +13,7 @@ from PySide6.QtCore import QCoreApplication, QEventLoop, QMetaObject, QObject, Q
 from PySide6.QtQuick import QQuickItem
 from PySide6.QtWidgets import QApplication
 
+from carnopy.app.inspection_controller import InspectionController
 from carnopy.app.qml_runtime import QmlApplicationRuntime, create_qml_runtime
 from carnopy.app.workspace import initialize_workspace
 
@@ -34,6 +35,74 @@ def _write_dataset(path: Path, rows: int = 150) -> None:
         for index in range(rows)
     )
     path.write_text(header + body, encoding="utf-8")
+
+
+def _accept_preparation_eligible_inspection(
+    controller: InspectionController,
+    source: Path,
+) -> None:
+    revision = "a" * 64
+    resolved = source.resolve()
+    descriptor = {
+        "source_path": str(resolved),
+        "source_kind": "dataset_run",
+        "inspection_revision": revision,
+        "controls": {},
+        "tables": [],
+    }
+    profile = {
+        "profile_schema_version": 1,
+        "source_path": str(resolved),
+        "source_kind": "dataset_run",
+        "inspection_revision": revision,
+        "source_identity": {"source_kind": "dataset_run"},
+        "completion": {
+            "status": "completed",
+            "partial": False,
+            "included_child_models": [],
+            "missing_child_models": [],
+        },
+        "available_models": ["heos"],
+        "declared_models": [],
+        "reference_model": "heos",
+        "numeric_candidates": [],
+        "target_candidates": [],
+        "categorical_candidates": [],
+        "auxiliary_candidates": [],
+        "observed_category_values": {},
+        "derived_features": [],
+        "model_holdout": {
+            "available": False,
+            "reason": "Model holdout scenarios require a model-sweep source.",
+        },
+        "reference_context": {
+            "compatible": True,
+            "compatible_context": {
+                "reference_state_policy": "coolprop_DEF",
+                "backend": "coolprop",
+                "backend_model": "heos",
+            },
+            "contexts": [],
+            "reason_code": "",
+            "reason": "",
+        },
+    }
+    controller._clear_inspection(source=resolved, state="loading")
+    controller._accept_inspection_payload(
+        {
+            "source": str(resolved),
+            "source_kind": "dataset",
+            "revision": revision,
+            "summary": {},
+            "tables": [],
+            "arrays": [],
+            "plot_context": None,
+            "preparation_eligible": True,
+            "preparation_ineligible_reason": "",
+            "preparation_source_descriptor": descriptor,
+            "preparation_profile": profile,
+        }
+    )
 
 
 @pytest.fixture
@@ -191,4 +260,49 @@ def test_inspection_facade_normalizes_a_qml_file_url(
     )
 
     assert controller.get_source_path() == str(source)
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_inspect_page_binds_and_explicitly_clears_a_preparation_source(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    inspection = runtime.controller.inspection_controller
+    preparation = runtime.controller.preparation_workflow_controller
+    source = Path(str(inspection.workspace_sources_model.get(0)["path"]))
+    assert root.setProperty("currentPage", "inspect")
+    _accept_preparation_eligible_inspection(inspection, source)
+    _process_events()
+
+    bind_button = _visible_item(root, "preparationBindSourceButton")
+    assert inspection.get_preparation_eligible()
+    assert bind_button.property("text") == "Use for ML Preparation"
+    assert bind_button.property("enabled") is True
+    assert QMetaObject.invokeMethod(bind_button, "click")
+    _process_events()
+
+    assert preparation.get_has_bound_source()
+    assert preparation.get_bound_source_path() == str(source.resolve())
+    assert preparation.get_inspected_source_matches_binding()
+    assert bind_button.property("text") == "Used for ML Preparation"
+    assert bind_button.property("enabled") is False
+
+    clear_button = _visible_item(root, "preparationClearSourceButton")
+    assert QMetaObject.invokeMethod(clear_button, "click")
+    _process_events()
+    assert not preparation.get_has_bound_source()
+
+    assert QMetaObject.invokeMethod(bind_button, "click")
+    _process_events()
+    assert preparation.get_has_bound_source()
+
+    runtime.controller.preparationSourceClearConfirmationRequested.emit()
+    _process_events()
+    clear_dialog = root.findChild(QObject, "preparationSourceClearDialog")
+    assert clear_dialog is not None
+    assert clear_dialog.property("opened") is True
+    clear_dialog.accept()
+    _process_events()
+
+    assert not preparation.get_has_bound_source()
     assert runtime.warning_capture.runtime_warnings == ()

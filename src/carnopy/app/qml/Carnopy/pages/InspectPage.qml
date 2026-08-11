@@ -11,6 +11,7 @@ Item {
     id: root
 
     required property var inspectionController
+    required property var preparationWorkflowController
     property bool focusTable: false
     property int selectedTab: 0
     property bool fileSelectionAccepted: false
@@ -20,6 +21,8 @@ Item {
 
     signal inspectSourceRequested(string path)
     signal moreSourcesRequested
+    signal preparationSourceBindRequested
+    signal preparationSourceClearRequested
     signal previewPageRequested(int pageOffset)
     signal refreshRequested
     signal refreshSourcesRequested
@@ -483,6 +486,95 @@ Item {
 
                             spacing: Theme.spacingMedium
                             width: parent.width
+
+                            Card {
+                                flat: true
+                                Layout.fillWidth: true
+                                objectName: "preparationSourceCard"
+                                subtitle: root.preparationWorkflowController.hasBoundSource
+                                          ? root.preparationWorkflowController.boundSourcePath :
+                                            qsTr("Inspecting is read-only. An eligible Dataset or Model Sweep becomes Preparation input only after you bind it explicitly.")
+                                title: qsTr("ML Preparation source")
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: Theme.spacingSmall
+
+                                    StatusBadge {
+                                        label: {
+                                            if (root.preparationWorkflowController.boundSourceRefreshAvailable)
+                                            return qsTr("Refresh available");
+                                            if (root.preparationWorkflowController.inspectedSourceMatchesBinding)
+                                            return qsTr("Current inspection bound");
+                                            if (root.preparationWorkflowController.hasBoundSource)
+                                            return qsTr("Another source is bound");
+                                            return qsTr("No source bound");
+                                        }
+                                        tone: root.preparationWorkflowController.boundSourceRefreshAvailable
+                                              ? "warning" : (
+                                                    root.preparationWorkflowController.hasBoundSource
+                                                    ? "success" : "neutral")
+                                    }
+
+                                    Item {
+                                        Layout.fillWidth: true
+                                    }
+
+                                    AppButton {
+                                        compact: true
+                                        enabled: root.preparationWorkflowController.inspectedSourceAvailable
+                                                 && root.inspectionController.canInspect
+                                        objectName: "preparationBindSourceButton"
+                                        onClicked: root.preparationSourceBindRequested()
+                                        text: root.preparationWorkflowController.boundSourceRefreshAvailable
+                                              ? qsTr("Use refreshed source") : (
+                                                    root.preparationWorkflowController.inspectedSourceMatchesBinding
+                                                    ? qsTr("Used for ML Preparation") : qsTr(
+                                                          "Use for ML Preparation"))
+                                        visible: root.inspectionController.preparationEligible
+
+                                        ToolTip.text: enabled ? qsTr(
+                                                                    "Bind this exact verified inspection revision for ML Preparation.") :
+                                                                qsTr("This exact inspection revision is already bound.")
+                                        ToolTip.visible: hovered
+                                    }
+
+                                    AppButton {
+                                        compact: true
+                                        enabled: root.preparationWorkflowController.hasBoundSource
+                                                 && root.inspectionController.canInspect
+                                        objectName: "preparationClearSourceButton"
+                                        onClicked: root.preparationSourceClearRequested()
+                                        text: qsTr("Clear source")
+                                        tone: "quiet"
+                                        visible: root.preparationWorkflowController.hasBoundSource
+                                    }
+                                }
+
+                                Label {
+                                    Layout.fillWidth: true
+                                    color: Theme.textMuted
+                                    font.family: Theme.sansFamily
+                                    font.pixelSize: 11
+                                    text: {
+                                        if (root.preparationWorkflowController.sourceBindingIssue.length
+                                            > 0)
+                                        return root.preparationWorkflowController.sourceBindingIssue;
+                                        if (root.inspectionController.state === "ready" &&
+                                            !root.inspectionController.preparationEligible)
+                                        return root.inspectionController.preparationIneligibleReason;
+                                        if (root.preparationWorkflowController.hasBoundSource)
+                                        return qsTr("Bound %1 · revision %2").arg(
+                                            root.preparationWorkflowController.boundSourceKind).arg(
+                                            root.preparationWorkflowController.boundSourceRevision.slice(
+                                                0, 12));
+                                        return qsTr(
+                                            "No source is currently bound to ML Preparation.");
+                                    }
+                                    visible: text.length > 0
+                                    wrapMode: Text.Wrap
+                                }
+                            }
 
                             Card {
                                 flat: true

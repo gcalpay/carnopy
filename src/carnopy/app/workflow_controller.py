@@ -1014,6 +1014,8 @@ class SweepWorkflowController(WorkflowController):
 
 
 class PreparationWorkflowController(WorkflowController):
+    source_binding_changed = Signal()
+
     def __init__(
         self,
         coordinator: DesktopRequestCoordinator,
@@ -1030,13 +1032,13 @@ class PreparationWorkflowController(WorkflowController):
     def get_has_bound_source(self) -> bool:
         return self._source_binding is not None
 
-    hasBoundSource = Property(bool, get_has_bound_source, notify=WorkflowController.state_changed)
+    hasBoundSource = Property(bool, get_has_bound_source, notify=source_binding_changed)
 
     def get_bound_source_path(self) -> str:
         binding = self._source_binding
         return "" if binding is None else str(binding.source_path)
 
-    boundSourcePath = Property(str, get_bound_source_path, notify=WorkflowController.state_changed)
+    boundSourcePath = Property(str, get_bound_source_path, notify=source_binding_changed)
 
     def get_bound_source_kind(self) -> str:
         binding = self._source_binding
@@ -1045,7 +1047,7 @@ class PreparationWorkflowController(WorkflowController):
         value = binding.profile().get("source_kind")
         return value if isinstance(value, str) else ""
 
-    boundSourceKind = Property(str, get_bound_source_kind, notify=WorkflowController.state_changed)
+    boundSourceKind = Property(str, get_bound_source_kind, notify=source_binding_changed)
 
     def get_bound_source_revision(self) -> str:
         binding = self._source_binding
@@ -1054,7 +1056,7 @@ class PreparationWorkflowController(WorkflowController):
     boundSourceRevision = Property(
         str,
         get_bound_source_revision,
-        notify=WorkflowController.state_changed,
+        notify=source_binding_changed,
     )
 
     def get_source_binding_issue(self) -> str:
@@ -1063,7 +1065,7 @@ class PreparationWorkflowController(WorkflowController):
     sourceBindingIssue = Property(
         str,
         get_source_binding_issue,
-        notify=WorkflowController.state_changed,
+        notify=source_binding_changed,
     )
 
     def get_inspected_source_matches_binding(self) -> bool:
@@ -1073,7 +1075,7 @@ class PreparationWorkflowController(WorkflowController):
     inspectedSourceMatchesBinding = Property(
         bool,
         get_inspected_source_matches_binding,
-        notify=WorkflowController.state_changed,
+        notify=source_binding_changed,
     )
 
     def get_inspected_source_available(self) -> bool:
@@ -1083,7 +1085,7 @@ class PreparationWorkflowController(WorkflowController):
     inspectedSourceAvailable = Property(
         bool,
         get_inspected_source_available,
-        notify=WorkflowController.state_changed,
+        notify=source_binding_changed,
     )
 
     def get_bound_source_refresh_available(self) -> bool:
@@ -1099,7 +1101,7 @@ class PreparationWorkflowController(WorkflowController):
     boundSourceRefreshAvailable = Property(
         bool,
         get_bound_source_refresh_available,
-        notify=WorkflowController.state_changed,
+        notify=source_binding_changed,
     )
 
     def bind_inspected_source(self) -> bool:
@@ -1120,6 +1122,7 @@ class PreparationWorkflowController(WorkflowController):
             return False
         self._source_binding = candidate
         self._set_source_binding_issue("")
+        self.source_binding_changed.emit()
         self.state_changed.emit()
         return True
 
@@ -1134,6 +1137,7 @@ class PreparationWorkflowController(WorkflowController):
             return False
         self._source_binding = None
         self._set_source_binding_issue("")
+        self.source_binding_changed.emit()
         self.state_changed.emit()
         return True
 
@@ -1151,10 +1155,13 @@ class PreparationWorkflowController(WorkflowController):
         )
 
     def set_workspace(self, workspace: Workspace | None) -> None:
-        if workspace != self.workspace:
+        changed = workspace != self.workspace
+        if changed:
             self._source_binding = None
             self._source_binding_issue = ""
         super().set_workspace(workspace)
+        if changed:
+            self.source_binding_changed.emit()
 
     def _plan_context(self) -> dict[str, object]:
         binding = self._source_binding
@@ -1188,6 +1195,7 @@ class PreparationWorkflowController(WorkflowController):
         }
 
     def _inspection_changed(self, _payload: object) -> None:
+        self.source_binding_changed.emit()
         self.state_changed.emit()
 
     def _inspected_source_binding(self) -> _PreparationSourceBinding | None:
@@ -1211,6 +1219,7 @@ class PreparationWorkflowController(WorkflowController):
         if issue == self._source_binding_issue:
             return
         self._source_binding_issue = issue
+        self.source_binding_changed.emit()
         self.state_changed.emit()
 
 

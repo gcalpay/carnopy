@@ -557,6 +557,14 @@ class QmlApplicationRuntime:
             ("inspectionExploreRequested", self.controller.request_inspection_explore),
             ("inspectionRefreshRequested", self.controller.request_refresh_inspection),
             (
+                "preparationSourceBindRequested",
+                self.controller.request_bind_inspected_preparation_source,
+            ),
+            (
+                "preparationSourceClearRequested",
+                self.controller.request_clear_preparation_source,
+            ),
+            (
                 "inspectionSourcesRefreshRequested",
                 self.controller.request_refresh_inspection_sources,
             ),

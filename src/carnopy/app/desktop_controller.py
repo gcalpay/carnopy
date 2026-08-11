@@ -46,6 +46,7 @@ class DesktopController(QObject):
     navigationRequested = Signal(str, str)
     activityActionFailed = Signal(str, str)
     busyShutdownConfirmationRequested = Signal(str, str)
+    preparationSourceClearConfirmationRequested = Signal()
 
     def __init__(
         self,
@@ -403,6 +404,15 @@ class DesktopController(QObject):
         constant=True,
     )
 
+    def get_preparation_workflow_controller(self) -> QObject:
+        return self.preparation_workflow_controller
+
+    preparationWorkflowController = Property(
+        QObject,
+        get_preparation_workflow_controller,
+        constant=True,
+    )
+
     def get_inspection_controller(self) -> QObject:
         return self.inspection_controller
 
@@ -579,6 +589,18 @@ class DesktopController(QObject):
     @Slot(result=bool, name="requestRefreshInspection")
     def request_refresh_inspection(self) -> bool:
         return self.inspection_controller.refresh_inspection()
+
+    @Slot(result=bool, name="requestBindInspectedPreparationSource")
+    def request_bind_inspected_preparation_source(self) -> bool:
+        return self.preparation_workflow_controller.bind_inspected_source()
+
+    @Slot(bool, result=bool, name="requestClearPreparationSource")
+    def request_clear_preparation_source(self, confirmed: bool = False) -> bool:
+        controller = self.preparation_workflow_controller
+        if controller.get_has_bound_source() and controller.get_plan_current() and not confirmed:
+            self.preparationSourceClearConfirmationRequested.emit()
+            return False
+        return controller.clear_bound_source()
 
     @Slot(name="requestRefreshInspectionSources")
     def request_refresh_inspection_sources(self) -> None:

@@ -60,6 +60,8 @@ ApplicationWindow {
     signal inspectionRefreshRequested
     signal inspectionSourcesRefreshRequested
     signal inspectionTableRequested(string tableId)
+    signal preparationSourceBindRequested
+    signal preparationSourceClearRequested(bool confirmed)
     signal activityInspectRunRequested
     signal activityRecordSelectionRequested(string recordId)
     signal activityRecordsRefreshRequested
@@ -127,6 +129,9 @@ ApplicationWindow {
     readonly property var sweepWorkflowController: controllerAvailable
                                                    ? desktopController.sweepWorkflowController :
                                                      null
+    readonly property var preparationWorkflowController: controllerAvailable
+                                                         ? desktopController.preparationWorkflowController :
+                                                           null
     readonly property var inspectionController: controllerAvailable
                                                 ? desktopController.inspectionController : null
     readonly property var activityController: controllerAvailable
@@ -1153,8 +1158,11 @@ ApplicationWindow {
         InspectPage {
             inspectionController: root.inspectionController
             objectName: "inspectPage"
+            preparationWorkflowController: root.preparationWorkflowController
             onInspectSourceRequested: path => root.inspectionInspectRequested(path)
             onMoreSourcesRequested: root.inspectionMoreSourcesRequested()
+            onPreparationSourceBindRequested: root.preparationSourceBindRequested()
+            onPreparationSourceClearRequested: root.preparationSourceClearRequested(false)
             onPreviewPageRequested: pageOffset => root.inspectionPreviewPageRequested(pageOffset)
             onRefreshRequested: root.inspectionRefreshRequested()
             onRefreshSourcesRequested: root.inspectionSourcesRefreshRequested()
@@ -1251,6 +1259,10 @@ ApplicationWindow {
                     if (visualizationPageLoader.item !== null)
                         visualizationPageLoader.item.showExploreInspectedData();
                 });
+        }
+
+        function onPreparationSourceClearConfirmationRequested() {
+            preparationSourceClearDialog.open();
         }
 
         function onShutdownConfirmationRequested() {
@@ -1412,6 +1424,18 @@ ApplicationWindow {
         onRejected: root.transientEditShutdownConfirmed(false)
         rejectText: qsTr("Keep open")
         title: qsTr("Unfinished edit")
+    }
+
+    DecisionDialog {
+        id: preparationSourceClearDialog
+
+        acceptText: qsTr("Clear source")
+        bodyText: qsTr(
+                      "Clearing the bound ML Preparation source makes the current Preparation plan stale. The Preparation configuration itself is not changed.")
+        objectName: "preparationSourceClearDialog"
+        onAccepted: root.preparationSourceClearRequested(true)
+        rejectText: qsTr("Keep source")
+        title: qsTr("Clear ML Preparation source?")
     }
 
     DecisionDialog {

@@ -132,6 +132,9 @@ def test_desktop_controller_owns_one_composition_and_preserves_settings_identity
     assert desktop.property("datasetConfigController") is None
     assert desktop.property("executionController") is desktop.execution_controller
     assert desktop.property("sweepWorkflowController") is desktop.sweep_workflow_controller
+    assert (
+        desktop.property("preparationWorkflowController") is desktop.preparation_workflow_controller
+    )
     assert desktop.property("activityController") is desktop.activity_controller
     assert (
         desktop.property("configuredPlotResultsController")
@@ -630,6 +633,47 @@ def test_sweep_result_handoff_inspects_the_exact_finalized_output(
             "Complete this workflow successfully before inspecting its finalized output.",
         )
     ]
+    assert desktop.shutdown()
+
+
+def test_preparation_source_facade_requires_confirmation_for_a_current_plan(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    controller = desktop.preparation_workflow_controller
+    calls: list[str] = []
+    confirmations: list[str] = []
+    desktop.preparationSourceClearConfirmationRequested.connect(
+        lambda: confirmations.append("clear")
+    )
+    monkeypatch.setattr(
+        controller,
+        "bind_inspected_source",
+        lambda: calls.append("bind") or True,
+    )
+    monkeypatch.setattr(controller, "get_has_bound_source", lambda: True)
+    monkeypatch.setattr(controller, "get_plan_current", lambda: True)
+    monkeypatch.setattr(
+        controller,
+        "clear_bound_source",
+        lambda: calls.append("clear") or True,
+    )
+
+    assert desktop.request_bind_inspected_preparation_source()
+    assert not desktop.request_clear_preparation_source()
+    assert confirmations == ["clear"]
+    assert calls == ["bind"]
+
+    assert desktop.request_clear_preparation_source(confirmed=True)
+    assert calls == ["bind", "clear"]
+
+    monkeypatch.setattr(controller, "get_plan_current", lambda: False)
+    assert desktop.request_clear_preparation_source()
+    assert calls == ["bind", "clear", "clear"]
+    assert confirmations == ["clear"]
     assert desktop.shutdown()
 
 
