@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -32,6 +34,42 @@ if TYPE_CHECKING:
 
 WorkflowKind = Literal["sweep", "preparation"]
 ResultRelation = Literal["unavailable", "current", "stale", "unrelated"]
+
+
+@dataclass(frozen=True)
+class _PreparationSourceBinding:
+    source_path: Path
+    inspection_revision: str
+    descriptor_json: str
+    profile_json: str
+
+    @classmethod
+    def create(
+        cls,
+        source_path: Path,
+        inspection_revision: str,
+        descriptor: dict[str, Any],
+        profile: dict[str, Any],
+    ) -> _PreparationSourceBinding:
+        return cls(
+            source_path=source_path.resolve(),
+            inspection_revision=inspection_revision,
+            descriptor_json=_canonical_mapping_json(descriptor),
+            profile_json=_canonical_mapping_json(profile),
+        )
+
+    def descriptor(self) -> dict[str, Any]:
+        return _mapping_from_json(self.descriptor_json)
+
+    def profile(self) -> dict[str, Any]:
+        return _mapping_from_json(self.profile_json)
+
+    def plan_context(self) -> dict[str, object]:
+        return {
+            "source_path": str(self.source_path),
+            "inspection_revision": self.inspection_revision,
+            "inspection_descriptor": self.descriptor(),
+        }
 
 
 class WorkflowController(QObject):
@@ -984,45 +1022,195 @@ class PreparationWorkflowController(WorkflowController):
     ) -> None:
         super().__init__(coordinator, kind="preparation", parent=parent)
         self.inspection = inspection
+        self._source_binding: _PreparationSourceBinding | None = None
+        self._source_binding_issue = ""
         inspection.inspection_changed.connect(self._inspection_changed)
         self._refresh_typed_projections()
 
-    def _plan_context(self) -> dict[str, object]:
-        snapshot = self.inspection.preparation_source_snapshot()
-        if snapshot is None:
+    def get_has_bound_source(self) -> bool:
+        return self._source_binding is not None
+
+    hasBoundSource = Property(bool, get_has_bound_source, notify=WorkflowController.state_changed)
+
+    def get_bound_source_path(self) -> str:
+        binding = self._source_binding
+        return "" if binding is None else str(binding.source_path)
+
+    boundSourcePath = Property(str, get_bound_source_path, notify=WorkflowController.state_changed)
+
+    def get_bound_source_kind(self) -> str:
+        binding = self._source_binding
+        if binding is None:
+            return ""
+        value = binding.profile().get("source_kind")
+        return value if isinstance(value, str) else ""
+
+    boundSourceKind = Property(str, get_bound_source_kind, notify=WorkflowController.state_changed)
+
+    def get_bound_source_revision(self) -> str:
+        binding = self._source_binding
+        return "" if binding is None else binding.inspection_revision
+
+    boundSourceRevision = Property(
+        str,
+        get_bound_source_revision,
+        notify=WorkflowController.state_changed,
+    )
+
+    def get_source_binding_issue(self) -> str:
+        return self._source_binding_issue
+
+    sourceBindingIssue = Property(
+        str,
+        get_source_binding_issue,
+        notify=WorkflowController.state_changed,
+    )
+
+    def get_inspected_source_matches_binding(self) -> bool:
+        candidate = self._inspected_source_binding()
+        return candidate is not None and candidate == self._source_binding
+
+    inspectedSourceMatchesBinding = Property(
+        bool,
+        get_inspected_source_matches_binding,
+        notify=WorkflowController.state_changed,
+    )
+
+    def get_inspected_source_available(self) -> bool:
+        candidate = self._inspected_source_binding()
+        return candidate is not None and candidate != self._source_binding
+
+    inspectedSourceAvailable = Property(
+        bool,
+        get_inspected_source_available,
+        notify=WorkflowController.state_changed,
+    )
+
+    def get_bound_source_refresh_available(self) -> bool:
+        binding = self._source_binding
+        candidate = self._inspected_source_binding()
+        return bool(
+            binding is not None
+            and candidate is not None
+            and candidate.source_path == binding.source_path
+            and candidate != binding
+        )
+
+    boundSourceRefreshAvailable = Property(
+        bool,
+        get_bound_source_refresh_available,
+        notify=WorkflowController.state_changed,
+    )
+
+    def bind_inspected_source(self) -> bool:
+        candidate = self._inspected_source_binding()
+        if candidate is None:
             reason = self.inspection.get_preparation_ineligible_reason()
-            raise ValueError(reason or "inspect an eligible preparation source first")
-        source, revision, descriptor = snapshot
-        return {
-            "source_path": str(source),
-            "inspection_revision": revision,
-            "inspection_descriptor": descriptor,
-        }
+            self._set_source_binding_issue(
+                reason or "Inspect an eligible source before using it for ML Preparation."
+            )
+            return False
+        if candidate == self._source_binding:
+            self._set_source_binding_issue("")
+            return True
+        if self._source_binding_change_blocked():
+            self._set_source_binding_issue(
+                "The Preparation source cannot change while a worker operation is active."
+            )
+            return False
+        self._source_binding = candidate
+        self._set_source_binding_issue("")
+        self.state_changed.emit()
+        return True
+
+    def clear_bound_source(self) -> bool:
+        if self._source_binding is None:
+            self._set_source_binding_issue("")
+            return True
+        if self._source_binding_change_blocked():
+            self._set_source_binding_issue(
+                "The Preparation source cannot change while a worker operation is active."
+            )
+            return False
+        self._source_binding = None
+        self._set_source_binding_issue("")
+        self.state_changed.emit()
+        return True
+
+    def bound_source_snapshot(
+        self,
+    ) -> tuple[Path, str, dict[str, Any], dict[str, Any]] | None:
+        binding = self._source_binding
+        if binding is None:
+            return None
+        return (
+            binding.source_path,
+            binding.inspection_revision,
+            binding.descriptor(),
+            binding.profile(),
+        )
+
+    def set_workspace(self, workspace: Workspace | None) -> None:
+        if workspace != self.workspace:
+            self._source_binding = None
+            self._source_binding_issue = ""
+        super().set_workspace(workspace)
+
+    def _plan_context(self) -> dict[str, object]:
+        binding = self._source_binding
+        if binding is None:
+            raise ValueError("use an inspected source for ML Preparation first")
+        return binding.plan_context()
 
     def _plan_result_matches_current_context(self, result: dict[str, object]) -> bool:
-        snapshot = self.inspection.preparation_source_snapshot()
+        binding = self._source_binding
         source_revision = result.get("source_revision")
-        if snapshot is None or not isinstance(source_revision, dict):
+        if binding is None or not isinstance(source_revision, dict):
             return False
-        source, revision, descriptor = snapshot
+        descriptor = binding.descriptor()
         return (
-            source_revision.get("inspection_revision") == revision
+            source_revision.get("inspection_revision") == binding.inspection_revision
             and source_revision.get("inspection_descriptor") == descriptor
-            and descriptor.get("source_path") == str(source)
+            and descriptor.get("source_path") == str(binding.source_path)
         )
 
     def _activity_source_identity(self) -> dict[str, Any] | None:
-        snapshot = self.inspection.preparation_source_snapshot()
-        if snapshot is None:
+        binding = self._source_binding
+        if binding is None:
             return None
-        source, revision, descriptor = snapshot
+        profile = binding.profile()
         return {
-            "source_path": str(source),
-            "inspection_revision": revision,
-            "descriptor": descriptor,
+            "source_path": str(binding.source_path),
+            "source_kind": profile.get("source_kind"),
+            "inspection_revision": binding.inspection_revision,
+            "descriptor": binding.descriptor(),
+            "source_identity": copy.deepcopy(profile.get("source_identity")),
         }
 
     def _inspection_changed(self, _payload: object) -> None:
+        self.state_changed.emit()
+
+    def _inspected_source_binding(self) -> _PreparationSourceBinding | None:
+        source_snapshot = self.inspection.preparation_source_snapshot()
+        profile = self.inspection.preparation_profile_snapshot()
+        if source_snapshot is None or profile is None:
+            return None
+        source, revision, descriptor = source_snapshot
+        if (
+            profile.get("source_path") != str(source)
+            or profile.get("inspection_revision") != revision
+            or profile.get("source_kind") != descriptor.get("source_kind")
+        ):
+            return None
+        return _PreparationSourceBinding.create(source, revision, descriptor, profile)
+
+    def _source_binding_change_blocked(self) -> bool:
+        return self._session is not None or self.coordinator.is_busy
+
+    def _set_source_binding_issue(self, issue: str) -> None:
+        if issue == self._source_binding_issue:
+            return
+        self._source_binding_issue = issue
         self.state_changed.emit()
 
 
@@ -1032,3 +1220,14 @@ def _text(value: object) -> str:
 
 def _nonnegative_int(value: object) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+
+
+def _canonical_mapping_json(value: dict[str, Any]) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def _mapping_from_json(value: str) -> dict[str, Any]:
+    decoded = json.loads(value)
+    if not isinstance(decoded, dict):  # pragma: no cover - encoded only by this module
+        raise ValueError("Preparation source binding payload is not a mapping")
+    return cast(dict[str, Any], decoded)

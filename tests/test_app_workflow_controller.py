@@ -1030,7 +1030,7 @@ def coordinator_for_job_records(workspace: Workspace) -> list[dict[str, object]]
     return [cast(dict[str, object], item.data) for item in records if item.data is not None]
 
 
-def test_preparation_controller_rejects_a_plan_for_replaced_inspection(
+def test_preparation_binding_does_not_follow_inspection_and_cannot_change_during_plan(
     tmp_path: Path,
     application: QCoreApplication,
 ) -> None:
@@ -1054,6 +1054,11 @@ def test_preparation_controller_rejects_a_plan_for_replaced_inspection(
         source,
         revision=old_revision,
     )
+    assert controller.get_inspected_source_available()
+    assert not controller.get_can_plan()
+    assert controller.bind_inspected_source()
+    assert controller.get_bound_source_path() == str(source.resolve())
+    assert controller.get_inspected_source_matches_binding()
     assert controller.plan()
 
     new_revision = "c" * 64
@@ -1062,6 +1067,13 @@ def test_preparation_controller_rejects_a_plan_for_replaced_inspection(
         replacement,
         revision=new_revision,
     )
+    assert controller.get_bound_source_path() == str(source.resolve())
+    assert controller.get_inspected_source_available()
+    assert not controller.get_inspected_source_matches_binding()
+    assert not controller.bind_inspected_source()
+    assert "worker operation is active" in controller.get_source_binding_issue()
+    assert not controller.clear_bound_source()
+    assert controller.get_bound_source_path() == str(source.resolve())
     _finish_plan(
         transport,
         digest=digest,
@@ -1072,9 +1084,11 @@ def test_preparation_controller_rejects_a_plan_for_replaced_inspection(
         },
     )
 
-    assert controller.state == "failed"
-    assert controller.failure["code"] == "stale_plan"
-    assert controller.current_plan is None
+    assert controller.state == "planned"
+    assert controller.get_plan_current()
+    assert controller.bind_inspected_source()
+    assert controller.current_plan is not None
+    assert not controller.get_plan_current()
     assert controller._plan_context() == {
         "source_path": str(replacement.resolve()),
         "inspection_revision": new_revision,
@@ -1107,6 +1121,7 @@ def test_preparation_plan_currentness_uses_the_complete_inspection_context(
         source,
         revision=revision,
     )
+    assert controller.bind_inspected_source()
     assert controller.plan()
     _finish_plan(
         transport,
@@ -1121,6 +1136,9 @@ def test_preparation_plan_currentness_uses_the_complete_inspection_context(
     accepted_plan = controller.current_plan
     assert controller.get_plan_current()
     assert controller.can_execute
+    assert controller.bind_inspected_source()
+    assert controller.current_plan == accepted_plan
+    assert controller.get_plan_current()
 
     _accept_preparation_inspection(
         inspection,
@@ -1128,6 +1146,11 @@ def test_preparation_plan_currentness_uses_the_complete_inspection_context(
         revision=revision,
     )
     assert controller.current_plan == accepted_plan
+    assert controller.get_plan_current()
+    assert controller.can_execute
+    assert controller.get_bound_source_path() == str(source.resolve())
+
+    assert controller.bind_inspected_source()
     assert not controller.get_plan_current()
     assert not controller.can_execute
     [reason] = controller.execution_blocking_reasons.issues
@@ -1140,9 +1163,90 @@ def test_preparation_plan_currentness_uses_the_complete_inspection_context(
         revision=revision,
     )
     assert restored_descriptor == descriptor
+    assert controller.bind_inspected_source()
     assert controller.current_plan == accepted_plan
     assert controller.get_plan_current()
     assert controller.can_execute
+    coordinator.shutdown()
+
+
+def test_preparation_binding_refresh_clear_and_workspace_lifecycle_are_explicit(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    workspace = initialize_workspace(tmp_path / "workspace")
+    replacement_workspace = initialize_workspace(tmp_path / "replacement-workspace")
+    config = _config(workspace, "preparation.yaml")
+    source = workspace.outputs / "dataset-run"
+    source.mkdir()
+    coordinator, transport = coordinator_for()
+    inspection = InspectionController(coordinator)
+    controller = PreparationWorkflowController(coordinator, inspection)
+    controller.set_workspace(workspace)
+
+    assert controller.load_config(config)
+    digest = _finish_load(transport, config)
+    original_revision = "a" * 64
+    original_descriptor = _accept_preparation_inspection(
+        inspection,
+        source,
+        revision=original_revision,
+    )
+    assert controller.bind_inspected_source()
+    snapshot = controller.bound_source_snapshot()
+    assert snapshot is not None
+    snapshot[2]["source_path"] = "mutated"
+    snapshot[3]["source_identity"] = {"source_kind": "mutated"}
+    restored_snapshot = controller.bound_source_snapshot()
+    assert restored_snapshot is not None
+    assert restored_snapshot[2] == original_descriptor
+    assert restored_snapshot[3]["source_identity"] == {"source_kind": "dataset_run"}
+
+    assert controller.plan()
+    _finish_plan(
+        transport,
+        digest=digest,
+        source_revision={
+            "inspection_revision": original_revision,
+            "inspection_descriptor": original_descriptor,
+            "consumed_source": {},
+        },
+    )
+    assert controller.get_plan_current()
+
+    refreshed_revision = "c" * 64
+    refreshed_descriptor = _accept_preparation_inspection(
+        inspection,
+        source,
+        revision=refreshed_revision,
+    )
+    assert controller.get_bound_source_revision() == original_revision
+    assert controller.get_bound_source_refresh_available()
+    assert controller.get_inspected_source_available()
+    assert controller.get_plan_current()
+    assert controller.config_sha256 == digest
+
+    assert controller.bind_inspected_source()
+    assert controller.get_bound_source_revision() == refreshed_revision
+    assert not controller.get_bound_source_refresh_available()
+    assert not controller.get_plan_current()
+    assert controller._plan_context()["inspection_descriptor"] == refreshed_descriptor
+    assert controller.config_sha256 == digest
+
+    assert controller.clear_bound_source()
+    assert not controller.get_has_bound_source()
+    assert controller.current_plan is not None
+    assert not controller.get_plan_current()
+    [reason] = controller.plan_blocking_reasons.issues
+    assert reason.code == "preparation_source_unavailable"
+    assert "use an inspected source" in reason.message
+
+    assert controller.bind_inspected_source()
+    controller.set_workspace(replacement_workspace)
+    assert not controller.get_has_bound_source()
+    assert controller.bound_source_snapshot() is None
+    assert controller.current_plan is None
     coordinator.shutdown()
 
 
@@ -1170,6 +1274,7 @@ def test_preparation_result_keeps_the_source_context_used_by_execution(
         source,
         revision=revision,
     )
+    assert controller.bind_inspected_source()
     assert controller.plan()
     _finish_plan(
         transport,
@@ -1189,11 +1294,27 @@ def test_preparation_result_keeps_the_source_context_used_by_execution(
         replacement,
         revision=revision,
     )
+    assert not controller.bind_inspected_source()
     _finish_execution(transport, output)
 
     assert controller.state == "succeeded"
     assert controller.get_has_result()
     assert controller.get_result_output_directory() == str(output)
+    assert controller.get_result_relation() == "current"
+    record = next(
+        item
+        for item in coordinator_for_job_records(workspace)
+        if item["operation"] == "execute_preparation"
+    )
+    assert record["preparation_source_identity"] == {
+        "source_path": str(source.resolve()),
+        "source_kind": "dataset_run",
+        "inspection_revision": revision,
+        "descriptor": descriptor,
+        "source_identity": {"source_kind": "dataset_run"},
+    }
+
+    assert controller.bind_inspected_source()
     assert controller.get_result_relation() == "stale"
 
     restored_descriptor = _accept_preparation_inspection(
@@ -1202,6 +1323,7 @@ def test_preparation_result_keeps_the_source_context_used_by_execution(
         revision=revision,
     )
     assert restored_descriptor == descriptor
+    assert controller.bind_inspected_source()
     assert controller.get_result_relation() == "current"
     coordinator.shutdown()
 
@@ -1327,5 +1449,5 @@ def test_workflow_failure_and_preparation_source_blockers_are_typed(
     assert controller.get_workflow_state() == "failed"
     assert controller.get_failure_category() == "request"
     assert controller.get_failure_code() == "plan_unavailable"
-    assert "eligible preparation source" in controller.get_failure_message()
+    assert "use an inspected source" in controller.get_failure_message()
     coordinator.shutdown()
