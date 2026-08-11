@@ -695,7 +695,9 @@ assert "CoolProp" not in sys.modules
 
 
 def test_worker_inspection_and_preview_do_not_import_coolprop(tmp_path: Path) -> None:
-    dataset = tmp_path / "dataset.parquet"
+    run = tmp_path / "dataset-run"
+    run.mkdir()
+    dataset = run / "dataset.parquet"
     import pandas as pd
 
     pd.DataFrame(
@@ -705,6 +707,7 @@ def test_worker_inspection_and_preview_do_not_import_coolprop(tmp_path: Path) ->
             "mode": ["property_table"],
             "fluid": ["Propane"],
             "backend": ["coolprop"],
+            "backend_model": ["heos"],
             "backend_version": ["test"],
             "phase": ["gas"],
             "valid": [True],
@@ -712,6 +715,22 @@ def test_worker_inspection_and_preview_do_not_import_coolprop(tmp_path: Path) ->
             "pressure_Pa": [100000.0],
         }
     ).to_parquet(dataset, index=False)
+    (run / "metadata.json").write_text(
+        json.dumps(
+            {
+                "run_id": "run",
+                "run_status": "completed",
+                "backend": "coolprop",
+                "backend_model": "heos",
+                "reference_state_policy": "coolprop_DEF",
+                "canonical_units": {"temperature_K": "K", "pressure_Pa": "Pa"},
+                "artifact_hashes": {
+                    "dataset.parquet": hashlib.sha256(dataset.read_bytes()).hexdigest()
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     code = r"""
 import io
 import json
@@ -729,6 +748,7 @@ inspect_request = json.dumps({
 stdout = io.StringIO()
 assert main(io.StringIO(inspect_request + "\n"), stdout, io.StringIO()) == 0
 inspection = json.loads(stdout.getvalue().splitlines()[-1])["payload"]
+assert inspection["preparation_profile"]["source_kind"] == "dataset_run"
 preview_request = json.dumps({
     "protocol_version": 1,
     "request_id": "00000000-0000-0000-0000-000000000002",
@@ -750,7 +770,7 @@ assert "carnopy.app.capabilities" not in sys.modules
 """
 
     completed = subprocess.run(
-        [sys.executable, "-c", code, str(dataset)],
+        [sys.executable, "-c", code, str(run)],
         capture_output=True,
         text=True,
         check=False,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import re
@@ -10,8 +11,18 @@ from typing import Any, cast
 
 from carnopy.app.plot_context import build_plot_context
 from carnopy.domain.failures import ConfigError
+from carnopy.domain.properties import PROPERTY_REGISTRY
 from carnopy.inspection import PreparationInspection, SweepInspection, inspect_source
-from carnopy.preparation.source import load_preparation_source
+from carnopy.preparation.derived import DERIVED_FEATURE_REGISTRY
+from carnopy.preparation.fields import (
+    CATEGORICAL_FIELDS,
+    ResolvedField,
+    compute_derived_value,
+    preparation_field_capabilities,
+)
+from carnopy.preparation.models import DerivedFeature
+from carnopy.preparation.reference import assess_reference_context
+from carnopy.preparation.source import LoadedPreparationSource, load_preparation_source
 from carnopy.provenance import sha256_file
 from carnopy.visualization.inspect import PlotInspection
 from carnopy.visualization.models import VisualizationError
@@ -65,6 +76,7 @@ class ResolvedInspection:
     preparation_eligible: bool = False
     preparation_ineligible_reason: str = ""
     preparation_source_descriptor: dict[str, Any] | None = None
+    preparation_profile: dict[str, Any] | None = None
 
     def public_payload(self) -> dict[str, Any]:
         return {
@@ -78,6 +90,7 @@ class ResolvedInspection:
             "preparation_eligible": self.preparation_eligible,
             "preparation_ineligible_reason": self.preparation_ineligible_reason,
             "preparation_source_descriptor": self.preparation_source_descriptor,
+            "preparation_profile": self.preparation_profile,
         }
 
 
@@ -108,10 +121,13 @@ def inspect_for_app(source: str | Path) -> ResolvedInspection:
     if kind != catalog.source_kind:
         raise VisualizationError("inspection source classification changed during inspection")
     summary = inspection.to_dict()
-    eligible, ineligible_reason, preparation_descriptor = _preparation_eligibility(
-        requested,
-        kind,
-        catalog,
+    eligible, ineligible_reason, preparation_descriptor, preparation_profile = (
+        _preparation_eligibility(
+            requested,
+            kind,
+            catalog,
+            summary,
+        )
     )
     return ResolvedInspection(
         source=requested,
@@ -124,6 +140,7 @@ def inspect_for_app(source: str | Path) -> ResolvedInspection:
         preparation_eligible=eligible,
         preparation_ineligible_reason=ineligible_reason,
         preparation_source_descriptor=preparation_descriptor,
+        preparation_profile=preparation_profile,
     )
 
 
@@ -544,25 +561,212 @@ def _preparation_eligibility(
     source: Path,
     source_kind: str,
     catalog: ResolvedCatalog,
-) -> tuple[bool, str, dict[str, Any] | None]:
+    summary: dict[str, Any],
+) -> tuple[bool, str, dict[str, Any] | None, dict[str, Any] | None]:
     if source_kind == "preparation":
-        return False, "prepared bundles cannot be used as preparation sources", None
+        return False, "prepared bundles cannot be used as preparation sources", None, None
     if source_kind == "dataset" and not source.is_dir():
         return (
             False,
             "standalone CSV and Parquet files cannot be used as preparation sources",
             None,
+            None,
         )
     descriptor = _preparation_descriptor(source, source_kind, catalog)
     try:
-        load_preparation_source(
+        loaded = load_preparation_source(
             source,
             allow_partial_sweep=True,
             accepted_descriptor=descriptor,
         )
     except ConfigError as exc:
-        return False, str(exc), None
-    return True, "", descriptor
+        return False, str(exc), None, None
+    return (
+        True,
+        "",
+        descriptor,
+        _preparation_profile(
+            loaded,
+            inspection_revision=catalog.revision,
+            inspection_summary=summary,
+        ),
+    )
+
+
+def _preparation_profile(
+    source_data: LoadedPreparationSource,
+    *,
+    inspection_revision: str,
+    inspection_summary: dict[str, Any],
+) -> dict[str, Any]:
+    fields = preparation_field_capabilities(source_data.tables)
+    numeric = [_field_profile(field) for field in fields.numeric]
+    categorical = [_field_profile(field) for field in fields.categorical]
+    auxiliary = [_field_profile(field) for field in fields.auxiliary]
+    available_models = _available_models(source_data)
+    declared_models = _string_values(source_data.source_identity.get("models"))
+    reference_model = inspection_summary.get("reference_model")
+    if not isinstance(reference_model, str):
+        reference_model = available_models[0] if len(available_models) == 1 else None
+    completion_status = _completion_status(source_data)
+    model_holdout_available = (
+        source_data.source_kind == "model_sweep" and len(available_models) >= 2
+    )
+    return {
+        "profile_schema_version": 1,
+        "source_path": str(source_data.requested_path),
+        "source_kind": source_data.source_kind,
+        "inspection_revision": inspection_revision,
+        "source_identity": copy.deepcopy(source_data.source_identity),
+        "completion": {
+            "status": completion_status,
+            "partial": source_data.partial_sweep_source,
+            "included_child_models": list(source_data.included_child_models),
+            "missing_child_models": list(source_data.missing_child_models),
+        },
+        "available_models": available_models,
+        "declared_models": declared_models,
+        "reference_model": reference_model,
+        "numeric_candidates": numeric,
+        "target_candidates": copy.deepcopy(numeric),
+        "categorical_candidates": categorical,
+        "auxiliary_candidates": auxiliary,
+        "observed_category_values": _observed_category_values(source_data),
+        "derived_features": _derived_feature_profiles(source_data),
+        "model_holdout": {
+            "available": model_holdout_available,
+            "reason": (
+                ""
+                if model_holdout_available
+                else _model_holdout_unavailable_reason(source_data, available_models)
+            ),
+        },
+        "reference_context": assess_reference_context(source_data),
+    }
+
+
+def _field_profile(field: ResolvedField) -> dict[str, Any]:
+    definition = PROPERTY_REGISTRY.get(field.semantic_name)
+    return {
+        "name": field.semantic_name,
+        "column": field.column,
+        "unit": field.unit,
+        "source": field.source,
+        "reference_dependent": bool(definition is not None and definition.reference_dependent),
+    }
+
+
+def _available_models(source_data: LoadedPreparationSource) -> list[str]:
+    return list(
+        dict.fromkeys(
+            model
+            for table in source_data.tables
+            if (model := table.backend_model) is not None and model
+        )
+    )
+
+
+def _completion_status(source_data: LoadedPreparationSource) -> str:
+    if source_data.source_kind == "model_sweep":
+        value = source_data.source_identity.get("sweep_status")
+    else:
+        value = source_data.tables[0].metadata.get("run_status")
+    return value if isinstance(value, str) and value else "completed"
+
+
+def _observed_category_values(
+    source_data: LoadedPreparationSource,
+) -> dict[str, list[str]]:
+    result: dict[str, list[str]] = {}
+    for field, column in CATEGORICAL_FIELDS.items():
+        values = {
+            str(value)
+            for table in source_data.tables
+            if column in table.frame.columns
+            for value in table.frame[column].dropna().tolist()
+        }
+        if values:
+            result[field] = sorted(values)
+    return result
+
+
+def _derived_feature_profiles(
+    source_data: LoadedPreparationSource,
+) -> list[dict[str, Any]]:
+    total_rows = sum(len(table.frame) for table in source_data.tables)
+    profiles: list[dict[str, Any]] = []
+    for name, definition in DERIVED_FEATURE_REGISTRY.items():
+        ready_rows = 0
+        reason_codes: set[str] = set()
+        missing_dependencies: set[str] = set()
+        for table in source_data.tables:
+            for _, row in table.frame.iterrows():
+                try:
+                    _, reasons, missing = compute_derived_value(
+                        cast(DerivedFeature, name),
+                        row,
+                        table,
+                    )
+                except (TypeError, ValueError, OverflowError):
+                    reasons = ["invalid_derived_dependency"]
+                    missing = list(definition.dependencies)
+                if reasons:
+                    reason_codes.update(reasons)
+                    missing_dependencies.update(missing)
+                else:
+                    ready_rows += 1
+        if ready_rows == total_rows and total_rows:
+            status = "ready"
+            reason = ""
+        elif ready_rows:
+            status = "partial"
+            reason = (
+                f"Available for {ready_rows} of {total_rows} source rows; "
+                "other rows would be excluded."
+            )
+        else:
+            status = "unavailable"
+            reason = (
+                "The source contains no rows with every required dependency."
+                if total_rows
+                else "The source contains no rows."
+            )
+        profiles.append(
+            {
+                "name": name,
+                "status": status,
+                "available": ready_rows > 0,
+                "ready_row_count": ready_rows,
+                "source_row_count": total_rows,
+                "reason": reason,
+                "reason_codes": sorted(reason_codes),
+                "missing_dependencies": [
+                    dependency
+                    for dependency in definition.dependencies
+                    if dependency in missing_dependencies
+                ],
+                "dependencies": list(definition.dependencies),
+                "unit": definition.unit,
+            }
+        )
+    return profiles
+
+
+def _model_holdout_unavailable_reason(
+    source_data: LoadedPreparationSource,
+    available_models: list[str],
+) -> str:
+    if source_data.source_kind != "model_sweep":
+        return "Model holdout scenarios require a model-sweep source."
+    if len(available_models) < 2:
+        return "Model holdout scenarios require at least two available sweep child models."
+    return ""
+
+
+def _string_values(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)]
 
 
 def _preparation_descriptor(
