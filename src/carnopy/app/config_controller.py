@@ -22,6 +22,7 @@ from carnopy.app.config_document import (
     write_new_config,
 )
 from carnopy.app.dataset_draft import DatasetDraft
+from carnopy.app.preparation_draft import PreparationDraft
 from carnopy.app.protocol import RequestType
 from carnopy.app.request_coordinator import (
     DesktopRequestCoordinator,
@@ -62,6 +63,7 @@ class ConfigurationController(QObject):
         parent: QObject | None = None,
         *,
         sweep_draft: SweepDraft | None = None,
+        preparation_draft: PreparationDraft | None = None,
     ) -> None:
         super().__init__(parent)
         self._owns_coordinator = coordinator is None
@@ -72,6 +74,7 @@ class ConfigurationController(QObject):
         self.dataset_draft = dataset_draft or DatasetDraft(self)
         self.visualization_draft = visualization_draft or VisualizationDraft(self)
         self.sweep_draft = sweep_draft or SweepDraft(self)
+        self.preparation_draft = preparation_draft or PreparationDraft(self)
         self.workspace: Workspace | None = None
         self.document: ConfigurationDocument | None = None
         self.capabilities: dict[str, Any] | None = None
@@ -98,12 +101,15 @@ class ConfigurationController(QObject):
         self.visualization_draft.changed.connect(self._refresh_document)
         self.sweep_draft.changed.connect(self._refresh_document)
         self.sweep_draft.validity_changed.connect(self._sweep_validity_changed)
+        self.preparation_draft.changed.connect(self._refresh_document)
+        self.preparation_draft.validity_changed.connect(self._preparation_validity_changed)
         self.dataset_draft.mode_change_requested.connect(self.mode_change_requested)
         self.dataset_draft.message.connect(self._set_status)
         self.visualization_draft.message.connect(self._set_status)
         self.visualization_draft.active_plot_draft_changed.connect(self._active_plot_edit_changed)
         self.sweep_draft.active_comparison_draft_changed.connect(self._active_nested_edit_changed)
         self.sweep_draft.message.connect(self._set_status)
+        self.preparation_draft.message.connect(self._set_status)
         self.coordinator.busy_changed.connect(self._worker_busy_changed)
 
     def set_lifecycle_guard(self, guard: Callable[[str], bool]) -> None:
@@ -144,6 +150,8 @@ class ConfigurationController(QObject):
             return False
         if document.document_type == "model_sweep":
             return document.needs_save or self.sweep_draft.get_dirty()
+        if document.document_type == "preparation":
+            return document.needs_save or self.preparation_draft.get_dirty()
         if document.document_type != "dataset":
             return document.needs_save
         return (
@@ -209,6 +217,8 @@ class ConfigurationController(QObject):
             not self._locally_valid or self.sweep_draft.get_has_active_comparison_edit()
         ):
             return "sweep"
+        if self.document.document_type == "preparation" and not self._locally_valid:
+            return "preparation"
         if self._locally_valid:
             return "none"
         if not self.dataset_draft.get_locally_valid():
@@ -223,6 +233,8 @@ class ConfigurationController(QObject):
         section = self.get_blocking_section()
         if section == "sweep":
             return self.sweep_draft.get_first_invalid_field()
+        if section == "preparation":
+            return self.preparation_draft.get_first_invalid_field()
         if section == "dataset":
             return self.dataset_draft.get_first_invalid_field()
         if section == "visualization":
@@ -235,6 +247,8 @@ class ConfigurationController(QObject):
         section = self.get_blocking_section()
         if section == "sweep":
             return self.sweep_draft.get_first_invalid_row()
+        if section == "preparation":
+            return self.preparation_draft.get_first_invalid_row()
         if section == "dataset":
             return self.dataset_draft.get_first_invalid_row()
         if section == "visualization":
@@ -247,6 +261,8 @@ class ConfigurationController(QObject):
         section = self.get_blocking_section()
         if section == "sweep":
             return self.sweep_draft.get_issue()
+        if section == "preparation":
+            return self.preparation_draft.get_issue()
         if section == "dataset":
             return self.dataset_draft.get_issue()
         if section == "visualization":
@@ -363,6 +379,11 @@ class ConfigurationController(QObject):
         return self.sweep_draft
 
     sweepDraft = Property(QObject, get_sweep_draft, constant=True)
+
+    def get_preparation_draft(self) -> QObject:
+        return self.preparation_draft
+
+    preparationDraft = Property(QObject, get_preparation_draft, constant=True)
 
     def set_workspace(self, value: object) -> None:
         workspace = value if isinstance(value, Workspace) else None
@@ -586,14 +607,17 @@ class ConfigurationController(QObject):
                 self.visualization_draft.set_dataset_context(payload)
                 self.visualization_draft.load_visualization(payload.get("visualization"))
                 self.sweep_draft.clear()
+                self.preparation_draft.clear()
             elif document.document_type == "model_sweep":
                 self.dataset_draft.clear()
                 self.visualization_draft.clear()
                 self.sweep_draft.load_payload(payload)
+                self.preparation_draft.clear()
             else:
                 self.dataset_draft.clear()
                 self.visualization_draft.clear()
                 self.sweep_draft.clear()
+                self.preparation_draft.load_payload(payload)
         finally:
             self._syncing_document = False
         label = document.document_type.replace("_", " ")
@@ -633,8 +657,9 @@ class ConfigurationController(QObject):
         drafts_valid = (
             self.sweep_draft.get_locally_valid()
             if expected_document_type == "model_sweep"
-            else expected_document_type != "dataset"
-            or (
+            else self.preparation_draft.get_locally_valid()
+            if expected_document_type == "preparation"
+            else (
                 self.dataset_draft.get_locally_valid()
                 and self.visualization_draft.get_locally_valid()
             )
@@ -806,6 +831,10 @@ class ConfigurationController(QObject):
         if not self._syncing_document:
             self.state_changed.emit()
 
+    def _preparation_validity_changed(self) -> None:
+        if not self._syncing_document:
+            self.state_changed.emit()
+
     def _apply_capabilities(self, payload: dict[str, Any]) -> None:
         self.capabilities = payload
         self.dataset_draft.apply_capabilities(payload)
@@ -824,6 +853,7 @@ class ConfigurationController(QObject):
             self.dataset_draft.clear()
             self.visualization_draft.clear()
             self.sweep_draft.clear()
+            self.preparation_draft.clear()
         finally:
             self._syncing_document = False
         self._locally_valid = False
@@ -904,6 +934,8 @@ class ConfigurationController(QObject):
         document.mark_saved(destination, content)
         if document.document_type == "model_sweep":
             self.sweep_draft.mark_baseline()
+        elif document.document_type == "preparation":
+            self.preparation_draft.mark_baseline()
         elif document.document_type == "dataset":
             self.dataset_draft.mark_baseline()
             self.visualization_draft.mark_baseline()
@@ -941,6 +973,10 @@ class ConfigurationController(QObject):
                 if not self.sweep_draft.get_locally_valid():
                     raise ValueError(self.sweep_draft.get_issue())
                 document.set_payload(self.sweep_draft.payload())
+            elif document.document_type == "preparation":
+                if not self.preparation_draft.get_locally_valid():
+                    raise ValueError(self.preparation_draft.get_issue())
+                document.set_payload(self.preparation_draft.payload())
             elif document.document_type == "dataset":
                 payload = self.dataset_draft.merge_into(document.payload)
                 dataset_context = self.dataset_draft.dataset_payload()

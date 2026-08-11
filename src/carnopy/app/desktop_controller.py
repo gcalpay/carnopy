@@ -86,6 +86,9 @@ class DesktopController(QObject):
             self.inspection_controller,
             self,
         )
+        self.preparation_workflow_controller.source_binding_changed.connect(
+            self._preparation_source_binding_changed
+        )
         self.activity_controller = ActivityController(
             self.request_coordinator,
             self,
@@ -1536,6 +1539,11 @@ class DesktopController(QObject):
     def _configuration_state_changed(self) -> None:
         self.workspace_state_changed.emit()
         self.workspace_confirmation_changed.emit()
+
+    def _preparation_source_binding_changed(self) -> None:
+        snapshot = self.preparation_workflow_controller.bound_source_snapshot()
+        profile = None if snapshot is None else snapshot[3]
+        self.configuration_controller.preparation_draft.apply_source_profile(profile)
 
     def _request_state_changed(self, busy: bool) -> None:
         self.workspace_state_changed.emit()

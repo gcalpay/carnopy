@@ -215,6 +215,12 @@ def sweep_payload() -> dict[str, Any]:
     return cast(dict[str, Any], value)
 
 
+def preparation_payload() -> dict[str, Any]:
+    value = yaml.safe_load(template_text("preparation"))
+    assert isinstance(value, dict)
+    return cast(dict[str, Any], value)
+
+
 def configured_controller(
     tmp_path: Path,
 ) -> tuple[ConfigurationController, StubCoordinator]:
@@ -812,3 +818,53 @@ def test_sweep_draft_composes_the_global_saved_document_and_validation_snapshot(
 
     assert sweep.cancel_comparison()
     assert controller.execution_snapshot(expected_document_type="model_sweep") == snapshot
+
+
+def test_preparation_role_draft_composes_and_restores_the_exact_saved_document(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    controller, coordinator = configured_controller(tmp_path)
+    workspace = controller.workspace
+    assert workspace is not None
+    preparation = controller.preparation_draft
+
+    assert controller.get_preparation_draft() is preparation
+    assert controller.property("preparationDraft") is preparation
+    assert controller.open_document(new_document(preparation_payload()))
+    assert controller.get_document_kind() == "preparation"
+    assert controller.get_locally_valid()
+    assert not preparation.get_dirty()
+    assert controller.document is not None
+    assert controller.document.payload == preparation.payload()
+
+    destination = workspace.configs / "preparation.yaml"
+    assert controller.request_save_as()
+    assert controller.save_path_selected(str(destination))
+    saved_bytes = controller.document.yaml_bytes
+    coordinator.succeed({"document_type": "preparation"})
+    snapshot = controller.execution_snapshot(expected_document_type="preparation")
+    assert snapshot.path == destination.resolve()
+    assert snapshot.yaml_bytes == saved_bytes
+    assert not controller.get_dirty()
+
+    assert preparation.set_allow_partial_sweep(True)
+    assert controller.get_dirty()
+    assert controller.document.payload["source_policy"] == {"allow_partial_sweep": True}
+    with pytest.raises(ConfigDocumentError, match="save the current configuration changes"):
+        controller.execution_snapshot(expected_document_type="preparation")
+
+    assert preparation.set_allow_partial_sweep(False)
+    assert not controller.get_dirty()
+    assert controller.execution_snapshot(expected_document_type="preparation") == snapshot
+
+    assert preparation.set_role_selected("target", "specific_enthalpy", False)
+    assert not controller.get_locally_valid()
+    assert controller.get_blocking_section() == "preparation"
+    assert controller.get_blocking_field() == "preparation.targets"
+    assert not controller.get_can_save()
+    assert controller.get_yaml_preview() == ""
+    assert preparation.set_role_selected("target", "specific_enthalpy", True)
+    assert controller.get_locally_valid()
+    assert controller.execution_snapshot(expected_document_type="preparation") == snapshot

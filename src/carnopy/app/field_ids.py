@@ -20,6 +20,14 @@ PLOT_FILTERS = "plot.filters"
 PLOT_SERIES = "plot.series"
 PLOT_DISPLAY_UNITS = "plot.display_units"
 
+PREPARATION_SOURCE_POLICY = "preparation.source_policy.allow_partial_sweep"
+PREPARATION_FEATURES = "preparation.features"
+PREPARATION_NUMERIC_FEATURES = "preparation.features.numeric"
+PREPARATION_DERIVED_FEATURES = "preparation.features.derived"
+PREPARATION_CATEGORICAL_FEATURES = "preparation.categorical_features"
+PREPARATION_TARGETS = "preparation.targets"
+PREPARATION_AUXILIARY = "preparation.auxiliary"
+
 
 def dataset_grid_field(axis: str, field: str) -> str:
     """Return one stable private field identifier for a sampler control."""

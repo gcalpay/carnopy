@@ -96,6 +96,10 @@ def test_desktop_controller_owns_one_composition_and_preserves_settings_identity
     assert desktop.configuration_controller.dataset_draft is desktop.dataset_draft
     assert desktop.configuration_controller.visualization_draft is desktop.visualization_draft
     assert desktop.configuration_controller.sweep_draft.parent() is desktop.configuration_controller
+    assert (
+        desktop.configuration_controller.preparation_draft.parent()
+        is desktop.configuration_controller
+    )
     assert desktop.execution_controller.parent() is desktop
     assert desktop.execution_controller.coordinator is desktop.request_coordinator
     assert desktop.execution_controller.config_controller is desktop.configuration_controller
@@ -127,6 +131,10 @@ def test_desktop_controller_owns_one_composition_and_preserves_settings_identity
     assert (
         desktop.configuration_controller.property("sweepDraft")
         is desktop.configuration_controller.sweep_draft
+    )
+    assert (
+        desktop.configuration_controller.property("preparationDraft")
+        is desktop.configuration_controller.preparation_draft
     )
     assert not hasattr(desktop, "dataset_config_controller")
     assert desktop.property("datasetConfigController") is None
@@ -674,6 +682,40 @@ def test_preparation_source_facade_requires_confirmation_for_a_current_plan(
     assert desktop.request_clear_preparation_source()
     assert calls == ["bind", "clear", "clear"]
     assert confirmations == ["clear"]
+    assert desktop.shutdown()
+
+
+def test_bound_preparation_profile_is_the_only_profile_applied_to_the_draft(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    source = tmp_path / "workspace" / "outputs" / "dataset-run"
+    profile = {"source_kind": "dataset_run", "inspection_revision": "a" * 64}
+    applied: list[object] = []
+    monkeypatch.setattr(
+        desktop.preparation_workflow_controller,
+        "bound_source_snapshot",
+        lambda: (source, "a" * 64, {"source_path": str(source)}, profile),
+    )
+    monkeypatch.setattr(
+        desktop.configuration_controller.preparation_draft,
+        "apply_source_profile",
+        applied.append,
+    )
+
+    desktop._preparation_source_binding_changed()
+    assert applied == [profile]
+
+    monkeypatch.setattr(
+        desktop.preparation_workflow_controller,
+        "bound_source_snapshot",
+        lambda: None,
+    )
+    desktop._preparation_source_binding_changed()
+    assert applied == [profile, None]
     assert desktop.shutdown()
 
 
