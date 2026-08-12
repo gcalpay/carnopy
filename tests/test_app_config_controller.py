@@ -942,3 +942,77 @@ def test_committed_preparation_scenario_composes_into_global_document(
     assert controller.document.yaml_bytes != original_yaml
     assert preparation.get_dirty()
     assert controller.get_dirty()
+
+
+def test_active_preparation_scenario_blocks_all_global_document_actions(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    controller, coordinator = configured_controller(tmp_path)
+    workspace = controller.workspace
+    assert workspace is not None
+    assert controller.open_document(new_document(preparation_payload()))
+    destination = workspace.configs / "preparation.yaml"
+    assert controller.request_save_as()
+    assert controller.save_path_selected(str(destination))
+    coordinator.succeed({"document_type": "preparation"})
+    snapshot = controller.execution_snapshot(expected_document_type="preparation")
+    requests_before_edit = len(coordinator.calls)
+
+    preparation = controller.preparation_draft
+    assert preparation.begin_add_scenario()
+    active = preparation.get_active_scenario_draft()
+    assert active is not None
+    assert active.set_name("not a slug")
+
+    assert controller.get_locally_valid()
+    assert controller.get_blocking_section() == "preparation"
+    assert controller.get_blocking_field() == "preparation.scenario.active.name"
+    assert "safe slugs" in controller.get_blocking_issue()
+    assert controller.get_worker_validation_state() == "blocked"
+    assert not controller.get_can_validate()
+    assert not controller.get_can_save()
+    assert not controller.get_can_create()
+    assert not controller.get_can_import()
+    assert not controller.request_validation()
+    assert not controller.request_save()
+    assert not controller.request_save_as()
+    assert not controller.reload_source(discard_confirmed=True)
+    assert not controller.new_dataset("property_table", discard_confirmed=True)
+    assert not controller.new_sweep(discard_confirmed=True)
+    assert not controller.import_dataset("dataset.yaml", discard_confirmed=True)
+    assert not controller.import_configuration("config.yaml", discard_confirmed=True)
+    assert not controller.open_document(new_document(payload()))
+    assert not controller.clear_document(discard_confirmed=True)
+    assert len(coordinator.calls) == requests_before_edit
+    with pytest.raises(ConfigDocumentError, match="complete the configuration form"):
+        controller.execution_snapshot(expected_document_type="preparation")
+
+    replacement = initialize_workspace(tmp_path / "replacement")
+    controller.set_workspace(replacement)
+    assert controller.workspace == workspace
+    assert controller.get_document_kind() == "preparation"
+
+    assert preparation.cancel_scenario()
+    assert controller.get_blocking_section() == "none"
+    assert controller.execution_snapshot(expected_document_type="preparation") == snapshot
+
+
+def test_save_as_destination_callback_cannot_bypass_active_preparation_edit(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    controller, coordinator = configured_controller(tmp_path)
+    workspace = controller.workspace
+    assert workspace is not None
+    assert controller.open_document(new_document(preparation_payload()))
+    assert controller.request_save_as()
+    assert controller.preparation_draft.begin_add_scenario()
+
+    destination = workspace.configs / "must-not-exist.yaml"
+    assert not controller.save_path_selected(str(destination))
+
+    assert not destination.exists()
+    assert len(coordinator.calls) == 1

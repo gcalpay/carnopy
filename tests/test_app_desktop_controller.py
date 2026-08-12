@@ -438,6 +438,37 @@ def test_qml_shutdown_explicitly_cancels_a_transient_sweep_edit_before_close(
     assert close_requests == ["close"]
 
 
+def test_qml_shutdown_explicitly_cancels_a_transient_preparation_edit_before_close(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    confirmations: list[str] = []
+    close_requests: list[str] = []
+    cancellations: list[str] = []
+    desktop.transientEditShutdownConfirmationRequested.connect(confirmations.append)
+    desktop.closeWindowRequested.connect(lambda: close_requests.append("close"))
+    monkeypatch.setattr(desktop, "get_has_active_preparation_edit", lambda: True)
+    monkeypatch.setattr(
+        desktop.configuration_controller.preparation_draft,
+        "cancel_scenario",
+        lambda: cancellations.append("scenario") or True,
+    )
+
+    assert not desktop.request_shutdown()
+    assert confirmations == [
+        "A Preparation scenario edit is still open. Cancel the edit and close Carnopy?"
+    ]
+    assert not desktop.confirm_transient_edit_shutdown(False)
+    assert cancellations == []
+    assert close_requests == []
+    assert desktop.confirm_transient_edit_shutdown(True)
+    assert cancellations == ["scenario"]
+    assert close_requests == ["close"]
+
+
 def test_configuration_attention_facade_accepts_only_stable_sections(
     tmp_path: Path,
     application: QCoreApplication,
@@ -451,12 +482,18 @@ def test_configuration_attention_facade_accepts_only_stable_sections(
 
     assert desktop.request_configuration_attention("dataset", "dataset.properties", 2)
     assert desktop.request_configuration_attention("sweep", "sweep.backend.reference_model", -1)
+    assert desktop.request_configuration_attention(
+        "preparation",
+        "preparation.scenario.active.name",
+        -1,
+    )
     assert desktop.request_configuration_attention("visualization", "plot.name", -1)
     assert not desktop.request_configuration_attention("workspace", "dataset.mode", -1)
     assert not desktop.request_configuration_attention("dataset", "plot.name", -1)
     assert attention == [
         ("dataset", "dataset.properties", 2),
         ("sweep", "sweep.backend.reference_model", -1),
+        ("preparation", "preparation.scenario.active.name", -1),
         ("visualization", "plot.name", -1),
     ]
     assert desktop.shutdown()
@@ -1035,6 +1072,74 @@ def test_active_plot_edit_blocks_all_composition_lifecycle_paths(
     assert calls == []
     assert attention
     assert all(item == ("visualization", "visualization.plots", -1) for item in attention)
+
+
+def test_active_preparation_edit_blocks_workspace_and_configuration_lifecycle(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    preparation = desktop.configuration_controller.preparation_draft
+    calls: list[str] = []
+    attention: list[tuple[str, str, int]] = []
+    desktop.attentionRequested.connect(
+        lambda section, field, row: attention.append((section, field, row))
+    )
+    monkeypatch.setattr(preparation, "get_has_active_scenario_edit", lambda: True)
+    monkeypatch.setattr(
+        preparation,
+        "get_first_invalid_field",
+        lambda: "preparation.scenario.active.name",
+    )
+    monkeypatch.setattr(preparation, "get_first_invalid_row", lambda: -1)
+    for name in (
+        "new_dataset",
+        "new_sweep",
+        "import_dataset",
+        "import_configuration",
+        "request_save",
+        "request_save_as",
+        "request_validation",
+        "reload_source",
+    ):
+        monkeypatch.setattr(
+            desktop.configuration_controller,
+            name,
+            lambda *_args, operation=name: calls.append(operation) or True,
+        )
+    preflight_calls: list[str] = []
+    monkeypatch.setattr(
+        desktop.workspace_controller,
+        "prepare_create",
+        lambda _path: preflight_calls.append("workspace") or True,
+    )
+
+    assert desktop.get_has_active_preparation_edit()
+    assert desktop.get_has_any_transient_edit()
+    assert not desktop.get_can_change_workspace()
+    assert not desktop.prepare_create_workspace_path(str(tmp_path / "workspace"))
+    assert not desktop.request_new_dataset("property_table")
+    assert not desktop.request_new_sweep()
+    assert not desktop.request_import_dataset("input.yaml")
+    assert not desktop.request_import_configuration("input.yaml")
+    assert not desktop.request_save()
+    assert not desktop.request_save_as()
+    assert not desktop.request_validate_configuration()
+    assert not desktop.request_reload_source()
+    assert not desktop.request_close_configuration()
+    assert not desktop.shutdown()
+
+    assert calls == []
+    assert preflight_calls == []
+    assert attention
+    assert all(
+        item == ("preparation", "preparation.scenario.active.name", -1) for item in attention
+    )
+    assert "Preparation scenario" in desktop.get_workspace_error_message()
+    monkeypatch.setattr(preparation, "get_has_active_scenario_edit", lambda: False)
+    assert desktop.shutdown()
 
 
 def test_session_plot_edit_guards_replacement_but_not_configuration_save(

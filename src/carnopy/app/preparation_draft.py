@@ -16,6 +16,7 @@ from carnopy.app.field_ids import (
     PREPARATION_FEATURES,
     PREPARATION_MATRIX_DIAGNOSTICS,
     PREPARATION_OUTPUTS,
+    PREPARATION_SCENARIO_ACTIVE,
     PREPARATION_SOURCE_POLICY,
     PREPARATION_TARGETS,
 )
@@ -460,6 +461,8 @@ class PreparationDraft(QObject):
                 + ", ".join(unavailable_derived)
                 + "."
             )
+        if issue := self._committed_scenario_source_issue():
+            return issue
         reference_context = self._profile.get("reference_context")
         if isinstance(reference_context, Mapping) and not bool(
             reference_context.get("compatible", False)
@@ -478,7 +481,37 @@ class PreparationDraft(QObject):
 
     sourceIssue = Property(str, get_source_issue, notify=profile_changed)
 
+    def get_model_holdout_available(self) -> bool:
+        model_holdout = self._profile.get("model_holdout")
+        return isinstance(model_holdout, Mapping) and bool(model_holdout.get("available", False))
+
+    modelHoldoutAvailable = Property(
+        bool,
+        get_model_holdout_available,
+        notify=profile_changed,
+    )
+
+    def get_model_holdout_issue(self) -> str:
+        if self.get_model_holdout_available():
+            return ""
+        if not self._profile:
+            return "Bind an eligible Model Sweep source before adding a model holdout scenario."
+        model_holdout = self._profile.get("model_holdout")
+        if isinstance(model_holdout, Mapping):
+            reason = str(model_holdout.get("reason", "")).strip()
+            if reason:
+                return reason
+        return "Model holdout scenarios are unavailable for the bound source."
+
+    modelHoldoutIssue = Property(
+        str,
+        get_model_holdout_issue,
+        notify=profile_changed,
+    )
+
     def get_first_invalid_field(self) -> str:
+        if self._active_scenario is not None:
+            return self._active_scenario.get_first_invalid_field() or PREPARATION_SCENARIO_ACTIVE
         issue = self.get_issue().casefold()
         if not issue:
             return ""
@@ -501,9 +534,19 @@ class PreparationDraft(QObject):
     firstInvalidField = Property(str, get_first_invalid_field, notify=validity_changed)
 
     def get_first_invalid_row(self) -> int:
+        if self._active_scenario is not None:
+            nested_row = self._active_scenario.get_first_invalid_row()
+            return nested_row if nested_row >= 0 else self._active_scenario_row
         return -1
 
     firstInvalidRow = Property(int, get_first_invalid_row, notify=validity_changed)
+
+    def get_transient_edit_issue(self) -> str:
+        if self._active_scenario is None:
+            return ""
+        return self._active_scenario.get_issue() or (
+            "Commit or cancel the active Preparation scenario edit."
+        )
 
     def get_dirty(self) -> bool:
         if self._baseline is None or self._baseline_raw is None:
@@ -706,7 +749,9 @@ class PreparationDraft(QObject):
             field_choices=self._scenario_field_choices(),
             parent=self,
         )
+        self._active_scenario.validity_changed.connect(self.validity_changed.emit)
         self.active_scenario_draft_changed.emit()
+        self.validity_changed.emit()
         return True
 
     @Slot(int, result=bool)
@@ -719,7 +764,9 @@ class PreparationDraft(QObject):
             payload=self._scenarios[row],
             parent=self,
         )
+        self._active_scenario.validity_changed.connect(self.validity_changed.emit)
         self.active_scenario_draft_changed.emit()
+        self.validity_changed.emit()
         return True
 
     @Slot(result=bool)
@@ -743,18 +790,24 @@ class PreparationDraft(QObject):
             updated.append(value)
         else:
             updated[self._active_scenario_row] = value
+        changed = tuple(updated) != self._scenarios
+        if not changed:
+            self._discard_active_scenario()
+            self.active_scenario_draft_changed.emit()
+            self.validity_changed.emit()
+            return True
+        if issue := self._scenario_value_source_issue(value):
+            self.message.emit(issue)
+            return False
         try:
             self._validated_payload(tuple(updated))
         except ValueError as exc:
             self.message.emit(str(exc))
             return False
-        changed = tuple(updated) != self._scenarios
-        if changed:
-            self._scenarios = tuple(updated)
+        self._scenarios = tuple(updated)
         self._discard_active_scenario()
         self.active_scenario_draft_changed.emit()
-        if changed:
-            self._state_changed()
+        self._state_changed()
         return True
 
     @Slot(result=bool)
@@ -763,6 +816,7 @@ class PreparationDraft(QObject):
             return False
         self._discard_active_scenario()
         self.active_scenario_draft_changed.emit()
+        self.validity_changed.emit()
         return True
 
     @Slot(int, result=bool)
@@ -1088,6 +1142,52 @@ class PreparationDraft(QObject):
                     "backend_model",
                 )
             )
+        )
+
+    def _committed_scenario_source_issue(self) -> str:
+        for scenario in self._scenarios:
+            if issue := self._scenario_value_source_issue(scenario):
+                return issue
+        return ""
+
+    def _scenario_value_source_issue(self, scenario: Mapping[str, object]) -> str:
+        kind = str(scenario.get("kind", ""))
+        name = str(scenario.get("name", "scenario"))
+        if kind == "model_holdout" and not self.get_model_holdout_available():
+            return self.get_model_holdout_issue()
+        if not self._profile:
+            return ""
+        category_field = {
+            "leave_fluid_out": "fluid",
+            "phase_holdout": "phase",
+            "model_holdout": "backend_model",
+        }.get(kind)
+        if category_field is None:
+            return ""
+        if category_field == "backend_model":
+            available = _strings(self._profile.get("available_models"))
+        else:
+            observed = self._profile.get("observed_category_values")
+            available = (
+                _strings(observed.get(category_field)) if isinstance(observed, Mapping) else ()
+            )
+        holdouts = scenario.get("holdouts")
+        selected = (
+            tuple(
+                str(item)
+                for values in holdouts.values()
+                if isinstance(values, list | tuple)
+                for item in values
+            )
+            if isinstance(holdouts, Mapping)
+            else ()
+        )
+        unavailable = tuple(value for value in selected if value not in available)
+        if not unavailable:
+            return ""
+        return (
+            f"Scenario {name!r} selects unavailable {_display(category_field).lower()} "
+            f"holdout values: {', '.join(unavailable)}."
         )
 
     def _role_model(self, role: str) -> DraftListModel | None:

@@ -108,6 +108,9 @@ class ConfigurationController(QObject):
         self.visualization_draft.message.connect(self._set_status)
         self.visualization_draft.active_plot_draft_changed.connect(self._active_plot_edit_changed)
         self.sweep_draft.active_comparison_draft_changed.connect(self._active_nested_edit_changed)
+        self.preparation_draft.active_scenario_draft_changed.connect(
+            self._active_nested_edit_changed
+        )
         self.sweep_draft.message.connect(self._set_status)
         self.preparation_draft.message.connect(self._set_status)
         self.coordinator.busy_changed.connect(self._worker_busy_changed)
@@ -217,7 +220,9 @@ class ConfigurationController(QObject):
             not self._locally_valid or self.sweep_draft.get_has_active_comparison_edit()
         ):
             return "sweep"
-        if self.document.document_type == "preparation" and not self._locally_valid:
+        if self.document.document_type == "preparation" and (
+            not self._locally_valid or self.preparation_draft.get_has_active_scenario_edit()
+        ):
             return "preparation"
         if self._locally_valid:
             return "none"
@@ -262,6 +267,8 @@ class ConfigurationController(QObject):
         if section == "sweep":
             return self.sweep_draft.get_issue()
         if section == "preparation":
+            if self.preparation_draft.get_has_active_scenario_edit():
+                return self.preparation_draft.get_transient_edit_issue()
             return self.preparation_draft.get_issue()
         if section == "dataset":
             return self.dataset_draft.get_issue()
@@ -389,7 +396,7 @@ class ConfigurationController(QObject):
         workspace = value if isinstance(value, Workspace) else None
         changed = self.workspace != workspace
         if changed and (
-            self._has_active_sweep_edit() or not self._lifecycle_allowed("workspace replacement")
+            self._has_active_workflow_edit() or not self._lifecycle_allowed("workspace replacement")
         ):
             return
         self.workspace = workspace
@@ -416,7 +423,7 @@ class ConfigurationController(QObject):
         if not self._lifecycle_allowed("New Dataset"):
             return False
         capabilities = self.capabilities
-        if self.workspace is None or capabilities is None or self._has_active_sweep_edit():
+        if self.workspace is None or capabilities is None or self._has_active_workflow_edit():
             return False
         if self.needs_discard_confirmation() and not discard_confirmed:
             self._set_status("Confirm discarding the current configuration before replacing it.")
@@ -442,7 +449,7 @@ class ConfigurationController(QObject):
     def import_dataset(self, path: str, discard_confirmed: bool = False) -> bool:
         if not self._lifecycle_allowed("Import"):
             return False
-        if self.workspace is None or self._has_active_sweep_edit():
+        if self.workspace is None or self._has_active_workflow_edit():
             return False
         if self.needs_discard_confirmation() and not discard_confirmed:
             self._set_status("Confirm discarding the current configuration before replacing it.")
@@ -487,7 +494,7 @@ class ConfigurationController(QObject):
             document is None
             or not self._locally_valid
             or self.coordinator.is_busy
-            or self._has_active_sweep_edit()
+            or self._has_active_workflow_edit()
         ):
             return False
         if document.source_path is None or not document.workspace_owned:
@@ -510,7 +517,7 @@ class ConfigurationController(QObject):
             self.document is None
             or not self._locally_valid
             or self.coordinator.is_busy
-            or self._has_active_sweep_edit()
+            or self._has_active_workflow_edit()
         ):
             return False
         return self._request_save_as(allow_reformat=allow_reformat)
@@ -525,7 +532,7 @@ class ConfigurationController(QObject):
         if not self._lifecycle_allowed("Save As"):
             self._awaiting_save_path = False
             return False
-        if self._has_active_sweep_edit():
+        if self._has_active_workflow_edit():
             return False
         if not self._awaiting_save_path:
             self._set_status("Save As is not awaiting a destination.")
@@ -552,7 +559,7 @@ class ConfigurationController(QObject):
             document is None
             or document.source_path is None
             or self.coordinator.is_busy
-            or self._has_active_sweep_edit()
+            or self._has_active_workflow_edit()
         ):
             return False
         if self.needs_discard_confirmation() and not discard_confirmed:
@@ -595,7 +602,7 @@ class ConfigurationController(QObject):
         return self.dataset_draft.set_coordinate(selected)
 
     def open_document(self, document: ConfigurationDocument) -> bool:
-        if self._has_active_sweep_edit() or not self._lifecycle_allowed("document replacement"):
+        if self._has_active_workflow_edit() or not self._lifecycle_allowed("document replacement"):
             return False
         self.document = document
         self._reset_worker_validation("not_run")
@@ -631,7 +638,7 @@ class ConfigurationController(QObject):
         return True
 
     def clear_document(self, discard_confirmed: bool = False) -> bool:
-        if self._has_active_sweep_edit() or not self._lifecycle_allowed("Close Configuration"):
+        if self._has_active_workflow_edit() or not self._lifecycle_allowed("Close Configuration"):
             return False
         if self.needs_discard_confirmation() and not discard_confirmed:
             self._set_status("Confirm discarding the current configuration before closing it.")
@@ -664,7 +671,7 @@ class ConfigurationController(QObject):
                 and self.visualization_draft.get_locally_valid()
             )
         )
-        if not self._locally_valid or not drafts_valid or self._has_active_sweep_edit():
+        if not self._locally_valid or not drafts_valid or self._has_active_workflow_edit():
             raise ConfigDocumentError("complete the configuration form before execution")
         return self.document.execution_snapshot(configs_root=self.workspace.configs)
 
@@ -1118,10 +1125,15 @@ class ConfigurationController(QObject):
         return self._lifecycle_guard is None or self._lifecycle_guard(operation)
 
     def _has_active_nested_edit(self) -> bool:
-        return self.visualization_draft.get_has_active_plot_edit() or self._has_active_sweep_edit()
+        return (
+            self.visualization_draft.get_has_active_plot_edit() or self._has_active_workflow_edit()
+        )
 
-    def _has_active_sweep_edit(self) -> bool:
-        return self.sweep_draft.get_has_active_comparison_edit()
+    def _has_active_workflow_edit(self) -> bool:
+        return (
+            self.sweep_draft.get_has_active_comparison_edit()
+            or self.preparation_draft.get_has_active_scenario_edit()
+        )
 
 
 def _template_payload(mode: str) -> dict[str, Any]:

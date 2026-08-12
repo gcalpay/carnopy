@@ -135,7 +135,7 @@ class DesktopController(QObject):
         self.preparation_workflow_controller.output_finalized.connect(
             lambda _path: self.inspection_controller.refresh_sources()
         )
-        self.configuration_controller.set_lifecycle_guard(self._guard_active_plot_edit)
+        self.configuration_controller.set_lifecycle_guard(self._guard_configuration_lifecycle)
         self.workspace_controller = WorkspaceController(
             self.request_coordinator,
             self.settings,
@@ -232,6 +232,8 @@ class DesktopController(QObject):
             self.workspace_controller.get_can_change_workspace()
             and self.visualization_draft.get_active_plot_draft() is None
             and not self.session_plot_controller.get_has_active_edit()
+            and not self.get_has_active_sweep_edit()
+            and not self.get_has_active_preparation_edit()
         )
 
     canChangeWorkspace = Property(
@@ -367,11 +369,21 @@ class DesktopController(QObject):
         notify=workspace_state_changed,
     )
 
+    def get_has_active_preparation_edit(self) -> bool:
+        return self.configuration_controller.preparation_draft.get_has_active_scenario_edit()
+
+    hasActivePreparationEdit = Property(
+        bool,
+        get_has_active_preparation_edit,
+        notify=workspace_state_changed,
+    )
+
     def get_has_any_transient_edit(self) -> bool:
         return (
             self.get_has_active_plot_edit()
             or self.get_has_session_plot_edit()
             or self.get_has_active_sweep_edit()
+            or self.get_has_active_preparation_edit()
         )
 
     hasAnyTransientEdit = Property(
@@ -487,13 +499,13 @@ class DesktopController(QObject):
 
     @Slot(str, bool, result=bool, name="requestNewDataset")
     def request_new_dataset(self, mode: str, discard_confirmed: bool = False) -> bool:
-        if not self._guard_active_plot_edit("New Dataset"):
+        if not self._guard_configuration_lifecycle("New Dataset"):
             return False
         return self.configuration_controller.new_dataset(mode, discard_confirmed)
 
     @Slot(bool, result=bool, name="requestNewSweep")
     def request_new_sweep(self, discard_confirmed: bool = False) -> bool:
-        if not self._guard_active_plot_edit("New Model Sweep"):
+        if not self._guard_configuration_lifecycle("New Model Sweep"):
             return False
         return self.configuration_controller.new_sweep(discard_confirmed)
 
@@ -503,7 +515,7 @@ class DesktopController(QObject):
         path: str,
         discard_confirmed: bool = False,
     ) -> bool:
-        if not self._guard_active_plot_edit("Open Configuration"):
+        if not self._guard_configuration_lifecycle("Open Configuration"):
             return False
         return self.configuration_controller.import_configuration(
             _local_path(path),
@@ -512,7 +524,7 @@ class DesktopController(QObject):
 
     @Slot(str, bool, result=bool, name="requestImportDataset")
     def request_import_dataset(self, path: str, discard_confirmed: bool = False) -> bool:
-        if not self._guard_active_plot_edit("Import"):
+        if not self._guard_configuration_lifecycle("Import"):
             return False
         return self.configuration_controller.import_dataset(
             _local_path(path),
@@ -521,19 +533,19 @@ class DesktopController(QObject):
 
     @Slot(bool, result=bool, name="requestSave")
     def request_save(self, allow_reformat: bool = False) -> bool:
-        if not self._guard_active_plot_edit("Save"):
+        if not self._guard_configuration_lifecycle("Save"):
             return False
         return self.configuration_controller.request_save(allow_reformat)
 
     @Slot(bool, result=bool, name="requestSaveAs")
     def request_save_as(self, allow_reformat: bool = False) -> bool:
-        if not self._guard_active_plot_edit("Save As"):
+        if not self._guard_configuration_lifecycle("Save As"):
             return False
         return self.configuration_controller.request_save_as(allow_reformat)
 
     @Slot(result=bool, name="requestValidateConfiguration")
     def request_validate_configuration(self) -> bool:
-        if not self._guard_active_plot_edit("Validation"):
+        if not self._guard_configuration_lifecycle("Validation"):
             return False
         return self.configuration_controller.request_validation()
 
@@ -706,7 +718,7 @@ class DesktopController(QObject):
 
     @Slot(str, result=bool, name="requestSavePathSelected")
     def request_save_path_selected(self, path: str) -> bool:
-        if not self._guard_active_plot_edit("Save As"):
+        if not self._guard_configuration_lifecycle("Save As"):
             return False
         return self.configuration_controller.save_path_selected(_local_path(path))
 
@@ -716,24 +728,24 @@ class DesktopController(QObject):
 
     @Slot(str, name="requestConfirmReformat")
     def request_confirm_reformat(self, action: str) -> None:
-        if self._guard_active_plot_edit("Save"):
+        if self._guard_configuration_lifecycle("Save"):
             self.configuration_controller.confirm_reformat(action)
 
     @Slot(bool, result=bool, name="requestReloadSource")
     def request_reload_source(self, discard_confirmed: bool = False) -> bool:
-        if not self._guard_active_plot_edit("Reload"):
+        if not self._guard_configuration_lifecycle("Reload"):
             return False
         return self.configuration_controller.reload_source(discard_confirmed)
 
     @Slot(bool, result=bool, name="requestCloseConfiguration")
     def request_close_configuration(self, discard_confirmed: bool = False) -> bool:
-        if not self._guard_active_plot_edit("Close Configuration"):
+        if not self._guard_configuration_lifecycle("Close Configuration"):
             return False
         return self.configuration_controller.clear_document(discard_confirmed)
 
     @Slot(str, str, int, result=bool, name="requestConfigurationAttention")
     def request_configuration_attention(self, section: str, field: str, row: int) -> bool:
-        if section not in {"dataset", "sweep", "visualization"}:
+        if section not in {"dataset", "sweep", "preparation", "visualization"}:
             return False
         if not field.startswith(f"{section}.") and not (
             section == "visualization" and field.startswith("plot.")
@@ -744,7 +756,7 @@ class DesktopController(QObject):
 
     @Slot(str, result=bool, name="requestDatasetModeChange")
     def request_dataset_mode_change(self, mode: str) -> bool:
-        if not self._guard_active_plot_edit("dataset mode change"):
+        if not self._guard_configuration_lifecycle("dataset mode change"):
             return False
         if mode == self.dataset_draft.get_mode_name():
             return False
@@ -756,7 +768,7 @@ class DesktopController(QObject):
 
     @Slot(str, result=bool, name="requestDatasetCoordinateChange")
     def request_dataset_coordinate_change(self, axis: str) -> bool:
-        if not self._guard_active_plot_edit("dataset coordinate change"):
+        if not self._guard_configuration_lifecycle("dataset coordinate change"):
             return False
         if axis == self.dataset_draft.get_coordinate_name():
             return False
@@ -771,7 +783,7 @@ class DesktopController(QObject):
         decision = self._pending_dataset_decision
         if decision is None:
             return False
-        if not confirmed or not self._guard_active_plot_edit("dataset replacement"):
+        if not confirmed or not self._guard_configuration_lifecycle("dataset replacement"):
             self._pending_dataset_decision = None
             self.datasetDecisionChanged.emit()
             return False
@@ -1377,7 +1389,7 @@ class DesktopController(QObject):
     def shutdown(self) -> bool:
         if self._shutdown:
             return True
-        if not self._guard_active_plot_edit("closing Carnopy"):
+        if not self._guard_configuration_lifecycle("closing Carnopy"):
             return False
         if not self._guard_session_plot_edit("closing Carnopy"):
             return False
@@ -1438,6 +1450,8 @@ class DesktopController(QObject):
                 edit_names.append("session plot")
             if self.get_has_active_sweep_edit():
                 edit_names.append("Sweep comparison")
+            if self.get_has_active_preparation_edit():
+                edit_names.append("Preparation scenario")
             description = " and ".join(edit_names)
             self.transientEditShutdownConfirmationRequested.emit(
                 f"A {description} edit is still open. Cancel the edit and close Carnopy?"
@@ -1496,6 +1510,11 @@ class DesktopController(QObject):
             and not self.configuration_controller.sweep_draft.cancel_comparison()
         ):
             return False
+        if (
+            self.get_has_active_preparation_edit()
+            and not self.configuration_controller.preparation_draft.cancel_scenario()
+        ):
+            return False
         self.closeWindowRequested.emit()
         return True
 
@@ -1504,7 +1523,7 @@ class DesktopController(QObject):
         if not discard_confirmed:
             self._shutdown_discard_confirmed = False
             return False
-        if not self._guard_active_plot_edit("closing Carnopy"):
+        if not self._guard_configuration_lifecycle("closing Carnopy"):
             return False
         if not self._guard_session_plot_edit("closing Carnopy"):
             return False
@@ -1605,13 +1624,18 @@ class DesktopController(QObject):
         self.workspace_confirmation_changed.emit()
 
     def _guard_workspace_change(self, *, before_commit: bool) -> bool:
-        if self._guard_active_plot_edit() and self._guard_session_plot_edit(
+        if self._guard_configuration_lifecycle(
             "replacing the workspace"
-        ):
+        ) and self._guard_session_plot_edit("replacing the workspace"):
             return True
         if before_commit:
             self.workspace_controller.cancel_pending()
         return False
+
+    def _guard_configuration_lifecycle(self, operation: str = "this operation") -> bool:
+        return self._guard_active_plot_edit(operation) and self._guard_workflow_nested_edit(
+            operation
+        )
 
     def _guard_active_plot_edit(self, operation: str = "this operation") -> bool:
         if self.visualization_draft.get_active_plot_draft() is None:
@@ -1625,6 +1649,31 @@ class DesktopController(QObject):
             -1,
         )
         return False
+
+    def _guard_workflow_nested_edit(self, operation: str = "this operation") -> bool:
+        sweep = self.configuration_controller.sweep_draft
+        if sweep.get_has_active_comparison_edit():
+            message = f"Commit or cancel the active Sweep comparison edit before {operation}."
+            sweep.message.emit(message)
+            self.workspace_controller.report_error(message)
+            self.attentionRequested.emit(
+                "sweep",
+                sweep.get_first_invalid_field(),
+                sweep.get_first_invalid_row(),
+            )
+            return False
+        preparation = self.configuration_controller.preparation_draft
+        if preparation.get_has_active_scenario_edit():
+            message = f"Commit or cancel the active Preparation scenario edit before {operation}."
+            preparation.message.emit(message)
+            self.workspace_controller.report_error(message)
+            self.attentionRequested.emit(
+                "preparation",
+                preparation.get_first_invalid_field(),
+                preparation.get_first_invalid_row(),
+            )
+            return False
+        return True
 
     def _guard_session_plot_edit(self, operation: str = "this operation") -> bool:
         if self.session_plot_controller.can_replace_inspection(operation):

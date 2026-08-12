@@ -71,6 +71,7 @@ def _profile(*, complete: bool = True) -> dict[str, object]:
     return {
         "source_kind": "dataset_run",
         "completion": {"status": "completed", "partial": False},
+        "available_models": ["heos"],
         "numeric_candidates": numeric,
         "target_candidates": list(numeric),
         "categorical_candidates": [_field("phase"), _field("fluid")],
@@ -80,6 +81,10 @@ def _profile(*, complete: bool = True) -> dict[str, object]:
             "fluid": ["Propane"],
         },
         "derived_features": derived,
+        "model_holdout": {
+            "available": False,
+            "reason": "Model holdout scenarios require a model-sweep source.",
+        },
         "reference_context": {"compatible": True, "reason": ""},
     }
 
@@ -448,6 +453,127 @@ def test_clear_discards_active_scenario_without_committing_it() -> None:
     assert not draft.get_has_active_scenario_edit()
     assert draft.scenario_payloads() == ()
     assert active_changes == ["active", "active"]
+
+
+def test_model_holdout_requires_compatible_bound_sweep_source_for_new_commit() -> None:
+    draft = PreparationDraft()
+    draft.load_payload(_payload())
+    draft.apply_source_profile(_profile())
+    messages: list[str] = []
+    draft.message.connect(messages.append)
+
+    assert not draft.get_model_holdout_available()
+    assert "model-sweep source" in draft.get_model_holdout_issue().casefold()
+    assert draft.begin_add_scenario()
+    active = draft.get_active_scenario_draft()
+    assert active is not None
+    assert active.set_name("model-test")
+    assert active.request_kind_change("model_holdout")
+    assert active.set_categorical_holdout("test", "pr")
+
+    assert not draft.commit_scenario()
+    assert messages[-1] == "Model holdout scenarios require a model-sweep source."
+    assert draft.get_has_active_scenario_edit()
+    assert draft.scenario_payloads() == ()
+
+    sweep_profile = _profile()
+    sweep_profile["source_kind"] = "model_sweep"
+    sweep_profile["available_models"] = ["heos", "pr"]
+    sweep_profile["model_holdout"] = {"available": True, "reason": ""}
+    assert draft.apply_source_profile(sweep_profile)
+    assert draft.get_model_holdout_available()
+    assert draft.commit_scenario()
+    assert draft.get_source_issue() == ""
+    assert draft.scenario_payloads()[0]["kind"] == "model_holdout"
+
+
+def test_imported_source_incompatible_scenarios_remain_clean_and_blocking() -> None:
+    payload = _payload()
+    payload["scenarios"] = [
+        {
+            "name": "model-test",
+            "kind": "model_holdout",
+            "holdouts": {"test": ["pr"]},
+            "remainder": "train",
+        },
+        {
+            "name": "fluid-test",
+            "kind": "leave_fluid_out",
+            "holdouts": {"test": ["n-Butane"]},
+            "remainder": "train",
+        },
+    ]
+    draft = PreparationDraft()
+    draft.load_payload(payload)
+    baseline = draft.payload()
+
+    draft.apply_source_profile(_profile())
+
+    assert "model-sweep source" in draft.get_source_issue().casefold()
+    assert draft.payload() == baseline
+    assert not draft.get_dirty()
+    assert draft.begin_edit_scenario(0)
+    assert draft.commit_scenario()
+    assert not draft.get_has_active_scenario_edit()
+    assert not draft.get_dirty()
+
+
+@pytest.mark.parametrize(
+    ("kind", "value", "expected_label"),
+    [
+        ("leave_fluid_out", "n-Butane", "fluid"),
+        ("phase_holdout", "supercritical", "phase"),
+    ],
+)
+def test_imported_unobserved_categorical_holdouts_remain_clean_and_blocking(
+    kind: str,
+    value: str,
+    expected_label: str,
+) -> None:
+    payload = _payload()
+    payload["scenarios"] = [
+        {
+            "name": "categorical-test",
+            "kind": kind,
+            "holdouts": {"test": [value]},
+            "remainder": "train",
+        }
+    ]
+    draft = PreparationDraft()
+    draft.load_payload(payload)
+    baseline = draft.payload()
+
+    draft.apply_source_profile(_profile())
+
+    issue = draft.get_source_issue()
+    assert expected_label in issue.casefold()
+    assert value in issue
+    assert draft.payload() == baseline
+    assert not draft.get_dirty()
+
+
+def test_unavailable_bound_holdout_values_are_rejected_without_mutation() -> None:
+    draft = PreparationDraft()
+    draft.load_payload(_payload())
+    sweep_profile = _profile()
+    sweep_profile["source_kind"] = "model_sweep"
+    sweep_profile["available_models"] = ["heos", "pr"]
+    sweep_profile["model_holdout"] = {"available": True, "reason": ""}
+    draft.apply_source_profile(sweep_profile)
+    messages: list[str] = []
+    draft.message.connect(messages.append)
+    assert draft.begin_add_scenario()
+    active = draft.get_active_scenario_draft()
+    assert active is not None
+    assert active.set_name("missing-model")
+    assert active.request_kind_change("model_holdout")
+    assert active.set_categorical_holdout("test", "srk")
+
+    assert not draft.commit_scenario()
+
+    assert "unavailable backend model holdout values: srk" in messages[-1].casefold()
+    assert draft.scenario_payloads() == ()
+    assert draft.get_has_active_scenario_edit()
 
 
 def test_preparation_output_and_quality_settings_round_trip_completely() -> None:
