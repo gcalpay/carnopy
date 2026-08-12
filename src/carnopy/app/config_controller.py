@@ -840,6 +840,7 @@ class ConfigurationController(QObject):
         self.dataset_draft.apply_capabilities(payload)
         self.visualization_draft.apply_capabilities(payload)
         self.sweep_draft.apply_capabilities(payload)
+        self.preparation_draft.apply_capabilities(payload)
         if self.document is not None:
             self._refresh_document()
         else:

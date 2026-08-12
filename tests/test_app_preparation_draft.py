@@ -84,6 +84,27 @@ def _profile(*, complete: bool = True) -> dict[str, object]:
     }
 
 
+def _capabilities(
+    *,
+    safetensors: bool,
+    analysis: bool,
+) -> dict[str, object]:
+    return {
+        "workflows": {
+            "preparation": {
+                "safetensors": {
+                    "available": safetensors,
+                    "guidance": "install ml",
+                },
+                "baseline_diagnostics": {
+                    "available": analysis,
+                    "guidance": "install analysis",
+                },
+            }
+        }
+    }
+
+
 def test_preparation_role_draft_round_trips_and_preserves_deferred_sections() -> None:
     payload = _payload()
     payload["scenarios"] = [{"name": "all", "kind": "unsplit"}]
@@ -246,3 +267,156 @@ def test_clear_removes_document_state_but_retains_source_projection() -> None:
     assert not draft.get_dirty()
     assert draft.get_profile_available()
     assert draft.get_source_kind() == "dataset_run"
+
+
+def test_preparation_output_and_quality_settings_round_trip_completely() -> None:
+    draft = PreparationDraft()
+    draft.apply_capabilities(_capabilities(safetensors=True, analysis=True))
+    draft.load_payload(_payload())
+
+    assert draft.set_array_outputs_enabled(True)
+    assert draft.set_array_format_selected("npy", True)
+    assert draft.set_array_format_selected("safetensors", True)
+    assert draft.set_array_dtype("float64")
+    assert draft.set_include_auxiliary(True)
+    assert draft.set_matrix_enabled(True)
+    assert draft.set_correlation_threshold("0.98")
+    assert draft.set_near_constant_spread("2e-10")
+    assert draft.set_baseline_enabled(True)
+    assert draft.set_baseline_model_selected("hist_gradient_boosting", True)
+    assert draft.set_baseline_seed("7")
+    assert draft.set_ridge_alpha("0.25")
+    assert draft.set_histogram_iterations("250")
+
+    value = draft.payload()
+    assert value["outputs"] == {
+        "formats": ["parquet"],
+        "parquet": True,
+        "arrays": {
+            "formats": ["npy", "npz", "safetensors"],
+            "dtype": "float64",
+            "include_auxiliary": True,
+        },
+    }
+    assert value["quality"] == {
+        "matrix_diagnostics": {
+            "correlation_threshold": 0.98,
+            "near_constant_relative_spread": 2e-10,
+        },
+        "baseline_diagnostics": {
+            "models": ["dummy_mean", "ridge", "hist_gradient_boosting"],
+            "random_seed": 7,
+            "ridge_alpha": 0.25,
+            "histogram_max_iterations": 250,
+        },
+    }
+    assert draft.get_dependency_issue() == ""
+    assert draft.get_dirty()
+
+    reloaded = PreparationDraft()
+    reloaded.apply_capabilities(_capabilities(safetensors=True, analysis=True))
+    reloaded.load_payload(value)
+    assert reloaded.payload() == value
+    assert not reloaded.get_dirty()
+
+
+def test_imported_unavailable_optional_requests_remain_visible_and_saveable() -> None:
+    payload = _payload()
+    payload["outputs"] = {
+        "formats": ["parquet"],
+        "arrays": {"formats": ["safetensors"], "dtype": "float32"},
+    }
+    payload["quality"] = {"baseline_diagnostics": {"models": ["ridge"]}}
+    draft = PreparationDraft()
+    draft.apply_capabilities(_capabilities(safetensors=False, analysis=False))
+    dependency_notifications: list[str] = []
+    draft.capability_changed.connect(lambda: dependency_notifications.append("dependency"))
+
+    draft.load_payload(payload)
+
+    assert dependency_notifications == ["dependency"]
+    assert draft.get_locally_valid()
+    assert not draft.get_dirty()
+    assert draft.payload() == _normalized(payload)
+    assert draft.get_dependency_issue() == "install ml"
+    safetensors = next(
+        item for item in draft.array_format_choices.items if item.value == "safetensors"
+    )
+    ridge = next(item for item in draft.baseline_model_choices.items if item.value == "ridge")
+    assert safetensors.selected and not safetensors.compatible
+    assert ridge.selected and not ridge.compatible
+
+    assert draft.set_array_format_selected("safetensors", False)
+    assert draft.get_dependency_issue() == "install analysis"
+    assert draft.set_baseline_enabled(False)
+    assert draft.get_dependency_issue() == ""
+    assert draft.get_locally_valid()
+
+
+def test_unavailable_optional_features_cannot_be_newly_selected() -> None:
+    draft = PreparationDraft()
+    draft.apply_capabilities(_capabilities(safetensors=False, analysis=False))
+    draft.load_payload(_payload())
+    messages: list[str] = []
+    draft.message.connect(messages.append)
+
+    assert not draft.set_array_format_selected("safetensors", True)
+    assert messages == ["install ml"]
+    assert not draft.set_baseline_enabled(True)
+    assert messages == ["install ml", "install analysis"]
+    assert draft.set_array_outputs_enabled(True)
+    assert draft.payload()["outputs"]["arrays"]["formats"] == ["npz"]
+
+
+def test_capability_refresh_changes_dependency_projection_without_dirtying_yaml() -> None:
+    payload = _payload()
+    payload["outputs"] = {
+        "formats": ["parquet"],
+        "arrays": {"formats": ["safetensors"], "dtype": "float32"},
+    }
+    draft = PreparationDraft()
+    draft.apply_capabilities(_capabilities(safetensors=False, analysis=False))
+    draft.load_payload(payload)
+    baseline = draft.payload()
+    changes: list[str] = []
+    capabilities: list[str] = []
+    draft.changed.connect(lambda: changes.append("changed"))
+    draft.capability_changed.connect(lambda: capabilities.append("capability"))
+
+    assert draft.apply_capabilities(_capabilities(safetensors=True, analysis=False))
+
+    assert changes == []
+    assert capabilities == ["capability"]
+    assert draft.get_dependency_issue() == ""
+    assert draft.payload() == baseline
+    assert not draft.get_dirty()
+    assert not draft.apply_capabilities(_capabilities(safetensors=True, analysis=False))
+
+
+@pytest.mark.parametrize(
+    ("setter", "value", "field"),
+    [
+        ("set_correlation_threshold", "1.1", "preparation.quality.matrix_diagnostics"),
+        ("set_near_constant_spread", "0", "preparation.quality.matrix_diagnostics"),
+        ("set_ridge_alpha", "nan", "preparation.quality.baseline_diagnostics"),
+        ("set_histogram_iterations", "0", "preparation.quality.baseline_diagnostics"),
+    ],
+)
+def test_invalid_quality_text_preserves_dirty_state_and_stable_focus(
+    setter: str,
+    value: str,
+    field: str,
+) -> None:
+    payload = _payload()
+    payload["quality"] = {
+        "matrix_diagnostics": {},
+        "baseline_diagnostics": {"models": ["dummy_mean", "ridge"]},
+    }
+    draft = PreparationDraft()
+    draft.apply_capabilities(_capabilities(safetensors=True, analysis=True))
+    draft.load_payload(payload)
+
+    assert getattr(draft, setter)(value)
+    assert not draft.get_locally_valid()
+    assert draft.get_dirty()
+    assert draft.get_first_invalid_field() == field

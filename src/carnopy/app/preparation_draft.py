@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import math
 from collections.abc import Mapping
 from typing import Any
 
@@ -10,8 +11,11 @@ from PySide6.QtCore import Property, QObject, Signal, Slot
 from carnopy.app.draft_models import DraftItem, DraftListModel
 from carnopy.app.field_ids import (
     PREPARATION_AUXILIARY,
+    PREPARATION_BASELINE_DIAGNOSTICS,
     PREPARATION_CATEGORICAL_FEATURES,
     PREPARATION_FEATURES,
+    PREPARATION_MATRIX_DIAGNOSTICS,
+    PREPARATION_OUTPUTS,
     PREPARATION_SOURCE_POLICY,
     PREPARATION_TARGETS,
 )
@@ -23,6 +27,9 @@ DERIVED_FEATURES = (
     "compressibility_factor",
 )
 CATEGORICAL_FIELDS = ("phase", "fluid")
+ARRAY_FORMATS = ("npy", "npz", "safetensors")
+ARRAY_DTYPES = ("float32", "float64")
+BASELINE_MODELS = ("dummy_mean", "ridge", "hist_gradient_boosting")
 
 
 class PreparationDraft(QObject):
@@ -32,6 +39,7 @@ class PreparationDraft(QObject):
     validity_changed = Signal()
     dirty_changed = Signal()
     profile_changed = Signal()
+    capability_changed = Signal()
     message = Signal(str)
 
     def __init__(self, parent: QObject | None = None) -> None:
@@ -41,7 +49,10 @@ class PreparationDraft(QObject):
         self.target_choices = DraftListModel(self, disable_incompatible=True)
         self.auxiliary_choices = DraftListModel(self, disable_incompatible=True)
         self.categorical_choices = DraftListModel(self, disable_incompatible=True)
+        self.array_format_choices = DraftListModel(self, disable_incompatible=True)
+        self.baseline_model_choices = DraftListModel(self, disable_incompatible=True)
         self._profile: dict[str, Any] = {}
+        self._capabilities: dict[str, Any] = {}
         self._preserved: dict[str, Any] | None = None
         self._numeric: tuple[str, ...] = ()
         self._derived: tuple[str, ...] = ()
@@ -51,6 +62,25 @@ class PreparationDraft(QObject):
         self._known_numeric: tuple[str, ...] = ()
         self._known_auxiliary: tuple[str, ...] = ()
         self._allow_partial_sweep = False
+        self._array_formats: tuple[str, ...] = ()
+        self._array_dtype = "float32"
+        self._include_auxiliary = False
+        self._matrix_enabled = False
+        self._correlation_threshold = "0.995"
+        self._near_constant_spread = "1e-12"
+        self._baseline_enabled = False
+        self._baseline_models: tuple[str, ...] = ("dummy_mean", "ridge")
+        self._baseline_seed = "42"
+        self._ridge_alpha = "1.0"
+        self._histogram_iterations = "100"
+        self._safetensors_available = False
+        self._safetensors_guidance = (
+            'Install the optional dependency with: pip install "carnopy[ml]"'
+        )
+        self._analysis_available = False
+        self._analysis_guidance = (
+            'Install the optional dependency with: pip install "carnopy[analysis]"'
+        )
         self._baseline: dict[str, Any] | None = None
         self._baseline_raw: tuple[object, ...] | None = None
         self._loaded = False
@@ -82,6 +112,16 @@ class PreparationDraft(QObject):
 
     categoricalChoices = Property(QObject, get_categorical_choices, constant=True)
 
+    def get_array_format_choices(self) -> QObject:
+        return self.array_format_choices
+
+    arrayFormatChoices = Property(QObject, get_array_format_choices, constant=True)
+
+    def get_baseline_model_choices(self) -> QObject:
+        return self.baseline_model_choices
+
+    baselineModelChoices = Property(QObject, get_baseline_model_choices, constant=True)
+
     def get_allow_partial_sweep(self) -> bool:
         return self._allow_partial_sweep
 
@@ -103,6 +143,216 @@ class PreparationDraft(QObject):
         _set_allow_partial_sweep_property,
         notify=changed,
     )
+
+    def get_array_outputs_enabled(self) -> bool:
+        return bool(self._array_formats)
+
+    @Slot(bool, result=bool)
+    def set_array_outputs_enabled(self, value: bool) -> bool:
+        enabled = bool(value)
+        if enabled == bool(self._array_formats):
+            return False
+        self._array_formats = ("npz",) if enabled else ()
+        self._state_changed()
+        return True
+
+    def _set_array_outputs_enabled_property(self, value: bool) -> None:
+        self.set_array_outputs_enabled(value)
+
+    arrayOutputsEnabled = Property(
+        bool,
+        get_array_outputs_enabled,
+        _set_array_outputs_enabled_property,
+        notify=changed,
+    )
+
+    def get_array_dtype(self) -> str:
+        return self._array_dtype
+
+    @Slot(str, result=bool)
+    def set_array_dtype(self, value: str) -> bool:
+        if value not in ARRAY_DTYPES or value == self._array_dtype:
+            return False
+        self._array_dtype = value
+        self._state_changed()
+        return True
+
+    def _set_array_dtype_property(self, value: str) -> None:
+        self.set_array_dtype(value)
+
+    arrayDtype = Property(str, get_array_dtype, _set_array_dtype_property, notify=changed)
+
+    def get_include_auxiliary(self) -> bool:
+        return self._include_auxiliary
+
+    @Slot(bool, result=bool)
+    def set_include_auxiliary(self, value: bool) -> bool:
+        selected = bool(value)
+        if selected == self._include_auxiliary:
+            return False
+        self._include_auxiliary = selected
+        self._state_changed()
+        return True
+
+    def _set_include_auxiliary_property(self, value: bool) -> None:
+        self.set_include_auxiliary(value)
+
+    includeAuxiliary = Property(
+        bool,
+        get_include_auxiliary,
+        _set_include_auxiliary_property,
+        notify=changed,
+    )
+
+    def get_matrix_enabled(self) -> bool:
+        return self._matrix_enabled
+
+    @Slot(bool, result=bool)
+    def set_matrix_enabled(self, value: bool) -> bool:
+        selected = bool(value)
+        if selected == self._matrix_enabled:
+            return False
+        self._matrix_enabled = selected
+        self._state_changed()
+        return True
+
+    def _set_matrix_enabled_property(self, value: bool) -> None:
+        self.set_matrix_enabled(value)
+
+    matrixDiagnosticsEnabled = Property(
+        bool,
+        get_matrix_enabled,
+        _set_matrix_enabled_property,
+        notify=changed,
+    )
+
+    def get_correlation_threshold(self) -> str:
+        return self._correlation_threshold
+
+    @Slot(str, result=bool)
+    def set_correlation_threshold(self, value: str) -> bool:
+        return self._set_text("_correlation_threshold", value)
+
+    def _set_correlation_threshold_property(self, value: str) -> None:
+        self.set_correlation_threshold(value)
+
+    correlationThreshold = Property(
+        str,
+        get_correlation_threshold,
+        _set_correlation_threshold_property,
+        notify=changed,
+    )
+
+    def get_near_constant_spread(self) -> str:
+        return self._near_constant_spread
+
+    @Slot(str, result=bool)
+    def set_near_constant_spread(self, value: str) -> bool:
+        return self._set_text("_near_constant_spread", value)
+
+    def _set_near_constant_spread_property(self, value: str) -> None:
+        self.set_near_constant_spread(value)
+
+    nearConstantRelativeSpread = Property(
+        str,
+        get_near_constant_spread,
+        _set_near_constant_spread_property,
+        notify=changed,
+    )
+
+    def get_baseline_enabled(self) -> bool:
+        return self._baseline_enabled
+
+    @Slot(bool, result=bool)
+    def set_baseline_enabled(self, value: bool) -> bool:
+        selected = bool(value)
+        if selected == self._baseline_enabled:
+            return False
+        if selected and not self._analysis_available:
+            self.message.emit(self._analysis_guidance)
+            return False
+        self._baseline_enabled = selected
+        self._state_changed()
+        return True
+
+    def _set_baseline_enabled_property(self, value: bool) -> None:
+        self.set_baseline_enabled(value)
+
+    baselineDiagnosticsEnabled = Property(
+        bool,
+        get_baseline_enabled,
+        _set_baseline_enabled_property,
+        notify=changed,
+    )
+
+    def get_baseline_seed(self) -> str:
+        return self._baseline_seed
+
+    @Slot(str, result=bool)
+    def set_baseline_seed(self, value: str) -> bool:
+        return self._set_text("_baseline_seed", value)
+
+    def _set_baseline_seed_property(self, value: str) -> None:
+        self.set_baseline_seed(value)
+
+    baselineRandomSeed = Property(
+        str,
+        get_baseline_seed,
+        _set_baseline_seed_property,
+        notify=changed,
+    )
+
+    def get_ridge_alpha(self) -> str:
+        return self._ridge_alpha
+
+    @Slot(str, result=bool)
+    def set_ridge_alpha(self, value: str) -> bool:
+        return self._set_text("_ridge_alpha", value)
+
+    def _set_ridge_alpha_property(self, value: str) -> None:
+        self.set_ridge_alpha(value)
+
+    ridgeAlpha = Property(str, get_ridge_alpha, _set_ridge_alpha_property, notify=changed)
+
+    def get_histogram_iterations(self) -> str:
+        return self._histogram_iterations
+
+    @Slot(str, result=bool)
+    def set_histogram_iterations(self, value: str) -> bool:
+        return self._set_text("_histogram_iterations", value)
+
+    def _set_histogram_iterations_property(self, value: str) -> None:
+        self.set_histogram_iterations(value)
+
+    histogramMaxIterations = Property(
+        str,
+        get_histogram_iterations,
+        _set_histogram_iterations_property,
+        notify=changed,
+    )
+
+    def get_safetensors_available(self) -> bool:
+        return self._safetensors_available
+
+    safetensorsAvailable = Property(bool, get_safetensors_available, notify=capability_changed)
+
+    def get_baseline_available(self) -> bool:
+        return self._analysis_available
+
+    baselineDiagnosticsAvailable = Property(
+        bool,
+        get_baseline_available,
+        notify=capability_changed,
+    )
+
+    def get_dependency_issue(self) -> str:
+        if "safetensors" in self._array_formats and not self._safetensors_available:
+            return self._safetensors_guidance
+        if self._baseline_enabled and not self._analysis_available:
+            return self._analysis_guidance
+        return ""
+
+    dependencyIssue = Property(str, get_dependency_issue, notify=capability_changed)
 
     def get_source_kind(self) -> str:
         value = self._profile.get("source_kind")
@@ -201,6 +451,12 @@ class PreparationDraft(QObject):
             return PREPARATION_CATEGORICAL_FEATURES
         if "partial" in issue or "source policy" in issue:
             return PREPARATION_SOURCE_POLICY
+        if "baseline" in issue or "ridge" in issue or "histogram" in issue:
+            return PREPARATION_BASELINE_DIAGNOSTICS
+        if "matrix" in issue or "correlation" in issue or "spread" in issue:
+            return PREPARATION_MATRIX_DIAGNOSTICS
+        if "array" in issue or "parquet" in issue or "output" in issue or "dtype" in issue:
+            return PREPARATION_OUTPUTS
         return PREPARATION_FEATURES
 
     firstInvalidField = Property(str, get_first_invalid_field, notify=validity_changed)
@@ -220,6 +476,48 @@ class PreparationDraft(QObject):
 
     dirty = Property(bool, get_dirty, notify=dirty_changed)
 
+    def apply_capabilities(self, payload: Mapping[str, object]) -> bool:
+        updated = copy.deepcopy(dict(payload))
+        workflows = payload.get("workflows")
+        preparation = workflows.get("preparation") if isinstance(workflows, Mapping) else None
+        safetensors_available = False
+        safetensors_guidance = self._safetensors_guidance
+        analysis_available = False
+        analysis_guidance = self._analysis_guidance
+        if isinstance(preparation, Mapping):
+            safetensors = preparation.get("safetensors")
+            if isinstance(safetensors, Mapping):
+                safetensors_available = bool(safetensors.get("available", False))
+                safetensors_guidance = str(safetensors.get("guidance", safetensors_guidance))
+            baseline = preparation.get("baseline_diagnostics")
+            if isinstance(baseline, Mapping):
+                analysis_available = bool(baseline.get("available", False))
+                analysis_guidance = str(baseline.get("guidance", analysis_guidance))
+        semantic = (
+            updated,
+            safetensors_available,
+            safetensors_guidance,
+            analysis_available,
+            analysis_guidance,
+        )
+        current = (
+            self._capabilities,
+            self._safetensors_available,
+            self._safetensors_guidance,
+            self._analysis_available,
+            self._analysis_guidance,
+        )
+        if semantic == current:
+            return False
+        self._capabilities = updated
+        self._safetensors_available = safetensors_available
+        self._safetensors_guidance = safetensors_guidance
+        self._analysis_available = analysis_available
+        self._analysis_guidance = analysis_guidance
+        self._refresh_models()
+        self.capability_changed.emit()
+        return True
+
     def apply_source_profile(self, profile: Mapping[str, object] | None) -> bool:
         updated = copy.deepcopy(dict(profile)) if profile is not None else {}
         if updated == self._profile:
@@ -237,6 +535,8 @@ class PreparationDraft(QObject):
         source_policy = _mapping(value.get("source_policy"))
         features = _mapping(value.get("features"))
         categorical = value.get("categorical_features")
+        quality = _mapping(value.get("quality"))
+        outputs = _mapping(value.get("outputs"))
         self._loading = True
         try:
             self._preserved = copy.deepcopy(value)
@@ -260,6 +560,37 @@ class PreparationDraft(QObject):
                         else "observed"
                     )
                     self._categorical[field] = categories
+            arrays = outputs.get("arrays")
+            if isinstance(arrays, Mapping):
+                self._array_formats = _strings(arrays.get("formats"))
+                self._array_dtype = str(arrays.get("dtype", "float32"))
+                self._include_auxiliary = bool(arrays.get("include_auxiliary", False))
+            else:
+                self._array_formats = ()
+                self._array_dtype = "float32"
+                self._include_auxiliary = False
+            matrix = quality.get("matrix_diagnostics")
+            self._matrix_enabled = isinstance(matrix, Mapping)
+            self._correlation_threshold = _number_text(
+                matrix.get("correlation_threshold", 0.995) if isinstance(matrix, Mapping) else 0.995
+            )
+            self._near_constant_spread = _number_text(
+                matrix.get("near_constant_relative_spread", 1e-12)
+                if isinstance(matrix, Mapping)
+                else 1e-12
+            )
+            baseline = quality.get("baseline_diagnostics")
+            self._baseline_enabled = isinstance(baseline, Mapping)
+            if isinstance(baseline, Mapping):
+                self._baseline_models = _strings(baseline.get("models"))
+                self._baseline_seed = str(baseline.get("random_seed", 42))
+                self._ridge_alpha = _number_text(baseline.get("ridge_alpha", 1.0))
+                self._histogram_iterations = str(baseline.get("histogram_max_iterations", 100))
+            else:
+                self._baseline_models = ("dummy_mean", "ridge")
+                self._baseline_seed = "42"
+                self._ridge_alpha = "1.0"
+                self._histogram_iterations = "100"
             self._loaded = True
             self._refresh_models()
         finally:
@@ -268,6 +599,7 @@ class PreparationDraft(QObject):
         self._baseline_raw = self.raw_state()
         self.validity_changed.emit()
         self.dirty_changed.emit()
+        self.capability_changed.emit()
         self.changed.emit()
 
     def clear(self) -> None:
@@ -282,6 +614,17 @@ class PreparationDraft(QObject):
             self._known_numeric = ()
             self._known_auxiliary = ()
             self._allow_partial_sweep = False
+            self._array_formats = ()
+            self._array_dtype = "float32"
+            self._include_auxiliary = False
+            self._matrix_enabled = False
+            self._correlation_threshold = "0.995"
+            self._near_constant_spread = "1e-12"
+            self._baseline_enabled = False
+            self._baseline_models = ("dummy_mean", "ridge")
+            self._baseline_seed = "42"
+            self._ridge_alpha = "1.0"
+            self._histogram_iterations = "100"
             self._baseline = None
             self._baseline_raw = None
             self._loaded = False
@@ -290,6 +633,7 @@ class PreparationDraft(QObject):
             self._loading = False
         self.validity_changed.emit()
         self.dirty_changed.emit()
+        self.capability_changed.emit()
         self.changed.emit()
 
     def mark_baseline(self) -> None:
@@ -320,6 +664,38 @@ class PreparationDraft(QObject):
         ]
         result["targets"] = list(self._targets)
         result["auxiliary"] = list(self._auxiliary)
+        quality: dict[str, Any] = {}
+        if self._matrix_enabled:
+            quality["matrix_diagnostics"] = {
+                "correlation_threshold": _bounded_float(
+                    self._correlation_threshold,
+                    "correlation threshold",
+                    maximum=1.0,
+                ),
+                "near_constant_relative_spread": _positive_float(
+                    self._near_constant_spread,
+                    "near-constant relative spread",
+                ),
+            }
+        if self._baseline_enabled:
+            quality["baseline_diagnostics"] = {
+                "models": list(self._baseline_models),
+                "random_seed": _integer(self._baseline_seed, "baseline random seed"),
+                "ridge_alpha": _positive_float(self._ridge_alpha, "ridge alpha"),
+                "histogram_max_iterations": _positive_integer(
+                    self._histogram_iterations,
+                    "histogram maximum iterations",
+                ),
+            }
+        result["quality"] = quality
+        outputs: dict[str, Any] = {"formats": ["parquet"], "parquet": True}
+        if self._array_formats:
+            outputs["arrays"] = {
+                "formats": list(self._array_formats),
+                "dtype": self._array_dtype,
+                "include_auxiliary": self._include_auxiliary,
+            }
+        result["outputs"] = outputs
         try:
             model = PreparationConfig.model_validate(result)
         except ValidationError as exc:
@@ -335,6 +711,17 @@ class PreparationDraft(QObject):
             tuple(self._categorical.items()),
             self._targets,
             self._auxiliary,
+            self._array_formats,
+            self._array_dtype,
+            self._include_auxiliary,
+            self._matrix_enabled,
+            self._correlation_threshold,
+            self._near_constant_spread,
+            self._baseline_enabled,
+            self._baseline_models,
+            self._baseline_seed,
+            self._ridge_alpha,
+            self._histogram_iterations,
         )
 
     def selected_values(self, role: str) -> tuple[str, ...]:
@@ -448,6 +835,68 @@ class PreparationDraft(QObject):
         values = observed.get(field) if isinstance(observed, Mapping) else None
         return list(_strings(values))
 
+    @Slot(str, bool, result=bool)
+    def set_array_format_selected(self, value: str, selected: bool) -> bool:
+        if value not in ARRAY_FORMATS:
+            return False
+        values = list(self._array_formats)
+        if selected:
+            candidate = next(
+                (item for item in self.array_format_choices.items if item.value == value),
+                None,
+            )
+            if candidate is None or not candidate.compatible:
+                self.message.emit(
+                    candidate.issue if candidate is not None else f"Unknown array format: {value}."
+                )
+                return False
+            if value in values:
+                return False
+            values.append(value)
+        else:
+            if value not in values:
+                return False
+            values.remove(value)
+        self._array_formats = tuple(item for item in ARRAY_FORMATS if item in values)
+        self._state_changed()
+        return True
+
+    @Slot(str, bool, result=bool)
+    def set_baseline_model_selected(self, value: str, selected: bool) -> bool:
+        if value not in BASELINE_MODELS:
+            return False
+        values = list(self._baseline_models)
+        if selected:
+            candidate = next(
+                (item for item in self.baseline_model_choices.items if item.value == value),
+                None,
+            )
+            if candidate is None or not candidate.compatible:
+                self.message.emit(
+                    candidate.issue
+                    if candidate is not None
+                    else f"Unknown baseline model: {value}."
+                )
+                return False
+            if value in values:
+                return False
+            values.append(value)
+        else:
+            if value not in values:
+                return False
+            values.remove(value)
+        self._baseline_models = tuple(item for item in BASELINE_MODELS if item in values)
+        self._state_changed()
+        return True
+
+    def _set_text(self, attribute: str, value: str) -> bool:
+        updated = value.strip()
+        if updated == getattr(self, attribute):
+            return False
+        setattr(self, attribute, updated)
+        self._state_changed()
+        return True
+
     def _state_changed(self) -> None:
         if self._loading:
             return
@@ -455,6 +904,7 @@ class PreparationDraft(QObject):
         self.validity_changed.emit()
         self.dirty_changed.emit()
         self.profile_changed.emit()
+        self.capability_changed.emit()
         self.changed.emit()
 
     def _role_model(self, role: str) -> DraftListModel | None:
@@ -513,6 +963,32 @@ class PreparationDraft(QObject):
                 ),
             )
             for value in visible_categorical
+        )
+        self.array_format_choices.replace(
+            DraftItem(
+                value=value,
+                display=value.upper(),
+                canonical=value,
+                compatible=value != "safetensors" or self._safetensors_available,
+                selected=value in self._array_formats,
+                issue=(
+                    self._safetensors_guidance
+                    if value == "safetensors" and not self._safetensors_available
+                    else ""
+                ),
+            )
+            for value in ARRAY_FORMATS
+        )
+        self.baseline_model_choices.replace(
+            DraftItem(
+                value=value,
+                display=_display(value),
+                canonical=value,
+                compatible=self._analysis_available,
+                selected=value in self._baseline_models,
+                issue="" if self._analysis_available else self._analysis_guidance,
+            )
+            for value in BASELINE_MODELS
         )
 
     def _role_items(self, role: str) -> tuple[DraftItem, ...]:
@@ -608,6 +1084,43 @@ def _mapping(value: object) -> dict[str, Any]:
 
 def _strings(value: object) -> tuple[str, ...]:
     return tuple(str(item) for item in value) if isinstance(value, list | tuple) else ()
+
+
+def _number_text(value: object) -> str:
+    if isinstance(value, bool):
+        return str(value)
+    return format(float(value), ".12g") if isinstance(value, int | float) else str(value)
+
+
+def _positive_float(value: str, label: str) -> float:
+    try:
+        result = float(value)
+    except ValueError as exc:
+        raise ValueError(f"{label} must be numeric") from exc
+    if not math.isfinite(result) or result <= 0.0:
+        raise ValueError(f"{label} must be finite and greater than zero")
+    return result
+
+
+def _bounded_float(value: str, label: str, *, maximum: float) -> float:
+    result = _positive_float(value, label)
+    if result > maximum:
+        raise ValueError(f"{label} must be at most {maximum:g}")
+    return result
+
+
+def _integer(value: str, label: str) -> int:
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise ValueError(f"{label} must be an integer") from exc
+
+
+def _positive_integer(value: str, label: str) -> int:
+    result = _integer(value, label)
+    if result < 1:
+        raise ValueError(f"{label} must be at least one")
+    return result
 
 
 def _display(value: str) -> str:

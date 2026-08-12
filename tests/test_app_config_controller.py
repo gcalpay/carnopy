@@ -868,3 +868,40 @@ def test_preparation_role_draft_composes_and_restores_the_exact_saved_document(
     assert preparation.set_role_selected("target", "specific_enthalpy", True)
     assert controller.get_locally_valid()
     assert controller.execution_snapshot(expected_document_type="preparation") == snapshot
+
+
+def test_preparation_output_and_quality_drafts_compose_into_global_document(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    controller, _coordinator = configured_controller(tmp_path)
+    preparation = controller.preparation_draft
+    assert controller.open_document(new_document(preparation_payload()))
+    assert controller.document is not None
+    original = controller.document.payload
+    original_yaml = controller.document.yaml_bytes
+
+    assert preparation.set_array_outputs_enabled(True)
+    assert preparation.set_array_dtype("float64")
+    assert preparation.set_include_auxiliary(True)
+    assert preparation.set_matrix_enabled(True)
+    assert preparation.set_correlation_threshold("0.98")
+
+    assert controller.get_locally_valid()
+    assert controller.get_dirty()
+    assert controller.document.payload["outputs"]["arrays"] == {
+        "formats": ["npz"],
+        "dtype": "float64",
+        "include_auxiliary": True,
+    }
+    assert controller.document.payload["quality"]["matrix_diagnostics"] == {
+        "correlation_threshold": 0.98,
+        "near_constant_relative_spread": 1e-12,
+    }
+
+    assert preparation.set_array_outputs_enabled(False)
+    assert preparation.set_matrix_enabled(False)
+    assert controller.document.payload == original
+    assert controller.document.yaml_bytes == original_yaml
+    assert not preparation.get_dirty()

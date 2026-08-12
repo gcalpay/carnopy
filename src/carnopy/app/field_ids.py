@@ -27,6 +27,9 @@ PREPARATION_DERIVED_FEATURES = "preparation.features.derived"
 PREPARATION_CATEGORICAL_FEATURES = "preparation.categorical_features"
 PREPARATION_TARGETS = "preparation.targets"
 PREPARATION_AUXILIARY = "preparation.auxiliary"
+PREPARATION_OUTPUTS = "preparation.outputs"
+PREPARATION_MATRIX_DIAGNOSTICS = "preparation.quality.matrix_diagnostics"
+PREPARATION_BASELINE_DIAGNOSTICS = "preparation.quality.baseline_diagnostics"
 
 
 def dataset_grid_field(axis: str, field: str) -> str:
