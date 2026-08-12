@@ -24,6 +24,7 @@ from carnopy.app.workflow_models import (
     SEVERITY_ROLE,
     WorkflowIssue,
     WorkflowIssueModel,
+    WorkflowListModel,
 )
 
 
@@ -107,6 +108,38 @@ def test_workflow_issue_model_count_changes_only_when_length_changes() -> None:
     assert model.issues == (replacement,)
     assert model.replace(())
     assert changes == [None, None]
+
+
+def test_workflow_list_model_exposes_only_declared_detached_roles() -> None:
+    model = WorkflowListModel(("name", "summary"))
+    count_changes: list[None] = []
+    model.count_changed.connect(lambda: count_changes.append(None))
+    source = {"name": "first", "summary": "Initial", "ignored": "private"}
+
+    assert model.replace((source,))
+    source["name"] = "mutated"
+
+    assert model.get_count() == 1
+    assert model.get(0) == {"name": "first", "summary": "Initial"}
+    assert model.rows() == ({"name": "first", "summary": "Initial"},)
+    assert count_changes == [None]
+    assert not model.replace(({"name": "first", "summary": "Initial"},))
+    assert model.replace(({"name": "first", "summary": "Updated"},))
+    assert count_changes == [None]
+    assert model.clear()
+    assert count_changes == [None, None]
+
+
+def test_workflow_list_model_detaches_nested_row_values() -> None:
+    model = WorkflowListModel(("values",))
+    source = {"values": ["original"]}
+    assert model.replace((source,))
+
+    source["values"].append("source mutation")
+    projected = model.get(0)
+    projected["values"].append("consumer mutation")
+
+    assert model.get(0) == {"values": ["original"]}
 
 
 def test_workflow_models_import_is_qtcore_only_and_scientifically_isolated() -> None:

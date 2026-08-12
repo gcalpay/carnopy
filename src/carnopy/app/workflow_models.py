@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import copy
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
@@ -12,6 +14,7 @@ from PySide6.QtCore import (
     QPersistentModelIndex,
     Qt,
     Signal,
+    Slot,
 )
 
 IssueOrigin = Literal["local", "schema", "source", "dependency", "plan", "runtime"]
@@ -28,6 +31,71 @@ ITEM_KEY_ROLE = ORIGIN_ROLE + 7
 NESTED_ROW_ROLE = ORIGIN_ROLE + 8
 PATH_ROLE = ORIGIN_ROLE + 9
 INVALID_INDEX = QModelIndex()
+
+
+class WorkflowListModel(QAbstractListModel):
+    """Expose detached workflow rows through one explicit, stable role set."""
+
+    count_changed = Signal()
+
+    def __init__(self, roles: Sequence[str], parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        if not roles or len(set(roles)) != len(roles):
+            raise ValueError("workflow model roles must be non-empty and unique")
+        self._roles = tuple(roles)
+        self._role_names = {
+            int(Qt.ItemDataRole.UserRole) + offset: name
+            for offset, name in enumerate(self._roles, start=1)
+        }
+        self._rows: tuple[dict[str, object], ...] = ()
+
+    def roleNames(self) -> dict[int, QByteArray]:
+        return {role: QByteArray(name.encode("utf-8")) for role, name in self._role_names.items()}
+
+    def rowCount(
+        self,
+        _parent: QModelIndex | QPersistentModelIndex = INVALID_INDEX,
+    ) -> int:
+        return len(self._rows)
+
+    def data(
+        self,
+        index: QModelIndex | QPersistentModelIndex,
+        role: int = int(Qt.ItemDataRole.DisplayRole),
+    ) -> object:
+        if not index.isValid() or not 0 <= index.row() < len(self._rows):
+            return None
+        name = self._role_names.get(role)
+        return None if name is None else copy.deepcopy(self._rows[index.row()].get(name))
+
+    def replace(self, rows: Iterable[Mapping[str, object]]) -> bool:
+        updated = tuple(
+            {name: copy.deepcopy(row.get(name)) for name in self._roles} for row in rows
+        )
+        if updated == self._rows:
+            return False
+        previous_count = len(self._rows)
+        self.beginResetModel()
+        self._rows = updated
+        self.endResetModel()
+        if len(updated) != previous_count:
+            self.count_changed.emit()
+        return True
+
+    def clear(self) -> bool:
+        return self.replace(())
+
+    def get_count(self) -> int:
+        return len(self._rows)
+
+    count = Property(int, get_count, notify=count_changed)
+
+    @Slot(int, result="QVariantMap")
+    def get(self, row: int) -> dict[str, object]:
+        return copy.deepcopy(self._rows[row]) if 0 <= row < len(self._rows) else {}
+
+    def rows(self) -> tuple[dict[str, object], ...]:
+        return tuple(copy.deepcopy(row) for row in self._rows)
 
 
 @dataclass(frozen=True)

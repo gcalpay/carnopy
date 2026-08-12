@@ -30,6 +30,13 @@ PREPARATION_AUXILIARY = "preparation.auxiliary"
 PREPARATION_OUTPUTS = "preparation.outputs"
 PREPARATION_MATRIX_DIAGNOSTICS = "preparation.quality.matrix_diagnostics"
 PREPARATION_BASELINE_DIAGNOSTICS = "preparation.quality.baseline_diagnostics"
+PREPARATION_SCENARIO_ACTIVE = "preparation.scenario.active"
+
+
+def preparation_scenario_field(field: str) -> str:
+    """Return one stable private field identifier for the temporary scenario editor."""
+
+    return f"{PREPARATION_SCENARIO_ACTIVE}.{field}"
 
 
 def dataset_grid_field(axis: str, field: str) -> str:
