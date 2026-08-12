@@ -905,3 +905,40 @@ def test_preparation_output_and_quality_drafts_compose_into_global_document(
     assert controller.document.payload == original
     assert controller.document.yaml_bytes == original_yaml
     assert not preparation.get_dirty()
+
+
+def test_committed_preparation_scenario_composes_into_global_document(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    controller, _coordinator = configured_controller(tmp_path)
+    preparation = controller.preparation_draft
+    assert controller.open_document(new_document(preparation_payload()))
+    assert controller.document is not None
+    original_payload = controller.document.payload
+    original_yaml = controller.document.yaml_bytes
+
+    assert preparation.begin_add_scenario()
+    active = preparation.get_active_scenario_draft()
+    assert active is not None
+    assert active.set_name("all")
+
+    assert controller.document.payload == original_payload
+    assert controller.document.yaml_bytes == original_yaml
+    assert not preparation.get_dirty()
+
+    assert preparation.commit_scenario()
+
+    assert controller.document.payload["scenarios"] == [
+        {
+            "name": "all",
+            "kind": "unsplit",
+            "partitions": {"all": 1.0},
+            "holdouts": {},
+            "transformations": [],
+        }
+    ]
+    assert controller.document.yaml_bytes != original_yaml
+    assert preparation.get_dirty()
+    assert controller.get_dirty()

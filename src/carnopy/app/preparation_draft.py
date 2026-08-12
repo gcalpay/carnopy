@@ -19,6 +19,8 @@ from carnopy.app.field_ids import (
     PREPARATION_SOURCE_POLICY,
     PREPARATION_TARGETS,
 )
+from carnopy.app.scenario_draft import ScenarioDraft
+from carnopy.app.workflow_models import WorkflowListModel
 
 DERIVED_FEATURES = (
     "specific_volume",
@@ -40,6 +42,7 @@ class PreparationDraft(QObject):
     dirty_changed = Signal()
     profile_changed = Signal()
     capability_changed = Signal()
+    active_scenario_draft_changed = Signal()
     message = Signal(str)
 
     def __init__(self, parent: QObject | None = None) -> None:
@@ -51,6 +54,7 @@ class PreparationDraft(QObject):
         self.categorical_choices = DraftListModel(self, disable_incompatible=True)
         self.array_format_choices = DraftListModel(self, disable_incompatible=True)
         self.baseline_model_choices = DraftListModel(self, disable_incompatible=True)
+        self.scenarios_model = WorkflowListModel(("name", "kind", "summary"), self)
         self._profile: dict[str, Any] = {}
         self._capabilities: dict[str, Any] = {}
         self._preserved: dict[str, Any] | None = None
@@ -73,6 +77,9 @@ class PreparationDraft(QObject):
         self._baseline_seed = "42"
         self._ridge_alpha = "1.0"
         self._histogram_iterations = "100"
+        self._scenarios: tuple[dict[str, Any], ...] = ()
+        self._active_scenario: ScenarioDraft | None = None
+        self._active_scenario_row = -1
         self._safetensors_available = False
         self._safetensors_guidance = (
             'Install the optional dependency with: pip install "carnopy[ml]"'
@@ -121,6 +128,38 @@ class PreparationDraft(QObject):
         return self.baseline_model_choices
 
     baselineModelChoices = Property(QObject, get_baseline_model_choices, constant=True)
+
+    def get_scenarios_model(self) -> QObject:
+        return self.scenarios_model
+
+    scenarios = Property(QObject, get_scenarios_model, constant=True)
+
+    def get_active_scenario_draft(self) -> QObject | None:
+        return self._active_scenario
+
+    activeScenarioDraft = Property(
+        QObject,
+        get_active_scenario_draft,
+        notify=active_scenario_draft_changed,
+    )
+
+    def get_has_active_scenario_edit(self) -> bool:
+        return self._active_scenario is not None
+
+    hasActiveScenarioEdit = Property(
+        bool,
+        get_has_active_scenario_edit,
+        notify=active_scenario_draft_changed,
+    )
+
+    def get_active_scenario_row(self) -> int:
+        return self._active_scenario_row
+
+    activeScenarioRow = Property(
+        int,
+        get_active_scenario_row,
+        notify=active_scenario_draft_changed,
+    )
 
     def get_allow_partial_sweep(self) -> bool:
         return self._allow_partial_sweep
@@ -537,8 +576,11 @@ class PreparationDraft(QObject):
         categorical = value.get("categorical_features")
         quality = _mapping(value.get("quality"))
         outputs = _mapping(value.get("outputs"))
+        scenarios = value.get("scenarios")
+        had_active_scenario = self._active_scenario is not None
         self._loading = True
         try:
+            self._discard_active_scenario()
             self._preserved = copy.deepcopy(value)
             self._allow_partial_sweep = bool(source_policy.get("allow_partial_sweep", False))
             self._numeric = _strings(features.get("numeric"))
@@ -591,6 +633,11 @@ class PreparationDraft(QObject):
                 self._baseline_seed = "42"
                 self._ridge_alpha = "1.0"
                 self._histogram_iterations = "100"
+            self._scenarios = (
+                tuple(copy.deepcopy(dict(item)) for item in scenarios if isinstance(item, Mapping))
+                if isinstance(scenarios, list)
+                else ()
+            )
             self._loaded = True
             self._refresh_models()
         finally:
@@ -601,10 +648,14 @@ class PreparationDraft(QObject):
         self.dirty_changed.emit()
         self.capability_changed.emit()
         self.changed.emit()
+        if had_active_scenario:
+            self.active_scenario_draft_changed.emit()
 
     def clear(self) -> None:
+        had_active_scenario = self._active_scenario is not None
         self._loading = True
         try:
+            self._discard_active_scenario()
             self._preserved = None
             self._numeric = ()
             self._derived = ()
@@ -625,6 +676,7 @@ class PreparationDraft(QObject):
             self._baseline_seed = "42"
             self._ridge_alpha = "1.0"
             self._histogram_iterations = "100"
+            self._scenarios = ()
             self._baseline = None
             self._baseline_raw = None
             self._loaded = False
@@ -635,6 +687,8 @@ class PreparationDraft(QObject):
         self.dirty_changed.emit()
         self.capability_changed.emit()
         self.changed.emit()
+        if had_active_scenario:
+            self.active_scenario_draft_changed.emit()
 
     def mark_baseline(self) -> None:
         if issue := self.get_issue():
@@ -643,7 +697,105 @@ class PreparationDraft(QObject):
         self._baseline_raw = self.raw_state()
         self.dirty_changed.emit()
 
+    @Slot(result=bool)
+    def begin_add_scenario(self) -> bool:
+        if not self._loaded or self._active_scenario is not None:
+            return False
+        self._active_scenario_row = -1
+        self._active_scenario = ScenarioDraft(
+            field_choices=self._scenario_field_choices(),
+            parent=self,
+        )
+        self.active_scenario_draft_changed.emit()
+        return True
+
+    @Slot(int, result=bool)
+    def begin_edit_scenario(self, row: int) -> bool:
+        if self._active_scenario is not None or not 0 <= row < len(self._scenarios):
+            return False
+        self._active_scenario_row = row
+        self._active_scenario = ScenarioDraft(
+            field_choices=self._scenario_field_choices(),
+            payload=self._scenarios[row],
+            parent=self,
+        )
+        self.active_scenario_draft_changed.emit()
+        return True
+
+    @Slot(result=bool)
+    def commit_scenario(self) -> bool:
+        draft = self._active_scenario
+        if draft is None:
+            return False
+        try:
+            value = draft.detached_payload()
+        except ValueError as exc:
+            self.message.emit(str(exc))
+            return False
+        names = [str(item.get("name", "")) for item in self._scenarios]
+        if value["name"] in names and (
+            self._active_scenario_row < 0 or names[self._active_scenario_row] != value["name"]
+        ):
+            self.message.emit("Preparation scenario names must be unique.")
+            return False
+        updated = list(self._scenarios)
+        if self._active_scenario_row < 0:
+            updated.append(value)
+        else:
+            updated[self._active_scenario_row] = value
+        try:
+            self._validated_payload(tuple(updated))
+        except ValueError as exc:
+            self.message.emit(str(exc))
+            return False
+        changed = tuple(updated) != self._scenarios
+        if changed:
+            self._scenarios = tuple(updated)
+        self._discard_active_scenario()
+        self.active_scenario_draft_changed.emit()
+        if changed:
+            self._state_changed()
+        return True
+
+    @Slot(result=bool)
+    def cancel_scenario(self) -> bool:
+        if self._active_scenario is None:
+            return False
+        self._discard_active_scenario()
+        self.active_scenario_draft_changed.emit()
+        return True
+
+    @Slot(int, result=bool)
+    def remove_scenario(self, row: int) -> bool:
+        if self._active_scenario is not None or not 0 <= row < len(self._scenarios):
+            return False
+        self._scenarios = (*self._scenarios[:row], *self._scenarios[row + 1 :])
+        self._state_changed()
+        return True
+
+    @Slot(int, int, result=bool)
+    def move_scenario(self, source: int, destination: int) -> bool:
+        values = list(self._scenarios)
+        if (
+            self._active_scenario is not None
+            or not 0 <= source < len(values)
+            or not 0 <= destination < len(values)
+            or source == destination
+        ):
+            return False
+        item = values.pop(source)
+        values.insert(destination, item)
+        self._scenarios = tuple(values)
+        self._state_changed()
+        return True
+
     def payload(self) -> dict[str, Any]:
+        return self._validated_payload(self._scenarios)
+
+    def _validated_payload(
+        self,
+        scenarios: tuple[dict[str, Any], ...],
+    ) -> dict[str, Any]:
         from carnopy.preparation.models import PreparationConfig
 
         if not self._loaded or self._preserved is None:
@@ -664,6 +816,7 @@ class PreparationDraft(QObject):
         ]
         result["targets"] = list(self._targets)
         result["auxiliary"] = list(self._auxiliary)
+        result["scenarios"] = copy.deepcopy(list(scenarios))
         quality: dict[str, Any] = {}
         if self._matrix_enabled:
             quality["matrix_diagnostics"] = {
@@ -702,6 +855,9 @@ class PreparationDraft(QObject):
             raise ValueError(str(exc)) from exc
         return model.model_dump(mode="json", exclude_none=True)
 
+    def scenario_payloads(self) -> tuple[dict[str, Any], ...]:
+        return tuple(copy.deepcopy(item) for item in self._scenarios)
+
     def raw_state(self) -> tuple[object, ...]:
         return (
             self._loaded,
@@ -711,6 +867,7 @@ class PreparationDraft(QObject):
             tuple(self._categorical.items()),
             self._targets,
             self._auxiliary,
+            copy.deepcopy(self._scenarios),
             self._array_formats,
             self._array_dtype,
             self._include_auxiliary,
@@ -907,6 +1064,32 @@ class PreparationDraft(QObject):
         self.capability_changed.emit()
         self.changed.emit()
 
+    def _discard_active_scenario(self) -> None:
+        if self._active_scenario is not None:
+            self._active_scenario.deleteLater()
+        self._active_scenario = None
+        self._active_scenario_row = -1
+
+    def _scenario_field_choices(self) -> tuple[str, ...]:
+        return tuple(
+            dict.fromkeys(
+                (
+                    *self._candidate_names("numeric_candidates"),
+                    *self._candidate_names("target_candidates"),
+                    *self._candidate_names("auxiliary_candidates"),
+                    *self._candidate_names("categorical_candidates"),
+                    *self._numeric,
+                    *self._derived,
+                    *self._targets,
+                    *self._auxiliary,
+                    *self._categorical,
+                    "phase",
+                    "fluid",
+                    "backend_model",
+                )
+            )
+        )
+
     def _role_model(self, role: str) -> DraftListModel | None:
         return {
             "numeric": self.numeric_choices,
@@ -990,6 +1173,16 @@ class PreparationDraft(QObject):
             )
             for value in BASELINE_MODELS
         )
+        self.scenarios_model.replace(
+            {
+                "name": str(item.get("name", "")),
+                "kind": str(item.get("kind", "")),
+                "summary": _scenario_summary(item),
+            }
+            for item in self._scenarios
+        )
+        if self._active_scenario is not None:
+            self._active_scenario.set_field_choices(self._scenario_field_choices())
 
     def _role_items(self, role: str) -> tuple[DraftItem, ...]:
         key = {
@@ -1125,3 +1318,31 @@ def _positive_integer(value: str, label: str) -> int:
 
 def _display(value: str) -> str:
     return value.replace("_", " ").title()
+
+
+def _scenario_summary(value: Mapping[str, object]) -> str:
+    kind = str(value.get("kind", "scenario"))
+    details: list[str] = []
+    partitions = value.get("partitions")
+    if kind == "unsplit":
+        details.append("All partition")
+    elif isinstance(partitions, Mapping):
+        details.extend(
+            f"{_display(str(name))} {_percentage(ratio)}" for name, ratio in partitions.items()
+        )
+    holdouts = value.get("holdouts")
+    if isinstance(holdouts, Mapping) and holdouts:
+        details.append("Holdouts " + ", ".join(_display(str(name)) for name in holdouts))
+    if value.get("seed") is not None:
+        details.append(f"Seed {value['seed']}")
+    transformations = value.get("transformations")
+    if isinstance(transformations, list) and transformations:
+        count = len(transformations)
+        details.append(f"{count} transformation{'s' if count != 1 else ''}")
+    return " · ".join((_display(kind), *details))
+
+
+def _percentage(value: object) -> str:
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        return f"{format(float(value) * 100.0, '.12g')}%"
+    return _number_text(value)

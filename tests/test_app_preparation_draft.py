@@ -269,6 +269,187 @@ def test_clear_removes_document_state_but_retains_source_projection() -> None:
     assert draft.get_source_kind() == "dataset_run"
 
 
+def test_committed_scenarios_round_trip_with_concise_ordered_summaries() -> None:
+    payload = _payload()
+    payload["scenarios"] = [
+        {"name": "all", "kind": "unsplit"},
+        {
+            "name": "random",
+            "kind": "shuffle",
+            "seed": 42,
+            "partitions": {"train": 0.8, "test": 0.2},
+        },
+        {
+            "name": "fluid-test",
+            "kind": "leave_fluid_out",
+            "holdouts": {"test": ["Propane"]},
+            "remainder": "train",
+            "transformations": [{"field": "pressure", "methods": ["standard"]}],
+        },
+    ]
+    draft = PreparationDraft()
+
+    draft.load_payload(payload)
+
+    assert draft.scenarios_model.rows() == (
+        {"name": "all", "kind": "unsplit", "summary": "Unsplit · All partition"},
+        {
+            "name": "random",
+            "kind": "shuffle",
+            "summary": "Shuffle · Train 80% · Test 20% · Seed 42",
+        },
+        {
+            "name": "fluid-test",
+            "kind": "leave_fluid_out",
+            "summary": "Leave Fluid Out · Holdouts Test · 1 transformation",
+        },
+    )
+    assert draft.scenario_payloads() == tuple(_normalized(payload)["scenarios"])
+    assert draft.payload() == _normalized(payload)
+    assert not draft.get_dirty()
+
+
+def test_scenario_editor_is_transient_until_explicit_commit_or_cancel() -> None:
+    draft = PreparationDraft()
+    draft.load_payload(_payload())
+    committed = draft.payload()
+    document_changes: list[str] = []
+    dirty_changes: list[str] = []
+    active_changes: list[str] = []
+    messages: list[str] = []
+    draft.changed.connect(lambda: document_changes.append("changed"))
+    draft.dirty_changed.connect(lambda: dirty_changes.append("dirty"))
+    draft.active_scenario_draft_changed.connect(lambda: active_changes.append("active"))
+    draft.message.connect(messages.append)
+
+    assert draft.begin_add_scenario()
+    assert draft.get_has_active_scenario_edit()
+    assert draft.get_active_scenario_row() == -1
+    assert active_changes == ["active"]
+    active = draft.get_active_scenario_draft()
+    assert active is not None
+    assert active.set_name("not a slug")
+    assert draft.payload() == committed
+    assert not draft.get_dirty()
+    assert document_changes == []
+    assert dirty_changes == []
+
+    assert not draft.commit_scenario()
+    assert messages and "safe slugs" in messages[-1]
+    assert draft.get_has_active_scenario_edit()
+    assert active.set_name("evaluation")
+    assert draft.commit_scenario()
+    assert not draft.get_has_active_scenario_edit()
+    assert active_changes == ["active", "active"]
+    assert document_changes == ["changed"]
+    assert dirty_changes == ["dirty"]
+    assert draft.get_dirty()
+    assert [item["name"] for item in draft.scenario_payloads()] == ["evaluation"]
+
+    draft.mark_baseline()
+    document_changes.clear()
+    dirty_changes.clear()
+    assert draft.begin_edit_scenario(0)
+    active = draft.get_active_scenario_draft()
+    assert active is not None
+    assert active.set_name("temporary")
+    assert not draft.get_dirty()
+    assert draft.cancel_scenario()
+    assert document_changes == []
+    assert dirty_changes == []
+    assert not draft.get_dirty()
+    assert draft.scenario_payloads()[0]["name"] == "evaluation"
+
+
+def test_identical_scenario_commit_closes_editor_without_dirtying_document() -> None:
+    payload = _payload()
+    payload["scenarios"] = [{"name": "all", "kind": "unsplit"}]
+    draft = PreparationDraft()
+    draft.load_payload(payload)
+    document_changes: list[str] = []
+    draft.changed.connect(lambda: document_changes.append("changed"))
+
+    assert draft.begin_edit_scenario(0)
+    assert draft.commit_scenario()
+
+    assert not draft.get_has_active_scenario_edit()
+    assert not draft.get_dirty()
+    assert document_changes == []
+
+
+def test_scenario_names_order_and_removal_are_committed_deterministically() -> None:
+    payload = _payload()
+    payload["scenarios"] = [
+        {"name": "all", "kind": "unsplit"},
+        {
+            "name": "random",
+            "kind": "shuffle",
+            "seed": 42,
+            "partitions": {"train": 0.8, "test": 0.2},
+        },
+    ]
+    draft = PreparationDraft()
+    draft.load_payload(payload)
+    messages: list[str] = []
+    draft.message.connect(messages.append)
+
+    assert draft.begin_edit_scenario(0)
+    active = draft.get_active_scenario_draft()
+    assert active is not None
+    assert active.set_name("random")
+    assert not draft.commit_scenario()
+    assert messages[-1] == "Preparation scenario names must be unique."
+    assert draft.get_has_active_scenario_edit()
+    assert not draft.remove_scenario(1)
+    assert not draft.move_scenario(0, 1)
+    assert draft.cancel_scenario()
+
+    assert draft.move_scenario(1, 0)
+    assert [item["name"] for item in draft.payload()["scenarios"]] == ["random", "all"]
+    assert draft.remove_scenario(1)
+    assert [item["name"] for item in draft.scenario_payloads()] == ["random"]
+    assert draft.get_dirty()
+
+
+def test_source_profile_refreshes_active_scenario_choices_without_document_change() -> None:
+    draft = PreparationDraft()
+    draft.load_payload(_payload())
+    assert draft.begin_add_scenario()
+    active = draft.get_active_scenario_draft()
+    assert active is not None
+    baseline = draft.payload()
+    document_changes: list[str] = []
+    draft.changed.connect(lambda: document_changes.append("changed"))
+    profile = _profile()
+    numeric = list(cast(list[dict[str, object]], profile["numeric_candidates"]))
+    numeric.append(_field("source_only_numeric"))
+    profile["numeric_candidates"] = numeric
+
+    assert draft.apply_source_profile(profile)
+
+    assert "source_only_numeric" in active.get_field_choices()
+    assert draft.payload() == baseline
+    assert not draft.get_dirty()
+    assert document_changes == []
+
+
+def test_clear_discards_active_scenario_without_committing_it() -> None:
+    draft = PreparationDraft()
+    draft.load_payload(_payload())
+    active_changes: list[str] = []
+    draft.active_scenario_draft_changed.connect(lambda: active_changes.append("active"))
+    assert draft.begin_add_scenario()
+    active = draft.get_active_scenario_draft()
+    assert active is not None
+    assert active.set_name("temporary")
+
+    draft.clear()
+
+    assert not draft.get_has_active_scenario_edit()
+    assert draft.scenario_payloads() == ()
+    assert active_changes == ["active", "active"]
+
+
 def test_preparation_output_and_quality_settings_round_trip_completely() -> None:
     draft = PreparationDraft()
     draft.apply_capabilities(_capabilities(safetensors=True, analysis=True))
