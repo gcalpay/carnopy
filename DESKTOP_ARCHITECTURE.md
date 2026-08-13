@@ -32,15 +32,23 @@ The source tree has one desktop presentation implementation:
 - the QML frontend uses the authoritative QtCore controllers and private worker
   boundary;
 - the QML application currently implements the responsive shell, Workspace,
-  Dataset, Visualization, YAML Preview, Run, Inspect, Settings, and Help surfaces,
-  including worker-validated Save and Save As plus exact-saved-configuration
-  validation and generation;
+  Dataset, Model Sweep, Visualization, YAML Preview, Run, Inspect, Activity,
+  Settings, and Help surfaces, including one global worker-validated
+  configuration lifecycle for Dataset, Model Sweep, and Preparation YAML;
+- the structured Preparation page and scenario editor are packaged and tested
+  as hidden components at the Stage 5 Unit 18 checkpoint, but normal
+  Preparation navigation and creation remain disabled until Unit 19 completes
+  shell integration;
 - typed blocking state, revision-bound standalone validation, operation
   feedback, exact Dataset row projections, and composition-owned document and
   shutdown decisions are shared with the authoritative controllers rather than
   reimplemented in QML;
-- saved-config validation and generation state are owned by one
+- Dataset saved-config validation and generation state are owned by one
   `DatasetExecutionController`; the public QML Run workflow is its view;
+- revision-bound Sweep and Preparation planning, execution, cancellation,
+  protected finalization, Activity persistence, and finalized-result identity
+  are owned by focused workflow controllers rather than the configuration
+  controller or QML pages;
 - source discovery, worker inspection, typed source summaries, logical-array
   metadata, table selection, and bounded preview state are owned by one
   `InspectionController`; the public QML Inspect workbench is its view;
@@ -124,11 +132,14 @@ not a second scientific implementation.
                              |
           +------------------+------------------+
           |                  |                  |
- WorkspaceController  DatasetConfigController  QmlSettingsController
+ WorkspaceController   ConfigurationController   QmlSettingsController
           |                  |
-          |          DatasetDraft + VisualizationDraft
+          |       DatasetDraft + VisualizationDraft
+          |          SweepDraft + PreparationDraft
           |                  |
           +------- DatasetExecutionController
+          +------- SweepWorkflowController
+          +------- PreparationWorkflowController
           |
           +------------ InspectionController
           |                  |
@@ -163,9 +174,12 @@ cross-controller facade. One instance owns:
 - `WorkspaceController`;
 - `DatasetDraft`;
 - `VisualizationDraft`;
-- `DatasetConfigController`;
+- `ConfigurationController`, including its `SweepDraft` and
+  `PreparationDraft`;
 - `DatasetExecutionController`;
 - `InspectionController`;
+- `SweepWorkflowController`;
+- `PreparationWorkflowController`;
 - `ActivityController`;
 - `ConfiguredPlotResultsController`;
 - `SessionPlotController`; and
@@ -243,6 +257,35 @@ a result historical; a later Save, file replacement, document replacement, or
 workspace change can. This distinction prevents mutable editor state from
 rewriting the identity of an already executed scientific configuration.
 
+### Sweep and Preparation workflow controllers
+
+`SweepWorkflowController` and `PreparationWorkflowController` consume exact
+`SavedConfigSnapshot` values from `ConfigurationController`; they do not own a
+second configuration document. Each owns its last accepted plan, active
+execution attempt, progress and cancellation state, Activity writes, protected
+finalization state, and last finalized result. Typed issue models distinguish
+planning and execution blockers, while `planCurrent` and `resultRelation`
+compare the exact saved configuration SHA-256 and workflow context. Finalized
+results remain inspectable as `current`, `stale`, or `unrelated` when the
+global document changes, and a later failed or cancelled attempt does not erase
+the prior finalized result.
+
+Planning accepts only a clean saved snapshot of the expected document type.
+Execution retains that immutable snapshot and plan context even when ordinary
+in-memory editing is allowed during the worker run. The worker recomputes and
+verifies the plan before writing. Navigation and QML page lifetime never own or
+erase scientific workflow state.
+
+`PreparationWorkflowController` additionally owns one private immutable source
+binding containing the resolved source path, inspection revision, accepted
+descriptor, and typed preparation profile. Binding copies an explicitly
+selected successful inspection; merely inspecting another artifact does not
+replace it. Rebinding or clearing is explicit, changes execution context
+without dirtying Preparation YAML, and stales a plan only when the semantic
+binding differs. Workspace replacement clears the binding, while document
+replacement and normal Inspect navigation do not. Planning and execution still
+revalidate the bound descriptor and revision in the worker.
+
 ### `InspectionController`
 
 `InspectionController` is the authoritative read-only source-inspection
@@ -253,6 +296,8 @@ workflow. It owns:
 - the active worker inspection request and exact source revision;
 - source-kind-aware identity, backend, row, diagnostic, table, and integrity
   projections;
+- a private preparation-eligibility descriptor and typed source profile for an
+  explicitly inspected immutable dataset run or model-sweep bundle;
 - dataset row totals together with the worker-reported column count, without
   opening the table again in the GUI process;
 - three independent dataset failure aggregates for layer, code, and property;
@@ -281,6 +326,15 @@ only JSON-compatible worker payloads. The first bounded
 preview is queued after an explicit successful inspection because the request
 coordinator releases its active session only after delivering the terminal
 result.
+
+The preparation profile projects source kind and revision, available models,
+eligible numeric, target, categorical, and auxiliary fields, observed category
+values, curated derived-feature readiness, partial-sweep state, reference
+contexts, and model-holdout availability. It is derived from verified metadata
+and the established preparation field-resolution code in the worker. QML
+consumes typed Qt models and never reconstructs preparation semantics from raw
+manifest dictionaries. The profile remains an inspection result until the
+user explicitly binds its exact snapshot for Preparation.
 
 ### `ActivityController`
 
@@ -472,28 +526,40 @@ composition layer runs lifecycle guards before preflight and again before
 commit. Recent workspaces are canonical paths stored under the stable Carnopy
 application identity.
 
-## Dataset configuration ownership
+## Global configuration ownership
 
-`DatasetConfigController` owns the complete document workflow, not a Widget or
-QML page. It coordinates:
+`ConfigurationController` owns one globally active Dataset, Model Sweep, or
+Preparation document, not a Widget or QML page. It coordinates:
 
 - workspace context and capability discovery;
-- New, Import, document replacement, and close;
-- deterministic merging of `DatasetDraft` and `VisualizationDraft`;
+- kind-specific New, generic Import, document replacement, and close;
+- deterministic composition through `DatasetDraft` and `VisualizationDraft`,
+  `SweepDraft`, or `PreparationDraft`;
 - local validity, dirty state, and YAML preview;
 - worker-authoritative import and exact-YAML Save validation;
 - Save versus Save As, imported-reformat confirmation, and external-change
   protection;
-- atomic workspace-owned replacement and no-overwrite new writes; and
-- saved execution snapshots.
+- atomic workspace-owned replacement and exclusive no-overwrite new writes;
+  and
+- typed saved execution snapshots.
 
-`DatasetConfigDocument` retains the complete YAML payload independently of the
-structured drafts. This preserves unknown or non-edited document sections and
-allows the controller to merge authoritative draft sections into the complete
-document rather than reconstructing a partial file.
+`ConfigurationDocument` retains the complete typed YAML payload independently
+of the structured drafts. Its deterministic serializers preserve the complete
+current public Dataset, Model Sweep, and Preparation shapes, including ordered
+comparison plots, scenarios, and transformations. `SavedConfigSnapshot`
+records the exact workspace-owned path, saved bytes, SHA-256, and document
+type, and consumers must request the expected type.
+
+Generic worker import reads one YAML mapping and dispatches directly from the
+required, mutually exclusive `document_type` literal. It never determines
+meaning by trying the three public schemas in sequence. Imported exact bytes
+retain their source hash and do not silently become normalized saved bytes;
+the read-only preview shows the deterministic in-memory serialization while
+`reformatRequired` keeps the ownership distinction explicit until an accepted
+Save.
 
 Workspace initialization itself does not load a backend. After activation,
-`DatasetConfigController` prepares the configuration editor with a local
+`ConfigurationController` prepares the configuration editor with a local
 `describe_capabilities` worker request. For the current single-backend
 milestone, that worker imports the installed CoolProp package, enumerates fluid
 names and aliases, and builds the supported model, property, and visualization
@@ -502,32 +568,34 @@ of the application process. If Carnopy later approves another backend, the
 capability request and cache identity must become explicitly backend/model-
 aware; the current CoolProp-only path is not a general plugin architecture.
 
-The document is updated only from locally valid dataset and visualization
-state. A successful worker validation and file write refreshes baselines;
-failed validation or writing does not declare the draft saved.
+The document is updated only from the locally valid draft for its active kind.
+A successful worker validation and file write refreshes the document and draft
+baselines; failed validation or writing does not declare the draft saved.
 
-The controller projects YAML availability and its first blocker as typed state:
-`yamlAvailable`, `blockingSection`, `blockingField`, `blockingRow`, and
-`blockingIssue`. Invalid draft state always exposes an empty YAML preview; the
-last valid serialization and a best-effort replacement are never presented as
-current. Stable field and row identifiers drive QML navigation without parsing
-issue prose.
+The controller projects `documentKind`, `reformatRequired`, YAML availability,
+and its first blocker as typed state: `yamlAvailable`, `blockingSection`,
+`blockingField`, `blockingRow`, and `blockingIssue`. Invalid draft state always
+exposes an empty YAML preview; the last valid serialization and a best-effort
+replacement are never presented as current. Stable field and row identifiers
+drive QML navigation without parsing issue prose.
 
 Save and Save As submit the exact visible complete-document YAML to the worker
 before any write. Imported-document reformat consent, external-change choices,
-no-overwrite Save As, atomic verified replacement, in-flight mutation checks,
-and baseline refresh retain the established controller and document ownership.
-Typed `operationFailed`, `saveSucceeded`, and `importSucceeded` signals provide
-QML feedback.
+in-flight mutation checks, and baseline refresh retain the established Dataset
+contract for every document kind. Save atomically replaces only the owned file
+after both source-hash checks. Save As uses exclusive creation and refuses a
+destination that already exists or appears before promotion. Typed
+`operationFailed`, `saveSucceeded`, and `importSucceeded` signals provide QML
+feedback.
 
 Standalone worker validation is transient and revision-bound. The controller
-captures the exact visible YAML bytes and SHA-256 and reports `unavailable`,
-`blocked`, `not_run`, `running`, `valid`, `invalid`, `failed`, or `stale`.
-Edits invalidate the relationship to any prior or in-flight result, and late
-results for other bytes are ignored. A `config`/`invalid_config` response is
-invalid even when its detailed issue list is empty. This state never authorizes
-Save: every Save and Save As starts fresh worker validation of the exact bytes
-immediately before writing.
+captures the document type, exact visible YAML bytes, and SHA-256 and reports
+`unavailable`, `blocked`, `not_run`, `running`, `valid`, `invalid`, `failed`, or
+`stale`. Edits invalidate the relationship to any prior or in-flight result,
+and late results for other bytes are ignored. A `config`/`invalid_config`
+response is invalid even when its detailed issue list is empty. This state
+never authorizes Save: every Save and Save As starts fresh worker validation
+of the exact typed bytes immediately before writing.
 
 ### `DatasetDraft` and `SamplerDraft`
 
@@ -583,6 +651,47 @@ text for scientific subscripts; user input is never interpreted as markup.
 These roles do not alter YAML property names, generated columns, metadata, or
 worker behavior.
 
+### `SweepDraft` and `ComparisonPlotDraft`
+
+`SweepDraft` owns the complete current Model Sweep configuration shape:
+ordered models and reference model, dataset mode, fluids, samplers, properties,
+dataset formats, comparison format, ordered comparison snapshots,
+compatibility, validity, and deterministic dirty baselines. It reuses the
+lightweight sampler and capability projections; it does not call a backend or
+materialize sample grids in the GUI process. Imported selections that are
+currently incompatible remain visible and blocking rather than being silently
+repaired.
+
+Committed comparison plots are immutable payload snapshots. Exactly one
+Python-owned `ComparisonPlotDraft` may be active for Add or Edit, and Commit or
+Cancel is explicit. While it exists, Save, validation, planning, execution,
+document or workspace replacement, and mutation of the committed comparison
+list are guarded in Python. Navigation may hide the page without destroying
+the draft. Stable field identifiers and committed row positions support typed
+focus without parsing issue text.
+
+### `PreparationDraft` and `ScenarioDraft`
+
+`PreparationDraft` owns the complete current Preparation configuration shape:
+numeric and curated derived features, observed or explicit categoricals,
+targets, auxiliary fields, partial-sweep policy, outputs, array formats and
+dtype, matrix diagnostics, optional baseline diagnostics, and ordered scenario
+snapshots. Applying or clearing a bound source profile updates capability and
+compatibility projections only; it never rewrites selected YAML state or marks
+the document dirty. Imported requests for unavailable optional functionality
+remain present with blocking guidance.
+
+Committed scenarios are immutable snapshots covering all eight public kinds
+and their partitions, holdouts, strata, numeric bins, and ordered
+transformations. One Python-owned `ScenarioDraft` may be active. Kind changes
+that would discard incompatible temporary values require an explicit decision,
+and Commit or Cancel remains deliberate. The same composition-owned transient
+edit guards used for configured plots and comparisons prevent visible but
+uncommitted scenario state from entering Save, validation, Plan, Execute,
+replacement, or shutdown. The hidden Unit 18 Preparation page is a view of
+these authoritative objects; correctness does not depend on QML component
+lifetime.
+
 ### `VisualizationDraft` and `PlotDraft`
 
 `VisualizationDraft` owns configured-visualization enabled state, shared
@@ -616,11 +725,11 @@ Inspect remains the source-selection and table/diagnostic workbench.
 
 The QML YAML Preview page is a read-only projection of the complete document.
 It provides line numbers, search, selection/copy, file and dirty-state context,
-and typed navigation to the first blocking Dataset or Visualization field. It
-does not edit YAML or retain stale text. Command-bar New, Import, Save, Save As,
-and Close actions cross the root runtime bridge into `DesktopController`; QML
-owns only the consequential decision dialogs and native file selection, not the
-underlying workflow.
+and typed navigation to the first blocking Dataset, Visualization, Sweep, or
+Preparation field. It does not edit YAML or retain stale text. Command-bar New,
+generic Open/Import, Save, Save As, and Close actions cross the root runtime
+bridge into `DesktopController`; QML owns only the consequential decision
+dialogs and native file selection, not the underlying workflow.
 
 ## Public QML frontend
 
@@ -679,6 +788,26 @@ output directory through the inspection controller. **View Plots** selects its
 exact generation request in configured results, including the explicit empty
 state when no configured report exists. Neither action renders automatically.
 
+The enabled QML Model Sweep page edits the complete current sweep schema
+through `SweepDraft` and the one temporary `ComparisonPlotDraft`. A shared
+workflow run panel projects typed blockers, plan evidence, progress,
+cancellation, protected finalization, Activity persistence, and current,
+stale, or unrelated result state from `SweepWorkflowController`. Opening the
+page or editing the draft starts no worker. Plan and Execute consume only the
+exact clean saved Model Sweep snapshot, and Inspect Result hands the finalized
+output directory to the existing inspection workflow without changing the
+active document.
+
+The packaged QML Preparation page presents the bound-source card, all role and
+output choices, quality and baseline settings, committed scenario summaries,
+the one temporary `ScenarioDraft`, plan evidence, and execution/result state.
+At the Stage 5 Unit 18 checkpoint it is deliberately instantiated only by
+focused tests: the normal navigation rail still marks ML Preparation
+unavailable and `Main.qml` has no Preparation loader. Unit 19 owns the remaining
+creation, navigation, source-action, command/context, and application-only
+integration. This boundary prevents a hidden component from being documented
+as an available user workflow before its shell lifecycle is complete.
+
 The QML Inspect workbench consumes only the typed Qt models owned by
 `InspectionController`. Workspace discovery is direct-child, symlink-excluding,
 newest-first, and revealed 20 entries at a time. Explicit source inspection can
@@ -693,14 +822,15 @@ normalizes `file:` URLs before inspection. Workspace-source rows are the normal
 path for generated outputs; the external actions intentionally accept sources
 outside the active workspace.
 
-Dataset, Run, Inspect, Visualization, and Activity navigation require only an
-active workspace and present their own prerequisite states. YAML Preview alone
-requires an open document. This keeps historical inspection, configured-result
-review, and session plotting reachable without inventing a current
-configuration. Dataset draft validation and Run saved-snapshot validation are
-optional diagnostics. Neither authorizes Save or generation; those operations
-retain their own fresh worker-authoritative validation at the existing trust
-boundaries.
+Dataset, Model Sweep, Run, Inspect, Visualization, and Activity navigation
+require only an active workspace and present their own prerequisite states.
+YAML Preview alone requires an open document. This keeps historical
+inspection, workflow-result review, and session plotting reachable without
+inventing a current configuration. Dataset draft validation and Run
+saved-snapshot validation are optional diagnostics. Neither authorizes Save or
+generation; those operations retain their own fresh worker-authoritative
+validation at the existing trust boundaries. ML Preparation joins this normal
+navigation contract only after Unit 19.
 
 The QML Visualization page projects both plot controllers without importing or
 running rendering code in the GUI process. Configured results start from a
@@ -886,7 +1016,7 @@ Desktop verification is layered:
 | `tests/test_app_*.py` | Controller, draft, QML engine, and interaction contracts |
 | `scripts/check_qml.py` | Non-writing QML format, import, and lint checks |
 | dedicated Linux app CI job | App-extra typing and desktop tests under Qt offscreen execution |
-| installed smoke tests | Both public QML command aliases plus packaged-QML responsive state, YAML-page creation, one controller interaction, teardown, and resource checks |
+| installed smoke tests | Both public QML command aliases plus packaged-QML responsive state, YAML-page creation, workflow-page instantiation as each surface is enabled, one controller interaction, teardown, and resource checks |
 | distribution checker | Exact wheel/sdist module, QML, font, icon, license, and provenance inventories |
 | manual native acceptance | File dialogs, monitor/DPI behavior, themes, keyboard use, and perceived interaction |
 | native qualification workflow | Explicit Qt Quick/VTK bridge qualification, not a routine PR requirement |
@@ -932,7 +1062,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 2 | Package the Precision Grid QML Workspace, Dataset, Visualization, and YAML/Save workflows | Complete; automated, remote, and native acceptance passed |
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete |
 | 4 | Add controlled sweep and preparation worker operations | Complete |
-| 5 | Add structured sweep and preparation QML workflows | Approved next |
+| 5 | Add structured sweep and preparation QML workflows | In progress through Unit 18; Sweep enabled, Preparation hidden |
 | 6 | Build exact emitted-value 3D scene contracts | Pending |
 | 7 | Integrate native interactive 3D into QML | Pending |
 | 8 | Complete native-3D platform, distribution, documentation, and later-release qualification | Pending |
@@ -1003,6 +1133,19 @@ six-row generation, configured plot, verified inspection, clean workspace
 reopen, and workspace-scoped installed smoke. Its lifecycle regression raised
 the exhaustively verified suite to 837 tests.
 
+Stage 5 is implemented through Unit 18 on `feat/gui2-stage5`. The former
+Dataset-only document and controller now provide one global exact-file
+lifecycle for all three public configuration types. The complete structured
+Sweep workflow is enabled in QML. Preparation source profiling, explicit
+source binding, complete drafts and scenario editing, planning, execution,
+Activity, persistent result state, and the packaged editor page are
+implemented, while the Preparation page remains hidden pending Unit 19 shell
+integration. Audit projection and presentation, lifecycle hardening, packaged
+qualification, complete gates, native acceptance, and completion documentation
+remain unfinished. This checkpoint changes private desktop ownership and
+presentation only; public scientific and distribution contracts remain
+unchanged.
+
 ## Known current limitations
 
 - Both public desktop commands launch the single QML presentation.
@@ -1013,9 +1156,11 @@ the exhaustively verified suite to 837 tests.
   arrays, diagnostics, and bounded tables. It also presents configured plot
   evidence, explicit session rendering, private Run activity, and guarded
   staging recovery.
-- The visible QML application does not yet provide sweep or preparation
-  editors; Stage 4 supplies their nonvisual worker and controller foundation.
-  Exact emitted-value 3D presentation remains a later stage.
+- The visible QML application now provides the complete structured Model Sweep
+  editor and workflow. The structured Preparation editor is packaged and
+  directly tested but remains hidden until its Unit 19 shell integration.
+  Preparation audit presentation remains later Stage 5 work, and exact
+  emitted-value 3D presentation remains a later stage.
 - Native folder dialogs and compositor behavior require human acceptance;
   headless tests do not automate them.
 - The current WSLg development host can use CPU rendering through Mesa
@@ -1047,10 +1192,10 @@ standard library or Qt platform behavior, and otherwise make the smallest
 change that preserves scientific, lifecycle, accessibility, and data-safety
 contracts. Split a module only when a concrete stable responsibility can move
 with focused tests and less coupling. Reassess the QML shell and controller
-hotspots after Stage 2 layout stabilization and again after Stage 3 removes the
-frontend overlap. A database, web service, or external project-management plugin
-does not solve the current local capability-loading or rendering-performance
-constraints and is not justified by the implemented workflow.
+hotspots at explicit stage checkpoints. A database, web service, or external
+project-management plugin does not solve the current local capability-loading
+or rendering-performance constraints and is not justified by the implemented
+workflow.
 
 The 2026-07-23 maintenance audit records these concrete watchpoints without
 turning them into automatic refactors:
@@ -1070,6 +1215,25 @@ independent refactor required before Stage 3. Step 12 removed the obsolete
 Widgets presentation without introducing another controller layer. A split is
 justified only when it removes a named responsibility from one of these files
 without creating a second state owner or weakening a worker boundary.
+
+The Stage 5 Unit 18 checkpoint records the new concentration points separately
+rather than rewriting that historical audit:
+
+| File | Lines | Stage 5 responsibility to recheck |
+| --- | ---: | --- |
+| `qml/Carnopy/Main.qml` | 1,489 | Shell integration now includes global documents and Sweep; Preparation joins in Unit 19 |
+| `config_controller.py` | 1,206 | One exact file lifecycle with explicit three-kind draft dispatch |
+| `desktop_controller.py` | 2,153 | Composition-owned guards and the QML command facade for four structured editors |
+| `workflow_controller.py` | 1,312 | Shared plan/result lifecycle plus the Preparation-only source binding |
+| `preparation_draft.py` | 1,457 | Complete public Preparation schema, capability projections, and scenario ownership |
+| `qml/Carnopy/pages/PreparationPage.qml` | 1,069 | Dense but sectioned hidden editor awaiting shell and native review |
+
+These sizes deserve review during Unit 22 hardening, but they do not by
+themselves justify a session manager, event bus, generic editor framework,
+second source subsystem, or speculative multidocument support. At this
+checkpoint `ConfigurationController` remains limited to document/file
+lifecycle, workflow state remains outside it, and nested scenario/comparison
+responsibilities already live in focused draft modules.
 
 Use focused checks while a desktop step is being developed. Run the full source,
 distribution, and preflight gates at stage or release boundaries, or earlier
@@ -1093,8 +1257,12 @@ When changing the desktop, start at the owner of the behavior:
 | Workspace paths, marker, and trusted filesystem operation | `carnopy.app.workspace` |
 | Observable workspace state and recents | `carnopy.app.workspace_controller` |
 | Cross-workflow decisions and guards | `carnopy.app.desktop_controller` |
-| Dataset document, merge, validation, Save, and dirty workflow | `carnopy.app.config_controller` and `config_document` |
+| Global Dataset/Sweep/Preparation document, validation, Save, and dirty workflow | `carnopy.app.config_controller` and `config_document` |
 | Dataset or sampler editable state | `dataset_draft` and `sampler_draft` |
+| Model Sweep editable state or temporary comparison | `sweep_draft` and `comparison_plot_draft` |
+| Preparation editable state or temporary scenario | `preparation_draft` and `scenario_draft` |
+| Sweep/Preparation plans, execution, results, or Preparation binding | `workflow_controller` and `workflow_models` |
+| Preparation source eligibility and typed profiles | `source_inspection` and `inspection_controller` |
 | Configured visualization or temporary plot state | `visualization_draft`, `plot_draft`, and `mapping_draft` |
 | Configured plot evidence, preview authorization, and safe pair export | `configured_plot_results_controller`, `plot_artifacts`, and `plot_preview_provider` |
 | Inspected-data session plot edit and render lifecycle | `session_plot_controller` |

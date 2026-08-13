@@ -79,7 +79,7 @@ implementation.
 | 2 | Complete | Added the packaged QML shell and Dataset/YAML/Save workflows |
 | 3 | Complete | Reached parity, migrated both launchers, retired Widgets, and qualified `0.1.0a4` |
 | 4 | Complete | Added controlled sweep and preparation worker operations for the existing public contracts |
-| 5 | Approved next | Add structured sweep and preparation QML workflows |
+| 5 | In progress | Structured Sweep is enabled; Preparation is implemented through its hidden editor checkpoint |
 | 6 | Pending | Build exact emitted-value 3D scenes |
 | 7 | Pending | Add native interactive 3D to QML |
 | 8 | Pending | Qualify native 3D packaging, platforms, and a later release |
@@ -192,7 +192,7 @@ The separate WSLg launch-hardening follow-up remains desktop maintenance. Its
 native XCB/WSLg acceptance passed on 2026-08-09 with a real six-row generation,
 configured plot, verified inspection, clean workspace reopen, and a fixed
 workspace-scoped smoke lifecycle; exhaustive verification now collects 837
-tests. Stage 5 is now the approved next stage.
+tests. Stage 5 is now in progress on its dedicated feature branch.
 
 ## Stage 5: sweep and preparation QML workflows
 
@@ -210,6 +210,61 @@ Inspection presents manifests, quality flags, exclusions, provenance, leakage
 audits, partition summaries, correlations, singular values, rank, conditioning,
 and baseline metrics. Missing optional dependencies disable only the affected
 feature and provide exact installation guidance.
+
+### Implementation checkpoint: Units 1–18
+
+Stage 5 is in progress on `feat/gui2-stage5`. The implemented checkpoint keeps
+one globally active configuration document while extending its exact-byte,
+dirty-state, reformat, external-change, atomic-Save, exclusive-Save-As, and
+saved-snapshot contracts across Dataset, Model Sweep, and Preparation YAML.
+`ConfigurationController` owns only that shared document lifecycle and the
+three focused drafts; workflow planning, execution, Activity, results,
+inspection, and Preparation source context remain in their existing focused
+controllers. Generic worker loading dispatches directly from the required
+`document_type` discriminator rather than parser order.
+
+The structured Model Sweep workflow is enabled in the normal QML shell. It
+supports the complete current sweep schema, comparison-plot snapshots and
+temporary editing, typed plan and result projections, revision-bound planning,
+controlled execution, cancellation, protected finalization, persistent
+finalized-result identity, and exact Inspect handoff.
+
+Preparation is implemented through the Unit 18 hidden-page checkpoint:
+
+- inspection derives a private typed preparation profile from verified source
+  metadata and established preparation field-resolution logic;
+- `PreparationWorkflowController` owns an explicit immutable copy of the
+  selected inspection snapshot, so later browsing in Inspect cannot silently
+  change the effective preparation source;
+- the complete current role, categorical, output, quality, baseline, and
+  eight-scenario schema is represented by Python-owned drafts;
+- temporary scenario edits survive navigation and cannot leak into Save,
+  validation, planning, execution, document replacement, workspace
+  replacement, or shutdown;
+- preparation planning, execution, cancellation, protected finalization,
+  Activity, result relation, and exact Inspect handoff consume the global
+  saved document plus the explicit source binding; and
+- the packaged `PreparationPage` and scenario editor are directly instantiated
+  and tested, but ML Preparation remains disabled in normal navigation until
+  Unit 19 integrates the page, creation flow, source actions, and shell state.
+
+No public YAML schema, CLI command, Python API, scientific algorithm, manifest,
+result model, artifact layout, provenance contract, or dependency boundary has
+changed. Focused tests accompany each completed implementation unit; the
+complete Stage 5 gate and native acceptance remain pending.
+
+The remaining implementation order is:
+
+1. Unit 19 enables and integrates the Preparation workflow surface.
+2. Units 20 and 21 project and present typed preparation audit diagnostics.
+3. Unit 22 hardens cross-workflow lifecycle and semantic response guards.
+4. Unit 23 qualifies packaged Stage 5 QML and runs the complete gate.
+5. Unit 24 records completion only after automated and manual acceptance.
+
+The first normal-application Preparation inspection occurs immediately after
+Unit 19. Audit presentation is inspected again after Unit 21, lifecycle paths
+after Unit 22, and the final installed application after Unit 23; acceptance
+must not be deferred until the documentation-only completion unit.
 
 ## Stage 6: exact scientific 3D scenes
 

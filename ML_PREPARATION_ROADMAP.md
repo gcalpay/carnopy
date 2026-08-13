@@ -50,6 +50,34 @@ auxiliary export is explicitly enabled. The manifest records the original
 column, vocabulary, code order, missing-value code, dtype, and output-array
 name.
 
+## Desktop exposure checkpoint
+
+GUI-2 Stage 4 established worker-authoritative, revision-bound Preparation
+planning and execution without adding a visible editor. Stage 5 is now
+implemented through Unit 18:
+
+- Inspect derives typed Preparation eligibility and capability projections
+  from verified dataset-run or model-sweep metadata;
+- the Preparation workflow explicitly binds a copied inspection path,
+  revision, descriptor, and profile, so ordinary inspection of another
+  artifact cannot silently change scientific execution context;
+- source context remains outside portable Preparation YAML and source changes
+  never rewrite selected configuration;
+- Python-owned drafts expose the complete current features, categoricals,
+  targets, auxiliary fields, source policy, outputs, matrix settings, baseline
+  settings, all eight scenario kinds, and ordered transformations;
+- planning and execution consume an exact saved Preparation snapshot plus the
+  explicit binding, and finalized results retain current, stale, or unrelated
+  identity independently of page lifetime; and
+- the packaged Preparation page and scenario editor are directly tested but
+  remain hidden from normal navigation until Unit 19 completes shell,
+  creation, and source-action integration.
+
+This is desktop exposure of the implemented preparation contract, not new
+preparation science. Typed audit projection and presentation, lifecycle
+hardening, packaged qualification, and native acceptance remain later Stage 5
+work.
+
 ## Reviewed future direction — Optional PyTorch dataset export
 
 The product sequence now prioritizes desktop workflow depth and then source

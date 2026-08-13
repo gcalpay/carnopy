@@ -162,11 +162,15 @@ Its workflow is:
 
 ```text
 Workspace → Dataset → YAML Preview → Run → Inspect → Visualization
+          → Model Sweeps → Plan/Execute → Inspect
           → Activity and Recovery
 ```
 
 - **Dataset** edits all three dataset modes and projects row counts without
   importing the scientific stack into the GUI process.
+- **Model Sweeps** edits the complete current sweep schema, including
+  comparison plots, and exposes worker-verified Plan, Execute, cancellation,
+  result status, and exact Inspect handoff.
 - **YAML Preview** shows the deterministic complete document. Save and Save As
   validate those exact bytes in a worker before writing.
 - **Run** validates and generates an exact clean saved snapshot.
@@ -176,6 +180,14 @@ Workspace → Dataset → YAML Preview → Run → Inspect → Visualization
   explicit session rendering from inspected columns.
 - **Activity and Recovery** projects private request records and removes only
   explicitly selected, rescanned staging artifacts.
+
+The current source application keeps one active Dataset, Model Sweep, or
+Preparation configuration with one Save, Reload, Close, dirty-state, and YAML
+Preview lifecycle. Generic Open dispatches from the YAML `document_type`.
+Preparation source profiling, explicit source binding, complete structured
+drafts, planning, execution, and its packaged editor are implemented on the
+Stage 5 branch, but ML Preparation remains hidden from normal navigation until
+its remaining shell integration is complete.
 
 Scientific generation, inspection, and Matplotlib rendering run in short-lived
 workers. The QML process does not import CoolProp, NumPy, pandas, PyArrow, or
@@ -358,6 +370,11 @@ carnopy init model_sweep sweep.yaml
 carnopy sweep sweep.yaml
 ```
 
+In the current source desktop, create or open that YAML through Workspace and
+use **Model Sweeps** for structured editing, planning, controlled execution,
+cancellation, result review, and Inspect handoff. The published `0.1.0a4`
+desktop predates this Stage 5 surface; its CLI behavior is unchanged.
+
 Preparation reads an existing immutable run or sweep bundle and never calls a
 thermodynamic backend:
 
@@ -435,11 +452,14 @@ thermophysical engines and data sources
 ```
 
 The accepted direction is workflow depth now, source breadth next, and advanced
-model breadth later. GUI-2 Stage 4 has now brought the existing model-sweep and
+model breadth later. GUI-2 Stage 4 brought the existing model-sweep and
 preparation workflows into the desktop's controlled nonvisual worker boundary.
-Stage 5 adds their visible structured QML workflows. After that milestone,
-Carnopy will establish a validated import/source contract and one
-evidence-driven source expansion.
+Stage 5 is in progress: structured Model Sweep is enabled, while the complete
+Preparation editor has reached its hidden integration checkpoint and still
+requires visible shell integration, audit presentation, lifecycle hardening,
+packaged qualification, and acceptance. After that milestone, Carnopy will
+establish a validated import/source contract and one evidence-driven source
+expansion.
 
 Detailed source and model candidates are maintainer planning rather than public
 support promises. Optional PyTorch export, exact 3D, and automation remain
@@ -477,8 +497,9 @@ gates, native acceptance, [PyPI publication](https://pypi.org/project/carnopy/0.
 [GitHub prerelease](https://github.com/gcalpay/carnopy/releases/tag/v0.1.0a4),
 and [version-specific Zenodo archive](https://doi.org/10.5281/zenodo.21709965)
 are complete. GUI-2 Stage 4 is implemented on the current development branch
-without changing the published `0.1.0a4` artifacts; Stage 5 is the approved
-next stage for the visible sweep and preparation workflow-depth milestone.
+without changing the published `0.1.0a4` artifacts. Stage 5 is in progress on
+its dedicated feature branch; its structured Sweep and partial Preparation
+desktop implementation does not change the published `0.1.0a4` artifacts.
 
 ## License
 
