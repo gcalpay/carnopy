@@ -147,7 +147,7 @@ def test_shell_uses_exact_navigation_order_and_enables_only_integrated_workflows
     )
     assert tuple(
         model.data(model.index(row, 0), available_role) for row in range(model.rowCount())
-    ) == (True, True, True, True, True, True, True, True, False, False)
+    ) == (True, True, True, True, True, True, True, True, True, False)
     nav_source = (ROOT / "src/carnopy/app/qml/Carnopy/components/NavRail.qml").read_text(
         encoding="utf-8"
     )
@@ -167,6 +167,8 @@ def test_shell_uses_exact_navigation_order_and_enables_only_integrated_workflows
     assert "root.activityAvailable" in nav_source
     assert 'pageKey !== "sweeps"' in nav_source
     assert "root.sweepsAvailable" in nav_source
+    assert 'pageKey !== "preparation"' in nav_source
+    assert "root.preparationAvailable" in nav_source
     assert root.property("hasFake3dViewport") is False
 
 

@@ -62,6 +62,20 @@ def test_global_shell_routes_sweep_documents_to_the_structured_editor(
     assert root.findChild(QObject, "modelSweepPage") is not None
 
 
+def test_global_shell_routes_preparation_documents_to_the_structured_editor(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    payload = yaml.safe_load(template_text("preparation"))
+
+    assert runtime.controller.configuration_controller.open_document(new_document(payload))
+    _process_events()
+
+    assert runtime.controller.configuration_controller.get_document_kind() == "preparation"
+    assert root.property("currentPage") == "preparation"
+    assert root.findChild(QObject, "preparationPage") is not None
+
+
 def _wait_for_idle(runtime: QmlApplicationRuntime) -> None:
     if not runtime.controller.request_coordinator.is_busy:
         _process_events()

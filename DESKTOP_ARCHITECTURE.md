@@ -35,10 +35,9 @@ The source tree has one desktop presentation implementation:
   Dataset, Model Sweep, Visualization, YAML Preview, Run, Inspect, Activity,
   Settings, and Help surfaces, including one global worker-validated
   configuration lifecycle for Dataset, Model Sweep, and Preparation YAML;
-- the structured Preparation page and scenario editor are packaged and tested
-  as hidden components at the Stage 5 Unit 18 checkpoint, but normal
-  Preparation navigation and creation remain disabled until Unit 19 completes
-  shell integration;
+- the structured Preparation page and scenario editor are packaged, tested,
+  and enabled through the Stage 5 Unit 19B shell integration, including the
+  explicit inspected-source prerequisite for new documents;
 - typed blocking state, revision-bound standalone validation, operation
   feedback, exact Dataset row projections, and composition-owned document and
   shutdown decisions are shared with the authoritative controllers rather than
@@ -688,9 +687,8 @@ that would discard incompatible temporary values require an explicit decision,
 and Commit or Cancel remains deliberate. The same composition-owned transient
 edit guards used for configured plots and comparisons prevent visible but
 uncommitted scenario state from entering Save, validation, Plan, Execute,
-replacement, or shutdown. The hidden Unit 18 Preparation page is a view of
-these authoritative objects; correctness does not depend on QML component
-lifetime.
+replacement, or shutdown. The visible Preparation page is a view of these
+authoritative objects; correctness does not depend on QML component lifetime.
 
 ### `VisualizationDraft` and `PlotDraft`
 
@@ -798,15 +796,15 @@ exact clean saved Model Sweep snapshot, and Inspect Result hands the finalized
 output directory to the existing inspection workflow without changing the
 active document.
 
-The packaged QML Preparation page presents the bound-source card, all role and
+The enabled QML Preparation page presents the bound-source card, all role and
 output choices, quality and baseline settings, committed scenario summaries,
 the one temporary `ScenarioDraft`, plan evidence, and execution/result state.
-At the Stage 5 Unit 18 checkpoint it is deliberately instantiated only by
-focused tests: the normal navigation rail still marks ML Preparation
-unavailable and `Main.qml` has no Preparation loader. Unit 19 owns the remaining
-creation, navigation, source-action, command/context, and application-only
-integration. This boundary prevents a hidden component from being documented
-as an available user workflow before its shell lifecycle is complete.
+Unit 19B connects it to the normal navigation rail, lazy page loader, global
+command status, structured workflow context inspector, stable focus routing,
+and Workspace creation card. Creating a new document requires the existing
+explicit bound source; without one, the Python composition reports the exact
+prerequisite and routes to Inspect. Opening an existing Preparation YAML still
+routes directly to the editor without inventing a source binding.
 
 The QML Inspect workbench consumes only the typed Qt models owned by
 `InspectionController`. Workspace discovery is direct-child, symlink-excluding,
@@ -822,15 +820,14 @@ normalizes `file:` URLs before inspection. Workspace-source rows are the normal
 path for generated outputs; the external actions intentionally accept sources
 outside the active workspace.
 
-Dataset, Model Sweep, Run, Inspect, Visualization, and Activity navigation
-require only an active workspace and present their own prerequisite states.
-YAML Preview alone requires an open document. This keeps historical
+Dataset, Model Sweep, ML Preparation, Run, Inspect, Visualization, and Activity
+navigation require only an active workspace and present their own prerequisite
+states. YAML Preview alone requires an open document. This keeps historical
 inspection, workflow-result review, and session plotting reachable without
 inventing a current configuration. Dataset draft validation and Run
 saved-snapshot validation are optional diagnostics. Neither authorizes Save or
 generation; those operations retain their own fresh worker-authoritative
-validation at the existing trust boundaries. ML Preparation joins this normal
-navigation contract only after Unit 19.
+validation at the existing trust boundaries.
 
 The QML Visualization page projects both plot controllers without importing or
 running rendering code in the GUI process. Configured results start from a
@@ -1062,7 +1059,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 2 | Package the Precision Grid QML Workspace, Dataset, Visualization, and YAML/Save workflows | Complete; automated, remote, and native acceptance passed |
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete |
 | 4 | Add controlled sweep and preparation worker operations | Complete |
-| 5 | Add structured sweep and preparation QML workflows | In progress through Unit 18; Sweep enabled, Preparation hidden |
+| 5 | Add structured sweep and preparation QML workflows | In progress through Unit 19B; both editors enabled, audit pending |
 | 6 | Build exact emitted-value 3D scene contracts | Pending |
 | 7 | Integrate native interactive 3D into QML | Pending |
 | 8 | Complete native-3D platform, distribution, documentation, and later-release qualification | Pending |
@@ -1133,14 +1130,14 @@ six-row generation, configured plot, verified inspection, clean workspace
 reopen, and workspace-scoped installed smoke. Its lifecycle regression raised
 the exhaustively verified suite to 837 tests.
 
-Stage 5 is implemented through Unit 18 on `feat/gui2-stage5`. The former
+Stage 5 is implemented through Unit 19B on `feat/gui2-stage5`. The former
 Dataset-only document and controller now provide one global exact-file
 lifecycle for all three public configuration types. The complete structured
 Sweep workflow is enabled in QML. Preparation source profiling, explicit
 source binding, complete drafts and scenario editing, planning, execution,
 Activity, persistent result state, and the packaged editor page are
-implemented, while the Preparation page remains hidden pending Unit 19 shell
-integration. Audit projection and presentation, lifecycle hardening, packaged
+implemented and enabled through normal shell navigation and guarded Workspace
+creation. Audit projection and presentation, lifecycle hardening, packaged
 qualification, complete gates, native acceptance, and completion documentation
 remain unfinished. This checkpoint changes private desktop ownership and
 presentation only; public scientific and distribution contracts remain
@@ -1157,9 +1154,10 @@ unchanged.
   evidence, explicit session rendering, private Run activity, and guarded
   staging recovery.
 - The visible QML application now provides the complete structured Model Sweep
-  editor and workflow. The structured Preparation editor is packaged and
-  directly tested but remains hidden until its Unit 19 shell integration.
-  Preparation audit presentation remains later Stage 5 work, and exact
+  and ML Preparation editors and workflows. New Preparation documents require
+  an explicitly bound eligible inspection; existing YAML remains portable and
+  opens without a source path. Preparation audit presentation remains later
+  Stage 5 work, and exact
   emitted-value 3D presentation remains a later stage.
 - Native folder dialogs and compositor behavior require human acceptance;
   headless tests do not automate them.
@@ -1216,17 +1214,17 @@ Widgets presentation without introducing another controller layer. A split is
 justified only when it removes a named responsibility from one of these files
 without creating a second state owner or weakening a worker boundary.
 
-The Stage 5 Unit 18 checkpoint records the new concentration points separately
+The Stage 5 Unit 19B checkpoint records the new concentration points separately
 rather than rewriting that historical audit:
 
 | File | Lines | Stage 5 responsibility to recheck |
 | --- | ---: | --- |
-| `qml/Carnopy/Main.qml` | 1,489 | Shell integration now includes global documents and Sweep; Preparation joins in Unit 19 |
-| `config_controller.py` | 1,206 | One exact file lifecycle with explicit three-kind draft dispatch |
-| `desktop_controller.py` | 2,153 | Composition-owned guards and the QML command facade for four structured editors |
+| `qml/Carnopy/Main.qml` | 1,597 | Shell integration includes global documents, Sweep, and Preparation |
+| `config_controller.py` | 1,218 | One exact file lifecycle with explicit three-kind draft dispatch |
+| `desktop_controller.py` | 2,171 | Composition-owned guards and the QML command facade for four structured editors |
 | `workflow_controller.py` | 1,312 | Shared plan/result lifecycle plus the Preparation-only source binding |
 | `preparation_draft.py` | 1,457 | Complete public Preparation schema, capability projections, and scenario ownership |
-| `qml/Carnopy/pages/PreparationPage.qml` | 1,069 | Dense but sectioned hidden editor awaiting shell and native review |
+| `qml/Carnopy/pages/PreparationPage.qml` | 1,069 | Dense but sectioned enabled editor awaiting native review |
 
 These sizes deserve review during Unit 22 hardening, but they do not by
 themselves justify a session manager, event bus, generic editor framework,

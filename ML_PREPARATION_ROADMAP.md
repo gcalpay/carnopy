@@ -54,7 +54,7 @@ name.
 
 GUI-2 Stage 4 established worker-authoritative, revision-bound Preparation
 planning and execution without adding a visible editor. Stage 5 is now
-implemented through Unit 18:
+implemented through Unit 19B:
 
 - Inspect derives typed Preparation eligibility and capability projections
   from verified dataset-run or model-sweep metadata;
@@ -69,9 +69,9 @@ implemented through Unit 18:
 - planning and execution consume an exact saved Preparation snapshot plus the
   explicit binding, and finalized results retain current, stale, or unrelated
   identity independently of page lifetime; and
-- the packaged Preparation page and scenario editor are directly tested but
-  remain hidden from normal navigation until Unit 19 completes shell,
-  creation, and source-action integration.
+- the packaged Preparation page and scenario editor are enabled through normal
+  navigation, guarded Workspace creation, global document commands, source
+  actions, and typed workflow context state.
 
 This is desktop exposure of the implemented preparation contract, not new
 preparation science. Typed audit projection and presentation, lifecycle

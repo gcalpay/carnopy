@@ -38,6 +38,7 @@ Item {
     signal openWorkspaceRequested(string path)
     signal importConfigurationRequested(string path)
     signal newDatasetRequested(string mode)
+    signal newPreparationRequested
     signal newSweepRequested
     property bool importSelectionAccepted: false
     property string importSelectionPath: ""
@@ -375,6 +376,38 @@ Item {
                     objectName: "newModelSweepButton"
                     onClicked: root.newSweepRequested()
                     text: qsTr("New Model Sweep")
+                    tone: "primary"
+                }
+            }
+
+            Card {
+                Layout.fillWidth: true
+                meta: root.controllerAvailable
+                      && root.desktopController.preparationWorkflowController.hasBoundSource ? qsTr(
+                                                                                                   "Source bound") :
+                                                                                               qsTr("Source required")
+                metaColor: root.controllerAvailable
+                           && root.desktopController.preparationWorkflowController.hasBoundSource
+                           ? Theme.success : Theme.warning
+                objectName: "newPreparationCard"
+                subtitle: root.controllerAvailable
+                          && root.desktopController.preparationWorkflowController.hasBoundSource
+                          ? qsTr("Create a portable structured Preparation configuration for the explicitly bound verified source.") :
+                            qsTr("Inspect an eligible finalized Dataset or Model Sweep and choose Use for ML Preparation first.")
+                title: qsTr("ML Preparation")
+                visible: root.configurationActionsVisible
+
+                AppButton {
+                    Accessible.description: qsTr(
+                                                "Create a new structured ML Preparation configuration or choose its required source")
+                    enabled: root.controllerAvailable
+                             && root.desktopController.configurationController.canCreate
+                    iconName: "flask-conical"
+                    objectName: "newPreparationButton"
+                    onClicked: root.newPreparationRequested()
+                    text: root.controllerAvailable
+                          && root.desktopController.preparationWorkflowController.hasBoundSource
+                          ? qsTr("New ML Preparation") : qsTr("Choose source in Inspect")
                     tone: "primary"
                 }
             }

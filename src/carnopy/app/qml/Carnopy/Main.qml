@@ -47,6 +47,7 @@ ApplicationWindow {
     signal datasetValidateRequested
     signal datasetReloadRequested(bool discardConfirmed)
     signal sweepNewRequested(bool discardConfirmed)
+    signal preparationNewRequested(bool discardConfirmed)
     signal runCancelRequested
     signal runForceStopRequested
     signal runGenerateRequested
@@ -171,6 +172,8 @@ ApplicationWindow {
             return qsTr("Dataset");
         if (pageKey === "sweeps")
             return qsTr("Model Sweeps");
+        if (pageKey === "preparation")
+            return qsTr("ML Preparation");
         if (pageKey === "visualization")
             return qsTr("Visualization");
         if (pageKey === "yaml")
@@ -262,6 +265,24 @@ ApplicationWindow {
         root.sweepNewRequested(false);
     }
 
+    function requestPreparationNew() {
+        if (root.preparationWorkflowController !== null &&
+                !root.preparationWorkflowController.hasBoundSource) {
+            root.preparationNewRequested(false);
+            return;
+        }
+        if (controllerAvailable && desktopController.hasAnyTransientEdit) {
+            root.preparationNewRequested(false);
+            return;
+        }
+        if (configController !== null && configController.dirty) {
+            pendingReplacementAction = "new_preparation";
+            configurationDiscardDialog.open();
+            return;
+        }
+        root.preparationNewRequested(false);
+    }
+
     function sweepStatusLabel() {
         if (sweepWorkflowController === null)
             return qsTr("Unavailable");
@@ -292,6 +313,40 @@ ApplicationWindow {
                 === "current")
             return "success";
         if (sweepWorkflowController.hasPlan || sweepWorkflowController.hasResult)
+            return "warning";
+        return "neutral";
+    }
+
+    function preparationStatusLabel() {
+        if (preparationWorkflowController === null)
+            return qsTr("Unavailable");
+        if (controllerAvailable && desktopController.hasActivePreparationEdit)
+            return qsTr("Unfinished scenario edit");
+        if (preparationWorkflowController.operationActive)
+            return preparationWorkflowController.protectedFinalization ? qsTr("Finalizing safely") :
+                                                                         qsTr("Preparation active");
+        if (configController === null || configController.documentKind !== "preparation")
+            return preparationWorkflowController.hasResult ? qsTr("Historical Preparation result") :
+                                                             qsTr("No Preparation document");
+        if (preparationWorkflowController.planCurrent)
+            return qsTr("Plan current");
+        return configController.dirty ? qsTr("Unsaved Preparation") : qsTr("Preparation ready");
+    }
+
+    function preparationStatusTone() {
+        if (preparationWorkflowController === null)
+            return "neutral";
+        if (controllerAvailable && desktopController.hasActivePreparationEdit)
+            return "warning";
+        if (preparationWorkflowController.workflowState === "failed"
+                || preparationWorkflowController.workflowState === "invalid")
+            return "danger";
+        if (preparationWorkflowController.operationActive)
+            return preparationWorkflowController.protectedFinalization ? "warning" : "information";
+        if (preparationWorkflowController.planCurrent
+                || preparationWorkflowController.resultRelation === "current")
+            return "success";
+        if (preparationWorkflowController.hasPlan || preparationWorkflowController.hasResult)
             return "warning";
         return "neutral";
     }
@@ -500,6 +555,8 @@ ApplicationWindow {
             inspectAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
             runAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
             sweepsAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
+            preparationAvailable: root.controllerAvailable
+                                  && root.desktopController.workspaceAvailable
             visualizationAvailable: root.controllerAvailable
                                     && root.desktopController.workspaceAvailable
             yamlAvailable: root.configController !== null && root.configController.hasDocument
@@ -558,6 +615,8 @@ ApplicationWindow {
                     statusLabel: {
                         if (root.currentPage === "sweeps")
                         return root.sweepStatusLabel();
+                        if (root.currentPage === "preparation")
+                        return root.preparationStatusLabel();
                         if (root.currentPage === "run" && root.executionController !== null)
                         return root.executionController.state === "running" ? qsTr("Running") : (
                                                                                   root.executionController.state
@@ -579,36 +638,40 @@ ApplicationWindow {
                         return qsTr("No workspace");
                     }
                     statusTone: root.currentPage === "sweeps" ? root.sweepStatusTone() : (
-                                                                    root.controllerAvailable
-                                                                    && root.desktopController.workspaceState
-                                                                    === "loading" ? "information" : (
-                                                                                        root.currentPage
-                                                                                        === "run"
-                                                                                        && root.executionController
-                                                                                        !== null ? (
-                                                                                                       root.executionController.state
-                                                                                                       === "succeeded"
-                                                                                                       ? "success" :
-                                                                                                         (root.executionController.state
-                                                                                                          === "invalid"
-                                                                                                          || root.executionController.state
-                                                                                                          === "failed"
-                                                                                                          ? "danger" :
-                                                                                                            (root.executionController.state
-                                                                                                             === "running"
-                                                                                                             || root.executionController.state
-                                                                                                             === "starting"
-                                                                                                             ? "information" :
-                                                                                                               "neutral"))) :
-                                                                                                   (root.controllerAvailable
-                                                                                                    && root.desktopController.workspaceState
-                                                                                                    === "editing"
-                                                                                                    && !root.desktopController.datasetDraft.locallyValid
-                                                                                                    ? "danger" :
-                                                                                                      (root.controllerAvailable
-                                                                                                       && root.desktopController.workspaceAvailable
-                                                                                                       ? "success" :
-                                                                                                         "neutral"))))
+                                                                    root.currentPage
+                                                                    === "preparation"
+                                                                    ? root.preparationStatusTone() :
+                                                                      (root.controllerAvailable
+                                                                       && root.desktopController.workspaceState
+                                                                       === "loading"
+                                                                       ? "information" : (
+                                                                             root.currentPage
+                                                                             === "run"
+                                                                             && root.executionController
+                                                                             !== null ? (
+                                                                                            root.executionController.state
+                                                                                            === "succeeded"
+                                                                                            ? "success" :
+                                                                                              (root.executionController.state
+                                                                                               === "invalid"
+                                                                                               || root.executionController.state
+                                                                                               === "failed"
+                                                                                               ? "danger" :
+                                                                                                 (root.executionController.state
+                                                                                                  === "running"
+                                                                                                  || root.executionController.state
+                                                                                                  === "starting"
+                                                                                                  ? "information" :
+                                                                                                    "neutral"))) :
+                                                                                        (root.controllerAvailable
+                                                                                         && root.desktopController.workspaceState
+                                                                                         === "editing"
+                                                                                         && !root.desktopController.datasetDraft.locallyValid
+                                                                                         ? "danger" :
+                                                                                           (root.controllerAvailable
+                                                                                            && root.desktopController.workspaceAvailable
+                                                                                            ? "success" :
+                                                                                              "neutral")))))
                     themeMode: root.qmlSettings.themeMode
                 }
 
@@ -717,6 +780,16 @@ ApplicationWindow {
                         objectName: "modelSweepPageLoader"
                         sourceComponent: modelSweepPage
                         visible: root.currentPage === "sweeps"
+                    }
+
+                    Loader {
+                        id: preparationPageLoader
+
+                        active: root.currentPage === "preparation" || item !== null
+                        anchors.fill: parent
+                        objectName: "preparationPageLoader"
+                        sourceComponent: preparationPage
+                        visible: root.currentPage === "preparation"
                     }
 
                     Loader {
@@ -882,6 +955,9 @@ ApplicationWindow {
                 onInspectionExploreRequested: root.inspectionExploreRequested()
                 onValidateRequested: root.datasetValidateRequested()
                 pageKey: root.currentPage
+                preparationDraft: root.configController !== null
+                                  ? root.configController.preparationDraft : null
+                preparationWorkflowController: root.preparationWorkflowController
                 sweepDraft: root.configController !== null ? root.configController.sweepDraft : null
                 sweepWorkflowController: root.sweepWorkflowController
                 workspacePath: root.controllerAvailable ? root.desktopController.workspaceRootPath :
@@ -924,6 +1000,8 @@ ApplicationWindow {
             inspectAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
             runAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
             sweepsAvailable: root.controllerAvailable && root.desktopController.workspaceAvailable
+            preparationAvailable: root.controllerAvailable
+                                  && root.desktopController.workspaceAvailable
             visualizationAvailable: root.controllerAvailable
                                     && root.desktopController.workspaceAvailable
             yamlAvailable: root.configController !== null && root.configController.hasDocument
@@ -967,6 +1045,9 @@ ApplicationWindow {
             onInspectionExploreRequested: root.inspectionExploreRequested()
             onValidateRequested: root.datasetValidateRequested()
             pageKey: root.currentPage
+            preparationDraft: root.configController !== null
+                              ? root.configController.preparationDraft : null
+            preparationWorkflowController: root.preparationWorkflowController
             sweepDraft: root.configController !== null ? root.configController.sweepDraft : null
             sweepWorkflowController: root.sweepWorkflowController
             workspacePath: root.controllerAvailable ? root.desktopController.workspaceRootPath : ""
@@ -1007,6 +1088,7 @@ ApplicationWindow {
             onOpenWorkspaceRequested: path => root.workspaceOpenRequested(path)
             onImportConfigurationRequested: path => root.requestConfigurationImport(path)
             onNewDatasetRequested: mode => root.requestDatasetNew(mode)
+            onNewPreparationRequested: root.requestPreparationNew()
             onNewSweepRequested: root.requestSweepNew()
         }
     }
@@ -1072,6 +1154,25 @@ ApplicationWindow {
             onWorkspaceRequested: root.routeTo("workspace")
             sweepDraft: root.configController.sweepDraft
             workflowController: root.sweepWorkflowController
+        }
+    }
+
+    Component {
+        id: preparationPage
+
+        PreparationPage {
+            attentionField: root.pendingAttentionField
+            attentionRow: root.pendingAttentionRow
+            attentionSerial: root.pendingAttentionSerial
+            configController: root.configController
+            desktopController: root.desktopController
+            expectedColumns: root.cardColumnCount
+            inspectionController: root.inspectionController
+            objectName: "preparationPage"
+            onInspectSourceRequested: root.routeTo("inspect")
+            onWorkspaceRequested: root.routeTo("workspace")
+            preparationDraft: root.configController.preparationDraft
+            workflowController: root.preparationWorkflowController
         }
     }
 
@@ -1226,7 +1327,8 @@ ApplicationWindow {
         }
 
         function onAttentionRequested(section, field, row) {
-            if (section !== "dataset" && section !== "sweep" && section !== "visualization")
+            if (section !== "dataset" && section !== "sweep" && section !== "preparation" && section
+                    !== "visualization")
                 return;
             root.routeTo(section === "sweep" ? "sweeps" : section);
             root.pendingAttentionField = field;
@@ -1244,7 +1346,10 @@ ApplicationWindow {
 
         function onConfigurationDocumentOpened(documentKind) {
             root.routeTo(documentKind === "dataset" ? "dataset" : (documentKind === "model_sweep"
-                                                                   ? "sweeps" : "yaml"));
+                                                                   ? "sweeps" : (documentKind
+                                                                                 === "preparation"
+                                                                                 ? "preparation" :
+                                                                                   "yaml")));
         }
 
         function onNavigationRequested(pageKey, detail) {
@@ -1278,7 +1383,8 @@ ApplicationWindow {
             const workspaceAvailable = root.desktopController.workspaceAvailable;
             if ((root.currentPage === "dataset" || root.currentPage === "run" || root.currentPage
                  === "inspect" || root.currentPage === "visualization" || root.currentPage
-                 === "activity" || root.currentPage === "sweeps") && !workspaceAvailable)
+                 === "activity" || root.currentPage === "sweeps" || root.currentPage
+                 === "preparation") && !workspaceAvailable)
                 root.routeTo("workspace");
             if (root.currentPage === "yaml" && (root.configController === null ||
                                                 !root.configController.hasDocument))
@@ -1353,6 +1459,8 @@ ApplicationWindow {
                 root.datasetNewRequested(mode, true);
             } else if (action === "new_sweep") {
                 root.sweepNewRequested(true);
+            } else if (action === "new_preparation") {
+                root.preparationNewRequested(true);
             } else if (action === "import") {
                 const path = root.pendingReplacementPath;
                 root.pendingReplacementPath = "";

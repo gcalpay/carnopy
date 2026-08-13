@@ -21,6 +21,8 @@ Control {
     property var executionController: null
     property var inspectionController: null
     property var activityController: null
+    property var preparationDraft: null
+    property var preparationWorkflowController: null
     property var sweepDraft: null
     property var sweepWorkflowController: null
     property string pageKey: "workspace"
@@ -103,7 +105,7 @@ Control {
             flickableDirection: Flickable.VerticalFlick
             pixelAligned: true
             visible: root.pageKey !== "run" && root.pageKey !== "inspect" && root.pageKey
-                     !== "activity" && root.pageKey !== "sweeps"
+                     !== "activity" && root.pageKey !== "sweeps" && root.pageKey !== "preparation"
 
             ScrollBar.vertical: ScrollBar {
                 policy: ScrollBar.AsNeeded
@@ -344,6 +346,29 @@ Control {
             workflowController: root.sweepWorkflowController
             workflowSection: "sweep"
             workflowTitle: qsTr("Model Sweep")
+        }
+
+        WorkflowContextInspector {
+            Layout.fillHeight: true
+            Layout.fillWidth: true
+            configController: root.configController
+            firstInvalidField: root.preparationDraft !== null
+                               ? root.preparationDraft.firstInvalidField : ""
+            firstInvalidRow: root.preparationDraft !== null ? root.preparationDraft.firstInvalidRow :
+                                                              -1
+            localIssue: root.preparationDraft !== null ? root.preparationDraft.issue : ""
+            localValid: root.preparationDraft !== null && root.preparationDraft.locallyValid
+            objectName: "preparationWorkflowContextInspector"
+            onAttentionRequested: (section, field, row) => root.attentionRequested(section, field,
+                                                                                   row)
+            onValidateRequested: root.validateRequested()
+            visible: root.pageKey === "preparation" && root.preparationDraft !== null
+                     && root.preparationWorkflowController !== null
+            transientEditActive: root.preparationDraft !== null
+                                 && root.preparationDraft.hasActiveScenarioEdit
+            workflowController: root.preparationWorkflowController
+            workflowSection: "preparation"
+            workflowTitle: qsTr("ML Preparation")
         }
     }
 }

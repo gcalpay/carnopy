@@ -11,7 +11,7 @@ import yaml
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QCoreApplication, QEventLoop, QSettings, QTimer
+from PySide6.QtCore import QCoreApplication, QEventLoop, QMetaObject, QObject, QSettings, QTimer
 from PySide6.QtQml import QQmlComponent
 from PySide6.QtQuick import QQuickItem, QQuickWindow
 from PySide6.QtWidgets import QApplication
@@ -162,6 +162,159 @@ def _visual_names(root: QQuickItem) -> set[str]:
     return names
 
 
+def _visible_item(root: QQuickWindow, object_name: str) -> QQuickItem:
+    pending = [root.contentItem()]
+    matches: list[QQuickItem] = []
+    while pending:
+        candidate = pending.pop()
+        if candidate.objectName() == object_name and candidate.isVisible():
+            matches.append(candidate)
+        pending.extend(candidate.childItems())
+    assert len(matches) == 1
+    return matches[0]
+
+
+def _accept_preparation_eligible_inspection(
+    runtime: QmlApplicationRuntime,
+    source: Path,
+) -> None:
+    revision = "a" * 64
+    resolved = source.resolve()
+    descriptor = {
+        "source_path": str(resolved),
+        "source_kind": "dataset_run",
+        "inspection_revision": revision,
+        "controls": {},
+        "tables": [],
+    }
+    profile = {
+        "profile_schema_version": 1,
+        "source_path": str(resolved),
+        "source_kind": "dataset_run",
+        "inspection_revision": revision,
+        "source_identity": {"source_kind": "dataset_run"},
+        "completion": {
+            "status": "completed",
+            "partial": False,
+            "included_child_models": [],
+            "missing_child_models": [],
+        },
+        "available_models": ["heos"],
+        "declared_models": [],
+        "reference_model": "heos",
+        "numeric_candidates": [],
+        "target_candidates": [],
+        "categorical_candidates": [],
+        "auxiliary_candidates": [],
+        "observed_category_values": {},
+        "derived_features": [],
+        "model_holdout": {
+            "available": False,
+            "reason": "Model holdout scenarios require a model-sweep source.",
+        },
+        "reference_context": {
+            "compatible": True,
+            "compatible_context": {
+                "reference_state_policy": "coolprop_DEF",
+                "backend": "coolprop",
+                "backend_model": "heos",
+            },
+            "contexts": [],
+            "reason_code": "",
+            "reason": "",
+        },
+    }
+    inspection = runtime.controller.inspection_controller
+    inspection._clear_inspection(source=resolved, state="loading")
+    inspection._accept_inspection_payload(
+        {
+            "source": str(resolved),
+            "source_kind": "dataset",
+            "revision": revision,
+            "summary": {},
+            "tables": [],
+            "arrays": [],
+            "plot_context": None,
+            "preparation_eligible": True,
+            "preparation_ineligible_reason": "",
+            "preparation_source_descriptor": descriptor,
+            "preparation_profile": profile,
+        }
+    )
+
+
+def test_shell_requires_a_bound_source_then_enables_the_preparation_surface(
+    runtime: QmlApplicationRuntime,
+    tmp_path: Path,
+) -> None:
+    desktop = runtime.controller
+    controller = desktop.configuration_controller
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    root.setWidth(1440)
+    root.setHeight(1200)
+    _process_events()
+
+    workspace_page = root.findChild(QObject, "workspacePage")
+    preparation_button = _visible_item(root, "newPreparationButton")
+    preparation_navigation = _visible_item(root, "nav-preparation")
+    assert workspace_page is not None
+    assert preparation_button.property("text") == "Choose source in Inspect"
+    assert preparation_button.property("enabled") is True
+    assert preparation_navigation.property("enabled") is True
+
+    assert QMetaObject.invokeMethod(preparation_button, "click")
+    _process_events()
+    assert root.property("currentPage") == "inspect"
+    assert not controller.get_has_document()
+
+    source = tmp_path / "workspace" / "outputs" / "eligible-source"
+    source.mkdir()
+    _accept_preparation_eligible_inspection(runtime, source)
+    _process_events()
+    bind_button = _visible_item(root, "preparationBindSourceButton")
+    assert QMetaObject.invokeMethod(bind_button, "click")
+    _process_events()
+    assert desktop.preparation_workflow_controller.get_has_bound_source()
+
+    assert desktop.request_new_dataset("property_table")
+    assert root.setProperty("currentPage", "workspace")
+    _process_events()
+    preparation_button = _visible_item(root, "newPreparationButton")
+    assert preparation_button.property("text") == "New ML Preparation"
+    assert QMetaObject.invokeMethod(preparation_button, "click")
+    _process_events()
+
+    discard_dialog = root.findChild(QObject, "configurationDiscardDialog")
+    assert discard_dialog is not None
+    assert discard_dialog.property("opened") is True
+    assert controller.get_document_kind() == "dataset"
+    discard_dialog.accept()
+    _process_events()
+
+    page = root.findChild(QObject, "preparationPage")
+    command_bar = root.findChild(QObject, "documentCommandBar")
+    inspector = _visible_item(root, "preparationWorkflowContextInspector")
+    assert page is not None
+    assert command_bar is not None
+    assert controller.get_document_kind() == "preparation"
+    assert root.property("currentPage") == "preparation"
+    assert page.property("visible") is True
+    assert page.property("documentActive") is True
+    assert page.property("preparationDraft") is controller.preparation_draft
+    assert page.property("workflowController") is desktop.preparation_workflow_controller
+    assert command_bar.property("pageTitle") == "ML Preparation"
+    assert command_bar.property("statusLabel") == "Unsaved Preparation"
+    assert inspector.property("visible") is True
+
+    change_source = _visible_item(root, "preparationChangeSource")
+    assert QMetaObject.invokeMethod(change_source, "click")
+    _process_events()
+    assert root.property("currentPage") == "inspect"
+    assert desktop.preparation_workflow_controller.get_bound_source_path() == str(source.resolve())
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
 def test_scenario_editor_binds_the_complete_temporary_surface(
     runtime: QmlApplicationRuntime,
     scenario_editor: QQuickItem,
@@ -273,7 +426,7 @@ def test_preparation_scenario_qml_resource_and_controller_boundary_are_explicit(
     assert "yaml" not in source.casefold()
 
 
-def test_hidden_preparation_page_binds_the_complete_authoritative_editor(
+def test_preparation_page_binds_the_complete_authoritative_editor(
     runtime: QmlApplicationRuntime,
     preparation_page: QQuickItem,
 ) -> None:
@@ -329,6 +482,45 @@ def test_hidden_preparation_page_binds_the_complete_authoritative_editor(
     assert bool(guidance) is (not draft.get_baseline_available())
     if guidance:
         assert "carnopy[analysis]" in guidance
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_preparation_page_keeps_app_only_optional_features_explicitly_unavailable(
+    runtime: QmlApplicationRuntime,
+    preparation_page: QQuickItem,
+) -> None:
+    desktop = runtime.controller
+    draft = desktop.configuration_controller.preparation_draft
+    draft.apply_capabilities(
+        {
+            "preparation": {
+                "safetensors": {
+                    "available": False,
+                    "guidance": 'Install the optional dependency with: pip install "carnopy[ml]"',
+                },
+                "baseline_diagnostics": {
+                    "available": False,
+                    "guidance": (
+                        'Install the optional dependency with: pip install "carnopy[analysis]"'
+                    ),
+                },
+            }
+        }
+    )
+    desktop.request_preparation_boolean_field("array_outputs", True)
+    assert draft.get_array_outputs_enabled()
+    _process_events()
+
+    safetensors = _item(preparation_page, "preparationArrayFormat-safetensors")
+    baseline = _item(preparation_page, "preparationBaselineDiagnostics")
+    guidance = _item(preparation_page, "preparationBaselineDependencyGuidance")
+    assert safetensors.property("enabled") is False
+    safetensors_choice = next(
+        item for item in draft.array_format_choices.items if item.value == "safetensors"
+    )
+    assert "carnopy[ml]" in safetensors_choice.issue
+    assert baseline.property("enabled") is False
+    assert "carnopy[analysis]" in guidance.property("text")
     assert runtime.warning_capture.runtime_warnings == ()
 
 
@@ -405,3 +597,6 @@ def test_preparation_page_qml_resource_and_controller_boundary_are_explicit() ->
     assert ".commitScenario(" not in source
     assert "PreparationAuditView" not in source
     assert "TextArea" not in source
+    main_source = (qml_root / "Main.qml").read_text(encoding="utf-8")
+    assert 'currentPage === "preparation"' in main_source
+    assert "PreparationPage" in main_source

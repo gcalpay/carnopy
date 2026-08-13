@@ -101,6 +101,12 @@ follow-up work. Before handing off any completed implementation:
 
 Do not wait for the maintainer to request this synchronization.
 
+When an accepted plan is implemented as incremental units, synchronize the
+applicable documentation at the end of every unit before its commit handoff.
+Do not accumulate stale documentation for a final documentation-only unit;
+that final unit may record completion evidence, but it must not be the first
+time earlier behavior changes are documented.
+
 Use:
 
 - `rg` for searches;

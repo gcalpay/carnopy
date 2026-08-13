@@ -163,6 +163,7 @@ Its workflow is:
 ```text
 Workspace → Dataset → YAML Preview → Run → Inspect → Visualization
           → Model Sweeps → Plan/Execute → Inspect
+          → ML Preparation → Plan/Execute → Inspect
           → Activity and Recovery
 ```
 
@@ -171,6 +172,9 @@ Workspace → Dataset → YAML Preview → Run → Inspect → Visualization
 - **Model Sweeps** edits the complete current sweep schema, including
   comparison plots, and exposes worker-verified Plan, Execute, cancellation,
   result status, and exact Inspect handoff.
+- **ML Preparation** requires an explicitly bound eligible source from Inspect,
+  then edits the complete current Preparation schema and exposes the same
+  controlled Plan, Execute, cancellation, result, and Inspect lifecycle.
 - **YAML Preview** shows the deterministic complete document. Save and Save As
   validate those exact bytes in a worker before writing.
 - **Run** validates and generates an exact clean saved snapshot.
@@ -186,8 +190,8 @@ Preparation configuration with one Save, Reload, Close, dirty-state, and YAML
 Preview lifecycle. Generic Open dispatches from the YAML `document_type`.
 Preparation source profiling, explicit source binding, complete structured
 drafts, planning, execution, and its packaged editor are implemented on the
-Stage 5 branch, but ML Preparation remains hidden from normal navigation until
-its remaining shell integration is complete.
+Stage 5 branch and enabled in the normal shell. Preparation audit presentation,
+lifecycle hardening, packaged qualification, and acceptance remain unfinished.
 
 Scientific generation, inspection, and Matplotlib rendering run in short-lived
 workers. The QML process does not import CoolProp, NumPy, pandas, PyArrow, or
@@ -454,12 +458,11 @@ thermophysical engines and data sources
 The accepted direction is workflow depth now, source breadth next, and advanced
 model breadth later. GUI-2 Stage 4 brought the existing model-sweep and
 preparation workflows into the desktop's controlled nonvisual worker boundary.
-Stage 5 is in progress: structured Model Sweep is enabled, while the complete
-Preparation editor has reached its hidden integration checkpoint and still
-requires visible shell integration, audit presentation, lifecycle hardening,
-packaged qualification, and acceptance. After that milestone, Carnopy will
-establish a validated import/source contract and one evidence-driven source
-expansion.
+Stage 5 is in progress: the complete structured Model Sweep and Preparation
+editors are enabled, while Preparation audit presentation, lifecycle hardening,
+packaged qualification, and acceptance remain. After that milestone, Carnopy
+will establish a validated import/source contract and one evidence-driven
+source expansion.
 
 Detailed source and model candidates are maintainer planning rather than public
 support promises. Optional PyTorch export, exact 3D, and automation remain

@@ -16,6 +16,7 @@ Control {
     property bool activityAvailable: false
     property bool runAvailable: false
     property bool sweepsAvailable: false
+    property bool preparationAvailable: false
     property bool visualizationAvailable: false
     property bool yamlAvailable: false
     readonly property alias collapseControl: railCollapseButton
@@ -111,8 +112,8 @@ Control {
             pageKey: "preparation"
             title: qsTr("ML Preparation")
             iconName: "flask-conical"
-            available: false
-            unavailableReason: qsTr("ML preparation remains outside the active GUI-2 stage.")
+            available: true
+            unavailableReason: qsTr("Open a workspace before using ML Preparation.")
         }
         ListElement {
             pageKey: "three-d"
@@ -211,7 +212,9 @@ Control {
                                                                  pageKey !== "activity"
                                                                  || root.activityAvailable) && (
                                                                  pageKey !== "sweeps"
-                                                                 || root.sweepsAvailable)
+                                                                 || root.sweepsAvailable) && (
+                                                                 pageKey !== "preparation"
+                                                                 || root.preparationAvailable)
 
                 Accessible.description: effectivelyAvailable ? "" : unavailableReason
                 Accessible.name: title

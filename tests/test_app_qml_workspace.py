@@ -234,6 +234,11 @@ def test_qml_facade_creates_workspace_from_parent_and_refreshes_bound_state(
     sweep_button = root.findChild(QObject, "newModelSweepButton")
     assert sweep_button is not None
     assert sweep_button.property("enabled") is True
+    assert root.findChild(QObject, "newPreparationCard") is not None
+    preparation_button = root.findChild(QObject, "newPreparationButton")
+    assert preparation_button is not None
+    assert preparation_button.property("enabled") is True
+    assert preparation_button.property("text") == "Choose source in Inspect"
     assert runtime.warning_capture.runtime_warnings == ()
 
 

@@ -79,7 +79,7 @@ implementation.
 | 2 | Complete | Added the packaged QML shell and Dataset/YAML/Save workflows |
 | 3 | Complete | Reached parity, migrated both launchers, retired Widgets, and qualified `0.1.0a4` |
 | 4 | Complete | Added controlled sweep and preparation worker operations for the existing public contracts |
-| 5 | In progress | Structured Sweep is enabled; Preparation is implemented through its hidden editor checkpoint |
+| 5 | In progress | Structured Sweep and Preparation are enabled; audit presentation and qualification remain |
 | 6 | Pending | Build exact emitted-value 3D scenes |
 | 7 | Pending | Add native interactive 3D to QML |
 | 8 | Pending | Qualify native 3D packaging, platforms, and a later release |
@@ -229,7 +229,7 @@ temporary editing, typed plan and result projections, revision-bound planning,
 controlled execution, cancellation, protected finalization, persistent
 finalized-result identity, and exact Inspect handoff.
 
-Preparation is implemented through the Unit 18 hidden-page checkpoint:
+Preparation is implemented through the Unit 19B visible-shell checkpoint:
 
 - inspection derives a private typed preparation profile from verified source
   metadata and established preparation field-resolution logic;
@@ -244,9 +244,9 @@ Preparation is implemented through the Unit 18 hidden-page checkpoint:
 - preparation planning, execution, cancellation, protected finalization,
   Activity, result relation, and exact Inspect handoff consume the global
   saved document plus the explicit source binding; and
-- the packaged `PreparationPage` and scenario editor are directly instantiated
-  and tested, but ML Preparation remains disabled in normal navigation until
-  Unit 19B integrates the page, source actions, and shell state.
+- the packaged `PreparationPage` and scenario editor are available through
+  normal navigation, the Workspace source prerequisite, the global command
+  lifecycle, and the workflow context inspector.
 
 Unit 19A adds the Python-owned New Preparation lifecycle. The configuration
 controller composes the packaged Preparation template through the global
@@ -255,23 +255,31 @@ source before creation. A missing binding produces an exact prerequisite and
 routes to Inspect; direct internal configuration calls cannot bypass that
 composition guard. No new QML surface is enabled by 19A.
 
+Unit 19B enables the normal Preparation surface without adding another state
+owner. Workspace creation routes an unbound user to Inspect, dirty replacement
+uses the global discard decision, Preparation documents open directly in the
+structured page, and navigation, command status, focus routing, context state,
+and source-change actions bind the existing authoritative controllers. Focused
+QML coverage also holds optional ML and analysis controls unavailable under an
+app-only capability projection while keeping the page usable.
+
 No public YAML schema, CLI command, Python API, scientific algorithm, manifest,
 result model, artifact layout, provenance contract, or dependency boundary has
 changed. Focused tests accompany each completed implementation unit; the
 complete Stage 5 gate and native acceptance remain pending.
 
-The remaining implementation order is:
+The remaining implementation order after Unit 19B is:
 
-1. Unit 19B enables and integrates the Preparation workflow surface.
-2. Units 20 and 21 project and present typed preparation audit diagnostics.
-3. Unit 22 hardens cross-workflow lifecycle and semantic response guards.
-4. Unit 23 qualifies packaged Stage 5 QML and runs the complete gate.
-5. Unit 24 records completion only after automated and manual acceptance.
+1. Units 20 and 21 project and present typed preparation audit diagnostics.
+2. Unit 22 hardens cross-workflow lifecycle and semantic response guards.
+3. Unit 23 qualifies packaged Stage 5 QML and runs the complete gate.
+4. Unit 24 records completion only after automated and manual acceptance.
 
-The first normal-application Preparation inspection occurs immediately after
-Unit 19B. Audit presentation is inspected again after Unit 21, lifecycle paths
-after Unit 22, and the final installed application after Unit 23; acceptance
-must not be deferred until the documentation-only completion unit.
+The first normal-application Preparation inspection is the next checkpoint
+after the Unit 19B commit. Audit presentation is inspected again after Unit 21,
+lifecycle paths after Unit 22, and the final installed application after Unit
+23; acceptance must not be deferred until the documentation-only completion
+unit.
 
 ## Stage 6: exact scientific 3D scenes
 
