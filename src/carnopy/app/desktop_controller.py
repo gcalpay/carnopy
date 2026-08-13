@@ -1078,6 +1078,105 @@ class DesktopController(QObject):
         if mapping is not None and self._can_edit_sweep_document():
             mapping.remove_row(row)
 
+    @Slot(str, str, bool, name="requestPreparationRoleSelection")
+    def request_preparation_role_selection(
+        self,
+        role: str,
+        value: str,
+        selected: bool,
+    ) -> None:
+        if self._can_edit_preparation_document():
+            self.configuration_controller.preparation_draft.set_role_selected(
+                role,
+                value,
+                selected,
+            )
+
+    @Slot(str, bool, name="requestPreparationCategoricalSelection")
+    def request_preparation_categorical_selection(self, field: str, selected: bool) -> None:
+        if self._can_edit_preparation_document():
+            self.configuration_controller.preparation_draft.set_categorical_selected(
+                field,
+                selected,
+            )
+
+    @Slot(str, str, bool, name="requestPreparationCategoryMode")
+    def request_preparation_category_mode(
+        self,
+        field: str,
+        mode: str,
+        discard_confirmed: bool,
+    ) -> None:
+        if self._can_edit_preparation_document():
+            self.configuration_controller.preparation_draft.set_category_mode(
+                field,
+                mode,
+                discard_confirmed,
+            )
+
+    @Slot(str, str, name="requestPreparationExplicitCategories")
+    def request_preparation_explicit_categories(self, field: str, values: str) -> None:
+        if self._can_edit_preparation_document():
+            self.configuration_controller.preparation_draft.set_explicit_categories(
+                field,
+                values,
+            )
+
+    @Slot(str, bool, name="requestPreparationBooleanField")
+    def request_preparation_boolean_field(self, field: str, value: bool) -> None:
+        if not self._can_edit_preparation_document():
+            return
+        draft = self.configuration_controller.preparation_draft
+        setter = {
+            "allow_partial_sweep": draft.set_allow_partial_sweep,
+            "array_outputs": draft.set_array_outputs_enabled,
+            "include_auxiliary": draft.set_include_auxiliary,
+            "matrix_diagnostics": draft.set_matrix_enabled,
+            "baseline_diagnostics": draft.set_baseline_enabled,
+        }.get(field)
+        if setter is not None:
+            setter(value)
+
+    @Slot(str, str, name="requestPreparationTextField")
+    def request_preparation_text_field(self, field: str, value: str) -> None:
+        if not self._can_edit_preparation_document():
+            return
+        draft = self.configuration_controller.preparation_draft
+        setter = {
+            "array_dtype": draft.set_array_dtype,
+            "correlation_threshold": draft.set_correlation_threshold,
+            "near_constant_relative_spread": draft.set_near_constant_spread,
+            "baseline_random_seed": draft.set_baseline_seed,
+            "ridge_alpha": draft.set_ridge_alpha,
+            "histogram_max_iterations": draft.set_histogram_iterations,
+        }.get(field)
+        if setter is not None:
+            setter(value)
+
+    @Slot(str, bool, name="requestPreparationArrayFormatSelection")
+    def request_preparation_array_format_selection(
+        self,
+        value: str,
+        selected: bool,
+    ) -> None:
+        if self._can_edit_preparation_document():
+            self.configuration_controller.preparation_draft.set_array_format_selected(
+                value,
+                selected,
+            )
+
+    @Slot(str, bool, name="requestPreparationBaselineModelSelection")
+    def request_preparation_baseline_model_selection(
+        self,
+        value: str,
+        selected: bool,
+    ) -> None:
+        if self._can_edit_preparation_document():
+            self.configuration_controller.preparation_draft.set_baseline_model_selected(
+                value,
+                selected,
+            )
+
     @Slot(bool, name="requestVisualizationEnabled")
     def request_visualization_enabled(self, enabled: bool) -> None:
         if self._guard_active_plot_edit("visualization enable or disable"):
@@ -1255,6 +1354,16 @@ class DesktopController(QObject):
             return True
         self.workspace_controller.report_error(
             "Wait for the active worker request before editing the Model Sweep configuration."
+        )
+        return False
+
+    def _can_edit_preparation_document(self) -> bool:
+        if self.configuration_controller.get_document_kind() != "preparation":
+            return False
+        if self.configuration_controller.get_can_edit():
+            return True
+        self.workspace_controller.report_error(
+            "Wait for the active worker request before editing the ML Preparation configuration."
         )
         return False
 

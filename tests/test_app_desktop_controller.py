@@ -723,6 +723,120 @@ def test_sweep_editor_facade_enforces_document_and_worker_edit_guards(
     assert desktop.shutdown()
 
 
+def test_preparation_editor_facade_routes_top_level_structured_intent(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    controller = desktop.configuration_controller
+    draft = controller.preparation_draft
+    calls: list[tuple[object, ...]] = []
+
+    def recorder(name: str) -> object:
+        def record(*values: object) -> bool:
+            calls.append((name, *values))
+            return True
+
+        return record
+
+    for method in (
+        "set_role_selected",
+        "set_categorical_selected",
+        "set_category_mode",
+        "set_explicit_categories",
+        "set_allow_partial_sweep",
+        "set_array_outputs_enabled",
+        "set_include_auxiliary",
+        "set_matrix_enabled",
+        "set_baseline_enabled",
+        "set_array_dtype",
+        "set_correlation_threshold",
+        "set_near_constant_spread",
+        "set_baseline_seed",
+        "set_ridge_alpha",
+        "set_histogram_iterations",
+        "set_array_format_selected",
+        "set_baseline_model_selected",
+    ):
+        monkeypatch.setattr(draft, method, recorder(method))
+    monkeypatch.setattr(controller, "get_document_kind", lambda: "preparation")
+    monkeypatch.setattr(controller, "get_can_edit", lambda: True)
+
+    desktop.request_preparation_role_selection("numeric", "pressure", True)
+    desktop.request_preparation_categorical_selection("phase", True)
+    desktop.request_preparation_category_mode("phase", "observed", True)
+    desktop.request_preparation_explicit_categories("phase", "gas, liquid")
+    desktop.request_preparation_boolean_field("allow_partial_sweep", True)
+    desktop.request_preparation_boolean_field("array_outputs", True)
+    desktop.request_preparation_boolean_field("include_auxiliary", True)
+    desktop.request_preparation_boolean_field("matrix_diagnostics", True)
+    desktop.request_preparation_boolean_field("baseline_diagnostics", True)
+    desktop.request_preparation_text_field("array_dtype", "float64")
+    desktop.request_preparation_text_field("correlation_threshold", "0.95")
+    desktop.request_preparation_text_field("near_constant_relative_spread", "1e-9")
+    desktop.request_preparation_text_field("baseline_random_seed", "42")
+    desktop.request_preparation_text_field("ridge_alpha", "1.0")
+    desktop.request_preparation_text_field("histogram_max_iterations", "100")
+    desktop.request_preparation_array_format_selection("npz", True)
+    desktop.request_preparation_baseline_model_selection("ridge", True)
+    desktop.request_preparation_boolean_field("unknown", True)
+    desktop.request_preparation_text_field("unknown", "ignored")
+
+    assert calls == [
+        ("set_role_selected", "numeric", "pressure", True),
+        ("set_categorical_selected", "phase", True),
+        ("set_category_mode", "phase", "observed", True),
+        ("set_explicit_categories", "phase", "gas, liquid"),
+        ("set_allow_partial_sweep", True),
+        ("set_array_outputs_enabled", True),
+        ("set_include_auxiliary", True),
+        ("set_matrix_enabled", True),
+        ("set_baseline_enabled", True),
+        ("set_array_dtype", "float64"),
+        ("set_correlation_threshold", "0.95"),
+        ("set_near_constant_spread", "1e-9"),
+        ("set_baseline_seed", "42"),
+        ("set_ridge_alpha", "1.0"),
+        ("set_histogram_iterations", "100"),
+        ("set_array_format_selected", "npz", True),
+        ("set_baseline_model_selected", "ridge", True),
+    ]
+    assert desktop.shutdown()
+
+
+def test_preparation_editor_facade_enforces_document_and_worker_edit_guards(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    controller = desktop.configuration_controller
+    selections: list[tuple[str, str, bool]] = []
+    monkeypatch.setattr(
+        controller.preparation_draft,
+        "set_role_selected",
+        lambda role, value, selected: selections.append((role, value, selected)) or True,
+    )
+    monkeypatch.setattr(controller, "get_document_kind", lambda: "dataset")
+    monkeypatch.setattr(controller, "get_can_edit", lambda: True)
+
+    desktop.request_preparation_role_selection("target", "specific_enthalpy", True)
+    assert selections == []
+
+    monkeypatch.setattr(controller, "get_document_kind", lambda: "preparation")
+    desktop.request_preparation_role_selection("target", "specific_enthalpy", True)
+    assert selections == [("target", "specific_enthalpy", True)]
+
+    monkeypatch.setattr(controller, "get_can_edit", lambda: False)
+    desktop.request_preparation_role_selection("target", "specific_entropy", True)
+    assert selections == [("target", "specific_enthalpy", True)]
+    assert "active worker request" in desktop.get_workspace_error_message()
+    assert desktop.shutdown()
+
+
 def test_workflow_result_handoff_inspects_exact_finalized_outputs_without_rebinding(
     tmp_path: Path,
     application: QCoreApplication,
