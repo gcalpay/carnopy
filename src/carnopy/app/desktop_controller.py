@@ -591,9 +591,7 @@ class DesktopController(QObject):
 
     @Slot(str, result=bool, name="requestWorkflowInspectResult")
     def request_workflow_inspect_result(self, workflow: str) -> bool:
-        controller = (
-            self.sweep_workflow_controller if workflow in {"sweep", "model_sweep"} else None
-        )
+        controller = self._workflow_controller(workflow)
         output = "" if controller is None else controller.get_result_output_directory()
         if not output:
             self.activityActionFailed.emit(

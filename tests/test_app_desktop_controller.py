@@ -723,36 +723,58 @@ def test_sweep_editor_facade_enforces_document_and_worker_edit_guards(
     assert desktop.shutdown()
 
 
-def test_sweep_result_handoff_inspects_the_exact_finalized_output(
+def test_workflow_result_handoff_inspects_exact_finalized_outputs_without_rebinding(
     tmp_path: Path,
     application: QCoreApplication,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     del application
     desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
-    output = tmp_path / "workspace" / "outputs" / "sweep-run"
+    sweep_output = tmp_path / "workspace" / "outputs" / "sweep-run"
+    preparation_output = tmp_path / "workspace" / "outputs" / "preparation-run"
     inspected: list[str] = []
     navigation: list[tuple[str, str]] = []
     failures: list[tuple[str, str]] = []
+    binding_calls: list[str] = []
     desktop.navigationRequested.connect(lambda page, detail: navigation.append((page, detail)))
     desktop.activityActionFailed.connect(lambda title, message: failures.append((title, message)))
     monkeypatch.setattr(
         desktop.sweep_workflow_controller,
         "get_result_output_directory",
-        lambda: str(output),
+        lambda: str(sweep_output),
+    )
+    monkeypatch.setattr(
+        desktop.preparation_workflow_controller,
+        "get_result_output_directory",
+        lambda: str(preparation_output),
+    )
+    monkeypatch.setattr(
+        desktop.preparation_workflow_controller,
+        "bind_inspected_source",
+        lambda: binding_calls.append("bind") or True,
     )
     monkeypatch.setattr(
         desktop.inspection_controller,
         "inspect_source",
         lambda value: inspected.append(str(value)) or True,
     )
+    refreshed_sources: list[str] = []
+    monkeypatch.setattr(
+        desktop.inspection_controller,
+        "refresh_sources",
+        lambda: refreshed_sources.append("refresh"),
+    )
 
     assert desktop.request_workflow_inspect_result("sweep")
-    assert inspected == [str(output)]
-    assert navigation == [("inspect", "")]
+    assert desktop.request_workflow_inspect_result("preparation")
+    assert inspected == [str(sweep_output), str(preparation_output)]
+    assert navigation == [("inspect", ""), ("inspect", "")]
+    assert binding_calls == []
     assert failures == []
+    desktop.preparation_workflow_controller.output_finalized.emit(preparation_output)
+    assert refreshed_sources == ["refresh"]
 
-    assert not desktop.request_workflow_inspect_result("preparation")
+    assert not desktop.request_workflow_inspect_result("unknown")
     assert failures == [
         (
             "Inspect Result",
@@ -837,9 +859,18 @@ def test_bound_preparation_profile_is_the_only_profile_applied_to_the_draft(
     assert desktop.shutdown()
 
 
+@pytest.mark.parametrize(
+    "controller_name",
+    [
+        "execution_controller",
+        "sweep_workflow_controller",
+        "preparation_workflow_controller",
+    ],
+)
 def test_execution_record_changes_refresh_the_shared_activity_projection(
     tmp_path: Path,
     application: QCoreApplication,
+    controller_name: str,
 ) -> None:
     del application
     desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
@@ -854,7 +885,7 @@ def test_execution_record_changes_refresh_the_shared_activity_projection(
         config_sha256="a" * 64,
     )
 
-    desktop.execution_controller.activity_record_changed.emit()
+    getattr(desktop, controller_name).activity_record_changed.emit()
 
     assert desktop.activity_controller.records_model.get_count() == 1
     assert desktop.activity_controller.records_model.rows()[0]["state"] == "interrupted"

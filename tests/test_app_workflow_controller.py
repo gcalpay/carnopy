@@ -271,6 +271,8 @@ def _finish_plan(
     *,
     digest: str,
     plan_id: str = "b" * 64,
+    plan_schema_version: int | None = None,
+    fingerprint: dict[str, object] | None = None,
     source_revision: dict[str, object] | None = None,
     preparation_projection: dict[str, object] | None = None,
 ) -> None:
@@ -278,6 +280,10 @@ def _finish_plan(
         "plan_id": plan_id,
         "configuration_sha256": digest,
     }
+    if plan_schema_version is not None:
+        payload["plan_schema_version"] = plan_schema_version
+    if fingerprint is not None:
+        payload["fingerprint"] = fingerprint
     if source_revision is not None:
         payload["source_revision"] = source_revision
         payload.update(
@@ -1941,24 +1947,32 @@ def test_preparation_binding_refresh_clear_and_workspace_lifecycle_are_explicit(
     coordinator.shutdown()
 
 
-def test_preparation_result_keeps_the_source_context_used_by_execution(
+def test_preparation_result_and_activity_keep_exact_execution_identities(
     tmp_path: Path,
     application: QCoreApplication,
 ) -> None:
     del application
     workspace = initialize_workspace(tmp_path / "workspace")
-    config = _config(workspace, "preparation.yaml")
+    coordinator, transport = coordinator_for()
+    configuration = ConfigurationController(coordinator)
+    configuration.set_workspace(workspace)
+    transport.finish(payload=_sweep_capabilities())
+    document = _saved_preparation_document(workspace)
+    assert configuration.open_document(document)
+    saved_bytes = document.yaml_bytes
+    digest = sha256_bytes(saved_bytes)
     source = workspace.outputs / "dataset-run"
     source.mkdir()
     replacement = workspace.outputs / "replacement-run"
     replacement.mkdir()
-    coordinator, transport = coordinator_for()
     inspection = InspectionController(coordinator)
-    controller = PreparationWorkflowController(coordinator, inspection)
+    controller = PreparationWorkflowController(
+        coordinator,
+        inspection,
+        configuration_controller=configuration,
+    )
     controller.set_workspace(workspace)
 
-    assert controller.load_config(config)
-    digest = _finish_load(transport, config)
     revision = "a" * 64
     descriptor = _accept_preparation_inspection(
         inspection,
@@ -1966,10 +1980,20 @@ def test_preparation_result_keeps_the_source_context_used_by_execution(
         revision=revision,
     )
     assert controller.bind_inspected_source()
+    bound = controller.bound_source_snapshot()
+    assert bound is not None
+    assert configuration.preparation_draft.apply_source_profile(bound[3])
     assert controller.plan()
+    fingerprint: dict[str, object] = {
+        "workflow_kind": "preparation",
+        "configuration_sha256": digest,
+        "runtime": {"numpy": "test-version"},
+    }
     _finish_plan(
         transport,
         digest=digest,
+        plan_schema_version=1,
+        fingerprint=fingerprint,
         source_revision={
             "inspection_revision": revision,
             "inspection_descriptor": descriptor,
@@ -1980,6 +2004,11 @@ def test_preparation_result_keeps_the_source_context_used_by_execution(
     output = workspace.outputs / "preparation-output"
     output.mkdir()
     assert controller.execute()
+    request_id = transport.request_id
+    assert request_id is not None
+    transport.emit_event("accepted", {})
+    transport.emit_event("phase", {"name": "preparation", "cancellable": True})
+    transport.emit_event("progress", {"completed": 4, "total": 10})
     _accept_preparation_inspection(
         inspection,
         replacement,
@@ -1992,11 +2021,24 @@ def test_preparation_result_keeps_the_source_context_used_by_execution(
     assert controller.get_has_result()
     assert controller.get_result_output_directory() == str(output)
     assert controller.get_result_relation() == "current"
+    finalized_result = controller.result
     record = next(
         item
         for item in coordinator_for_job_records(workspace)
-        if item["operation"] == "execute_preparation"
+        if item["operation"] == "execute_preparation" and item["status"] == "completed"
     )
+    assert record["request_id"] == str(request_id)
+    assert record["owner"] == "preparation"
+    assert record["configuration"] == {
+        "relative_path": "configs/preparation.yaml",
+        "yaml_snapshot": saved_bytes.decode("utf-8"),
+        "sha256": digest,
+    }
+    assert record["plan_identity"] == {
+        "plan_id": "b" * 64,
+        "plan_schema_version": 1,
+        "fingerprint": fingerprint,
+    }
     assert record["preparation_source_identity"] == {
         "source_path": str(source.resolve()),
         "source_kind": "dataset_run",
@@ -2004,6 +2046,9 @@ def test_preparation_result_keeps_the_source_context_used_by_execution(
         "descriptor": descriptor,
         "source_identity": {"source_kind": "dataset_run"},
     }
+    assert record["phase"] == "preparation"
+    assert record["progress"] == {"completed": 4, "total": 10}
+    assert record["summary"]["output_directory"] == str(output)
 
     assert controller.bind_inspected_source()
     assert controller.get_result_relation() == "stale"
@@ -2016,6 +2061,40 @@ def test_preparation_result_keeps_the_source_context_used_by_execution(
     assert restored_descriptor == descriptor
     assert controller.bind_inspected_source()
     assert controller.get_result_relation() == "current"
+
+    assert controller.execute()
+    transport.finish(
+        terminal_type="error",
+        payload={
+            "category": "execution",
+            "code": "execution_failed",
+            "message": "simulated later failure",
+        },
+    )
+    assert controller.state == "failed"
+    assert controller.result == finalized_result
+    assert controller.get_result_relation() == "current"
+
+    assert controller.execute()
+    transport.finish(
+        terminal_type="cancelled",
+        payload={"code": "cancelled", "message": "simulated cancellation"},
+    )
+    assert controller.state == "cancelled"
+    assert controller.result == finalized_result
+    assert controller.get_result_output_directory() == str(output)
+
+    sweep_document = _saved_sweep_document(workspace)
+    assert configuration.open_document(sweep_document)
+    assert controller.result == finalized_result
+    assert controller.get_result_relation() == "unrelated"
+    assert configuration.open_document(document)
+    assert controller.get_result_relation() == "current"
+
+    controller.set_workspace(initialize_workspace(tmp_path / "replacement-workspace"))
+    assert controller.result is None
+    assert controller.get_result_relation() == "unavailable"
+    assert not controller.get_has_bound_source()
     coordinator.shutdown()
 
 
