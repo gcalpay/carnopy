@@ -85,6 +85,7 @@ class DesktopController(QObject):
             self.request_coordinator,
             self.inspection_controller,
             self,
+            configuration_controller=self.configuration_controller,
         )
         self.preparation_workflow_controller.source_binding_changed.connect(
             self._preparation_source_binding_changed

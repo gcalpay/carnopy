@@ -378,6 +378,7 @@ class WorkflowController(QObject):
                     ),
                 )
             )
+        issues.extend(self._workflow_input_issues())
         if issue := self._worker_availability_issue():
             issues.append(issue)
         return tuple(issues)
@@ -428,9 +429,13 @@ class WorkflowController(QObject):
             )
         if issue := self._saved_configuration_issue():
             issues.append(issue)
+        issues.extend(self._workflow_input_issues())
         if issue := self._worker_availability_issue():
             issues.append(issue)
         return tuple(issues)
+
+    def _workflow_input_issues(self) -> tuple[WorkflowIssue, ...]:
+        return ()
 
     def _saved_configuration_issue(self) -> WorkflowIssue | None:
         if self.workspace is None:
@@ -505,7 +510,7 @@ class WorkflowController(QObject):
     def _blocking_issue(
         self,
         *,
-        origin: Literal["local", "source", "plan", "runtime"],
+        origin: Literal["local", "source", "dependency", "plan", "runtime"],
         code: str,
         message: str,
         section: str,
@@ -565,6 +570,9 @@ class WorkflowController(QObject):
             context = self._plan_context()
         except ValueError as exc:
             self._set_local_failure("request", "plan_unavailable", str(exc))
+            return False
+        if issues := self._workflow_input_issues():
+            self._set_local_failure("request", "plan_unavailable", issues[0].message)
             return False
         workspace = self.workspace
         if workspace is None:
@@ -1021,12 +1029,26 @@ class PreparationWorkflowController(WorkflowController):
         coordinator: DesktopRequestCoordinator,
         inspection: InspectionController,
         parent: QObject | None = None,
+        *,
+        configuration_controller: ConfigurationController | None = None,
     ) -> None:
-        super().__init__(coordinator, kind="preparation", parent=parent)
+        super().__init__(
+            coordinator,
+            kind="preparation",
+            configuration_controller=configuration_controller,
+            parent=parent,
+        )
         self.inspection = inspection
         self._source_binding: _PreparationSourceBinding | None = None
         self._source_binding_issue = ""
         inspection.inspection_changed.connect(self._inspection_changed)
+        if configuration_controller is not None:
+            configuration_controller.preparation_draft.profile_changed.connect(
+                self.state_changed.emit
+            )
+            configuration_controller.preparation_draft.capability_changed.connect(
+                self.state_changed.emit
+            )
         self._refresh_typed_projections()
 
     def get_has_bound_source(self) -> bool:
@@ -1168,6 +1190,34 @@ class PreparationWorkflowController(WorkflowController):
         if binding is None:
             raise ValueError("use an inspected source for ML Preparation first")
         return binding.plan_context()
+
+    def _workflow_input_issues(self) -> tuple[WorkflowIssue, ...]:
+        controller = self.configuration_controller
+        if controller is None or controller.get_document_kind() != "preparation":
+            return ()
+        draft = controller.preparation_draft
+        issues: list[WorkflowIssue] = []
+        if source_issue := draft.get_source_issue():
+            issues.append(
+                self._blocking_issue(
+                    origin="source",
+                    code="preparation_source_incompatible",
+                    message=source_issue,
+                    section="source",
+                    field_id="preparation.source",
+                )
+            )
+        if dependency_issue := draft.get_dependency_issue():
+            issues.append(
+                self._blocking_issue(
+                    origin="dependency",
+                    code="preparation_dependency_unavailable",
+                    message=dependency_issue,
+                    section="outputs",
+                    field_id="preparation.outputs",
+                )
+            )
+        return tuple(issues)
 
     def _plan_result_matches_current_context(self, result: dict[str, object]) -> bool:
         binding = self._source_binding

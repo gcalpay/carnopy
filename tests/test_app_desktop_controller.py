@@ -114,6 +114,10 @@ def test_desktop_controller_owns_one_composition_and_preserves_settings_identity
     assert desktop.preparation_workflow_controller.parent() is desktop
     assert desktop.preparation_workflow_controller.kind == "preparation"
     assert desktop.preparation_workflow_controller.inspection is desktop.inspection_controller
+    assert (
+        desktop.preparation_workflow_controller.configuration_controller
+        is desktop.configuration_controller
+    )
     assert desktop.configured_plot_results_controller.parent() is desktop
     assert desktop.configured_plot_results_controller.activity is desktop.activity_controller
     assert desktop.session_plot_controller.parent() is desktop

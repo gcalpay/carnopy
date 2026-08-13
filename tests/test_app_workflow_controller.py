@@ -208,6 +208,52 @@ def _saved_sweep_document(workspace: Workspace) -> ConfigurationDocument:
     )
 
 
+def _preparation_payload(*, safetensors: bool = False) -> dict[str, Any]:
+    outputs: dict[str, Any] = {"formats": ["parquet"]}
+    if safetensors:
+        outputs = {
+            "formats": ["parquet"],
+            "parquet": True,
+            "arrays": {"formats": ["safetensors"], "dtype": "float32"},
+        }
+    return {
+        "schema_version": 1,
+        "document_type": "preparation",
+        "source_policy": {"allow_partial_sweep": False},
+        "features": {
+            "numeric": ["temperature", "pressure", "mass_density"],
+            "derived": ["specific_volume"],
+        },
+        "categorical_features": [
+            {
+                "field": "phase",
+                "encoding": "one_hot",
+                "categories": "observed",
+            }
+        ],
+        "targets": ["specific_enthalpy"],
+        "auxiliary": ["fluid", "backend_model", "phase", "run_id", "case_id"],
+        "outputs": outputs,
+    }
+
+
+def _saved_preparation_document(
+    workspace: Workspace,
+    *,
+    safetensors: bool = False,
+) -> ConfigurationDocument:
+    value = _preparation_payload(safetensors=safetensors)
+    content = serialize_configuration(value)
+    path = workspace.configs / "preparation.yaml"
+    path.write_bytes(content)
+    return ConfigurationDocument(
+        value,
+        source_path=path,
+        source_sha256=sha256_bytes(content),
+        workspace_owned=True,
+    )
+
+
 def _finish_load(transport: StubTransport, path: Path) -> str:
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     transport.finish(
@@ -256,6 +302,7 @@ def _accept_preparation_inspection(
     source: Path,
     *,
     revision: str,
+    complete_profile: bool = True,
 ) -> dict[str, object]:
     descriptor: dict[str, object] = {
         "source_path": str(source.resolve()),
@@ -264,6 +311,21 @@ def _accept_preparation_inspection(
         "controls": {},
         "tables": [],
     }
+    numeric_names = (
+        ["temperature", "pressure", "mass_density", "specific_enthalpy"]
+        if complete_profile
+        else ["pressure", "specific_enthalpy"]
+    )
+    numeric_candidates = [
+        {
+            "name": name,
+            "column": name,
+            "unit": "K" if name == "temperature" else None,
+            "source": ("coordinate" if name in {"temperature", "pressure"} else "property"),
+            "reference_dependent": name == "specific_enthalpy",
+        }
+        for name in numeric_names
+    ]
     profile: dict[str, object] = {
         "profile_schema_version": 1,
         "source_path": str(source.resolve()),
@@ -279,12 +341,42 @@ def _accept_preparation_inspection(
         "available_models": ["heos"],
         "declared_models": [],
         "reference_model": "heos",
-        "numeric_candidates": [],
-        "target_candidates": [],
-        "categorical_candidates": [],
-        "auxiliary_candidates": [],
-        "observed_category_values": {},
-        "derived_features": [],
+        "numeric_candidates": numeric_candidates,
+        "target_candidates": numeric_candidates,
+        "categorical_candidates": [
+            {
+                "name": "phase",
+                "column": "phase",
+                "unit": None,
+                "source": "categorical",
+                "reference_dependent": False,
+            }
+        ],
+        "auxiliary_candidates": [
+            {
+                "name": name,
+                "column": name,
+                "unit": None,
+                "source": "auxiliary",
+                "reference_dependent": False,
+            }
+            for name in ("fluid", "backend_model", "phase", "run_id", "case_id")
+        ],
+        "observed_category_values": {"phase": ["gas", "liquid"]},
+        "derived_features": [
+            {
+                "name": "specific_volume",
+                "status": "ready" if complete_profile else "unavailable",
+                "available": complete_profile,
+                "reason": "" if complete_profile else "Density is unavailable.",
+                "ready_row_count": 10 if complete_profile else 0,
+                "source_row_count": 10,
+                "reason_codes": [] if complete_profile else ["missing_dependency"],
+                "missing_dependencies": [] if complete_profile else ["mass_density"],
+                "dependencies": ["mass_density"],
+                "unit": "m^3/kg",
+            }
+        ],
         "model_holdout": {
             "available": False,
             "reason": "Model holdout scenarios require a model-sweep source.",
@@ -434,6 +526,173 @@ def test_sweep_planning_uses_the_global_configuration_snapshot(
     assert not controller.get_plan_current()
     assert configuration.sweep_draft.set_reference_model("heos")
     assert controller.get_plan_current()
+    coordinator.shutdown()
+
+
+def test_preparation_planning_uses_global_configuration_and_bound_source(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    workspace = initialize_workspace(tmp_path / "workspace")
+    coordinator, transport = coordinator_for()
+    configuration = ConfigurationController(coordinator)
+    configuration.set_workspace(workspace)
+    assert transport.request_type == "describe_capabilities"
+    transport.finish(payload=_sweep_capabilities())
+    document = _saved_preparation_document(workspace)
+    assert configuration.open_document(document)
+    inspection = InspectionController(coordinator)
+    controller = PreparationWorkflowController(
+        coordinator,
+        inspection,
+        configuration_controller=configuration,
+    )
+    controller.set_workspace(workspace)
+    source = workspace.outputs / "dataset-run"
+    source.mkdir()
+    revision = "a" * 64
+    descriptor = _accept_preparation_inspection(
+        inspection,
+        source,
+        revision=revision,
+    )
+    assert controller.bind_inspected_source()
+    bound = controller.bound_source_snapshot()
+    assert bound is not None
+    assert configuration.preparation_draft.apply_source_profile(bound[3])
+    digest = sha256_bytes(document.yaml_bytes)
+
+    assert controller.loaded_config is None
+    assert controller.config_path is None
+    assert controller.config_sha256 == ""
+    assert controller.can_plan
+    assert controller.plan_blocking_reasons.issues == ()
+    assert controller.plan()
+    assert transport.request_type == "plan_preparation"
+    assert transport.payload == {
+        "config_path": str(document.source_path),
+        "expected_config_sha256": digest,
+        "configs_root": str(workspace.configs),
+        "source_path": str(source.resolve()),
+        "inspection_revision": revision,
+        "inspection_descriptor": descriptor,
+    }
+    _finish_plan(
+        transport,
+        digest=digest,
+        source_revision={
+            "inspection_revision": revision,
+            "inspection_descriptor": descriptor,
+            "consumed_source": {},
+        },
+    )
+
+    assert controller.get_plan_current()
+    assert controller.can_execute
+    assert configuration.preparation_draft.set_allow_partial_sweep(True)
+    assert configuration.get_dirty()
+    assert not controller.get_plan_current()
+    assert not controller.can_plan
+    assert configuration.preparation_draft.set_allow_partial_sweep(False)
+    assert not configuration.get_dirty()
+    assert controller.get_plan_current()
+    coordinator.shutdown()
+
+
+def test_preparation_planning_blocks_source_and_dependency_issues_before_worker(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    workspace = initialize_workspace(tmp_path / "workspace")
+    coordinator, transport = coordinator_for()
+    configuration = ConfigurationController(coordinator)
+    configuration.set_workspace(workspace)
+    transport.finish(payload=_sweep_capabilities())
+    document = _saved_preparation_document(workspace, safetensors=True)
+    assert configuration.open_document(document)
+    inspection = InspectionController(coordinator)
+    controller = PreparationWorkflowController(
+        coordinator,
+        inspection,
+        configuration_controller=configuration,
+    )
+    controller.set_workspace(workspace)
+    source = workspace.outputs / "dataset-run"
+    source.mkdir()
+    first_revision = "a" * 64
+    _accept_preparation_inspection(
+        inspection,
+        source,
+        revision=first_revision,
+        complete_profile=False,
+    )
+    assert controller.bind_inspected_source()
+    bound = controller.bound_source_snapshot()
+    assert bound is not None
+    assert configuration.preparation_draft.apply_source_profile(bound[3])
+
+    assert not controller.can_plan
+    assert [issue.code for issue in controller.plan_blocking_reasons.issues] == [
+        "preparation_source_incompatible",
+        "preparation_dependency_unavailable",
+    ]
+    source_issue, dependency_issue = controller.plan_blocking_reasons.issues
+    assert source_issue.origin == "source"
+    assert source_issue.field_id == "preparation.source"
+    assert dependency_issue.origin == "dependency"
+    assert dependency_issue.field_id == "preparation.outputs"
+    assert not controller.plan()
+    assert transport.request_type is None
+    assert controller.get_failure_code() == "plan_unavailable"
+    assert "unavailable in the bound source" in controller.get_failure_message()
+
+    second_revision = "c" * 64
+    descriptor = _accept_preparation_inspection(
+        inspection,
+        source,
+        revision=second_revision,
+    )
+    assert controller.bind_inspected_source()
+    bound = controller.bound_source_snapshot()
+    assert bound is not None
+    assert configuration.preparation_draft.apply_source_profile(bound[3])
+    [reason] = controller.plan_blocking_reasons.issues
+    assert reason.code == "preparation_dependency_unavailable"
+    assert not controller.plan()
+    assert transport.request_type is None
+    assert "carnopy[ml]" in controller.get_failure_message()
+
+    configuration.preparation_draft.apply_capabilities(
+        {
+            "workflows": {
+                "preparation": {
+                    "safetensors": {"available": True},
+                    "baseline_diagnostics": {"available": False},
+                }
+            }
+        }
+    )
+    assert controller.can_plan
+    assert controller.plan()
+    digest = sha256_bytes(document.yaml_bytes)
+    _finish_plan(
+        transport,
+        digest=digest,
+        source_revision={
+            "inspection_revision": second_revision,
+            "inspection_descriptor": descriptor,
+            "consumed_source": {},
+        },
+    )
+    assert controller.can_execute
+
+    configuration.preparation_draft.apply_capabilities(_sweep_capabilities())
+    assert not controller.can_execute
+    assert [issue.code for issue in controller.execution_blocking_reasons.issues] == [
+        "preparation_dependency_unavailable"
+    ]
     coordinator.shutdown()
 
 
