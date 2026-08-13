@@ -121,6 +121,9 @@ class DesktopController(QObject):
         )
         self.execution_controller.state_changed.connect(self._continue_pending_busy_shutdown)
         self.sweep_workflow_controller.state_changed.connect(self._continue_pending_busy_shutdown)
+        self.preparation_workflow_controller.state_changed.connect(
+            self._continue_pending_busy_shutdown
+        )
         self.execution_controller.run_finalized.connect(
             lambda _path: self.inspection_controller.refresh_sources()
         )
@@ -588,7 +591,9 @@ class DesktopController(QObject):
 
     @Slot(str, result=bool, name="requestWorkflowInspectResult")
     def request_workflow_inspect_result(self, workflow: str) -> bool:
-        controller = self._workflow_controller(workflow)
+        controller = (
+            self.sweep_workflow_controller if workflow in {"sweep", "model_sweep"} else None
+        )
         output = "" if controller is None else controller.get_result_output_directory()
         if not output:
             self.activityActionFailed.emit(
@@ -1424,6 +1429,15 @@ class DesktopController(QObject):
                     "Carnopy after the worker and activity record finish safely?",
                 )
             elif (
+                active_session.owner == "preparation"
+                and active_session.request_type == "execute_preparation"
+            ):
+                self.busyShutdownConfirmationRequested.emit(
+                    "cancel_preparation",
+                    "ML Preparation execution is active. Cancel it cooperatively and close "
+                    "Carnopy after the worker and activity record finish safely?",
+                )
+            elif (
                 active_session.owner == "plot"
                 and active_session.request_type == "render_plot"
                 and self.session_plot_controller.get_can_force_stop()
@@ -1481,6 +1495,10 @@ class DesktopController(QObject):
             return True
         if session.owner == "sweep" and session.request_type == "execute_sweep":
             self._pending_busy_shutdown = "sweep_waiting"
+            self._continue_pending_busy_shutdown()
+            return True
+        if session.owner == "preparation" and session.request_type == "execute_preparation":
+            self._pending_busy_shutdown = "preparation_waiting"
             self._continue_pending_busy_shutdown()
             return True
         if session.owner == "plot" and session.request_type == "render_plot":
@@ -1572,7 +1590,11 @@ class DesktopController(QObject):
 
     def _continue_pending_busy_shutdown(self) -> None:
         mode = self._pending_busy_shutdown
-        if mode not in {"generation_waiting", "sweep_waiting"}:
+        if mode not in {
+            "generation_waiting",
+            "sweep_waiting",
+            "preparation_waiting",
+        }:
             return
         session = self.request_coordinator.active_session
         if session is None:
@@ -1588,14 +1610,25 @@ class DesktopController(QObject):
             if not self.execution_controller.cancel():
                 self._pending_busy_shutdown = mode
             return
+        if mode == "sweep_waiting":
+            if (
+                session.owner != "sweep"
+                or session.request_type != "execute_sweep"
+                or not self.sweep_workflow_controller.get_cancellation_available()
+            ):
+                return
+            self._pending_busy_shutdown = "sweep"
+            if not self.sweep_workflow_controller.cancel():
+                self._pending_busy_shutdown = mode
+            return
         if (
-            session.owner != "sweep"
-            or session.request_type != "execute_sweep"
-            or not self.sweep_workflow_controller.get_cancellation_available()
+            session.owner != "preparation"
+            or session.request_type != "execute_preparation"
+            or not self.preparation_workflow_controller.get_cancellation_available()
         ):
             return
-        self._pending_busy_shutdown = "sweep"
-        if not self.sweep_workflow_controller.cancel():
+        self._pending_busy_shutdown = "preparation"
+        if not self.preparation_workflow_controller.cancel():
             self._pending_busy_shutdown = mode
 
     def _complete_busy_shutdown(self) -> None:
@@ -1685,9 +1718,14 @@ class DesktopController(QObject):
     def _plot_commit_rejected(self, field: str, row: int, _message: str) -> None:
         self.attentionRequested.emit("visualization", field, row)
 
-    def _workflow_controller(self, workflow: str) -> SweepWorkflowController | None:
+    def _workflow_controller(
+        self,
+        workflow: str,
+    ) -> SweepWorkflowController | PreparationWorkflowController | None:
         if workflow in {"sweep", "model_sweep"}:
             return self.sweep_workflow_controller
+        if workflow == "preparation":
+            return self.preparation_workflow_controller
         return None
 
     def _inspect_run(self, source: str, *, navigate: bool) -> bool:

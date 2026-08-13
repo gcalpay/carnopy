@@ -343,6 +343,51 @@ def test_qml_shutdown_cancels_sweep_then_closes_after_safe_completion(
     assert close_requests == ["close"]
 
 
+def test_qml_shutdown_cancels_preparation_then_closes_after_safe_completion(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    confirmations: list[tuple[str, str]] = []
+    cancellations: list[str] = []
+    close_requests: list[str] = []
+    desktop.busyShutdownConfirmationRequested.connect(
+        lambda mode, message: confirmations.append((mode, message))
+    )
+    desktop.closeWindowRequested.connect(lambda: close_requests.append("close"))
+    desktop.request_coordinator._active_session = SimpleNamespace(
+        owner="preparation",
+        request_type="execute_preparation",
+    )
+    monkeypatch.setattr(
+        desktop.preparation_workflow_controller,
+        "get_cancellation_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        desktop.preparation_workflow_controller,
+        "cancel",
+        lambda: cancellations.append("cancel") or True,
+    )
+
+    assert not desktop.request_shutdown()
+    assert confirmations == [
+        (
+            "cancel_preparation",
+            "ML Preparation execution is active. Cancel it cooperatively and close Carnopy "
+            "after the worker and activity record finish safely?",
+        )
+    ]
+    assert desktop.confirm_busy_shutdown(True)
+    assert cancellations == ["cancel"]
+    desktop.request_coordinator._active_session = None
+    desktop._complete_busy_shutdown()
+
+    assert close_requests == ["close"]
+
+
 def test_plot_cleanup_failure_aborts_pending_busy_shutdown(
     tmp_path: Path,
     application: QCoreApplication,
@@ -540,7 +585,7 @@ def test_execution_facade_routes_qml_intent_to_the_authoritative_controller(
     assert desktop.shutdown()
 
 
-def test_sweep_workflow_facade_routes_only_the_integrated_workflow(
+def test_workflow_facade_routes_sweep_and_preparation_control(
     tmp_path: Path,
     application: QCoreApplication,
     monkeypatch: pytest.MonkeyPatch,
@@ -568,14 +613,46 @@ def test_sweep_workflow_facade_routes_only_the_integrated_workflow(
         "force_stop",
         lambda: calls.append("force_stop") or True,
     )
+    monkeypatch.setattr(
+        desktop.preparation_workflow_controller,
+        "plan",
+        lambda: calls.append("preparation_plan") or True,
+    )
+    monkeypatch.setattr(
+        desktop.preparation_workflow_controller,
+        "execute",
+        lambda: calls.append("preparation_execute") or True,
+    )
+    monkeypatch.setattr(
+        desktop.preparation_workflow_controller,
+        "cancel",
+        lambda: calls.append("preparation_cancel") or True,
+    )
+    monkeypatch.setattr(
+        desktop.preparation_workflow_controller,
+        "force_stop",
+        lambda: calls.append("preparation_force_stop") or True,
+    )
 
     assert desktop.request_workflow_plan("sweep")
     assert desktop.request_workflow_execute("model_sweep")
     assert desktop.request_workflow_cancel("sweep")
     assert desktop.request_workflow_force_stop("model_sweep")
-    assert not desktop.request_workflow_plan("preparation")
+    assert desktop.request_workflow_plan("preparation")
+    assert desktop.request_workflow_execute("preparation")
+    assert desktop.request_workflow_cancel("preparation")
+    assert desktop.request_workflow_force_stop("preparation")
     assert not desktop.request_workflow_execute("unknown")
-    assert calls == ["plan", "execute", "cancel", "force_stop"]
+    assert calls == [
+        "plan",
+        "execute",
+        "cancel",
+        "force_stop",
+        "preparation_plan",
+        "preparation_execute",
+        "preparation_cancel",
+        "preparation_force_stop",
+    ]
     assert desktop.shutdown()
 
 

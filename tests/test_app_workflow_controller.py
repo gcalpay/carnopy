@@ -949,6 +949,185 @@ def test_preparation_plan_projects_typed_evidence_and_retains_it_while_stale(
     coordinator.shutdown()
 
 
+def test_preparation_execution_retains_global_snapshot_and_bound_source_during_edits(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    workspace = initialize_workspace(tmp_path / "workspace")
+    coordinator, transport = coordinator_for()
+    configuration = ConfigurationController(coordinator)
+    configuration.set_workspace(workspace)
+    transport.finish(payload=_sweep_capabilities())
+    document = _saved_preparation_document(workspace)
+    assert configuration.open_document(document)
+    inspection = InspectionController(coordinator)
+    controller = PreparationWorkflowController(
+        coordinator,
+        inspection,
+        configuration_controller=configuration,
+    )
+    controller.set_workspace(workspace)
+    source = workspace.outputs / "dataset-run"
+    source.mkdir()
+    revision = "a" * 64
+    descriptor = _accept_preparation_inspection(
+        inspection,
+        source,
+        revision=revision,
+    )
+    assert controller.bind_inspected_source()
+    bound = controller.bound_source_snapshot()
+    assert bound is not None
+    assert configuration.preparation_draft.apply_source_profile(bound[3])
+    saved_bytes = document.yaml_bytes
+    digest = sha256_bytes(saved_bytes)
+    assert controller.plan()
+    _finish_plan(
+        transport,
+        digest=digest,
+        source_revision={
+            "inspection_revision": revision,
+            "inspection_descriptor": descriptor,
+            "consumed_source": {},
+        },
+    )
+
+    output = workspace.outputs / "preparation-output"
+    finalized: list[Path] = []
+    controller.output_finalized.connect(finalized.append)
+    assert controller.execute()
+    expected_payload = {
+        "config_path": str(document.source_path),
+        "expected_config_sha256": digest,
+        "configs_root": str(workspace.configs),
+        "expected_plan_id": "b" * 64,
+        "output_root": str(workspace.outputs),
+        "source_path": str(source.resolve()),
+        "inspection_revision": revision,
+        "inspection_descriptor": descriptor,
+    }
+    assert transport.request_type == "execute_preparation"
+    assert transport.payload == expected_payload
+    transport.emit_event("accepted", {})
+    transport.emit_event("phase", {"name": "preparation", "cancellable": True})
+    transport.emit_event("progress", {"completed": 4, "total": 10})
+
+    replacement = workspace.outputs / "replacement-run"
+    replacement.mkdir()
+    _accept_preparation_inspection(
+        inspection,
+        replacement,
+        revision="c" * 64,
+    )
+    assert configuration.get_can_edit()
+    assert configuration.preparation_draft.set_allow_partial_sweep(True)
+    assert configuration.preparation_draft.begin_add_scenario()
+    assert configuration.get_dirty()
+    assert not controller.bind_inspected_source()
+    assert controller.get_bound_source_path() == str(source.resolve())
+    assert controller.get_operation_active()
+    assert transport.payload == expected_payload
+
+    _finish_execution(transport, output, run_id="preparation-run")
+
+    assert controller.state == "succeeded"
+    assert finalized == [output]
+    assert controller.get_result_output_directory() == str(output)
+    assert controller.get_result_relation() == "stale"
+    assert configuration.preparation_draft.get_has_active_scenario_edit()
+    assert controller.get_progress_completed() == 4
+    assert controller.get_progress_total() == 10
+    coordinator.shutdown()
+
+
+def test_preparation_execution_uses_shared_cancel_force_and_finalization_policy(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    workspace = initialize_workspace(tmp_path / "workspace")
+    coordinator, transport = coordinator_for()
+    configuration = ConfigurationController(coordinator)
+    configuration.set_workspace(workspace)
+    transport.finish(payload=_sweep_capabilities())
+    document = _saved_preparation_document(workspace)
+    assert configuration.open_document(document)
+    inspection = InspectionController(coordinator)
+    controller = PreparationWorkflowController(
+        coordinator,
+        inspection,
+        configuration_controller=configuration,
+    )
+    controller.set_workspace(workspace)
+    source = workspace.outputs / "dataset-run"
+    source.mkdir()
+    revision = "a" * 64
+    descriptor = _accept_preparation_inspection(
+        inspection,
+        source,
+        revision=revision,
+    )
+    assert controller.bind_inspected_source()
+    bound = controller.bound_source_snapshot()
+    assert bound is not None
+    assert configuration.preparation_draft.apply_source_profile(bound[3])
+    digest = sha256_bytes(document.yaml_bytes)
+    assert controller.plan()
+    _finish_plan(
+        transport,
+        digest=digest,
+        source_revision={
+            "inspection_revision": revision,
+            "inspection_descriptor": descriptor,
+            "consumed_source": {},
+        },
+    )
+
+    assert controller.execute()
+    request_id = transport.request_id
+    assert request_id is not None
+    transport.emit_event("accepted", {})
+    transport.emit_event("phase", {"name": "preparation", "cancellable": True})
+    assert controller.get_cancellation_available()
+    assert controller.cancel()
+    assert transport.cancelled == [request_id]
+    coordinator._enable_delayed_force_stop()
+    assert controller.get_force_stop_available()
+    assert controller.force_stop()
+    assert transport.force_stopped == [request_id]
+    transport.finish(
+        terminal_type="error",
+        payload={
+            "category": "process",
+            "code": "force_stopped",
+            "message": "worker process was force-stopped",
+        },
+        force_stopped=True,
+    )
+    assert controller.state == "force_stopped"
+
+    assert controller.execute()
+    transport.emit_event("accepted", {})
+    transport.emit_event(
+        "phase",
+        {
+            "name": "finalization",
+            "cancellable": False,
+            "termination_protected": True,
+        },
+    )
+    assert controller.get_protected_finalization()
+    assert not controller.cancel()
+    coordinator._enable_delayed_force_stop()
+    assert not controller.get_force_stop_available()
+    assert not controller.force_stop()
+    _finish_execution(transport, workspace.outputs / "finalized-preparation")
+    assert controller.state == "succeeded"
+    assert not controller.get_operation_active()
+    coordinator.shutdown()
+
+
 def test_sweep_execution_retains_its_global_snapshot_while_the_draft_changes(
     tmp_path: Path,
     application: QCoreApplication,

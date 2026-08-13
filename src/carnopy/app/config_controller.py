@@ -337,8 +337,8 @@ class ConfigurationController(QObject):
         if not self.get_editor_available():
             return False
         session = getattr(self.coordinator, "active_session", None)
-        if session is not None and session.owner == "sweep":
-            return bool(session.request_type == "execute_sweep")
+        if session is not None and session.owner in {"sweep", "preparation"}:
+            return bool(session.request_type == f"execute_{session.owner}")
         return not self.coordinator.is_busy or self.coordinator.active_owner != "configuration"
 
     canEdit = Property(bool, get_can_edit, notify=state_changed)
