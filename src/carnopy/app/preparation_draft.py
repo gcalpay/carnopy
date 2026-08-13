@@ -385,6 +385,15 @@ class PreparationDraft(QObject):
         notify=capability_changed,
     )
 
+    def get_baseline_guidance(self) -> str:
+        return "" if self._analysis_available else self._analysis_guidance
+
+    baselineDiagnosticsGuidance = Property(
+        str,
+        get_baseline_guidance,
+        notify=capability_changed,
+    )
+
     def get_dependency_issue(self) -> str:
         if "safetensors" in self._array_formats and not self._safetensors_available:
             return self._safetensors_guidance

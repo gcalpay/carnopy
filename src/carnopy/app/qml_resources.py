@@ -59,6 +59,7 @@ MANDATORY_QML_FILES = (
     "qml/Carnopy/pages/HelpPage.qml",
     "qml/Carnopy/pages/InspectPage.qml",
     "qml/Carnopy/pages/ModelSweepPage.qml",
+    "qml/Carnopy/pages/PreparationPage.qml",
     "qml/Carnopy/pages/ActivityPage.qml",
     "qml/Carnopy/pages/SettingsPage.qml",
     "qml/Carnopy/pages/WorkspacePage.qml",

@@ -76,6 +76,7 @@ QML_SHELL_APP_FILES = {
     "qml/Carnopy/pages/HelpPage.qml",
     "qml/Carnopy/pages/InspectPage.qml",
     "qml/Carnopy/pages/ModelSweepPage.qml",
+    "qml/Carnopy/pages/PreparationPage.qml",
     "qml/Carnopy/pages/RunPage.qml",
     "qml/Carnopy/pages/SettingsPage.qml",
     "qml/Carnopy/pages/WorkspacePage.qml",

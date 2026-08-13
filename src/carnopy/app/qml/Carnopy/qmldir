@@ -43,3 +43,4 @@ RunPage 1.0 pages/RunPage.qml
 InspectPage 1.0 pages/InspectPage.qml
 ActivityPage 1.0 pages/ActivityPage.qml
 ModelSweepPage 1.0 pages/ModelSweepPage.qml
+PreparationPage 1.0 pages/PreparationPage.qml

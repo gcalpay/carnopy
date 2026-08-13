@@ -67,6 +67,7 @@ def test_qml_runtime_is_public_and_resources_live_in_the_app_package() -> None:
         "qml/Carnopy/pages/DatasetPage.qml",
         "qml/Carnopy/pages/InspectPage.qml",
         "qml/Carnopy/pages/ModelSweepPage.qml",
+        "qml/Carnopy/pages/PreparationPage.qml",
         "qml/Carnopy/pages/RunPage.qml",
         "qml/Carnopy/pages/VisualizationPage.qml",
         "qml/Carnopy/pages/YamlPreviewPage.qml",

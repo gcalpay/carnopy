@@ -667,6 +667,8 @@ def test_unavailable_optional_features_cannot_be_newly_selected() -> None:
     messages: list[str] = []
     draft.message.connect(messages.append)
 
+    assert not draft.get_baseline_available()
+    assert draft.get_baseline_guidance() == "install analysis"
     assert not draft.set_array_format_selected("safetensors", True)
     assert messages == ["install ml"]
     assert not draft.set_baseline_enabled(True)
@@ -694,6 +696,7 @@ def test_capability_refresh_changes_dependency_projection_without_dirtying_yaml(
 
     assert changes == []
     assert capabilities == ["capability"]
+    assert draft.get_baseline_guidance() == "install analysis"
     assert draft.get_dependency_issue() == ""
     assert draft.payload() == baseline
     assert not draft.get_dirty()

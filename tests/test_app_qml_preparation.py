@@ -3,8 +3,10 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
+import yaml
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
@@ -14,10 +16,12 @@ from PySide6.QtQml import QQmlComponent
 from PySide6.QtQuick import QQuickItem, QQuickWindow
 from PySide6.QtWidgets import QApplication
 
+from carnopy.app.config_document import new_document
 from carnopy.app.qml_resources import MANDATORY_QML_FILES
 from carnopy.app.qml_runtime import QmlApplicationRuntime, create_qml_runtime
 from carnopy.app.scenario_draft import ScenarioDraft
 from carnopy.app.workspace import initialize_workspace
+from carnopy.templates import template_text
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -71,6 +75,42 @@ def scenario_editor(runtime: QmlApplicationRuntime) -> Iterator[QQuickItem]:
     created.setParent(root)
     created.setParentItem(root.contentItem())
     created.setWidth(900)
+    created.setZ(1000)
+    _process_events()
+    yield created
+
+
+@pytest.fixture
+def preparation_page(runtime: QmlApplicationRuntime) -> Iterator[QQuickItem]:
+    desktop = runtime.controller
+    payload = yaml.safe_load(template_text(cast(Any, "preparation")))
+    assert isinstance(payload, dict)
+    assert desktop.configuration_controller.open_document(new_document(payload))
+
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    root.setWidth(1440)
+    root.setHeight(1200)
+    component = QQmlComponent(runtime.engine)
+    component.loadFromModule("Carnopy", "PreparationPage")
+    assert component.status() == QQmlComponent.Status.Ready, _component_errors(component)
+    created = component.createWithInitialProperties(
+        {
+            "configController": desktop.configuration_controller,
+            "desktopController": desktop,
+            "dialogsEnabled": False,
+            "expectedColumns": 3,
+            "inspectionController": desktop.inspection_controller,
+            "preparationDraft": desktop.configuration_controller.preparation_draft,
+            "workflowController": desktop.preparation_workflow_controller,
+        }
+    )
+    assert isinstance(created, QQuickItem), _component_errors(component)
+    created.setObjectName("directPreparationPage")
+    created.setParent(root)
+    created.setParentItem(root.contentItem())
+    created.setWidth(root.width())
+    created.setHeight(root.height())
     created.setZ(1000)
     _process_events()
     yield created
@@ -231,3 +271,137 @@ def test_preparation_scenario_qml_resource_and_controller_boundary_are_explicit(
     assert ".setPartition(" not in source
     assert ".addTransformation(" not in source
     assert "yaml" not in source.casefold()
+
+
+def test_hidden_preparation_page_binds_the_complete_authoritative_editor(
+    runtime: QmlApplicationRuntime,
+    preparation_page: QQuickItem,
+) -> None:
+    desktop = runtime.controller
+    draft = desktop.configuration_controller.preparation_draft
+
+    assert preparation_page.property("configController") is desktop.configuration_controller
+    assert preparation_page.property("desktopController") is desktop
+    assert preparation_page.property("inspectionController") is desktop.inspection_controller
+    assert preparation_page.property("preparationDraft") is draft
+    assert (
+        preparation_page.property("workflowController") is desktop.preparation_workflow_controller
+    )
+    assert preparation_page.property("documentActive") is True
+    assert preparation_page.property("locked") is False
+
+    expected = {
+        "preparationPageFlickable",
+        "preparationLocalState",
+        "preparationBoundSourceCard",
+        "preparationBoundSourceState",
+        "preparationRolesGrid",
+        "preparationNumericFeaturesCard",
+        "preparationDerivedFeaturesCard",
+        "preparationTargetsCard",
+        "preparationAuxiliaryCard",
+        "preparationCategoricalCard",
+        "preparationScenariosCard",
+        "preparationAllowPartialSweep",
+        "preparationAddScenario",
+        "preparationScenarioList",
+        "preparationOutputQualityGrid",
+        "preparationOutputsCard",
+        "preparationArrayOutputs",
+        "preparationQualityCard",
+        "preparationMatrixDiagnostics",
+        "preparationBaselineDiagnostics",
+        "preparationBaselineDependencyGuidance",
+        "preparationWorkflowRunPanel",
+        "preparationPlanButton",
+        "preparationExecuteButton",
+    }
+    names = _visual_names(preparation_page)
+    assert expected <= names
+    assert _item(preparation_page, "preparationRolesGrid").property("maximumColumns") == 3
+    assert _item(preparation_page, "preparationOutputQualityGrid").property("maximumColumns") == 2
+    assert _item(preparation_page, "preparationNumeric-temperature").property("checked")
+    assert _item(preparation_page, "preparationTarget-specific_enthalpy").property("checked")
+    assert _item(preparation_page, "preparationCategorical-phase").property("checked")
+    assert not _item(preparation_page, "preparationPlanButton").property("enabled")
+    assert not _item(preparation_page, "preparationExecuteButton").property("enabled")
+    guidance = _item(preparation_page, "preparationBaselineDependencyGuidance").property("text")
+    assert bool(guidance) is (not draft.get_baseline_available())
+    if guidance:
+        assert "carnopy[analysis]" in guidance
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_preparation_page_restores_one_python_owned_scenario_editor(
+    runtime: QmlApplicationRuntime,
+    preparation_page: QQuickItem,
+) -> None:
+    desktop = runtime.controller
+    draft = desktop.configuration_controller.preparation_draft
+
+    assert desktop.request_preparation_add_scenario()
+    _process_events()
+    assert draft.get_has_active_scenario_edit()
+    editor = _item(preparation_page, "preparationScenarioEditor")
+    active = draft.get_active_scenario_draft()
+    assert isinstance(active, ScenarioDraft)
+    assert editor.property("draft") is active
+    desktop.request_preparation_scenario_field_change(active, "name", "complete-source")
+    _process_events()
+    assert _item(editor, "preparationScenarioCommitButton").property("enabled")
+    assert desktop.request_preparation_commit_scenario()
+    _process_events()
+
+    assert not draft.get_has_active_scenario_edit()
+    assert draft.scenarios_model.rowCount() == 1
+    assert draft.scenarios_model.rows()[0]["name"] == "complete-source"
+    assert _item(preparation_page, "preparationScenarioList").property("count") == 1
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_preparation_page_focus_and_responsive_state_remain_warning_free(
+    runtime: QmlApplicationRuntime,
+    preparation_page: QQuickItem,
+) -> None:
+    desktop = runtime.controller
+    draft = desktop.configuration_controller.preparation_draft
+
+    preparation_page.setProperty("attentionField", "preparation.outputs")
+    preparation_page.setProperty("attentionSerial", 1)
+    _process_events()
+    assert _item(preparation_page, "preparationOutputsCard").property("activeFocus") is True
+
+    assert desktop.request_preparation_add_scenario()
+    _process_events()
+    active = draft.get_active_scenario_draft()
+    assert isinstance(active, ScenarioDraft)
+    preparation_page.setProperty("attentionField", "preparation.scenario.active.name")
+    preparation_page.setProperty("attentionSerial", 2)
+    _process_events()
+    assert _item(preparation_page, "preparationScenarioName").property("activeFocus") is True
+
+    preparation_page.setWidth(720)
+    preparation_page.setProperty("expectedColumns", 1)
+    _process_events()
+    assert _item(preparation_page, "preparationRolesGrid").property("maximumColumns") == 1
+    assert _item(preparation_page, "preparationOutputQualityGrid").property("maximumColumns") == 1
+    assert desktop.request_preparation_cancel_scenario()
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_preparation_page_qml_resource_and_controller_boundary_are_explicit() -> None:
+    qml_root = ROOT / "src/carnopy/app/qml/Carnopy"
+    source = (qml_root / "pages/PreparationPage.qml").read_text(encoding="utf-8")
+    qmldir = (qml_root / "qmldir").read_text(encoding="utf-8")
+
+    assert "PreparationPage 1.0 pages/PreparationPage.qml" in qmldir
+    assert "qml/Carnopy/pages/PreparationPage.qml" in MANDATORY_QML_FILES
+    assert "requestPreparation" in source
+    assert "requestWorkflow" in source
+    assert 'Accessible.name: qsTr("Committed Preparation scenarios")' in source
+    assert 'Accessible.name: qsTr("Enable matrix diagnostics")' in source
+    assert ".setRoleSelected(" not in source
+    assert ".beginAddScenario(" not in source
+    assert ".commitScenario(" not in source
+    assert "PreparationAuditView" not in source
+    assert "TextArea" not in source
