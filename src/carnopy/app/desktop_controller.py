@@ -19,6 +19,7 @@ from carnopy.app.plot_preview_provider import VerifiedPlotPreviewRegistry
 from carnopy.app.qml_settings import QmlSettingsController
 from carnopy.app.request_coordinator import DesktopRequestCoordinator
 from carnopy.app.sampler_draft import SamplerDraft
+from carnopy.app.scenario_draft import ScenarioDraft
 from carnopy.app.session_plot_controller import SessionPlotController
 from carnopy.app.visualization_draft import VisualizationDraft
 from carnopy.app.workflow_controller import (
@@ -1177,6 +1178,202 @@ class DesktopController(QObject):
                 selected,
             )
 
+    @Slot(result=bool, name="requestPreparationAddScenario")
+    def request_preparation_add_scenario(self) -> bool:
+        return self._can_edit_preparation_document() and (
+            self.configuration_controller.preparation_draft.begin_add_scenario()
+        )
+
+    @Slot(int, result=bool, name="requestPreparationEditScenario")
+    def request_preparation_edit_scenario(self, row: int) -> bool:
+        return self._can_edit_preparation_document() and (
+            self.configuration_controller.preparation_draft.begin_edit_scenario(row)
+        )
+
+    @Slot(result=bool, name="requestPreparationCommitScenario")
+    def request_preparation_commit_scenario(self) -> bool:
+        return self._can_edit_preparation_document() and (
+            self.configuration_controller.preparation_draft.commit_scenario()
+        )
+
+    @Slot(result=bool, name="requestPreparationCancelScenario")
+    def request_preparation_cancel_scenario(self) -> bool:
+        return self._can_edit_preparation_document() and (
+            self.configuration_controller.preparation_draft.cancel_scenario()
+        )
+
+    @Slot(int, result=bool, name="requestPreparationRemoveScenario")
+    def request_preparation_remove_scenario(self, row: int) -> bool:
+        return self._can_edit_preparation_document() and (
+            self.configuration_controller.preparation_draft.remove_scenario(row)
+        )
+
+    @Slot(int, int, result=bool, name="requestPreparationMoveScenario")
+    def request_preparation_move_scenario(self, source: int, destination: int) -> bool:
+        return self._can_edit_preparation_document() and (
+            self.configuration_controller.preparation_draft.move_scenario(source, destination)
+        )
+
+    @Slot(QObject, str, str, name="requestPreparationScenarioFieldChange")
+    def request_preparation_scenario_field_change(
+        self,
+        candidate: QObject,
+        field: str,
+        value: str,
+    ) -> None:
+        draft = self._owned_preparation_scenario(candidate)
+        if draft is None or not self._can_edit_preparation_document():
+            return
+        setter = {
+            "name": draft.set_name,
+            "seed": draft.set_seed_text,
+            "field": draft.set_field,
+            "remainder": draft.set_remainder,
+        }.get(field)
+        if setter is not None:
+            setter(value)
+
+    @Slot(QObject, str, bool, name="requestPreparationScenarioKindChange")
+    def request_preparation_scenario_kind_change(
+        self,
+        candidate: QObject,
+        kind: str,
+        confirmed: bool,
+    ) -> None:
+        draft = self._owned_preparation_scenario(candidate)
+        if draft is not None and self._can_edit_preparation_document():
+            draft.apply_kind_change(kind, confirmed)
+
+    @Slot(QObject, str, str, name="requestPreparationScenarioPartition")
+    def request_preparation_scenario_partition(
+        self,
+        candidate: QObject,
+        partition: str,
+        ratio: str,
+    ) -> None:
+        draft = self._owned_preparation_scenario(candidate)
+        if draft is not None and self._can_edit_preparation_document():
+            draft.set_partition(partition, ratio)
+
+    @Slot(QObject, str, name="requestPreparationScenarioRemovePartition")
+    def request_preparation_scenario_remove_partition(
+        self,
+        candidate: QObject,
+        partition: str,
+    ) -> None:
+        draft = self._owned_preparation_scenario(candidate)
+        if draft is not None and self._can_edit_preparation_document():
+            draft.remove_partition(partition)
+
+    @Slot(QObject, str, str, name="requestPreparationScenarioCategoricalHoldout")
+    def request_preparation_scenario_categorical_holdout(
+        self,
+        candidate: QObject,
+        partition: str,
+        values: str,
+    ) -> None:
+        draft = self._owned_preparation_scenario(candidate)
+        if draft is not None and self._can_edit_preparation_document():
+            draft.set_categorical_holdout(partition, values)
+
+    @Slot(QObject, str, str, str, name="requestPreparationScenarioRangeHoldout")
+    def request_preparation_scenario_range_holdout(
+        self,
+        candidate: QObject,
+        partition: str,
+        minimum: str,
+        maximum: str,
+    ) -> None:
+        draft = self._owned_preparation_scenario(candidate)
+        if draft is not None and self._can_edit_preparation_document():
+            draft.set_range_holdout(partition, minimum, maximum)
+
+    @Slot(QObject, str, str, str, str, name="requestPreparationScenarioCoordinateHoldout")
+    def request_preparation_scenario_coordinate_holdout(
+        self,
+        candidate: QObject,
+        partition: str,
+        field: str,
+        minimum: str,
+        maximum: str,
+    ) -> None:
+        draft = self._owned_preparation_scenario(candidate)
+        if draft is not None and self._can_edit_preparation_document():
+            draft.set_coordinate_holdout(partition, field, minimum, maximum)
+
+    @Slot(QObject, str, name="requestPreparationScenarioRemoveHoldout")
+    def request_preparation_scenario_remove_holdout(
+        self,
+        candidate: QObject,
+        partition: str,
+    ) -> None:
+        draft = self._owned_preparation_scenario(candidate)
+        if draft is not None and self._can_edit_preparation_document():
+            draft.remove_holdout(partition)
+
+    @Slot(QObject, str, name="requestPreparationScenarioStrata")
+    def request_preparation_scenario_strata(
+        self,
+        candidate: QObject,
+        fields: str,
+    ) -> None:
+        draft = self._owned_preparation_scenario(candidate)
+        if draft is not None and self._can_edit_preparation_document():
+            draft.set_strata_categorical(fields)
+
+    @Slot(QObject, str, str, name="requestPreparationScenarioNumericBins")
+    def request_preparation_scenario_numeric_bins(
+        self,
+        candidate: QObject,
+        field: str,
+        boundaries: str,
+    ) -> None:
+        draft = self._owned_preparation_scenario(candidate)
+        if draft is not None and self._can_edit_preparation_document():
+            draft.set_numeric_bins(field, boundaries)
+
+    @Slot(QObject, str, name="requestPreparationScenarioRemoveNumericBins")
+    def request_preparation_scenario_remove_numeric_bins(
+        self,
+        candidate: QObject,
+        field: str,
+    ) -> None:
+        draft = self._owned_preparation_scenario(candidate)
+        if draft is not None and self._can_edit_preparation_document():
+            draft.remove_numeric_bins(field)
+
+    @Slot(QObject, str, str, name="requestPreparationScenarioTransformationAdd")
+    def request_preparation_scenario_transformation_add(
+        self,
+        candidate: QObject,
+        field: str,
+        methods: str,
+    ) -> None:
+        draft = self._owned_preparation_scenario(candidate)
+        if draft is not None and self._can_edit_preparation_document():
+            draft.add_transformation(field, methods)
+
+    @Slot(QObject, int, name="requestPreparationScenarioTransformationRemove")
+    def request_preparation_scenario_transformation_remove(
+        self,
+        candidate: QObject,
+        row: int,
+    ) -> None:
+        draft = self._owned_preparation_scenario(candidate)
+        if draft is not None and self._can_edit_preparation_document():
+            draft.remove_transformation(row)
+
+    @Slot(QObject, int, int, name="requestPreparationScenarioTransformationMove")
+    def request_preparation_scenario_transformation_move(
+        self,
+        candidate: QObject,
+        source: int,
+        destination: int,
+    ) -> None:
+        draft = self._owned_preparation_scenario(candidate)
+        if draft is not None and self._can_edit_preparation_document():
+            draft.move_transformation(source, destination)
+
     @Slot(bool, name="requestVisualizationEnabled")
     def request_visualization_enabled(self, enabled: bool) -> None:
         if self._guard_active_plot_edit("visualization enable or disable"):
@@ -1388,6 +1585,10 @@ class DesktopController(QObject):
         if candidate is not active.filters:
             return None
         return candidate if isinstance(candidate, MappingDraftModel) else None
+
+    def _owned_preparation_scenario(self, candidate: QObject) -> ScenarioDraft | None:
+        active = self.configuration_controller.preparation_draft.get_active_scenario_draft()
+        return active if isinstance(active, ScenarioDraft) and active is candidate else None
 
     def _owned_active_plot(self, candidate: QObject) -> PlotDraft | None:
         active_drafts = (

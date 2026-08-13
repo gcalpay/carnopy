@@ -27,6 +27,7 @@ from carnopy.app.desktop_controller import DesktopController
 from carnopy.app.draft_models import DraftItem
 from carnopy.app.jobs import JobStore
 from carnopy.app.request_coordinator import DesktopRequestCoordinator
+from carnopy.app.scenario_draft import ScenarioDraft
 from carnopy.app.workspace import initialize_workspace
 from carnopy.app.workspace_controller import (
     MAX_RECENT_WORKSPACES,
@@ -834,6 +835,138 @@ def test_preparation_editor_facade_enforces_document_and_worker_edit_guards(
     desktop.request_preparation_role_selection("target", "specific_entropy", True)
     assert selections == [("target", "specific_enthalpy", True)]
     assert "active worker request" in desktop.get_workspace_error_message()
+    assert desktop.shutdown()
+
+
+def test_preparation_scenario_facade_routes_only_the_owned_temporary_editor(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    controller = desktop.configuration_controller
+    preparation = controller.preparation_draft
+    active = ScenarioDraft(parent=preparation)
+    foreign = ScenarioDraft()
+    calls: list[tuple[object, ...]] = []
+
+    def recorder(name: str) -> object:
+        def record(*values: object) -> bool:
+            calls.append((name, *values))
+            return True
+
+        return record
+
+    for method in (
+        "begin_add_scenario",
+        "begin_edit_scenario",
+        "commit_scenario",
+        "cancel_scenario",
+        "remove_scenario",
+        "move_scenario",
+    ):
+        monkeypatch.setattr(preparation, method, recorder(method))
+    for method in (
+        "set_name",
+        "set_seed_text",
+        "set_field",
+        "set_remainder",
+        "apply_kind_change",
+        "set_partition",
+        "remove_partition",
+        "set_categorical_holdout",
+        "set_range_holdout",
+        "set_coordinate_holdout",
+        "remove_holdout",
+        "set_strata_categorical",
+        "set_numeric_bins",
+        "remove_numeric_bins",
+        "add_transformation",
+        "remove_transformation",
+        "move_transformation",
+    ):
+        monkeypatch.setattr(active, method, recorder(method))
+    monkeypatch.setattr(preparation, "get_active_scenario_draft", lambda: active)
+    monkeypatch.setattr(controller, "get_document_kind", lambda: "preparation")
+    monkeypatch.setattr(controller, "get_can_edit", lambda: True)
+
+    assert desktop.request_preparation_add_scenario()
+    assert desktop.request_preparation_edit_scenario(2)
+    assert desktop.request_preparation_commit_scenario()
+    assert desktop.request_preparation_cancel_scenario()
+    assert desktop.request_preparation_remove_scenario(3)
+    assert desktop.request_preparation_move_scenario(3, 1)
+    desktop.request_preparation_scenario_field_change(active, "name", "holdout")
+    desktop.request_preparation_scenario_field_change(active, "seed", "42")
+    desktop.request_preparation_scenario_field_change(active, "field", "pressure")
+    desktop.request_preparation_scenario_field_change(active, "remainder", "train")
+    desktop.request_preparation_scenario_field_change(active, "unknown", "ignored")
+    desktop.request_preparation_scenario_kind_change(active, "shuffle", True)
+    desktop.request_preparation_scenario_partition(active, "test", "0.2")
+    desktop.request_preparation_scenario_remove_partition(active, "validation")
+    desktop.request_preparation_scenario_categorical_holdout(active, "test", "gas")
+    desktop.request_preparation_scenario_range_holdout(active, "test", "1", "2")
+    desktop.request_preparation_scenario_coordinate_holdout(
+        active,
+        "test",
+        "pressure",
+        "1",
+        "2",
+    )
+    desktop.request_preparation_scenario_remove_holdout(active, "test")
+    desktop.request_preparation_scenario_strata(active, "fluid, phase")
+    desktop.request_preparation_scenario_numeric_bins(active, "temperature", "250, 300")
+    desktop.request_preparation_scenario_remove_numeric_bins(active, "temperature")
+    desktop.request_preparation_scenario_transformation_add(
+        active,
+        "pressure",
+        "log10, standard",
+    )
+    desktop.request_preparation_scenario_transformation_remove(active, 1)
+    desktop.request_preparation_scenario_transformation_move(active, 1, 0)
+
+    assert calls == [
+        ("begin_add_scenario",),
+        ("begin_edit_scenario", 2),
+        ("commit_scenario",),
+        ("cancel_scenario",),
+        ("remove_scenario", 3),
+        ("move_scenario", 3, 1),
+        ("set_name", "holdout"),
+        ("set_seed_text", "42"),
+        ("set_field", "pressure"),
+        ("set_remainder", "train"),
+        ("apply_kind_change", "shuffle", True),
+        ("set_partition", "test", "0.2"),
+        ("remove_partition", "validation"),
+        ("set_categorical_holdout", "test", "gas"),
+        ("set_range_holdout", "test", "1", "2"),
+        ("set_coordinate_holdout", "test", "pressure", "1", "2"),
+        ("remove_holdout", "test"),
+        ("set_strata_categorical", "fluid, phase"),
+        ("set_numeric_bins", "temperature", "250, 300"),
+        ("remove_numeric_bins", "temperature"),
+        ("add_transformation", "pressure", "log10, standard"),
+        ("remove_transformation", 1),
+        ("move_transformation", 1, 0),
+    ]
+
+    desktop.request_preparation_scenario_field_change(foreign, "name", "foreign")
+    assert calls[-1] == ("move_transformation", 1, 0)
+
+    monkeypatch.setattr(controller, "get_document_kind", lambda: "dataset")
+    assert not desktop.request_preparation_add_scenario()
+    desktop.request_preparation_scenario_field_change(active, "name", "wrong-kind")
+    assert calls[-1] == ("move_transformation", 1, 0)
+
+    monkeypatch.setattr(controller, "get_document_kind", lambda: "preparation")
+    monkeypatch.setattr(controller, "get_can_edit", lambda: False)
+    assert not desktop.request_preparation_add_scenario()
+    desktop.request_preparation_scenario_field_change(active, "name", "busy")
+    assert calls[-1] == ("move_transformation", 1, 0)
+    assert "active worker request" in desktop.get_workspace_error_message()
+    foreign.deleteLater()
     assert desktop.shutdown()
 
 

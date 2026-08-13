@@ -151,6 +151,11 @@ class ScenarioDraft(QObject):
         constant=True,
     )
 
+    def get_strata_categorical_text(self) -> str:
+        return ", ".join(self._strata_categorical)
+
+    strataCategoricalText = Property(str, get_strata_categorical_text, notify=changed)
+
     def get_partition_rows(self) -> QObject:
         return self.partition_rows
 

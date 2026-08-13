@@ -72,6 +72,7 @@ def test_qml_runtime_is_public_and_resources_live_in_the_app_package() -> None:
         "qml/Carnopy/pages/YamlPreviewPage.qml",
         "qml/Carnopy/components/BlockingBanner.qml",
         "qml/Carnopy/components/ComparisonPlotEditor.qml",
+        "qml/Carnopy/components/PreparationScenarioEditor.qml",
         "qml/Carnopy/components/ActivityContextInspector.qml",
         "qml/Carnopy/components/InspectionContextInspector.qml",
         "qml/Carnopy/components/LineNumberedTextArea.qml",

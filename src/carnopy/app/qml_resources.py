@@ -35,6 +35,7 @@ MANDATORY_QML_FILES = (
     "qml/Carnopy/components/SearchableChoiceList.qml",
     "qml/Carnopy/components/CommandBar.qml",
     "qml/Carnopy/components/ComparisonPlotEditor.qml",
+    "qml/Carnopy/components/PreparationScenarioEditor.qml",
     "qml/Carnopy/components/ContextInspector.qml",
     "qml/Carnopy/components/InspectionContextInspector.qml",
     "qml/Carnopy/components/ActivityContextInspector.qml",
