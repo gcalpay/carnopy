@@ -26,7 +26,12 @@ from carnopy.app.request_coordinator import (
     RequestReservation,
     RequestSession,
 )
-from carnopy.app.workflow_models import WorkflowIssue, WorkflowIssueModel
+from carnopy.app.workflow_models import (
+    PreparationPlanModel,
+    PreparationPlanProjection,
+    WorkflowIssue,
+    WorkflowIssueModel,
+)
 from carnopy.app.workspace import Workspace
 
 if TYPE_CHECKING:
@@ -1041,6 +1046,7 @@ class PreparationWorkflowController(WorkflowController):
         self.inspection = inspection
         self._source_binding: _PreparationSourceBinding | None = None
         self._source_binding_issue = ""
+        self.preparation_plan_model = PreparationPlanModel(self)
         inspection.inspection_changed.connect(self._inspection_changed)
         if configuration_controller is not None:
             configuration_controller.preparation_draft.profile_changed.connect(
@@ -1050,6 +1056,11 @@ class PreparationWorkflowController(WorkflowController):
                 self.state_changed.emit
             )
         self._refresh_typed_projections()
+
+    def get_preparation_plan_model(self) -> QObject:
+        return self.preparation_plan_model
+
+    preparationPlan = Property(QObject, get_preparation_plan_model, constant=True)
 
     def get_has_bound_source(self) -> bool:
         return self._source_binding is not None
@@ -1218,6 +1229,15 @@ class PreparationWorkflowController(WorkflowController):
                 )
             )
         return tuple(issues)
+
+    def _accept_plan(self, result: dict[str, object]) -> None:
+        projection = PreparationPlanProjection.from_worker_payload(result)
+        super()._accept_plan(result)
+        self.preparation_plan_model.replace(projection)
+
+    def _clear_plan(self) -> None:
+        super()._clear_plan()
+        self.preparation_plan_model.clear()
 
     def _plan_result_matches_current_context(self, result: dict[str, object]) -> bool:
         binding = self._source_binding

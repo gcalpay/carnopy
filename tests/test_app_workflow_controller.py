@@ -272,6 +272,7 @@ def _finish_plan(
     digest: str,
     plan_id: str = "b" * 64,
     source_revision: dict[str, object] | None = None,
+    preparation_projection: dict[str, object] | None = None,
 ) -> None:
     payload: dict[str, object] = {
         "plan_id": plan_id,
@@ -279,7 +280,152 @@ def _finish_plan(
     }
     if source_revision is not None:
         payload["source_revision"] = source_revision
+        payload.update(
+            preparation_projection
+            if preparation_projection is not None
+            else _empty_preparation_plan_projection()
+        )
     transport.finish(payload=payload)
+
+
+def _empty_preparation_plan_projection() -> dict[str, object]:
+    return {
+        "source_row_count": 0,
+        "eligible_row_count": 0,
+        "excluded_row_count": 0,
+        "resolved_semantics": {},
+        "reference_state": {
+            "selected_reference_dependent_fields": [],
+            "requires_context_compatibility": False,
+            "compatible": True,
+            "contexts": [],
+        },
+        "exclusion_reason_counts": {},
+        "categories": {},
+        "scenarios": [],
+        "outputs": {
+            "formats": ["parquet"],
+            "array_feasibility": [{"scope": "table", "status": "not_requested"}],
+        },
+        "matrix_diagnostics": None,
+        "baseline_feasibility": None,
+        "dependency_readiness": {},
+    }
+
+
+def _rich_preparation_plan_projection() -> dict[str, object]:
+    return {
+        "source_row_count": 4,
+        "eligible_row_count": 3,
+        "excluded_row_count": 1,
+        "resolved_semantics": {
+            "pressure": {
+                "column": "pressure",
+                "unit": "Pa",
+                "kind": "numeric",
+                "source": "coordinate",
+            },
+            "specific_volume": {
+                "column": "specific_volume",
+                "unit": "m^3/kg",
+                "kind": "numeric",
+                "source": "derived",
+                "formula": "1 / mass_density",
+                "dependencies": ["mass_density"],
+                "reference_state_safe": True,
+                "array_export_allowed": True,
+            },
+        },
+        "reference_state": {
+            "selected_reference_dependent_fields": ["specific_enthalpy"],
+            "requires_context_compatibility": True,
+            "compatible": True,
+            "compatible_context": {
+                "reference_state_policy": "coolprop_DEF",
+                "backend": "coolprop",
+                "backend_model": "heos",
+            },
+            "contexts": [
+                {
+                    "artifact": "dataset.parquet",
+                    "run_id": "run",
+                    "backend": "coolprop",
+                    "backend_model": "heos",
+                    "reference_state_policy": "coolprop_DEF",
+                    "reference_state_backend_model": "heos",
+                    "reference_state_targets": ["specific_enthalpy"],
+                }
+            ],
+        },
+        "exclusion_reason_counts": {"missing_required_value": 1},
+        "categories": {"phase": ["gas", "liquid"]},
+        "scenarios": [
+            {
+                "name": "shuffle",
+                "kind": "shuffle",
+                "partition_counts": {"train": 2, "test": 1},
+                "transformations": [
+                    {
+                        "field": "pressure",
+                        "methods": ["standard"],
+                        "output_column": "pressure__standard",
+                        "fit_partition": "train",
+                        "steps": [{"method": "standard", "mean": 2.0, "std": 1.0}],
+                    }
+                ],
+                "state_leakage": {
+                    "identity_column": "source_state_hash",
+                    "duplicate_state_group_count": 0,
+                    "cross_partition_group_count": 0,
+                },
+            }
+        ],
+        "outputs": {
+            "formats": ["parquet", "npy"],
+            "array_feasibility": [
+                {
+                    "scope": "table",
+                    "status": "ready",
+                    "dtype": "float32",
+                    "formats": ["npy"],
+                    "feature_shape": [3, 2],
+                    "target_shape": [3, 1],
+                    "auxiliary_shapes": {},
+                    "float_conversion": {
+                        "features": {
+                            "pressure": {
+                                "max_abs_error": 0.25,
+                                "max_rel_error": 0.01,
+                                "mean_abs_error": 0.1,
+                            }
+                        },
+                        "targets": {},
+                    },
+                }
+            ],
+        },
+        "matrix_diagnostics": [
+            {
+                "scenario": "shuffle",
+                "fit_partition": "train",
+                "status": "completed",
+                "row_count": 2,
+                "feature_columns": ["pressure", "specific_volume"],
+                "target_columns": ["specific_enthalpy"],
+                "constant_feature_columns": [],
+                "near_constant_feature_columns": [],
+                "variable_feature_columns": ["pressure", "specific_volume"],
+                "numerical_rank": 2,
+                "effective_rank": 1.8,
+                "condition_number": 3.0,
+                "condition_number_is_infinite": False,
+                "highly_correlated_feature_pairs": [],
+                "feature_target_correlations": [],
+            }
+        ],
+        "baseline_feasibility": None,
+        "dependency_readiness": {"numpy": {"available": True, "version": "2.4.0"}},
+    }
 
 
 def _finish_execution(
@@ -693,6 +839,113 @@ def test_preparation_planning_blocks_source_and_dependency_issues_before_worker(
     assert [issue.code for issue in controller.execution_blocking_reasons.issues] == [
         "preparation_dependency_unavailable"
     ]
+    coordinator.shutdown()
+
+
+def test_preparation_plan_projects_typed_evidence_and_retains_it_while_stale(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    workspace = initialize_workspace(tmp_path / "workspace")
+    replacement_workspace = initialize_workspace(tmp_path / "replacement-workspace")
+    coordinator, transport = coordinator_for()
+    configuration = ConfigurationController(coordinator)
+    configuration.set_workspace(workspace)
+    transport.finish(payload=_sweep_capabilities())
+    document = _saved_preparation_document(workspace)
+    assert configuration.open_document(document)
+    inspection = InspectionController(coordinator)
+    controller = PreparationWorkflowController(
+        coordinator,
+        inspection,
+        configuration_controller=configuration,
+    )
+    controller.set_workspace(workspace)
+    source = workspace.outputs / "dataset-run"
+    source.mkdir()
+    revision = "a" * 64
+    descriptor = _accept_preparation_inspection(
+        inspection,
+        source,
+        revision=revision,
+    )
+    assert controller.bind_inspected_source()
+    bound = controller.bound_source_snapshot()
+    assert bound is not None
+    assert configuration.preparation_draft.apply_source_profile(bound[3])
+    digest = sha256_bytes(document.yaml_bytes)
+
+    assert controller.plan()
+    _finish_plan(
+        transport,
+        digest=digest,
+        source_revision={
+            "inspection_revision": revision,
+            "inspection_descriptor": descriptor,
+            "consumed_source": {},
+        },
+        preparation_projection=_rich_preparation_plan_projection(),
+    )
+
+    plan = controller.preparation_plan_model
+    assert plan.get_source_row_count() == 4
+    assert plan.get_eligible_row_count() == 3
+    assert plan.get_excluded_row_count() == 1
+    assert plan.get_reference_context_required()
+    assert plan.get_reference_context_compatible()
+    assert plan.get_reference_policy() == "coolprop_DEF"
+    assert plan.semantic_fields.rows()[0]["name"] == "pressure"
+    assert plan.exclusion_reasons.rows() == ({"reason": "missing_required_value", "count": 1},)
+    assert plan.scenarios.get(0)["rowCount"] == 3
+    assert [row["partition"] for row in plan.partitions.rows()] == [
+        "train",
+        "test",
+    ]
+    assert plan.transformations.get(0)["fitPartition"] == "train"
+    assert plan.leakage_audits.get(0)["crossPartitionGroupCount"] == 0
+    assert plan.array_feasibility.get(0)["featureColumns"] == 2
+    assert plan.array_conversion_errors.get(0)["field"] == "pressure"
+    assert plan.matrix_diagnostics.get(0)["numericalRank"] == 2
+    assert plan.dependencies.get(0) == {
+        "name": "numpy",
+        "available": True,
+        "version": "2.4.0",
+    }
+    assert controller.property("preparationPlan") is plan
+    assert plan.property("semanticFields") is plan.semantic_fields
+    accepted_plan = controller.current_plan
+    accepted_semantics = plan.semantic_fields.rows()
+
+    assert configuration.preparation_draft.set_allow_partial_sweep(True)
+    assert not controller.get_plan_current()
+    assert controller.current_plan == accepted_plan
+    assert plan.semantic_fields.rows() == accepted_semantics
+    assert configuration.preparation_draft.set_allow_partial_sweep(False)
+    assert controller.get_plan_current()
+
+    assert controller.plan()
+    transport.finish(
+        payload={
+            "plan_id": "c" * 64,
+            "configuration_sha256": digest,
+            "source_revision": {
+                "inspection_revision": revision,
+                "inspection_descriptor": descriptor,
+                "consumed_source": {},
+            },
+        }
+    )
+    assert controller.get_failure_code() == "stale_plan"
+    assert "source row count" in controller.get_failure_message()
+    assert controller.current_plan == accepted_plan
+    assert plan.semantic_fields.rows() == accepted_semantics
+
+    controller.set_workspace(replacement_workspace)
+    assert controller.current_plan is None
+    assert plan.get_source_row_count() == 0
+    assert plan.semantic_fields.rows() == ()
+    assert plan.scenarios.rows() == ()
     coordinator.shutdown()
 
 

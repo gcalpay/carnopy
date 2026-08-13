@@ -22,10 +22,236 @@ from carnopy.app.workflow_models import (
     PATH_ROLE,
     SECTION_ROLE,
     SEVERITY_ROLE,
+    PreparationPlanProjection,
     WorkflowIssue,
     WorkflowIssueModel,
     WorkflowListModel,
 )
+
+
+def _preparation_plan_payload() -> dict[str, object]:
+    return {
+        "source_row_count": 10,
+        "eligible_row_count": 8,
+        "excluded_row_count": 2,
+        "resolved_semantics": {
+            "specific_volume": {
+                "column": "specific_volume",
+                "unit": "m^3/kg",
+                "kind": "numeric",
+                "source": "derived",
+                "formula": "1 / mass_density",
+                "dependencies": ["mass_density"],
+                "reference_state_safe": True,
+                "array_export_allowed": True,
+            },
+            "pressure": {
+                "column": "pressure_pa",
+                "unit": "Pa",
+                "kind": "numeric",
+                "source": "coordinate",
+            },
+        },
+        "reference_state": {
+            "selected_reference_dependent_fields": ["specific_enthalpy"],
+            "requires_context_compatibility": True,
+            "compatible": True,
+            "compatible_context": {
+                "reference_state_policy": "coolprop_DEF",
+                "backend": "coolprop",
+                "backend_model": "heos",
+            },
+            "contexts": [
+                {
+                    "artifact": "dataset.parquet",
+                    "run_id": "run-1",
+                    "backend": "coolprop",
+                    "backend_model": "heos",
+                    "reference_state_policy": "coolprop_DEF",
+                    "reference_state_backend_model": "heos",
+                    "reference_state_targets": ["specific_enthalpy"],
+                }
+            ],
+        },
+        "exclusion_reason_counts": {"missing_required_value": 2},
+        "categories": {"phase": ["gas", "liquid"]},
+        "scenarios": [
+            {
+                "name": "shuffle",
+                "kind": "shuffle",
+                "partition_counts": {"test": 2, "train": 6},
+                "transformations": [
+                    {
+                        "field": "pressure",
+                        "methods": ["log10", "standard"],
+                        "output_column": "pressure__log10__standard",
+                        "fit_partition": "train",
+                        "steps": [
+                            {"method": "log10"},
+                            {"method": "standard", "mean": 1.0, "std": 0.5},
+                        ],
+                    }
+                ],
+                "state_leakage": {
+                    "identity_column": "source_state_hash",
+                    "duplicate_state_group_count": 1,
+                    "cross_partition_group_count": 0,
+                },
+            }
+        ],
+        "outputs": {
+            "formats": ["parquet", "npy"],
+            "array_feasibility": [
+                {
+                    "scope": "scenario:shuffle:train",
+                    "status": "ready",
+                    "dtype": "float32",
+                    "formats": ["npy"],
+                    "feature_shape": [6, 2],
+                    "target_shape": [6, 1],
+                    "auxiliary_shapes": {"fluid": [6]},
+                    "float_conversion": {
+                        "features": {
+                            "pressure": {
+                                "max_abs_error": 0.25,
+                                "max_rel_error": 0.01,
+                                "mean_abs_error": 0.1,
+                            }
+                        }
+                    },
+                }
+            ],
+        },
+        "matrix_diagnostics": [
+            {
+                "scenario": "shuffle",
+                "fit_partition": "train",
+                "status": "completed",
+                "row_count": 6,
+                "feature_columns": ["pressure", "specific_volume"],
+                "target_columns": ["specific_enthalpy"],
+                "constant_feature_columns": [],
+                "near_constant_feature_columns": [],
+                "variable_feature_columns": ["pressure", "specific_volume"],
+                "numerical_rank": 2,
+                "effective_rank": 1.8,
+                "condition_number": 3.0,
+                "condition_number_is_infinite": False,
+                "highly_correlated_feature_pairs": [],
+                "feature_target_correlations": [
+                    {
+                        "feature": "pressure",
+                        "target": "specific_enthalpy",
+                        "correlation": 0.75,
+                    }
+                ],
+            }
+        ],
+        "baseline_feasibility": [
+            {
+                "scenario": "shuffle",
+                "status": "ready",
+                "library": "scikit-learn",
+                "library_version": "1.8.0",
+                "feature_columns": ["pressure", "specific_volume"],
+                "target_columns": ["specific_enthalpy"],
+                "train_shapes": {"features": [6, 2], "targets": [6, 1]},
+                "evaluation_shapes": {"test": {"features": [2, 2], "targets": [2, 1]}},
+                "estimators": [
+                    {
+                        "model": "ridge",
+                        "target": "specific_enthalpy",
+                        "estimator_type": "Pipeline",
+                    }
+                ],
+                "fit_performed": False,
+            }
+        ],
+        "dependency_readiness": {
+            "numpy": {"available": True, "version": "2.4.0"},
+            "safetensors": {"available": False, "version": None},
+        },
+    }
+
+
+def test_preparation_plan_projection_flattens_worker_evidence_deterministically() -> None:
+    projection = PreparationPlanProjection.from_worker_payload(_preparation_plan_payload())
+
+    assert (
+        projection.source_row_count,
+        projection.eligible_row_count,
+        projection.excluded_row_count,
+    ) == (10, 8, 2)
+    assert projection.reference_context_required
+    assert projection.reference_context_compatible
+    assert projection.reference_policy == "coolprop_DEF"
+    assert [row["name"] for row in projection.semantic_fields] == [
+        "pressure",
+        "specific_volume",
+    ]
+    assert projection.reference_fields == ({"name": "specific_enthalpy"},)
+    assert projection.exclusion_reasons == ({"reason": "missing_required_value", "count": 2},)
+    assert projection.categories == (
+        {"field": "phase", "value": "gas"},
+        {"field": "phase", "value": "liquid"},
+    )
+    assert projection.scenarios[0] == {
+        "name": "shuffle",
+        "kind": "shuffle",
+        "order": 0,
+        "rowCount": 8,
+        "partitionCount": 2,
+        "transformationCount": 1,
+        "duplicateStateGroupCount": 1,
+        "crossPartitionGroupCount": 0,
+    }
+    assert [row["partition"] for row in projection.partitions] == ["train", "test"]
+    assert projection.transformations[0]["methods"] == ["log10", "standard"]
+    assert projection.leakage_audits[0]["crossPartitionGroupCount"] == 0
+    assert projection.array_scopes[0]["scopeKind"] == "scenario_partition"
+    assert projection.array_scopes[0]["featureRows"] == 6
+    assert projection.array_conversion_errors[0]["maxAbsoluteError"] == 0.25
+    assert projection.array_auxiliary_shapes[0]["columnCount"] == 1
+    assert projection.matrix_checks[0]["numericalRank"] == 2
+    assert projection.matrix_checks[0]["featureTargetCorrelationCount"] == 1
+    assert projection.baseline_checks[0]["evaluationRowCount"] == 2
+    assert projection.baseline_estimators[0]["estimatorType"] == "Pipeline"
+    assert [row["name"] for row in projection.dependencies] == [
+        "numpy",
+        "safetensors",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("change", "match"),
+    [
+        ({"eligible_row_count": 7}, "row counts are inconsistent"),
+        ({"resolved_semantics": []}, "resolved_semantics must be"),
+        ({"scenarios": [{}]}, "scenario name"),
+        ({"matrix_diagnostics": {}}, "matrix diagnostics"),
+    ],
+)
+def test_preparation_plan_projection_rejects_malformed_worker_evidence(
+    change: dict[str, object],
+    match: str,
+) -> None:
+    payload = _preparation_plan_payload()
+    payload.update(change)
+
+    with pytest.raises(ValueError, match=match):
+        PreparationPlanProjection.from_worker_payload(payload)
+
+
+def test_preparation_plan_projection_rejects_fitting_during_planning() -> None:
+    payload = _preparation_plan_payload()
+    baselines = payload["baseline_feasibility"]
+    assert isinstance(baselines, list)
+    baseline = baselines[0]
+    assert isinstance(baseline, dict)
+    baseline["fit_performed"] = True
+
+    with pytest.raises(ValueError, match="must not report a fitted baseline"):
+        PreparationPlanProjection.from_worker_payload(payload)
 
 
 def test_workflow_issue_model_exposes_stable_typed_roles() -> None:
