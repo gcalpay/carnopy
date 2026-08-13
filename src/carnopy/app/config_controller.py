@@ -446,6 +446,18 @@ class ConfigurationController(QObject):
         self._set_status("New model sweep. Save it under the workspace configs folder.")
         return True
 
+    def new_preparation(self, discard_confirmed: bool = False) -> bool:
+        """Create the portable Preparation document after composition guards pass."""
+
+        if not self._lifecycle_allowed("New ML Preparation") or not self.get_can_create():
+            return False
+        if self.needs_discard_confirmation() and not discard_confirmed:
+            self._set_status("Confirm discarding the current configuration before replacing it.")
+            return False
+        self.open_document(new_document(_template_payload("preparation")))
+        self._set_status("New ML Preparation. Save it under the workspace configs folder.")
+        return True
+
     def import_dataset(self, path: str, discard_confirmed: bool = False) -> bool:
         if not self._lifecycle_allowed("Import"):
             return False

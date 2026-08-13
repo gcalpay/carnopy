@@ -514,6 +514,12 @@ class DesktopController(QObject):
             return False
         return self.configuration_controller.new_sweep(discard_confirmed)
 
+    @Slot(bool, result=bool, name="requestNewPreparation")
+    def request_new_preparation(self, discard_confirmed: bool = False) -> bool:
+        if not self._guard_configuration_lifecycle("New ML Preparation"):
+            return False
+        return self.configuration_controller.new_preparation(discard_confirmed)
+
     @Slot(str, bool, result=bool, name="requestImportConfiguration")
     def request_import_configuration(
         self,
@@ -1975,9 +1981,21 @@ class DesktopController(QObject):
         return False
 
     def _guard_configuration_lifecycle(self, operation: str = "this operation") -> bool:
-        return self._guard_active_plot_edit(operation) and self._guard_workflow_nested_edit(
+        if not self._guard_active_plot_edit(operation) or not self._guard_workflow_nested_edit(
             operation
+        ):
+            return False
+        if operation != "New ML Preparation" or not self.configuration_controller.get_can_create():
+            return True
+        if self.preparation_workflow_controller.get_has_bound_source():
+            return True
+        message = (
+            "Inspect an eligible Dataset or Model Sweep and choose "
+            "Use for ML Preparation before creating a Preparation configuration."
         )
+        self.activityActionFailed.emit("New ML Preparation", message)
+        self.navigationRequested.emit("inspect", "preparation-source")
+        return False
 
     def _guard_active_plot_edit(self, operation: str = "this operation") -> bool:
         if self.visualization_draft.get_active_plot_draft() is None:

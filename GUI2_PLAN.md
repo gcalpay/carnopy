@@ -211,7 +211,7 @@ audits, partition summaries, correlations, singular values, rank, conditioning,
 and baseline metrics. Missing optional dependencies disable only the affected
 feature and provide exact installation guidance.
 
-### Implementation checkpoint: Units 1–18
+### Implementation checkpoint: Units 1–18 and 19A
 
 Stage 5 is in progress on `feat/gui2-stage5`. The implemented checkpoint keeps
 one globally active configuration document while extending its exact-byte,
@@ -246,7 +246,14 @@ Preparation is implemented through the Unit 18 hidden-page checkpoint:
   saved document plus the explicit source binding; and
 - the packaged `PreparationPage` and scenario editor are directly instantiated
   and tested, but ML Preparation remains disabled in normal navigation until
-  Unit 19 integrates the page, creation flow, source actions, and shell state.
+  Unit 19B integrates the page, source actions, and shell state.
+
+Unit 19A adds the Python-owned New Preparation lifecycle. The configuration
+controller composes the packaged Preparation template through the global
+document lifecycle, while the desktop composition requires an explicit bound
+source before creation. A missing binding produces an exact prerequisite and
+routes to Inspect; direct internal configuration calls cannot bypass that
+composition guard. No new QML surface is enabled by 19A.
 
 No public YAML schema, CLI command, Python API, scientific algorithm, manifest,
 result model, artifact layout, provenance contract, or dependency boundary has
@@ -255,14 +262,14 @@ complete Stage 5 gate and native acceptance remain pending.
 
 The remaining implementation order is:
 
-1. Unit 19 enables and integrates the Preparation workflow surface.
+1. Unit 19B enables and integrates the Preparation workflow surface.
 2. Units 20 and 21 project and present typed preparation audit diagnostics.
 3. Unit 22 hardens cross-workflow lifecycle and semantic response guards.
 4. Unit 23 qualifies packaged Stage 5 QML and runs the complete gate.
 5. Unit 24 records completion only after automated and manual acceptance.
 
 The first normal-application Preparation inspection occurs immediately after
-Unit 19. Audit presentation is inspected again after Unit 21, lifecycle paths
+Unit 19B. Audit presentation is inspected again after Unit 21, lifecycle paths
 after Unit 22, and the final installed application after Unit 23; acceptance
 must not be deferred until the documentation-only completion unit.
 

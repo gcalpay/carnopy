@@ -657,7 +657,7 @@ def test_workflow_facade_routes_sweep_and_preparation_control(
     assert desktop.shutdown()
 
 
-def test_sweep_creation_and_generic_open_facade_use_global_configuration_lifecycle(
+def test_workflow_creation_and_generic_open_facade_use_global_configuration_lifecycle(
     tmp_path: Path,
     application: QCoreApplication,
     monkeypatch: pytest.MonkeyPatch,
@@ -672,17 +672,71 @@ def test_sweep_creation_and_generic_open_facade_use_global_configuration_lifecyc
     )
     monkeypatch.setattr(
         desktop.configuration_controller,
+        "new_preparation",
+        lambda confirmed: calls.append(("new_preparation", confirmed)) or True,
+    )
+    monkeypatch.setattr(
+        desktop.preparation_workflow_controller,
+        "get_has_bound_source",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        desktop.configuration_controller,
         "import_configuration",
         lambda path, confirmed: calls.append(("open", path, confirmed)) or True,
     )
     source = tmp_path / "sweep.yaml"
 
     assert desktop.request_new_sweep(True)
+    assert desktop.request_new_preparation(True)
     assert desktop.request_import_configuration(QUrl.fromLocalFile(str(source)).toString(), True)
     assert calls == [
         ("new_sweep", True),
+        ("new_preparation", True),
         ("open", str(source), True),
     ]
+    assert desktop.shutdown()
+
+
+def test_preparation_creation_requires_an_explicit_bound_source_and_routes_to_inspect(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    controller = desktop.configuration_controller
+    controller.workspace = initialize_workspace(tmp_path / "workspace")
+    controller.capabilities = {}
+    assert controller.get_can_create()
+    failures: list[tuple[str, str]] = []
+    navigation: list[tuple[str, str]] = []
+    desktop.activityActionFailed.connect(lambda title, message: failures.append((title, message)))
+    desktop.navigationRequested.connect(lambda page, detail: navigation.append((page, detail)))
+
+    assert not desktop.request_new_preparation()
+    assert navigation == [("inspect", "preparation-source")]
+    assert failures == [
+        (
+            "New ML Preparation",
+            "Inspect an eligible Dataset or Model Sweep and choose Use for ML Preparation "
+            "before creating a Preparation configuration.",
+        )
+    ]
+    assert not controller.new_preparation()
+    assert navigation == [
+        ("inspect", "preparation-source"),
+        ("inspect", "preparation-source"),
+    ]
+    assert len(failures) == 2
+
+    monkeypatch.setattr(
+        desktop.preparation_workflow_controller,
+        "get_has_bound_source",
+        lambda: True,
+    )
+    assert desktop.request_new_preparation(True)
+    assert controller.get_document_kind() == "preparation"
     assert desktop.shutdown()
 
 
@@ -1395,6 +1449,7 @@ def test_active_plot_edit_blocks_all_composition_lifecycle_paths(
     for name in (
         "new_dataset",
         "new_sweep",
+        "new_preparation",
         "import_dataset",
         "import_configuration",
         "request_save",
@@ -1412,6 +1467,7 @@ def test_active_plot_edit_blocks_all_composition_lifecycle_paths(
 
     assert not desktop.request_new_dataset("property_table")
     assert not desktop.request_new_sweep()
+    assert not desktop.request_new_preparation()
     assert not desktop.request_import_dataset("input.yaml")
     assert not desktop.request_import_configuration("input.yaml")
     assert not desktop.request_save()
@@ -1456,6 +1512,7 @@ def test_active_preparation_edit_blocks_workspace_and_configuration_lifecycle(
     for name in (
         "new_dataset",
         "new_sweep",
+        "new_preparation",
         "import_dataset",
         "import_configuration",
         "request_save",
@@ -1481,6 +1538,7 @@ def test_active_preparation_edit_blocks_workspace_and_configuration_lifecycle(
     assert not desktop.prepare_create_workspace_path(str(tmp_path / "workspace"))
     assert not desktop.request_new_dataset("property_table")
     assert not desktop.request_new_sweep()
+    assert not desktop.request_new_preparation()
     assert not desktop.request_import_dataset("input.yaml")
     assert not desktop.request_import_configuration("input.yaml")
     assert not desktop.request_save()

@@ -820,6 +820,33 @@ def test_sweep_draft_composes_the_global_saved_document_and_validation_snapshot(
     assert controller.execution_snapshot(expected_document_type="model_sweep") == snapshot
 
 
+def test_preparation_creation_uses_the_global_document_lifecycle(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    controller, _coordinator = configured_controller(tmp_path)
+    workspace = controller.workspace
+    assert workspace is not None
+    preparation = controller.preparation_draft
+
+    assert controller.new_preparation()
+    assert controller.get_document_kind() == "preparation"
+    assert controller.get_locally_valid()
+    assert controller.get_dirty()
+    assert not preparation.get_dirty()
+    assert controller.document is not None
+    assert controller.document.payload == preparation.payload()
+    assert controller.document.yaml_bytes == serialize_configuration(preparation_payload())
+    assert controller.get_default_save_path() == str(workspace.configs / "preparation.yaml")
+    assert controller.get_status_message().startswith("New ML Preparation")
+
+    assert not controller.new_sweep()
+    assert controller.get_document_kind() == "preparation"
+    assert controller.new_sweep(discard_confirmed=True)
+    assert controller.get_document_kind() == "model_sweep"
+
+
 def test_preparation_role_draft_composes_and_restores_the_exact_saved_document(
     tmp_path: Path,
     application: QCoreApplication,
@@ -981,6 +1008,7 @@ def test_active_preparation_scenario_blocks_all_global_document_actions(
     assert not controller.reload_source(discard_confirmed=True)
     assert not controller.new_dataset("property_table", discard_confirmed=True)
     assert not controller.new_sweep(discard_confirmed=True)
+    assert not controller.new_preparation(discard_confirmed=True)
     assert not controller.import_dataset("dataset.yaml", discard_confirmed=True)
     assert not controller.import_configuration("config.yaml", discard_confirmed=True)
     assert not controller.open_document(new_document(payload()))
