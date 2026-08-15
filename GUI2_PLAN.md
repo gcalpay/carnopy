@@ -211,7 +211,7 @@ audits, partition summaries, correlations, singular values, rank, conditioning,
 and baseline metrics. Missing optional dependencies disable only the affected
 feature and provide exact installation guidance.
 
-### Implementation checkpoint: Units 1–19B and 20A
+### Implementation checkpoint: Units 1–20B
 
 Stage 5 is in progress on `feat/gui2-stage5`. The implemented checkpoint keeps
 one globally active configuration document while extending its exact-byte,
@@ -269,18 +269,26 @@ worker inspection catalog and therefore contribute to the exact inspection
 revision and reuse the established 500-row worker blocks and 100-row local
 pages. An invalid optional flags artifact remains omitted from table control and
 is reported through the existing Preparation quality error instead of making
-the main bundle uninspectable. Typed audit projections and their QML surface
-remain in Units 20B, 20C, and 21.
+the main bundle uninspectable.
+
+Unit 20B adds the Qt-independent `PreparationAuditProjection` and its exact
+role contracts. It validates and deterministically flattens finalized quality,
+scenario and partition, duplicate-state, structured-grid, matrix, correlation,
+singular-value, and baseline evidence into detached typed rows. Missing numeric
+evidence has explicit availability state, mismatched worker evidence is
+rejected, and absent scenario-detail evidence never produces inferred leakage
+claims. A versioned private scenario-detail input is defined for the verified
+`scenario.json` evidence that Unit 20C will supply; no controller or QML wiring
+is part of Unit 20B.
 
 No public YAML schema, CLI command, Python API, scientific algorithm, manifest,
 result model, artifact layout, provenance contract, or dependency boundary has
 changed. Focused tests accompany each completed implementation unit; the
 complete Stage 5 gate and native acceptance remain pending.
 
-The remaining implementation order after Unit 20A is:
+The remaining implementation order after Unit 20B is:
 
-1. Units 20B, 20C, and 21 project and present typed preparation audit
-   diagnostics.
+1. Units 20C and 21 integrate and present typed preparation audit diagnostics.
 2. Unit 22 hardens cross-workflow lifecycle and semantic response guards.
 3. Unit 23 qualifies packaged Stage 5 QML and runs the complete gate.
 4. Unit 24 records completion only after automated and manual acceptance.
