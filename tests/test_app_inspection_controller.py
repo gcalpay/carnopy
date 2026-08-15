@@ -7,13 +7,14 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import cast
+from uuid import UUID, uuid4
 
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QEventLoop, QTimer
+from PySide6.QtCore import QEventLoop, QObject, QTimer, Signal
 from PySide6.QtWidgets import QApplication
 
 from carnopy.app.client import WorkerClient
@@ -22,15 +23,79 @@ from carnopy.app.inspection_controller import (
     InspectionController,
     discover_workspace_sources,
 )
-from carnopy.app.request_coordinator import DesktopRequestCoordinator
+from carnopy.app.request_coordinator import DesktopRequestCoordinator, RequestSession
 from carnopy.app.workspace import initialize_workspace
 
 REVISION = "a" * 64
 
 
+class StubSession(QObject):
+    completed = Signal(object)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.request_id = uuid4()
+
+
+class StubOutcome:
+    def __init__(
+        self,
+        request_id: UUID,
+        *,
+        result: dict[str, object] | None = None,
+        failure: dict[str, object] | None = None,
+    ) -> None:
+        self.request_id = request_id
+        self.result_payload = result
+        self.failure_payload = failure
+
+
+class StubCoordinator(QObject):
+    busy_changed = Signal(bool)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.is_busy = False
+        self.session: StubSession | None = None
+
+    def start_request(
+        self,
+        _owner: str,
+        _request_type: str,
+        _payload: dict[str, object],
+    ) -> RequestSession:
+        if self.is_busy:
+            raise RuntimeError("request already active")
+        self.session = StubSession()
+        self.is_busy = True
+        self.busy_changed.emit(True)
+        return cast(RequestSession, self.session)
+
+    def succeed(self, payload: dict[str, object]) -> None:
+        session = self.session
+        assert session is not None
+        session.completed.emit(StubOutcome(session.request_id, result=payload))
+        self.session = None
+        self.is_busy = False
+        self.busy_changed.emit(False)
+
+    def fail(self, payload: dict[str, object]) -> None:
+        session = self.session
+        assert session is not None
+        session.completed.emit(StubOutcome(session.request_id, failure=payload))
+        self.session = None
+        self.is_busy = False
+        self.busy_changed.emit(False)
+
+
 def controller_for() -> tuple[InspectionController, DesktopRequestCoordinator]:
     coordinator = DesktopRequestCoordinator(WorkerClient())
     return InspectionController(coordinator), coordinator
+
+
+def stub_controller_for() -> tuple[InspectionController, StubCoordinator]:
+    coordinator = StubCoordinator()
+    return InspectionController(cast(DesktopRequestCoordinator, coordinator)), coordinator
 
 
 def prepare_payload(
@@ -706,6 +771,69 @@ def test_first_table_preview_is_queued_after_explicit_inspection(
     application.processEvents()
     assert requested == [0]
     coordinator.shutdown()
+
+
+def test_obsolete_inspection_failure_cannot_replace_a_newer_source_context(
+    tmp_path: Path,
+) -> None:
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    controller, coordinator = stub_controller_for()
+
+    assert controller.inspect_source(str(first))
+    controller._source = second.resolve()
+    controller._requested_inspection_source = second.resolve()
+    controller._state = "loading"
+    coordinator.fail({"message": "obsolete inspection failed"})
+
+    assert controller.get_source_path() == str(second.resolve())
+    assert controller.get_state() == "loading"
+    assert controller.get_issue() == ""
+
+
+def test_obsolete_preview_failure_cannot_stale_a_newer_preview_context(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "dataset.parquet"
+    controller, coordinator = stub_controller_for()
+    controller._source = source.resolve()
+    controller._state = "ready"
+    controller._revision = REVISION
+    controller._selected_table_id = "dataset"
+
+    assert controller._request_preview_block(0, 0)
+    controller._revision = "b" * 64
+    controller._selected_table_id = "replacement"
+    controller._preview_state = "ready"
+    coordinator.fail({"message": "obsolete preview failed"})
+
+    assert controller.get_state() == "ready"
+    assert controller.get_preview_state() == "ready"
+    assert controller.get_selected_table_id() == "replacement"
+    assert controller.get_issue() == ""
+
+
+def test_preview_payload_must_match_the_requested_worker_block(tmp_path: Path) -> None:
+    source = tmp_path / "dataset.parquet"
+    controller, coordinator = stub_controller_for()
+    controller._source = source.resolve()
+    controller._state = "ready"
+    controller._revision = REVISION
+    controller._selected_table_id = "dataset"
+
+    assert controller._request_preview_block(500, 500)
+    coordinator.succeed(
+        {
+            "table_id": "dataset",
+            "block_offset": 0,
+            "columns": ["temperature_K"],
+            "rows": [[300.0]],
+        }
+    )
+
+    assert controller.get_state() == "stale"
+    assert controller.get_preview_state() == "stale"
+    assert "no longer matches" in controller.get_issue()
 
 
 def test_real_worker_inspection_automatically_loads_first_bounded_preview(

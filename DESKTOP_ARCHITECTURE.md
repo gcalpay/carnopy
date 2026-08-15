@@ -216,6 +216,21 @@ cancellation becomes available only when the worker reports a cancellable
 phase. Force stop is explicit and remains distinguishable in the terminal
 envelope.
 
+A matching request UUID is necessary but not sufficient for a controller to
+adopt a terminal response. Each response-owning controller retains only its
+operation-specific semantic context. Configuration requests retain workspace
+and document-generation identity plus the applicable document kind, exact YAML
+hash, and requested source. Inspection requests retain workspace, source,
+inspection revision, table, worker-block offset, and local-page offset.
+Workflow requests retain workspace and operation plus the requested source,
+captured saved snapshot, and immutable execution plan/source context. A late
+success or failure whose context no longer matches is discarded without
+replacing newer state. Returned configuration sources and preview block
+offsets are also checked against the request. This is deliberately local to the
+three owners: the single coordinator remains authoritative, and navigation or
+ordinary edits made beside an immutable active execution snapshot do not create
+a second identity system or invalidate that execution response.
+
 Execution startup has an additional private reservation boundary. Reserving a
 UUID prevents another request from starting but does not advertise global busy
 state. `DatasetExecutionController` atomically writes the initial Run-activity
@@ -1103,7 +1118,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 2 | Package the Precision Grid QML Workspace, Dataset, Visualization, and YAML/Save workflows | Complete; automated, remote, and native acceptance passed |
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete |
 | 4 | Add controlled sweep and preparation worker operations | Complete |
-| 5 | Add structured sweep and preparation QML workflows | In progress through Unit 21B; both editors and typed Preparation audit inspection enabled, lifecycle hardening pending |
+| 5 | Add structured sweep and preparation QML workflows | In progress through Unit 22A; semantic response guards complete, action and shutdown hardening pending |
 | 6 | Build exact emitted-value 3D scene contracts | Pending |
 | 7 | Integrate native interactive 3D into QML | Pending |
 | 8 | Complete native-3D platform, distribution, documentation, and later-release qualification | Pending |
@@ -1174,7 +1189,7 @@ six-row generation, configured plot, verified inspection, clean workspace
 reopen, and workspace-scoped installed smoke. Its lifecycle regression raised
 the exhaustively verified suite to 837 tests.
 
-Stage 5 is implemented through Unit 21B on `feat/gui2-stage5`. The former
+Stage 5 is implemented through Unit 22A on `feat/gui2-stage5`. The former
 Dataset-only document and controller now provide one global exact-file
 lifecycle for all three public configuration types. The complete structured
 Sweep workflow is enabled in QML. Preparation source profiling, explicit
@@ -1199,9 +1214,14 @@ summaries, explicit unavailable states, and responsive card stacking. It is
 directly QML-tested and integrated as a Preparation-only Inspect tab. Exact
 artifact-level audit issues remain visible beside accepted evidence, legacy
 bundles retain an unavailable audit state, and changing away from an accepted
-Preparation inspection hides the tab and restores Summary selection. Lifecycle
-hardening, packaged qualification, complete gates, native acceptance, and
-completion documentation remain unfinished. This checkpoint changes private
+Preparation inspection hides the tab and restores Summary selection.
+Operation-specific response contexts now prevent terminal configuration,
+inspection, preview, and workflow responses from crossing document, source,
+workspace, saved-snapshot, or plan/source-context replacement. Returned load
+sources and preview blocks must match their requests. Remaining action and
+shutdown lifecycle hardening, packaged qualification, complete gates, native
+acceptance, and completion documentation remain unfinished. This checkpoint
+changes private
 desktop ownership and presentation infrastructure only; public scientific and
 distribution contracts remain unchanged.
 

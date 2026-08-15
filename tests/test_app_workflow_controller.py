@@ -1477,6 +1477,58 @@ def test_failed_workflow_load_retains_previous_plan_as_stale(
     coordinator.shutdown()
 
 
+def test_workflow_load_rejects_a_result_for_another_source(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    workspace = initialize_workspace(tmp_path / "workspace")
+    requested = _config(workspace)
+    returned = workspace.configs / "returned.yaml"
+    coordinator, transport = coordinator_for()
+    controller = SweepWorkflowController(coordinator)
+    controller.set_workspace(workspace)
+
+    assert controller.load_config(requested)
+    transport.finish(
+        payload={
+            "config": {"schema_version": 2},
+            "source_name": str(returned),
+            "source_sha256": "a" * 64,
+        }
+    )
+
+    assert controller.state == "failed"
+    assert controller.get_failure_code() == "invalid_load_result"
+    assert "requested source" in controller.get_failure_message()
+    assert controller.loaded_config is None
+    assert controller.config_path is None
+    coordinator.shutdown()
+
+
+def test_workflow_response_cannot_cross_a_workspace_replacement(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    workspace = initialize_workspace(tmp_path / "workspace")
+    replacement_workspace = initialize_workspace(tmp_path / "replacement-workspace")
+    config = _config(workspace)
+    coordinator, transport = coordinator_for()
+    controller = SweepWorkflowController(coordinator)
+    controller.set_workspace(workspace)
+
+    assert controller.load_config(config)
+    controller.set_workspace(replacement_workspace)
+    _finish_load(transport, config)
+
+    assert controller.workspace == replacement_workspace
+    assert controller.state == "ready"
+    assert controller.loaded_config is None
+    assert controller.config_path is None
+    coordinator.shutdown()
+
+
 def test_sweep_plan_currentness_follows_exact_saved_configuration_identity(
     tmp_path: Path,
     application: QCoreApplication,

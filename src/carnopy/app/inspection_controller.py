@@ -35,6 +35,17 @@ class SourceCandidate:
     modified_ns: int
 
 
+@dataclass(frozen=True)
+class _InspectionRequestContext:
+    kind: str
+    workspace_root: Path | None
+    source: Path | None
+    inspection_revision: str
+    table_id: str
+    block_offset: int
+    page_offset: int
+
+
 class InspectionController(QObject):
     """Own source inspection, typed projections, and revision-bound previews."""
 
@@ -68,6 +79,7 @@ class InspectionController(QObject):
         self._plot_context: dict[str, Any] | None = None
         self._session: RequestSession | None = None
         self._request_kind = ""
+        self._request_context: _InspectionRequestContext | None = None
         self._requested_page_offset = 0
         self._requested_block_offset = 0
         self._requested_revision = ""
@@ -765,6 +777,7 @@ class InspectionController(QObject):
         )
         self._session = session
         self._request_kind = kind
+        self._request_context = self._capture_request_context(kind)
         session.completed.connect(self._request_completed)
 
     def _request_preview_block(self, block_offset: int, page_offset: int) -> bool:
@@ -802,8 +815,12 @@ class InspectionController(QObject):
         if session is None or outcome.request_id != session.request_id:
             return
         request_kind = self._request_kind
+        context = self._request_context
         self._session = None
         self._request_kind = ""
+        self._request_context = None
+        if context is None or not self._response_context_is_current(context):
+            return
         result = outcome.result_payload
         if result is not None:
             if request_kind == "inspection":
@@ -935,6 +952,7 @@ class InspectionController(QObject):
             or self._revision != self._requested_revision
             or self._selected_table_id != self._requested_table_id
             or payload.get("table_id") != self._requested_table_id
+            or payload.get("block_offset") != self._requested_block_offset
         ):
             self._mark_stale("Table preview no longer matches the current inspection revision.")
             return
@@ -947,6 +965,36 @@ class InspectionController(QObject):
         self._preview_state = "ready"
         self._issue = ""
         self.state_changed.emit()
+
+    def _capture_request_context(self, kind: str) -> _InspectionRequestContext:
+        return _InspectionRequestContext(
+            kind=kind,
+            workspace_root=None if self.workspace is None else self.workspace.root,
+            source=(self._requested_inspection_source if kind == "inspection" else self._source),
+            inspection_revision=self._requested_revision if kind == "preview" else "",
+            table_id=self._requested_table_id if kind == "preview" else "",
+            block_offset=self._requested_block_offset if kind == "preview" else 0,
+            page_offset=self._requested_page_offset if kind == "preview" else 0,
+        )
+
+    def _response_context_is_current(self, context: _InspectionRequestContext) -> bool:
+        workspace_root = None if self.workspace is None else self.workspace.root
+        if workspace_root != context.workspace_root or self._source != context.source:
+            return False
+        if context.kind == "inspection":
+            return self._state == "loading" and self._requested_inspection_source == context.source
+        if context.kind != "preview":
+            return False
+        return (
+            self._state == "ready"
+            and self._preview_state == "loading"
+            and self._revision == context.inspection_revision
+            and self._selected_table_id == context.table_id
+            and self._requested_revision == context.inspection_revision
+            and self._requested_table_id == context.table_id
+            and self._requested_block_offset == context.block_offset
+            and self._requested_page_offset == context.page_offset
+        )
 
     def _accept_failure(self, request_kind: str, payload: dict[str, object]) -> None:
         message = str(payload.get("message", "inspection failed"))
@@ -1007,6 +1055,7 @@ class InspectionController(QObject):
         self._plot_context = None
         self._session = None
         self._request_kind = ""
+        self._request_context = None
         self._requested_inspection_source = None
         self.table_model.clear()
         self._reset_projection()

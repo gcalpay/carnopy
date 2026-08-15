@@ -354,6 +354,42 @@ def test_standalone_validation_is_bound_to_one_exact_document_revision(
     assert controller.get_can_validate()
 
 
+def test_validation_response_cannot_cross_an_identical_document_replacement(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    controller, coordinator = configured_controller(tmp_path)
+    controller.open_document(new_document(payload()))
+
+    assert controller.request_validation()
+    replacement = new_document(payload())
+    assert controller.open_document(replacement)
+    coordinator.succeed({})
+
+    assert controller.document is replacement
+    assert controller.get_worker_validation_state() == "not_run"
+
+
+def test_save_response_cannot_write_after_identical_document_replacement(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    controller, coordinator = configured_controller(tmp_path)
+    controller.open_document(new_document(payload()))
+    destination = controller.workspace.configs / "obsolete.yaml"
+
+    assert controller.request_save_as()
+    assert controller.save_path_selected(str(destination))
+    replacement = new_document(payload())
+    assert controller.open_document(replacement)
+    coordinator.succeed({})
+
+    assert controller.document is replacement
+    assert not destination.exists()
+
+
 def test_standalone_validation_classifies_structured_failures_without_issues(
     tmp_path: Path,
     application: QCoreApplication,
@@ -551,6 +587,70 @@ def test_successful_import_reports_typed_source_location(
 
     assert imported == [(str(source.resolve()), True)]
     assert controller.get_yaml_available()
+
+
+def test_import_response_cannot_replace_a_newer_document_generation(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    controller, coordinator = configured_controller(tmp_path)
+    source = tmp_path / "external.yaml"
+    content = serialize_dataset_config(payload())
+    source.write_bytes(content)
+
+    assert controller.import_configuration(str(source))
+    replacement = new_document(sweep_payload())
+    assert controller.open_document(replacement)
+    coordinator.succeed(
+        {
+            "document_type": "dataset",
+            "config": payload(),
+            "source_name": str(source),
+            "source_sha256": sha256_bytes(content),
+        }
+    )
+
+    assert controller.document is replacement
+    assert controller.get_document_kind() == "model_sweep"
+
+
+def test_import_rejects_a_worker_result_for_another_source(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    controller, coordinator = configured_controller(tmp_path)
+    requested = tmp_path / "requested.yaml"
+    returned = tmp_path / "returned.yaml"
+    content = serialize_dataset_config(payload())
+    requested.write_bytes(content)
+    failures: list[tuple[str, str, str, list[dict[str, str]]]] = []
+    controller.operationFailed.connect(
+        lambda operation, title, message, issues: failures.append(
+            (operation, title, message, issues)
+        )
+    )
+
+    assert controller.import_configuration(str(requested))
+    coordinator.succeed(
+        {
+            "document_type": "dataset",
+            "config": payload(),
+            "source_name": str(returned),
+            "source_sha256": sha256_bytes(content),
+        }
+    )
+
+    assert controller.document is None
+    assert failures == [
+        (
+            "import",
+            "Import Failed",
+            "worker configuration result does not match its requested source",
+            [],
+        )
+    ]
 
 
 def test_controller_refuses_stale_validated_bytes_if_draft_changes_in_flight(

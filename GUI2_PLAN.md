@@ -211,7 +211,7 @@ audits, partition summaries, correlations, singular values, rank, conditioning,
 and baseline metrics. Missing optional dependencies disable only the affected
 feature and provide exact installation guidance.
 
-### Implementation checkpoint: Units 1–21B
+### Implementation checkpoint: Units 1–22A
 
 Stage 5 is in progress on `feat/gui2-stage5`. The implemented checkpoint keeps
 one globally active configuration document while extending its exact-byte,
@@ -336,19 +336,42 @@ visible and the Outputs and Quality diagnostics headings remain aligned while
 both diagnostic sections are toggled. The Unit 21B presentation checkpoint is
 therefore accepted.
 
+Unit 22A hardens terminal-response adoption without adding another request or
+identity framework. Configuration requests now retain the workspace,
+document-replacement generation, document kind, exact validation bytes, and
+requested source relevant to that operation. Inspection requests retain the
+workspace, source, revision, table, worker-block offset, and local-page offset.
+Workflow requests retain the workspace, requested configuration path, exact
+active saved snapshot, and immutable execution plan/source context. A matching
+request UUID remains necessary, but a terminal success or failure is adopted
+only while this operation-specific semantic context is still current. This
+prevents late validation, Save, load, inspection, preview, plan, or execution
+responses from replacing newer state after direct or otherwise forbidden
+context mutation. Worker load results must also return the exact requested
+source, and preview payloads must identify the requested worker block.
+
+These guards preserve intentional semantics: ordinary edits made during an
+execution do not change its captured snapshot, and navigation or identical
+semantic state does not invalidate a response. Focused controller tests cover
+obsolete successes and failures, identical-byte document replacement,
+no-write stale Save, source mismatches, preview-block mismatches, and workspace
+replacement. Cross-controller action enforcement and shutdown/transition
+hardening remain separate Units 22B and 22C.
+
 No public YAML schema, CLI command, Python API, scientific algorithm, manifest,
 result model, artifact layout, provenance contract, or dependency boundary has
 changed. Focused tests accompany each completed implementation unit; the
 complete Stage 5 gate and native acceptance remain pending.
 
-The remaining implementation order after Unit 21B is:
+The remaining implementation order after Unit 22A is:
 
-1. Unit 22 hardens cross-workflow lifecycle and semantic response guards.
+1. Units 22B and 22C complete cross-workflow action, shutdown, and transition
+   hardening.
 2. Unit 23 qualifies packaged Stage 5 QML and runs the complete gate.
 3. Unit 24 records completion only after automated and manual acceptance.
 
 The Unit 21B audit-presentation checkpoint and its focused native repair cycle
-are complete. Lifecycle paths are inspected after Unit 22, and the final
+are complete. Lifecycle paths are inspected after Unit 22C, and the final
 installed application after Unit 23; acceptance must not be deferred until the
 documentation-only completion unit.
 

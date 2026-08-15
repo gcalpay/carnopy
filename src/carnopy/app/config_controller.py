@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
@@ -33,6 +34,16 @@ from carnopy.app.sweep_draft import SweepDraft
 from carnopy.app.visualization_draft import VisualizationDraft
 from carnopy.app.workspace import Workspace
 from carnopy.templates import template_text
+
+
+@dataclass(frozen=True)
+class _ConfigurationRequestContext:
+    action: str
+    workspace_root: Path | None
+    document_generation: int
+    document_type: DocumentType | None
+    document_sha256: str
+    requested_path: Path | None
 
 
 class ConfigurationController(QObject):
@@ -80,6 +91,8 @@ class ConfigurationController(QObject):
         self.capabilities: dict[str, Any] | None = None
         self._capability_cache: dict[str, dict[str, Any]] = {}
         self._session: RequestSession | None = None
+        self._request_context: _ConfigurationRequestContext | None = None
+        self._document_generation = 0
         self._pending_action: str | None = None
         self._pending_path: Path | None = None
         self._pending_content: bytes | None = None
@@ -616,6 +629,7 @@ class ConfigurationController(QObject):
     def open_document(self, document: ConfigurationDocument) -> bool:
         if self._has_active_workflow_edit() or not self._lifecycle_allowed("document replacement"):
             return False
+        self._document_generation += 1
         self.document = document
         self._reset_worker_validation("not_run")
         self._syncing_document = True
@@ -726,6 +740,7 @@ class ConfigurationController(QObject):
         payload: dict[str, object],
     ) -> bool:
         try:
+            context = self._capture_request_context(request_type, payload)
             session = self.coordinator.start_request(
                 "configuration",
                 request_type,
@@ -746,6 +761,7 @@ class ConfigurationController(QObject):
             self.state_changed.emit()
             return False
         self._session = session
+        self._request_context = context
         session.completed.connect(self._worker_completed)
         self.state_changed.emit()
         return True
@@ -755,14 +771,24 @@ class ConfigurationController(QObject):
         session = self._session
         if session is None or outcome.request_id != session.request_id:
             return
+        context = self._request_context
         self._session = None
+        self._request_context = None
+        if context is None or not self._response_context_is_current(context):
+            self._discard_obsolete_response(context)
+            return
         result = outcome.result_payload
         if result is not None:
-            self._worker_succeeded(result)
+            self._worker_succeeded(result, context=context)
             return
         self._worker_failed(outcome.failure_payload or {})
 
-    def _worker_succeeded(self, payload: object) -> None:
+    def _worker_succeeded(
+        self,
+        payload: object,
+        *,
+        context: _ConfigurationRequestContext,
+    ) -> None:
         result = cast(dict[str, Any], payload)
         action = self._pending_action
         if action is None:
@@ -775,7 +801,11 @@ class ConfigurationController(QObject):
                 self._capability_cache[model] = result
             self._apply_capabilities(result)
         elif action in {"import", "reload"}:
-            self._finish_import(result, operation=action)
+            self._finish_import(
+                result,
+                operation=action,
+                requested_path=context.requested_path,
+            )
         elif action == "validate":
             self._clear_validation_request()
             if validation_current:
@@ -867,6 +897,7 @@ class ConfigurationController(QObject):
         self.state_changed.emit()
 
     def _clear_document(self) -> None:
+        self._document_generation += 1
         self.document = None
         self._syncing_document = True
         try:
@@ -884,7 +915,13 @@ class ConfigurationController(QObject):
         self._clear_pending()
         self._emit_document_state()
 
-    def _finish_import(self, payload: dict[str, Any], *, operation: str) -> None:
+    def _finish_import(
+        self,
+        payload: dict[str, Any],
+        *,
+        operation: str,
+        requested_path: Path | None,
+    ) -> None:
         workspace = self.workspace
         if workspace is None:
             return
@@ -893,6 +930,11 @@ class ConfigurationController(QObject):
         except ConfigDocumentError as exc:
             self._set_status(str(exc))
             self._emit_operation_failed(operation, _failure_title(operation), str(exc), [])
+            return
+        if requested_path is None or document.source_path != requested_path:
+            message = "worker configuration result does not match its requested source"
+            self._set_status(message)
+            self._emit_operation_failed(operation, _failure_title(operation), message, [])
             return
         if not self.open_document(document):
             return
@@ -1033,6 +1075,73 @@ class ConfigurationController(QObject):
         if not keep_paths:
             self._pending_path = None
             self._pending_content = None
+
+    def _capture_request_context(
+        self,
+        request_type: RequestType,
+        payload: dict[str, object],
+    ) -> _ConfigurationRequestContext:
+        document = self.document
+        requested = payload.get("config_path")
+        requested_path = (
+            Path(requested).expanduser().resolve() if isinstance(requested, str) else None
+        )
+        content = self._validation_content
+        return _ConfigurationRequestContext(
+            action=self._pending_action or request_type,
+            workspace_root=None if self.workspace is None else self.workspace.root,
+            document_generation=self._document_generation,
+            document_type=None if document is None else document.document_type,
+            document_sha256="" if content is None else sha256_bytes(content),
+            requested_path=requested_path,
+        )
+
+    def _response_context_is_current(self, context: _ConfigurationRequestContext) -> bool:
+        workspace_root = None if self.workspace is None else self.workspace.root
+        if workspace_root != context.workspace_root:
+            return False
+        if context.action == "capabilities":
+            return True
+        if self._document_generation != context.document_generation:
+            return False
+        if context.action == "import":
+            return self._pending_path == context.requested_path
+        document = self.document
+        if document is None or document.document_type != context.document_type:
+            return False
+        if context.action == "reload":
+            return (
+                document.source_path == context.requested_path
+                and context.requested_path is not None
+            )
+        if context.action in {"validate", "save_new", "save_replace"}:
+            content = self._validation_content
+            return (
+                content is not None
+                and context.document_sha256 == sha256_bytes(content)
+                and context.document_sha256 == self._validation_sha256
+            )
+        return False
+
+    def _discard_obsolete_response(
+        self,
+        context: _ConfigurationRequestContext | None,
+    ) -> None:
+        action = None if context is None else context.action
+        validation_action = action in {"validate", "save_new", "save_replace"}
+        self._clear_pending()
+        if validation_action:
+            was_running = self._worker_validation_state == "running"
+            self._clear_validation_request()
+            if action in {"save_new", "save_replace"}:
+                self._cancel_stale_save(replace=action == "save_replace")
+            elif was_running:
+                self._set_worker_validation(
+                    "stale",
+                    "The configuration context changed while worker validation was running.",
+                    [],
+                )
+        self.state_changed.emit()
 
     def _begin_worker_validation(self, action: str, content: bytes) -> None:
         self._pending_action = action

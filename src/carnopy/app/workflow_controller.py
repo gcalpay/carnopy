@@ -42,6 +42,16 @@ ResultRelation = Literal["unavailable", "current", "stale", "unrelated"]
 
 
 @dataclass(frozen=True)
+class _WorkflowRequestContext:
+    operation: str
+    workspace_root: Path | None
+    requested_path: Path | None
+    snapshot_path: Path | None
+    snapshot_sha256: str
+    plan_context_json: str
+
+
+@dataclass(frozen=True)
 class _PreparationSourceBinding:
     source_path: Path
     inspection_revision: str
@@ -100,6 +110,7 @@ class WorkflowController(QObject):
         self.workspace: Workspace | None = None
         self._store: JobStore | None = None
         self._session: RequestSession | None = None
+        self._request_context: _WorkflowRequestContext | None = None
         self._operation = ""
         self._state = "unavailable"
         self._phase = ""
@@ -666,6 +677,7 @@ class WorkflowController(QObject):
         self._active_plan_context = (
             copy.deepcopy(self._planned_context) if persist_execution else None
         )
+        request_context = self._capture_request_context(operation, payload, snapshot)
         reservation: RequestReservation
         try:
             reservation = self.coordinator.reserve_request(self.owner, request_type)
@@ -700,6 +712,7 @@ class WorkflowController(QObject):
             self._set_local_failure("process", "worker_start_failed", str(exc))
             return False
         self._session = session
+        self._request_context = request_context
         session.event_received.connect(self._event_received)
         session.state_changed.connect(self._session_state_changed)
         session.policy_changed.connect(self.state_changed)
@@ -756,6 +769,15 @@ class WorkflowController(QObject):
         session = self._session
         if session is None or outcome.request_id != session.request_id:
             return
+        context = self._request_context
+        self._request_context = None
+        if context is None or not self._response_context_is_current(context):
+            if self._active_record is not None:
+                self._finish_activity(outcome)
+            self._session = None
+            self._clear_active_attempt()
+            self.state_changed.emit()
+            return
         if self._active_record is not None:
             self._finish_activity(outcome)
         result = outcome.result_payload
@@ -778,8 +800,13 @@ class WorkflowController(QObject):
                 else "failed"
             )
         elif operation == "load":
-            self._accept_loaded(result)
-            self._state = "ready"
+            try:
+                self._accept_loaded(result, requested_path=context.requested_path)
+            except ValueError as exc:
+                self._clear_loaded_configuration()
+                self._set_local_failure("request", "invalid_load_result", str(exc))
+            else:
+                self._state = "ready"
         elif operation == "validate":
             self._validation = copy.deepcopy(result)
             self._state = "validated" if result.get("valid", True) else "invalid"
@@ -803,7 +830,12 @@ class WorkflowController(QObject):
         self._clear_active_attempt()
         self.state_changed.emit()
 
-    def _accept_loaded(self, result: dict[str, object]) -> None:
+    def _accept_loaded(
+        self,
+        result: dict[str, object],
+        *,
+        requested_path: Path | None,
+    ) -> None:
         source = result.get("source_name")
         digest = result.get("source_sha256")
         config = result.get("config")
@@ -813,10 +845,51 @@ class WorkflowController(QObject):
             or not isinstance(config, dict)
         ):
             raise ValueError("workflow load result is missing configuration identity")
+        source_path = Path(source).expanduser().resolve()
+        if requested_path is None or source_path != requested_path:
+            raise ValueError("workflow load result does not match its requested source")
         self._loaded_config = copy.deepcopy(config)
-        self._config_path = Path(source).expanduser().resolve()
+        self._config_path = source_path
         self._config_sha256 = digest
         self._validation = None
+
+    def _capture_request_context(
+        self,
+        operation: str,
+        payload: dict[str, object],
+        snapshot: SavedConfigSnapshot | None,
+    ) -> _WorkflowRequestContext:
+        requested = payload.get("config_path")
+        requested_path = (
+            Path(requested).expanduser().resolve() if isinstance(requested, str) else None
+        )
+        plan_context = self._active_plan_context
+        return _WorkflowRequestContext(
+            operation=operation,
+            workspace_root=None if self.workspace is None else self.workspace.root,
+            requested_path=requested_path,
+            snapshot_path=None if snapshot is None else snapshot.path,
+            snapshot_sha256="" if snapshot is None else snapshot.sha256,
+            plan_context_json=(
+                "" if plan_context is None else _canonical_mapping_json(plan_context)
+            ),
+        )
+
+    def _response_context_is_current(self, context: _WorkflowRequestContext) -> bool:
+        workspace_root = None if self.workspace is None else self.workspace.root
+        if workspace_root != context.workspace_root or self._operation != context.operation:
+            return False
+        snapshot = self._active_snapshot
+        if snapshot is None:
+            if context.snapshot_path is not None or context.snapshot_sha256:
+                return False
+        elif snapshot.path != context.snapshot_path or snapshot.sha256 != context.snapshot_sha256:
+            return False
+        plan_context = self._active_plan_context
+        current_plan_context_json = (
+            "" if plan_context is None else _canonical_mapping_json(plan_context)
+        )
+        return current_plan_context_json == context.plan_context_json
 
     def _accept_plan(self, result: dict[str, object]) -> None:
         plan_id = result.get("plan_id")
@@ -925,6 +998,7 @@ class WorkflowController(QObject):
         self._active_snapshot = None
         self._active_plan_context = None
         self._active_record = None
+        self._request_context = None
 
     def _clear_loaded_configuration(self) -> None:
         self._loaded_config = None
