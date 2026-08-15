@@ -51,7 +51,8 @@ The source tree has one desktop presentation implementation:
 - source discovery, worker inspection, typed source summaries, logical-array
   metadata, integrity-verified Preparation quality flags, table selection, and
   bounded preview state are owned by one `InspectionController`; the public QML
-  Inspect workbench is its view;
+  Inspect workbench presents those projections together with typed finalized
+  Preparation audit evidence;
 - private Run-activity loading, typed projection, record-only removal,
   interrupted-state projection, and identity-checked staging recovery are owned
   by one `ActivityController`; the public QML Activity page is its view;
@@ -349,9 +350,11 @@ models. It does not own inspection state, read raw manifest dictionaries, or
 request worker operations. Its quality/scenario, matrix, and baseline sections
 use bounded reusable list delegates, preserve the diagnostic context carried by
 each fixed role contract, and distinguish unavailable evidence from an empty
-recorded result. Unit 21A packages and directly tests the component in populated,
-unavailable, wide, and narrow states; normal `InspectPage` integration remains
-the separate Unit 21B boundary.
+recorded result. Unit 21A packages and directly tests the component in
+populated, unavailable, wide, and narrow states. Unit 21B integrates it as a
+Preparation-only Inspect tab, retains explicit legacy-unavailable and
+artifact-issue states, and returns to Summary whenever a selected audit tab no
+longer matches the accepted source kind.
 
 The preparation profile projects source kind and revision, available models,
 eligible numeric, target, categorical, and auxiliary fields, observed category
@@ -1086,7 +1089,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 2 | Package the Precision Grid QML Workspace, Dataset, Visualization, and YAML/Save workflows | Complete; automated, remote, and native acceptance passed |
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete |
 | 4 | Add controlled sweep and preparation worker operations | Complete |
-| 5 | Add structured sweep and preparation QML workflows | In progress through Unit 21A; both editors enabled, reusable typed audit view packaged, Inspect integration pending |
+| 5 | Add structured sweep and preparation QML workflows | In progress through Unit 21B; both editors and typed Preparation audit inspection enabled, lifecycle hardening pending |
 | 6 | Build exact emitted-value 3D scene contracts | Pending |
 | 7 | Integrate native interactive 3D into QML | Pending |
 | 8 | Complete native-3D platform, distribution, documentation, and later-release qualification | Pending |
@@ -1157,7 +1160,7 @@ six-row generation, configured plot, verified inspection, clean workspace
 reopen, and workspace-scoped installed smoke. Its lifecycle regression raised
 the exhaustively verified suite to 837 tests.
 
-Stage 5 is implemented through Unit 21A on `feat/gui2-stage5`. The former
+Stage 5 is implemented through Unit 21B on `feat/gui2-stage5`. The former
 Dataset-only document and controller now provide one global exact-file
 lifecycle for all three public configuration types. The complete structured
 Sweep workflow is enabled in QML. Preparation source profiling, explicit
@@ -1179,12 +1182,14 @@ rejects cross-kind audit payloads, and clears the state when inspection becomes
 stale. A reusable packaged audit component now presents every fixed model in
 quality/scenario, matrix, and baseline sections with bounded lists, contextual
 summaries, explicit unavailable states, and responsive card stacking. It is
-directly QML-tested but is not inserted into normal Inspect navigation until
-Unit 21B. Integrated audit presentation, lifecycle hardening, packaged
-qualification, complete gates, native acceptance, and completion documentation
-remain unfinished. This checkpoint changes private desktop ownership and
-presentation infrastructure only; public scientific and distribution contracts
-remain unchanged.
+directly QML-tested and integrated as a Preparation-only Inspect tab. Exact
+artifact-level audit issues remain visible beside accepted evidence, legacy
+bundles retain an unavailable audit state, and changing away from an accepted
+Preparation inspection hides the tab and restores Summary selection. Lifecycle
+hardening, packaged qualification, complete gates, native acceptance, and
+completion documentation remain unfinished. This checkpoint changes private
+desktop ownership and presentation infrastructure only; public scientific and
+distribution contracts remain unchanged.
 
 ## Known current limitations
 
@@ -1199,9 +1204,9 @@ remain unchanged.
 - The visible QML application now provides the complete structured Model Sweep
   and ML Preparation editors and workflows. New Preparation documents require
   an explicitly bound eligible inspection; existing YAML remains portable and
-  opens without a source path. The typed Preparation audit component is packaged
-  and directly tested; its normal Inspect integration remains Stage 5 work, and
-  exact emitted-value 3D presentation remains a later stage.
+  opens without a source path. Inspect now presents typed finalized Preparation
+  audit evidence and explicit unavailable legacy state. Exact emitted-value 3D
+  presentation remains a later stage.
 - Native folder dialogs and compositor behavior require human acceptance;
   headless tests do not automate them.
 - The current WSLg development host can use CPU rendering through Mesa

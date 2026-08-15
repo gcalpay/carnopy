@@ -79,7 +79,7 @@ implementation.
 | 2 | Complete | Added the packaged QML shell and Dataset/YAML/Save workflows |
 | 3 | Complete | Reached parity, migrated both launchers, retired Widgets, and qualified `0.1.0a4` |
 | 4 | Complete | Added controlled sweep and preparation worker operations for the existing public contracts |
-| 5 | In progress | Structured Sweep and Preparation are enabled; the audit view awaits Inspect integration, lifecycle hardening, and qualification |
+| 5 | In progress | Structured Sweep, Preparation, and typed audit inspection are enabled; lifecycle hardening and qualification remain |
 | 6 | Pending | Build exact emitted-value 3D scenes |
 | 7 | Pending | Add native interactive 3D to QML |
 | 8 | Pending | Qualify native 3D packaging, platforms, and a later release |
@@ -211,7 +211,7 @@ audits, partition summaries, correlations, singular values, rank, conditioning,
 and baseline metrics. Missing optional dependencies disable only the affected
 feature and provide exact installation guidance.
 
-### Implementation checkpoint: Units 1–21A
+### Implementation checkpoint: Units 1–21B
 
 Stage 5 is in progress on `feat/gui2-stage5`. The implemented checkpoint keeps
 one globally active configuration document while extending its exact-byte,
@@ -300,26 +300,34 @@ and distinguishes unavailable evidence from an available section with no
 findings. It retains scenario, partition, fit, target, model, and source-group
 context in visible summaries, stacks its cards at narrow widths, and is directly
 instantiated with populated and unavailable projections under the QML warning
-capture. Unit 21B remains responsible for placing this component in the Inspect
-workflow and completing the integrated interaction tests.
+capture. This deliberately leaves placement in the Inspect workflow to the
+separate Unit 21B integration boundary.
+
+Unit 21B integrates that component as a fifth Inspect tab only while a
+Preparation bundle has been successfully accepted. Dataset and Model Sweep
+inspections retain their existing four tabs. Current bundles present the typed
+quality/scenario, matrix, and baseline evidence plus exact artifact-level audit
+issues; legacy bundles retain an explicit unavailable state rather than losing
+the audit surface or fabricating evidence. Starting another inspection, a
+failed or stale inspection, or accepting a non-Preparation source hides the tab
+and returns a selected audit tab to Summary. The page remains responsive at
+narrow widths, and QML continues to consume only the controller's typed models.
 
 No public YAML schema, CLI command, Python API, scientific algorithm, manifest,
 result model, artifact layout, provenance contract, or dependency boundary has
 changed. Focused tests accompany each completed implementation unit; the
 complete Stage 5 gate and native acceptance remain pending.
 
-The remaining implementation order after Unit 21A is:
+The remaining implementation order after Unit 21B is:
 
-1. Unit 21B integrates the typed Preparation audit component into Inspect.
-2. Unit 22 hardens cross-workflow lifecycle and semantic response guards.
-3. Unit 23 qualifies packaged Stage 5 QML and runs the complete gate.
-4. Unit 24 records completion only after automated and manual acceptance.
+1. Unit 22 hardens cross-workflow lifecycle and semantic response guards.
+2. Unit 23 qualifies packaged Stage 5 QML and runs the complete gate.
+3. Unit 24 records completion only after automated and manual acceptance.
 
-The first normal-application Preparation inspection is the next checkpoint
-after the Unit 19B commit. Audit presentation is inspected again after Unit 21B,
-lifecycle paths after Unit 22, and the final installed application after Unit
-23; acceptance must not be deferred until the documentation-only completion
-unit.
+The Unit 21B commit is the audit-presentation checkpoint for another
+normal-application inspection before lifecycle work continues. Lifecycle paths
+are inspected after Unit 22, and the final installed application after Unit 23;
+acceptance must not be deferred until the documentation-only completion unit.
 
 ## Stage 6: exact scientific 3D scenes
 

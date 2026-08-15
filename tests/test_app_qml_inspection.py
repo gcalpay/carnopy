@@ -105,6 +105,76 @@ def _accept_preparation_eligible_inspection(
     )
 
 
+def _accept_preparation_audit_inspection(
+    controller: InspectionController,
+    source: Path,
+    *,
+    audit_recorded: bool = True,
+) -> None:
+    revision = "b" * 64
+    resolved = source.resolve()
+    summary: dict[str, object] = {
+        "source": str(resolved),
+        "status": "completed",
+        "row_counts": {"source": 2, "eligible": 2, "excluded": 0},
+        "quality": {
+            "errors": (["quality flags artifact is unavailable"] if audit_recorded else []),
+            "summary": (
+                {
+                    "status": "completed",
+                    "row_counts": {"eligible": 2, "excluded": 0},
+                    "matrix_diagnostics": {"status": "not_requested", "fits": []},
+                    "baseline_diagnostics": {"status": "not_requested", "fits": []},
+                }
+                if audit_recorded
+                else {}
+            ),
+        },
+    }
+    payload: dict[str, object] = {
+        "source": str(resolved),
+        "source_kind": "preparation",
+        "revision": revision,
+        "summary": summary,
+        "tables": [],
+        "arrays": [],
+        "plot_context": None,
+        "preparation_eligible": False,
+        "preparation_ineligible_reason": "",
+        "preparation_source_descriptor": None,
+        "preparation_profile": None,
+    }
+    if audit_recorded:
+        summary["scenarios"] = {
+            "status": "completed",
+            "scenario_count": 1,
+            "partition_count": 2,
+            "scenarios": [
+                {
+                    "name": "shuffle",
+                    "kind": "shuffle",
+                    "partition_counts": {"test": 1, "train": 1},
+                    "transformations": [],
+                }
+            ],
+        }
+        payload["preparation_audit"] = {
+            "audit_schema_version": 1,
+            "scenario_details": [
+                {
+                    "name": "shuffle",
+                    "state_leakage": {
+                        "identity_column": "source_state_hash",
+                        "duplicate_state_group_count": 0,
+                        "cross_partition_group_count": 0,
+                    },
+                }
+            ],
+        }
+    controller._clear_inspection(source=resolved, state="loading")
+    controller._accept_inspection_payload(payload)
+
+
 @pytest.fixture
 def runtime(
     tmp_path: Path,
@@ -157,6 +227,16 @@ def _visible_item(root: QObject, object_name: str) -> QQuickItem:
     matches = [item for item in root.findChildren(QQuickItem, object_name) if item.isVisible()]
     assert len(matches) == 1
     return matches[0]
+
+
+def _visual_item(root: QQuickItem, object_name: str) -> QQuickItem:
+    pending = [root]
+    while pending:
+        candidate = pending.pop()
+        if candidate.objectName() == object_name:
+            return candidate
+        pending.extend(candidate.childItems())
+    raise AssertionError(f"missing visual item: {object_name}")
 
 
 def test_inspect_page_uses_bounded_worker_preview_and_focus_mode(
@@ -305,4 +385,73 @@ def test_inspect_page_binds_and_explicitly_clears_a_preparation_source(
     _process_events()
 
     assert not preparation.get_has_bound_source()
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_inspect_page_presents_the_accepted_preparation_audit_and_issues(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    inspection = runtime.controller.inspection_controller
+    source = runtime.controller.workspace_controller.workspace.outputs / "prepared-audit"
+    source.mkdir()
+    assert root.setProperty("width", 1440)
+    assert root.setProperty("height", 1000)
+    assert root.setProperty("currentPage", "inspect")
+    _accept_preparation_audit_inspection(inspection, source)
+    _process_events()
+
+    page = root.findChild(QObject, "inspectPage")
+    assert page is not None
+    audit_tab = _visible_item(root, "inspectionPreparationAuditTab")
+    assert audit_tab.property("text") == "Preparation Audit"
+    assert QMetaObject.invokeMethod(audit_tab, "click")
+    _process_events()
+
+    assert page.property("selectedTab") == 4
+    audit_view = _visible_item(root, "inspectionPreparationAuditView")
+    assert audit_view.property("audit") is inspection.preparation_audit_model
+    assert inspection.preparation_quality_errors_model.get_count() == 1
+    assert root.findChild(QObject, "preparationAuditScenariosList").property("count") == 1
+    assert _visible_item(root, "inspectionPreparationAuditIssuesCard").isVisible()
+    audit_pane = _visible_item(root, "inspectionPreparationAuditPane")
+    issue = _visual_item(audit_pane, "inspectionPreparationAuditIssue-0")
+    assert issue.isVisible()
+    assert issue.property("text") == "quality flags artifact is unavailable"
+
+    assert root.setProperty("width", 768)
+    _process_events()
+    overview_grid = root.findChild(QObject, "preparationAuditOverviewGrid")
+    assert overview_grid is not None
+    assert overview_grid.property("maximumColumns") == 1
+
+    dataset_source = Path(str(inspection.workspace_sources_model.get(0)["path"]))
+    _accept_preparation_eligible_inspection(inspection, dataset_source)
+    _process_events()
+
+    assert page.property("selectedTab") == 0
+    assert not root.findChild(QQuickItem, "inspectionPreparationAuditTab").isVisible()
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_inspect_page_keeps_legacy_preparation_audit_unavailability_visible(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    inspection = runtime.controller.inspection_controller
+    source = runtime.controller.workspace_controller.workspace.outputs / "legacy-preparation"
+    source.mkdir()
+    assert root.setProperty("currentPage", "inspect")
+    _accept_preparation_audit_inspection(inspection, source, audit_recorded=False)
+    _process_events()
+
+    assert not inspection.preparation_audit_model.get_available()
+    audit_tab = _visible_item(root, "inspectionPreparationAuditTab")
+    assert QMetaObject.invokeMethod(audit_tab, "click")
+    _process_events()
+
+    assert _visible_item(root, "preparationAuditStatus").property("label") == "Unavailable"
+    issues_card = root.findChild(QQuickItem, "inspectionPreparationAuditIssuesCard")
+    assert issues_card is not None
+    assert not issues_card.isVisible()
     assert runtime.warning_capture.runtime_warnings == ()

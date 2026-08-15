@@ -144,11 +144,12 @@ GUI-2 Stage 5 is in progress without changing those public contracts. Current
 source uses one exact-byte desktop configuration lifecycle for the three public
 document types, enables the complete structured Model Sweep QML workflow, and
 implements Preparation source profiling, explicit source binding, structured
-drafts, planning, execution, and an enabled structured editor. Creating a new
-Preparation document requires an explicitly bound eligible inspection, while
-opening portable Preparation YAML never invents or serializes a source. The
-source binding is private execution context and never adds a path to
-Preparation YAML. QML remains a typed presentation of the
+drafts, planning, execution, an enabled structured editor, and typed inspection
+of finalized Preparation quality, scenario, matrix, and baseline evidence.
+Creating a new Preparation document requires an explicitly bound eligible
+inspection, while opening portable Preparation YAML never invents or serializes
+a source. The source binding is private execution context and never adds a path
+to Preparation YAML. QML remains a typed presentation of the
 same worker-authoritative schemas and scientific operations; no Stage 5 draft,
 profile, issue model, plan projection, or controller property is a public
 Python or inspection interface.

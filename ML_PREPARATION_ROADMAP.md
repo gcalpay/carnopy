@@ -54,7 +54,7 @@ name.
 
 GUI-2 Stage 4 established worker-authoritative, revision-bound Preparation
 planning and execution without adding a visible editor. Stage 5 is now
-implemented through Unit 21A:
+implemented through Unit 21B:
 
 - Inspect derives typed Preparation eligibility and capability projections
   from verified dataset-run or model-sweep metadata;
@@ -88,12 +88,15 @@ implemented through Unit 21A:
   clears them when inspection becomes stale; and
 - a reusable packaged audit component presents those exact models in bounded,
   contextual, responsive quality/scenario, matrix, and baseline sections and is
-  directly tested with populated and unavailable evidence. Its normal Inspect
-  integration remains the separate Unit 21B boundary.
+  directly tested with populated and unavailable evidence; and
+- Inspect exposes that component only for a successfully accepted Preparation
+  bundle, keeps exact audit-artifact issues beside accepted evidence, preserves
+  explicit legacy-unavailable state, and hides an obsolete selected audit tab
+  when the inspected source changes.
 
 This is desktop exposure of the implemented preparation contract, not new
-preparation science. Integrated audit presentation, lifecycle hardening,
-packaged qualification, and native acceptance remain later Stage 5 work.
+preparation science. Lifecycle hardening, packaged qualification, and native
+acceptance remain later Stage 5 work.
 
 ## Reviewed future direction — Optional PyTorch dataset export
 

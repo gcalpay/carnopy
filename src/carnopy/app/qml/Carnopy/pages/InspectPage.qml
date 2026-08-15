@@ -14,6 +14,9 @@ Item {
     required property var preparationWorkflowController
     property bool focusTable: false
     property int selectedTab: 0
+    readonly property bool preparationInspectionReady: inspectionController.state === "ready"
+                                                       && inspectionController.sourceKind
+                                                       === "preparation"
     property bool fileSelectionAccepted: false
     property string fileSelectionPath: ""
     property bool folderSelectionAccepted: false
@@ -27,6 +30,12 @@ Item {
     signal refreshRequested
     signal refreshSourcesRequested
     signal selectTableRequested(string tableId)
+
+    onPreparationInspectionReadyChanged: {
+        if (!preparationInspectionReady && selectedTab === 4) {
+            selectedTab = 0;
+        }
+    }
 
     function openExternalFileDialog() {
         if (root.inspectionController.workspaceOutputsUrl.length > 0)
@@ -449,6 +458,14 @@ Item {
                         }
                         TabButton {
                             text: qsTr("Diagnostics")
+                        }
+                        TabButton {
+                            Accessible.description: qsTr(
+                                                        "Review finalized Preparation quality, scenario, matrix, and baseline evidence")
+                            Accessible.name: qsTr("Preparation audit")
+                            objectName: "inspectionPreparationAuditTab"
+                            text: qsTr("Preparation Audit")
+                            visible: root.preparationInspectionReady
                         }
                     }
 
@@ -1020,7 +1037,8 @@ Item {
                                 flat: true
                                 Layout.fillWidth: true
                                 title: qsTr("Preparation quality errors")
-                                visible: root.inspectionController.preparationQualityErrorsModel.available
+                                visible: root.inspectionController.preparationQualityErrorsModel.count
+                                         > 0
 
                                 Repeater {
                                     model: root.inspectionController.preparationQualityErrorsModel
@@ -1036,6 +1054,62 @@ Item {
                                         wrapMode: Text.Wrap
                                     }
                                 }
+                            }
+                        }
+                    }
+
+                    Flickable {
+                        boundsBehavior: Flickable.StopAtBounds
+                        clip: true
+                        contentHeight: preparationAuditColumn.implicitHeight
+                        contentWidth: width
+                        flickableDirection: Flickable.VerticalFlick
+                        objectName: "inspectionPreparationAuditPane"
+
+                        ScrollBar.vertical: ScrollBar {
+                            policy: ScrollBar.AsNeeded
+                        }
+
+                        ColumnLayout {
+                            id: preparationAuditColumn
+
+                            spacing: Theme.spacingMedium
+                            width: parent.width
+
+                            Card {
+                                flat: true
+                                Layout.fillWidth: true
+                                objectName: "inspectionPreparationAuditIssuesCard"
+                                subtitle: qsTr(
+                                              "Artifact-level audit issues remain visible without hiding the verified evidence that could be accepted.")
+                                title: qsTr("Preparation audit issues")
+                                visible: root.inspectionController.preparationQualityErrorsModel.count
+                                         > 0
+
+                                Repeater {
+                                    model: root.inspectionController.preparationQualityErrorsModel
+
+                                    delegate: Label {
+                                        required property int index
+                                        required property string message
+
+                                        Accessible.name: qsTr("Preparation audit issue: %1").arg(
+                                                             message)
+                                        Layout.fillWidth: true
+                                        color: Theme.danger
+                                        font.family: Theme.sansFamily
+                                        font.pixelSize: 12
+                                        objectName: "inspectionPreparationAuditIssue-" + index
+                                        text: message
+                                        wrapMode: Text.Wrap
+                                    }
+                                }
+                            }
+
+                            PreparationAuditView {
+                                Layout.fillWidth: true
+                                audit: root.inspectionController.preparationAudit
+                                objectName: "inspectionPreparationAuditView"
                             }
                         }
                     }
