@@ -25,6 +25,7 @@ def render_comparison_plots(
     values_path: Path,
     deltas_path: Path,
     output_directory: Path,
+    finalized_output_directory: Path,
     sweep_identity: dict[str, str],
     selected_models: tuple[str, ...],
     reference_model: str,
@@ -48,6 +49,8 @@ def render_comparison_plots(
             checkpoint()
         image_path = output_directory / f"{plot.name}.{plot.format or comparison_plots.format}"
         sidecar_path = output_directory / f"{plot.name}.plot.json"
+        finalized_image_path = finalized_output_directory / image_path.name
+        finalized_sidecar_path = finalized_output_directory / sidecar_path.name
         try:
             comparison_hashes = {
                 "comparison/values.parquet": values_hash,
@@ -62,6 +65,7 @@ def render_comparison_plots(
                     fluid_aliases=fluid_aliases,
                     image_path=image_path,
                     sidecar_path=sidecar_path,
+                    finalized_image_path=finalized_image_path,
                     sweep_identity=sweep_identity,
                     comparison_hashes=comparison_hashes,
                 )
@@ -73,6 +77,7 @@ def render_comparison_plots(
                     fluid_aliases=fluid_aliases,
                     image_path=image_path,
                     sidecar_path=sidecar_path,
+                    finalized_image_path=finalized_image_path,
                     sweep_identity=sweep_identity,
                     comparison_hashes=comparison_hashes,
                 )
@@ -94,8 +99,8 @@ def render_comparison_plots(
                     "name": plot.name,
                     "kind": plot.kind,
                     "status": "completed",
-                    "image_path": str(image_path),
-                    "sidecar_path": str(sidecar_path),
+                    "image_path": str(finalized_image_path),
+                    "sidecar_path": str(finalized_sidecar_path),
                 }
             )
         finally:
@@ -129,6 +134,7 @@ def _render_property_comparison(
     fluid_aliases: dict[str, str],
     image_path: Path,
     sidecar_path: Path,
+    finalized_image_path: Path,
     sweep_identity: dict[str, str],
     comparison_hashes: dict[str, str],
 ) -> None:
@@ -220,7 +226,7 @@ def _render_property_comparison(
         "filters": plot.filters,
         "skipped_rows": int(sum(skipped_reasons.values())),
         "missing_or_invalid_reasons": skipped_reasons,
-        "image": {"path": str(image_path), "sha256": image_hash},
+        "image": {"path": str(finalized_image_path), "sha256": image_hash},
         "runtime_versions": {
             "carnopy": __version__,
             "matplotlib": metadata.version("matplotlib"),
@@ -238,6 +244,7 @@ def _render_property_delta(
     fluid_aliases: dict[str, str],
     image_path: Path,
     sidecar_path: Path,
+    finalized_image_path: Path,
     sweep_identity: dict[str, str],
     comparison_hashes: dict[str, str],
 ) -> None:
@@ -345,7 +352,7 @@ def _render_property_delta(
         "metric_summary": metric_summary,
         "skipped_rows": int(sum(skipped_reasons.values())),
         "missing_or_invalid_reasons": skipped_reasons,
-        "image": {"path": str(image_path), "sha256": image_hash},
+        "image": {"path": str(finalized_image_path), "sha256": image_hash},
         "runtime_versions": {
             "carnopy": __version__,
             "matplotlib": metadata.version("matplotlib"),

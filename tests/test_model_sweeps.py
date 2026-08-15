@@ -204,10 +204,14 @@ def test_model_sweep_comparison_plot_sidecar_records_provenance(tmp_path: Path) 
     assert payload["selected_fluid"] == "n-Propane"
     assert payload["x_axis"] == "temperature"
     assert payload["comparison_artifact_hashes"]["comparison/values.parquet"]
+    assert payload["image"]["path"] == str(image)
+    assert ".staging" not in payload["image"]["path"]
     delta_image = result.comparison_plot_directory / "propane_density_delta.png"
     delta_sidecar = result.comparison_plot_directory / "propane_density_delta.plot.json"
     delta_payload = json.loads(delta_sidecar.read_text())
     assert delta_image.is_file()
+    assert delta_payload["image"]["path"] == str(delta_image)
+    assert ".staging" not in delta_payload["image"]["path"]
     assert delta_payload["plot_kind"] == "property_delta"
     assert delta_payload["resolved_models"] == ["pr"]
     assert delta_payload["reference_model"] == "heos"
@@ -223,6 +227,18 @@ def test_model_sweep_comparison_plot_sidecar_records_provenance(tmp_path: Path) 
     assert delta_payload["metric_summary"]["count"] == len(valid_deltas)
     assert delta_payload["metric_summary"]["minimum"] == pytest.approx(float(valid_deltas.min()))
     assert delta_payload["metric_summary"]["maximum"] == pytest.approx(float(valid_deltas.max()))
+    assert result.comparison_report_path is not None
+    report = json.loads(result.comparison_report_path.read_text())
+    outcomes = {outcome["name"]: outcome for outcome in report["outcomes"]}
+    assert outcomes["propane_density_temperature"]["image_path"] == str(image)
+    assert outcomes["propane_density_temperature"]["sidecar_path"] == str(sidecar)
+    assert outcomes["propane_density_delta"]["image_path"] == str(delta_image)
+    assert outcomes["propane_density_delta"]["sidecar_path"] == str(delta_sidecar)
+    assert all(
+        ".staging" not in outcome[path_key]
+        for outcome in outcomes.values()
+        for path_key in ("image_path", "sidecar_path")
+    )
 
 
 def test_model_sweep_rejects_reference_model_in_delta_plot(tmp_path: Path) -> None:
