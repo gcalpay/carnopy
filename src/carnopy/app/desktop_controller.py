@@ -504,19 +504,19 @@ class DesktopController(QObject):
 
     @Slot(str, bool, result=bool, name="requestNewDataset")
     def request_new_dataset(self, mode: str, discard_confirmed: bool = False) -> bool:
-        if not self._guard_configuration_lifecycle("New Dataset"):
+        if not self._guard_idle_configuration_action("New Dataset"):
             return False
         return self.configuration_controller.new_dataset(mode, discard_confirmed)
 
     @Slot(bool, result=bool, name="requestNewSweep")
     def request_new_sweep(self, discard_confirmed: bool = False) -> bool:
-        if not self._guard_configuration_lifecycle("New Model Sweep"):
+        if not self._guard_idle_configuration_action("New Model Sweep"):
             return False
         return self.configuration_controller.new_sweep(discard_confirmed)
 
     @Slot(bool, result=bool, name="requestNewPreparation")
     def request_new_preparation(self, discard_confirmed: bool = False) -> bool:
-        if not self._guard_configuration_lifecycle("New ML Preparation"):
+        if not self._guard_idle_configuration_action("New ML Preparation"):
             return False
         return self.configuration_controller.new_preparation(discard_confirmed)
 
@@ -526,7 +526,7 @@ class DesktopController(QObject):
         path: str,
         discard_confirmed: bool = False,
     ) -> bool:
-        if not self._guard_configuration_lifecycle("Open Configuration"):
+        if not self._guard_idle_configuration_action("Open Configuration"):
             return False
         return self.configuration_controller.import_configuration(
             _local_path(path),
@@ -535,7 +535,7 @@ class DesktopController(QObject):
 
     @Slot(str, bool, result=bool, name="requestImportDataset")
     def request_import_dataset(self, path: str, discard_confirmed: bool = False) -> bool:
-        if not self._guard_configuration_lifecycle("Import"):
+        if not self._guard_idle_configuration_action("Import"):
             return False
         return self.configuration_controller.import_dataset(
             _local_path(path),
@@ -544,28 +544,32 @@ class DesktopController(QObject):
 
     @Slot(bool, result=bool, name="requestSave")
     def request_save(self, allow_reformat: bool = False) -> bool:
-        if not self._guard_configuration_lifecycle("Save"):
+        if not self._guard_idle_configuration_action("Save"):
             return False
         return self.configuration_controller.request_save(allow_reformat)
 
     @Slot(bool, result=bool, name="requestSaveAs")
     def request_save_as(self, allow_reformat: bool = False) -> bool:
-        if not self._guard_configuration_lifecycle("Save As"):
+        if not self._guard_idle_configuration_action("Save As"):
             return False
         return self.configuration_controller.request_save_as(allow_reformat)
 
     @Slot(result=bool, name="requestValidateConfiguration")
     def request_validate_configuration(self) -> bool:
-        if not self._guard_configuration_lifecycle("Validation"):
+        if not self._guard_idle_configuration_action("Validation"):
             return False
         return self.configuration_controller.request_validation()
 
     @Slot(result=bool, name="requestExecutionValidation")
     def request_execution_validation(self) -> bool:
+        if not self._guard_idle_configuration_action("Dataset validation"):
+            return False
         return self.execution_controller.validate()
 
     @Slot(result=bool, name="requestDatasetGeneration")
     def request_dataset_generation(self) -> bool:
+        if not self._guard_idle_configuration_action("Dataset generation"):
+            return False
         return self.execution_controller.generate()
 
     @Slot(result=bool, name="requestExecutionCancel")
@@ -579,12 +583,20 @@ class DesktopController(QObject):
     @Slot(str, result=bool, name="requestWorkflowPlan")
     def request_workflow_plan(self, workflow: str) -> bool:
         controller = self._workflow_controller(workflow)
-        return False if controller is None else controller.plan()
+        if controller is None or not self._guard_idle_configuration_action(
+            f"{_workflow_label(workflow)} planning"
+        ):
+            return False
+        return controller.plan()
 
     @Slot(str, result=bool, name="requestWorkflowExecute")
     def request_workflow_execute(self, workflow: str) -> bool:
         controller = self._workflow_controller(workflow)
-        return False if controller is None else controller.execute()
+        if controller is None or not self._guard_idle_configuration_action(
+            f"{_workflow_label(workflow)} execution"
+        ):
+            return False
+        return controller.execute()
 
     @Slot(str, result=bool, name="requestWorkflowCancel")
     def request_workflow_cancel(self, workflow: str) -> bool:
@@ -729,7 +741,8 @@ class DesktopController(QObject):
 
     @Slot(str, result=bool, name="requestSavePathSelected")
     def request_save_path_selected(self, path: str) -> bool:
-        if not self._guard_configuration_lifecycle("Save As"):
+        if not self._guard_idle_configuration_action("Save As"):
+            self.configuration_controller.cancel_save_path()
             return False
         return self.configuration_controller.save_path_selected(_local_path(path))
 
@@ -739,18 +752,18 @@ class DesktopController(QObject):
 
     @Slot(str, name="requestConfirmReformat")
     def request_confirm_reformat(self, action: str) -> None:
-        if self._guard_configuration_lifecycle("Save"):
+        if self._guard_idle_configuration_action("Save"):
             self.configuration_controller.confirm_reformat(action)
 
     @Slot(bool, result=bool, name="requestReloadSource")
     def request_reload_source(self, discard_confirmed: bool = False) -> bool:
-        if not self._guard_configuration_lifecycle("Reload"):
+        if not self._guard_idle_configuration_action("Reload"):
             return False
         return self.configuration_controller.reload_source(discard_confirmed)
 
     @Slot(bool, result=bool, name="requestCloseConfiguration")
     def request_close_configuration(self, discard_confirmed: bool = False) -> bool:
-        if not self._guard_configuration_lifecycle("Close Configuration"):
+        if not self._guard_idle_configuration_action("Close Configuration"):
             return False
         return self.configuration_controller.clear_document(discard_confirmed)
 
@@ -767,7 +780,9 @@ class DesktopController(QObject):
 
     @Slot(str, result=bool, name="requestDatasetModeChange")
     def request_dataset_mode_change(self, mode: str) -> bool:
-        if not self._guard_configuration_lifecycle("dataset mode change"):
+        if not self._can_edit_dataset_document() or not self._guard_configuration_lifecycle(
+            "dataset mode change"
+        ):
             return False
         if mode == self.dataset_draft.get_mode_name():
             return False
@@ -779,7 +794,9 @@ class DesktopController(QObject):
 
     @Slot(str, result=bool, name="requestDatasetCoordinateChange")
     def request_dataset_coordinate_change(self, axis: str) -> bool:
-        if not self._guard_configuration_lifecycle("dataset coordinate change"):
+        if not self._can_edit_dataset_document() or not self._guard_configuration_lifecycle(
+            "dataset coordinate change"
+        ):
             return False
         if axis == self.dataset_draft.get_coordinate_name():
             return False
@@ -794,7 +811,11 @@ class DesktopController(QObject):
         decision = self._pending_dataset_decision
         if decision is None:
             return False
-        if not confirmed or not self._guard_configuration_lifecycle("dataset replacement"):
+        if (
+            not confirmed
+            or not self._can_edit_dataset_document()
+            or not self._guard_configuration_lifecycle("dataset replacement")
+        ):
             self._pending_dataset_decision = None
             self.datasetDecisionChanged.emit()
             return False
@@ -814,10 +835,13 @@ class DesktopController(QObject):
 
     @Slot(str, name="requestDatasetModelChange")
     def request_dataset_model_change(self, model: str) -> None:
-        self.dataset_draft.set_model_name(model)
+        if self._can_edit_dataset_document():
+            self.dataset_draft.set_model_name(model)
 
     @Slot(str, bool, name="requestDatasetFluidSelection")
     def request_dataset_fluid_selection(self, value: str, selected: bool) -> None:
+        if not self._can_edit_dataset_document():
+            return
         if selected:
             self.dataset_draft.add_fluid(value)
         else:
@@ -825,14 +849,18 @@ class DesktopController(QObject):
 
     @Slot(int, int, name="requestDatasetFluidMove")
     def request_dataset_fluid_move(self, row: int, offset: int) -> None:
-        self.dataset_draft.move_fluid(row, offset)
+        if self._can_edit_dataset_document():
+            self.dataset_draft.move_fluid(row, offset)
 
     @Slot(int, name="requestDatasetFluidRemove")
     def request_dataset_fluid_remove(self, row: int) -> None:
-        self.dataset_draft.remove_fluid(row)
+        if self._can_edit_dataset_document():
+            self.dataset_draft.remove_fluid(row)
 
     @Slot(str, bool, name="requestDatasetPropertySelection")
     def request_dataset_property_selection(self, value: str, selected: bool) -> None:
+        if not self._can_edit_dataset_document():
+            return
         if selected:
             self.dataset_draft.add_property(value)
         else:
@@ -840,20 +868,23 @@ class DesktopController(QObject):
 
     @Slot(int, int, name="requestDatasetPropertyMove")
     def request_dataset_property_move(self, row: int, offset: int) -> None:
-        self.dataset_draft.move_property(row, offset)
+        if self._can_edit_dataset_document():
+            self.dataset_draft.move_property(row, offset)
 
     @Slot(int, name="requestDatasetPropertyRemove")
     def request_dataset_property_remove(self, row: int) -> None:
-        self.dataset_draft.remove_property(row)
+        if self._can_edit_dataset_document():
+            self.dataset_draft.remove_property(row)
 
     @Slot(str, bool, name="requestDatasetOutputSelection")
     def request_dataset_output_selection(self, output_format: str, selected: bool) -> None:
-        self.dataset_draft.set_output_selected(output_format, selected)
+        if self._can_edit_dataset_document():
+            self.dataset_draft.set_output_selected(output_format, selected)
 
     @Slot(QObject, str, name="requestDatasetSamplerKindChange")
     def request_dataset_sampler_kind_change(self, candidate: QObject, kind: str) -> None:
         sampler = self._owned_dataset_sampler(candidate)
-        if sampler is not None:
+        if sampler is not None and self._can_edit_dataset_document():
             sampler.set_kind(kind)
 
     @Slot(QObject, str, str, name="requestDatasetSamplerTextChange")
@@ -864,13 +895,13 @@ class DesktopController(QObject):
         text: str,
     ) -> None:
         sampler = self._owned_dataset_sampler(candidate)
-        if sampler is not None:
+        if sampler is not None and self._can_edit_dataset_document():
             sampler.set_text(field, text)
 
     @Slot(QObject, str, name="requestDatasetSamplerUnitChange")
     def request_dataset_sampler_unit_change(self, candidate: QObject, unit: str) -> None:
         sampler = self._owned_dataset_sampler(candidate)
-        if sampler is not None:
+        if sampler is not None and self._can_edit_dataset_document():
             sampler.requestUnitChange(unit)
 
     @Slot(str, bool, name="requestSweepModelSelection")
@@ -1382,28 +1413,38 @@ class DesktopController(QObject):
 
     @Slot(bool, name="requestVisualizationEnabled")
     def request_visualization_enabled(self, enabled: bool) -> None:
-        if self._guard_active_plot_edit("visualization enable or disable"):
+        if self._can_edit_dataset_document() and self._guard_active_plot_edit(
+            "visualization enable or disable"
+        ):
             self.visualization_draft.set_enabled(enabled)
 
     @Slot(str, name="requestVisualizationFormat")
     def request_visualization_format(self, output_format: str) -> None:
-        if self._guard_active_plot_edit("shared visualization format change"):
+        if self._can_edit_dataset_document() and self._guard_active_plot_edit(
+            "shared visualization format change"
+        ):
             self.visualization_draft.set_format(output_format)
 
     @Slot(str, bool, name="requestVisualizationFluidSelection")
     def request_visualization_fluid_selection(self, value: str, selected: bool) -> None:
-        if self._guard_active_plot_edit("shared visualization fluid change"):
+        if self._can_edit_dataset_document() and self._guard_active_plot_edit(
+            "shared visualization fluid change"
+        ):
             self.visualization_draft.set_fluid_selected(value, selected)
 
     @Slot(result=bool, name="requestVisualizationAddPlot")
     def request_visualization_add_plot(self) -> bool:
-        if not self._guard_active_plot_edit("starting another plot edit"):
+        if not self._can_edit_dataset_document() or not self._guard_active_plot_edit(
+            "starting another plot edit"
+        ):
             return False
         return self.visualization_draft.begin_add_plot() is not None
 
     @Slot(int, result=bool, name="requestVisualizationEditPlot")
     def request_visualization_edit_plot(self, row: int) -> bool:
-        if not self._guard_active_plot_edit("starting another plot edit"):
+        if not self._can_edit_dataset_document() or not self._guard_active_plot_edit(
+            "starting another plot edit"
+        ):
             return False
         return self.visualization_draft.begin_edit_plot(row) is not None
 
@@ -1419,21 +1460,25 @@ class DesktopController(QObject):
 
     @Slot(result=bool, name="requestVisualizationCommitPlot")
     def request_visualization_commit_plot(self) -> bool:
-        return self.visualization_draft.commit_plot()
+        return self._can_edit_dataset_document() and self.visualization_draft.commit_plot()
 
     @Slot(result=bool, name="requestVisualizationCancelPlot")
     def request_visualization_cancel_plot(self) -> bool:
-        return self.visualization_draft.cancel_plot()
+        return self._can_edit_dataset_document() and self.visualization_draft.cancel_plot()
 
     @Slot(int, result=bool, name="requestVisualizationRemovePlot")
     def request_visualization_remove_plot(self, row: int) -> bool:
-        if not self._guard_active_plot_edit("plot removal"):
+        if not self._can_edit_dataset_document() or not self._guard_active_plot_edit(
+            "plot removal"
+        ):
             return False
         return self.visualization_draft.remove_plot(row)
 
     @Slot(int, int, result=bool, name="requestVisualizationMovePlot")
     def request_visualization_move_plot(self, row: int, offset: int) -> bool:
-        if not self._guard_active_plot_edit("plot movement"):
+        if not self._can_edit_dataset_document() or not self._guard_active_plot_edit(
+            "plot movement"
+        ):
             return False
         return self.visualization_draft.move_plot(row, offset)
 
@@ -1550,23 +1595,22 @@ class DesktopController(QObject):
             None,
         )
 
+    def _can_edit_dataset_document(self) -> bool:
+        return self._can_edit_document("dataset", "Dataset")
+
     def _can_edit_sweep_document(self) -> bool:
-        if self.configuration_controller.get_document_kind() != "model_sweep":
-            return False
-        if self.configuration_controller.get_can_edit():
-            return True
-        self.workspace_controller.report_error(
-            "Wait for the active worker request before editing the Model Sweep configuration."
-        )
-        return False
+        return self._can_edit_document("model_sweep", "Model Sweep")
 
     def _can_edit_preparation_document(self) -> bool:
-        if self.configuration_controller.get_document_kind() != "preparation":
+        return self._can_edit_document("preparation", "ML Preparation")
+
+    def _can_edit_document(self, document_kind: str, label: str) -> bool:
+        if self.configuration_controller.get_document_kind() != document_kind:
             return False
         if self.configuration_controller.get_can_edit():
             return True
         self.workspace_controller.report_error(
-            "Wait for the active worker request before editing the ML Preparation configuration."
+            f"Wait for the active worker request before editing the {label} configuration."
         )
         return False
 
@@ -1597,18 +1641,18 @@ class DesktopController(QObject):
         return active if isinstance(active, ScenarioDraft) and active is candidate else None
 
     def _owned_active_plot(self, candidate: QObject) -> PlotDraft | None:
-        active_drafts = (
-            self.visualization_draft.get_active_plot_draft(),
-            self.session_plot_controller.get_active_plot_draft(),
+        configured = self.visualization_draft.get_active_plot_draft()
+        if isinstance(configured, PlotDraft) and configured is candidate:
+            return configured if self._can_edit_dataset_document() else None
+        session = self.session_plot_controller.get_active_plot_draft()
+        if not isinstance(session, PlotDraft) or session is not candidate:
+            return None
+        if not self.session_plot_controller.get_is_rendering():
+            return session
+        self.workspace_controller.report_error(
+            "Wait for the active plot worker before editing the session plot."
         )
-        return next(
-            (
-                active
-                for active in active_drafts
-                if isinstance(active, PlotDraft) and active is candidate
-            ),
-            None,
-        )
+        return None
 
     def _owned_visualization_mapping(
         self,
@@ -1619,6 +1663,8 @@ class DesktopController(QObject):
             self.visualization_draft.display_units,
         )
         if candidate in shared:
+            if not self._can_edit_dataset_document():
+                return None
             if not self._guard_active_plot_edit("shared visualization mapping change"):
                 return None
             return candidate if isinstance(candidate, MappingDraftModel) else None
@@ -1629,8 +1675,9 @@ class DesktopController(QObject):
             if not isinstance(active, PlotDraft):
                 continue
             mappings = (active.filters, active.series, active.display_units)
-            if isinstance(candidate, MappingDraftModel) and candidate in mappings:
-                return candidate
+            if not isinstance(candidate, MappingDraftModel) or candidate not in mappings:
+                continue
+            return candidate if self._owned_active_plot(active) is active else None
         return None
 
     @Slot(str, str, result=bool, name="prepareCreateWorkspace")
@@ -1980,6 +2027,16 @@ class DesktopController(QObject):
             self.workspace_controller.cancel_pending()
         return False
 
+    def _guard_idle_configuration_action(self, operation: str) -> bool:
+        if not self._guard_configuration_lifecycle(operation):
+            return False
+        if not self.request_coordinator.is_busy:
+            return True
+        self.workspace_controller.report_error(
+            f"Wait for the active worker request before {operation}."
+        )
+        return False
+
     def _guard_configuration_lifecycle(self, operation: str = "this operation") -> bool:
         if not self._guard_active_plot_edit(operation) or not self._guard_workflow_nested_edit(
             operation
@@ -2163,6 +2220,10 @@ def _local_path(value: str) -> str:
     if not candidate.startswith("file:"):
         return candidate
     return QUrl(candidate).toLocalFile()
+
+
+def _workflow_label(workflow: str) -> str:
+    return "Model Sweep" if workflow in {"sweep", "model_sweep"} else "ML Preparation"
 
 
 def _valid_workspace_child_name(value: str) -> bool:

@@ -657,6 +657,187 @@ def test_workflow_facade_routes_sweep_and_preparation_control(
     assert desktop.shutdown()
 
 
+def test_active_worker_blocks_direct_global_action_slots(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    calls: list[str] = []
+    for name in (
+        "new_dataset",
+        "new_sweep",
+        "new_preparation",
+        "import_dataset",
+        "import_configuration",
+        "request_save",
+        "request_save_as",
+        "request_validation",
+        "reload_source",
+        "clear_document",
+    ):
+        monkeypatch.setattr(
+            desktop.configuration_controller,
+            name,
+            lambda *_args, operation=name: calls.append(operation) or True,
+        )
+    monkeypatch.setattr(
+        desktop.execution_controller,
+        "validate",
+        lambda: calls.append("dataset_validate") or True,
+    )
+    monkeypatch.setattr(
+        desktop.execution_controller,
+        "generate",
+        lambda: calls.append("dataset_generate") or True,
+    )
+    monkeypatch.setattr(
+        desktop.sweep_workflow_controller,
+        "plan",
+        lambda: calls.append("sweep_plan") or True,
+    )
+    monkeypatch.setattr(
+        desktop.sweep_workflow_controller,
+        "execute",
+        lambda: calls.append("sweep_execute") or True,
+    )
+    desktop.request_coordinator._active_session = SimpleNamespace(
+        owner="sweep",
+        request_type="execute_sweep",
+    )
+
+    assert not desktop.request_new_dataset("property_table", True)
+    assert not desktop.request_new_sweep(True)
+    assert not desktop.request_new_preparation(True)
+    assert not desktop.request_import_dataset("dataset.yaml", True)
+    assert not desktop.request_import_configuration("sweep.yaml", True)
+    assert not desktop.request_save()
+    assert not desktop.request_save_as()
+    assert not desktop.request_validate_configuration()
+    assert not desktop.request_reload_source(True)
+    assert not desktop.request_close_configuration(True)
+    assert not desktop.request_execution_validation()
+    assert not desktop.request_dataset_generation()
+    assert not desktop.request_workflow_plan("sweep")
+    assert not desktop.request_workflow_execute("sweep")
+
+    assert calls == []
+    assert "active worker request" in desktop.get_workspace_error_message()
+    desktop.request_coordinator._active_session = None
+    assert desktop.shutdown()
+
+
+@pytest.mark.parametrize(
+    ("workflow", "draft_name", "section", "field"),
+    [
+        ("sweep", "sweep_draft", "sweep", "sweep.comparison.active.name"),
+        (
+            "preparation",
+            "preparation_draft",
+            "preparation",
+            "preparation.scenario.active.name",
+        ),
+    ],
+)
+def test_active_nested_editor_blocks_direct_plan_and_execute_slots(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    workflow: str,
+    draft_name: str,
+    section: str,
+    field: str,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    draft = getattr(desktop.configuration_controller, draft_name)
+    active_method = (
+        "get_has_active_comparison_edit" if workflow == "sweep" else "get_has_active_scenario_edit"
+    )
+    monkeypatch.setattr(draft, active_method, lambda: True)
+    monkeypatch.setattr(draft, "get_first_invalid_field", lambda: field)
+    monkeypatch.setattr(draft, "get_first_invalid_row", lambda: 2)
+    controller = desktop._workflow_controller(workflow)
+    assert controller is not None
+    calls: list[str] = []
+    monkeypatch.setattr(controller, "plan", lambda: calls.append("plan") or True)
+    monkeypatch.setattr(controller, "execute", lambda: calls.append("execute") or True)
+    attention: list[tuple[str, str, int]] = []
+    desktop.attentionRequested.connect(
+        lambda focus_section, focus_field, row: attention.append((focus_section, focus_field, row))
+    )
+
+    assert not desktop.request_workflow_plan(workflow)
+    assert not desktop.request_workflow_execute(workflow)
+
+    assert calls == []
+    assert attention == [(section, field, 2), (section, field, 2)]
+    monkeypatch.setattr(draft, active_method, lambda: False)
+    assert desktop.shutdown()
+
+
+def test_dataset_and_visualization_slots_follow_worker_edit_policy(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    controller = desktop.configuration_controller
+    monkeypatch.setattr(controller, "get_document_kind", lambda: "dataset")
+    monkeypatch.setattr(controller, "get_editor_available", lambda: True)
+    desktop.dataset_draft.mode_choices.replace(
+        DraftItem(value=value, display=value, canonical=value)
+        for value in ("property_table", "saturation_table")
+    )
+    monkeypatch.setattr(desktop.dataset_draft, "get_mode_name", lambda: "property_table")
+    calls: list[tuple[object, ...]] = []
+    monkeypatch.setattr(
+        desktop.dataset_draft,
+        "set_model_name",
+        lambda value: calls.append(("model", value)) or True,
+    )
+    monkeypatch.setattr(
+        desktop.dataset_draft,
+        "set_output_selected",
+        lambda value, selected: calls.append(("output", value, selected)) or True,
+    )
+    monkeypatch.setattr(
+        desktop.visualization_draft,
+        "set_enabled",
+        lambda enabled: calls.append(("visualization", enabled)) or True,
+    )
+
+    desktop.request_coordinator._active_session = SimpleNamespace(
+        owner="configuration",
+        request_type="validate_configuration",
+    )
+    desktop.request_dataset_model_change("pr")
+    desktop.request_dataset_output_selection("csv", False)
+    desktop.request_visualization_enabled(True)
+    assert not desktop.request_dataset_mode_change("saturation_table")
+    assert calls == []
+
+    desktop.request_coordinator._active_session = SimpleNamespace(
+        owner="execution",
+        request_type="generate_dataset",
+    )
+    desktop.request_dataset_model_change("pr")
+    desktop.request_dataset_output_selection("csv", False)
+    desktop.request_visualization_enabled(True)
+    assert desktop.request_dataset_mode_change("saturation_table")
+
+    assert calls == [
+        ("model", "pr"),
+        ("output", "csv", False),
+        ("visualization", True),
+    ]
+    desktop.cancel_dataset_decision()
+    desktop.request_coordinator._active_session = None
+    assert desktop.shutdown()
+
+
 def test_workflow_creation_and_generic_open_facade_use_global_configuration_lifecycle(
     tmp_path: Path,
     application: QCoreApplication,
@@ -1606,9 +1787,16 @@ def test_session_plot_edit_guards_replacement_but_not_configuration_save(
 def test_visualization_facade_accepts_only_the_owned_active_plot_and_mappings(
     tmp_path: Path,
     application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     del application
     desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    monkeypatch.setattr(
+        desktop.configuration_controller,
+        "get_document_kind",
+        lambda: "dataset",
+    )
+    monkeypatch.setattr(desktop.configuration_controller, "get_can_edit", lambda: True)
     draft = desktop.visualization_draft
     draft.apply_capabilities(
         {
@@ -1664,6 +1852,18 @@ def test_visualization_facade_accepts_only_the_owned_active_plot_and_mappings(
 
     assert active.get_name() == "density"
     assert active.filters.raw_rows() == (("temperature", "300"),)
+
+    monkeypatch.setattr(draft, "get_active_plot_draft", lambda: None)
+    monkeypatch.setattr(
+        desktop.session_plot_controller,
+        "get_active_plot_draft",
+        lambda: active,
+    )
+    monkeypatch.setattr(desktop.session_plot_controller, "get_is_rendering", lambda: True)
+    desktop.request_plot_field_change(active, "name", "rendering-mutation")
+    assert active.get_name() == "density"
+    assert "active plot worker" in desktop.get_workspace_error_message()
+
     assert desktop.request_visualization_cancel_plot()
     assert desktop.shutdown()
 
@@ -1675,6 +1875,12 @@ def test_dataset_replacement_decisions_are_owned_by_desktop_facade(
 ) -> None:
     del application
     desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    monkeypatch.setattr(
+        desktop.configuration_controller,
+        "get_document_kind",
+        lambda: "dataset",
+    )
+    monkeypatch.setattr(desktop.configuration_controller, "get_can_edit", lambda: True)
     desktop.dataset_draft.mode_choices.replace(
         DraftItem(value=value, display=value, canonical=value)
         for value in ("property_table", "saturation_table")

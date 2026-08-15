@@ -211,7 +211,7 @@ audits, partition summaries, correlations, singular values, rank, conditioning,
 and baseline metrics. Missing optional dependencies disable only the affected
 feature and provide exact installation guidance.
 
-### Implementation checkpoint: Units 1–22A
+### Implementation checkpoint: Units 1–22B
 
 Stage 5 is in progress on `feat/gui2-stage5`. The implemented checkpoint keeps
 one globally active configuration document while extending its exact-byte,
@@ -356,16 +356,37 @@ semantic state does not invalidate a response. Focused controller tests cover
 obsolete successes and failures, identical-byte document replacement,
 no-write stale Save, source mismatches, preview-block mismatches, and workspace
 replacement. Cross-controller action enforcement and shutdown/transition
-hardening remain separate Units 22B and 22C.
+hardening were deliberately left to separate Units 22B and 22C.
+
+Unit 22B completes the cross-controller action-enforcement half of that
+boundary. Every QML-callable global configuration lifecycle or worker-start
+slot rechecks both transient-editor state and global request idleness in
+`DesktopController`; disabled controls are presentation only. Direct Plan and
+Execute calls focus the active comparison or scenario editor instead of
+reaching a workflow controller. Dataset and configured-Visualization edit
+slots now use the same document-kind and operation-aware `canEdit` policy that
+already guarded Sweep and Preparation fields. Configuration validation, load,
+Save, and planning lock their owning editor, while Dataset, Sweep, or
+Preparation execution continues to allow ordinary draft edits beside its
+immutable active snapshot. Session-plot field and mapping slots likewise reject
+changes while their render worker owns the submitted request. Cancellation and
+Force Stop remain available only through their established active-operation
+controllers.
+
+Focused facade regressions call the Python slots directly, bypassing QML
+enablement. They cover every global lifecycle and worker-start family, both
+nested-editor kinds, Dataset and Visualization editing under configuration
+work and execution, owned-object checks, and session rendering. Unit 22C still
+owns multi-step shutdown and the remaining cross-workflow transition matrix.
 
 No public YAML schema, CLI command, Python API, scientific algorithm, manifest,
 result model, artifact layout, provenance contract, or dependency boundary has
 changed. Focused tests accompany each completed implementation unit; the
 complete Stage 5 gate and native acceptance remain pending.
 
-The remaining implementation order after Unit 22A is:
+The remaining implementation order after Unit 22B is:
 
-1. Units 22B and 22C complete cross-workflow action, shutdown, and transition
+1. Unit 22C completes multi-step shutdown and cross-workflow transition
    hardening.
 2. Unit 23 qualifies packaged Stage 5 QML and runs the complete gate.
 3. Unit 24 records completion only after automated and manual acceptance.

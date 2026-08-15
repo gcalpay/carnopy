@@ -199,6 +199,18 @@ explicit inspection of the requested source succeeds; the view never infers a
 source, performs hidden inspection, or starts rendering as a navigation side
 effect.
 
+QML enablement is never the lifecycle authority. Every global configuration
+lifecycle and worker-start slot on `DesktopController` rechecks transient
+editors and global request idleness before delegating. Direct Plan and Execute
+requests therefore cannot bypass an open comparison or scenario editor.
+Document editing uses one operation-aware Python policy across Dataset, Sweep,
+Preparation, and configured Visualization: configuration load, validation,
+Save, and workflow planning lock the owning document, while execution permits
+ordinary in-memory edits beside its captured immutable snapshot. Owned nested
+objects are rechecked at each slot boundary, and a session plot cannot be
+mutated while its render worker owns the submitted request. Cancellation and
+Force Stop retain their separate active-operation paths.
+
 ### `DesktopRequestCoordinator`
 
 The coordinator owns the global active request, including:
@@ -1118,7 +1130,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 2 | Package the Precision Grid QML Workspace, Dataset, Visualization, and YAML/Save workflows | Complete; automated, remote, and native acceptance passed |
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete |
 | 4 | Add controlled sweep and preparation worker operations | Complete |
-| 5 | Add structured sweep and preparation QML workflows | In progress through Unit 22A; semantic response guards complete, action and shutdown hardening pending |
+| 5 | Add structured sweep and preparation QML workflows | In progress through Unit 22B; semantic response and direct-action guards complete, shutdown hardening pending |
 | 6 | Build exact emitted-value 3D scene contracts | Pending |
 | 7 | Integrate native interactive 3D into QML | Pending |
 | 8 | Complete native-3D platform, distribution, documentation, and later-release qualification | Pending |
@@ -1189,7 +1201,7 @@ six-row generation, configured plot, verified inspection, clean workspace
 reopen, and workspace-scoped installed smoke. Its lifecycle regression raised
 the exhaustively verified suite to 837 tests.
 
-Stage 5 is implemented through Unit 22A on `feat/gui2-stage5`. The former
+Stage 5 is implemented through Unit 22B on `feat/gui2-stage5`. The former
 Dataset-only document and controller now provide one global exact-file
 lifecycle for all three public configuration types. The complete structured
 Sweep workflow is enabled in QML. Preparation source profiling, explicit
@@ -1218,12 +1230,15 @@ Preparation inspection hides the tab and restores Summary selection.
 Operation-specific response contexts now prevent terminal configuration,
 inspection, preview, and workflow responses from crossing document, source,
 workspace, saved-snapshot, or plan/source-context replacement. Returned load
-sources and preview blocks must match their requests. Remaining action and
-shutdown lifecycle hardening, packaged qualification, complete gates, native
-acceptance, and completion documentation remain unfinished. This checkpoint
-changes private
-desktop ownership and presentation infrastructure only; public scientific and
-distribution contracts remain unchanged.
+sources and preview blocks must match their requests. Remaining shutdown and
+transition lifecycle hardening, packaged qualification, complete gates, native
+acceptance, and completion documentation remain unfinished. Direct desktop
+slots now enforce global request idleness, transient-editor focus, document
+kind, operation-aware edit locking, owned nested state, and session-render
+locking without trusting QML enablement. Unit 22C retains shutdown and the
+remaining transition matrix. This checkpoint changes private desktop ownership
+and presentation infrastructure only; public scientific and distribution
+contracts remain unchanged.
 
 ## Known current limitations
 
