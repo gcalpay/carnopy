@@ -331,8 +331,10 @@ source, Scenario, Matrix, and Baseline controls no longer crash. It also found
 that populated quality fields lost their placeholder-only descriptions and the
 shorter Outputs card was vertically centered as Quality diagnostics expanded.
 The five settings now retain persistent visible labels and both cards remain
-top-aligned; native visual reinspection of that presentation repair remains
-required before this checkpoint is accepted.
+top-aligned. Native visual reinspection confirmed that the labels remain
+visible and the Outputs and Quality diagnostics headings remain aligned while
+both diagnostic sections are toggled. The Unit 21B presentation checkpoint is
+therefore accepted.
 
 No public YAML schema, CLI command, Python API, scientific algorithm, manifest,
 result model, artifact layout, provenance contract, or dependency boundary has
@@ -345,10 +347,10 @@ The remaining implementation order after Unit 21B is:
 2. Unit 23 qualifies packaged Stage 5 QML and runs the complete gate.
 3. Unit 24 records completion only after automated and manual acceptance.
 
-The Unit 21B commit is the audit-presentation checkpoint for another
-normal-application inspection before lifecycle work continues. Lifecycle paths
-are inspected after Unit 22, and the final installed application after Unit 23;
-acceptance must not be deferred until the documentation-only completion unit.
+The Unit 21B audit-presentation checkpoint and its focused native repair cycle
+are complete. Lifecycle paths are inspected after Unit 22, and the final
+installed application after Unit 23; acceptance must not be deferred until the
+documentation-only completion unit.
 
 ## Stage 6: exact scientific 3D scenes
 

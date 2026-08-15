@@ -846,7 +846,9 @@ or destroy an active Loader, list model, or conditionally visible settings
 section synchronously from the originating input handler. Matrix and baseline
 numeric controls retain visible labels independently of their populated values,
 and the adjacent Outputs and Quality diagnostics cards remain top-aligned as
-either card expands.
+either card expands. Native application reinspection confirmed explicit source
+binding, Scenario creation, Matrix and Baseline expansion, persistent labels,
+and stable card alignment without a presentation-path crash.
 
 The QML Inspect workbench consumes only the typed Qt models owned by
 `InspectionController`. Workspace discovery is direct-child, symlink-excluding,
