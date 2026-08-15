@@ -843,7 +843,10 @@ to the Preparation page; an empty page offers explicit New or source-selection
 actions without making navigation itself create or replace a document. Source,
 role, category, output, quality-diagnostic, and Scenario controls never mutate
 or destroy an active Loader, list model, or conditionally visible settings
-section synchronously from the originating input handler.
+section synchronously from the originating input handler. Matrix and baseline
+numeric controls retain visible labels independently of their populated values,
+and the adjacent Outputs and Quality diagnostics cards remain top-aligned as
+either card expands.
 
 The QML Inspect workbench consumes only the typed Qt models owned by
 `InspectionController`. Workspace discovery is direct-child, symlink-excluding,

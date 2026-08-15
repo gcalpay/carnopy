@@ -11,7 +11,15 @@ import yaml
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QCoreApplication, QEventLoop, QMetaObject, QObject, QSettings, QTimer
+from PySide6.QtCore import (
+    QCoreApplication,
+    QEventLoop,
+    QMetaObject,
+    QObject,
+    QPointF,
+    QSettings,
+    QTimer,
+)
 from PySide6.QtQml import QQmlComponent
 from PySide6.QtQuick import QQuickItem, QQuickWindow
 from PySide6.QtWidgets import QApplication
@@ -566,6 +574,56 @@ def test_preparation_page_binds_the_complete_authoritative_editor(
     assert bool(guidance) is (not draft.get_baseline_available())
     if guidance:
         assert "carnopy[analysis]" in guidance
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_preparation_quality_fields_remain_labeled_and_cards_stay_top_aligned(
+    runtime: QmlApplicationRuntime,
+    preparation_page: QQuickItem,
+) -> None:
+    draft = runtime.controller.configuration_controller.preparation_draft
+    grid = _item(preparation_page, "preparationOutputQualityGrid")
+    outputs = _item(preparation_page, "preparationOutputsCard")
+    quality = _item(preparation_page, "preparationQualityCard")
+    assert grid.property("columnCount") == 2
+
+    initial_tops = (
+        outputs.mapToItem(grid, QPointF(0, 0)).y(),
+        quality.mapToItem(grid, QPointF(0, 0)).y(),
+    )
+    assert initial_tops[0] == pytest.approx(initial_tops[1], abs=1)
+
+    draft.apply_capabilities(
+        {
+            "workflows": {
+                "preparation": {
+                    "baseline_diagnostics": {"available": True, "guidance": ""},
+                    "safetensors": {"available": False, "guidance": ""},
+                }
+            }
+        }
+    )
+    assert draft.set_matrix_enabled(True)
+    assert draft.set_baseline_enabled(True)
+    _process_events()
+
+    expected_labels = {
+        "preparationCorrelationThresholdLabel": "Correlation threshold (absolute r)",
+        "preparationNearConstantSpreadLabel": "Near-constant relative spread",
+        "preparationBaselineSeedLabel": "Baseline random seed",
+        "preparationRidgeAlphaLabel": "Ridge alpha",
+        "preparationHistogramIterationsLabel": "Histogram maximum iterations",
+    }
+    for object_name, text in expected_labels.items():
+        label = _item(preparation_page, object_name)
+        assert label.isVisible()
+        assert label.property("text") == text
+
+    expanded_tops = (
+        outputs.mapToItem(grid, QPointF(0, 0)).y(),
+        quality.mapToItem(grid, QPointF(0, 0)).y(),
+    )
+    assert expanded_tops[0] == pytest.approx(expanded_tops[1], abs=1)
     assert runtime.warning_capture.runtime_warnings == ()
 
 

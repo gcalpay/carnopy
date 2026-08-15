@@ -856,6 +856,7 @@ Item {
                 Card {
                     id: outputsCard
 
+                    Layout.alignment: Qt.AlignTop
                     Layout.fillWidth: true
                     activeFocusOnTab: true
                     objectName: "preparationOutputsCard"
@@ -942,6 +943,7 @@ Item {
                 }
 
                 Card {
+                    Layout.alignment: Qt.AlignTop
                     Layout.fillWidth: true
                     activeFocusOnTab: true
                     objectName: "preparationQualityCard"
@@ -966,28 +968,56 @@ Item {
                         objectName: "preparationMatrixSettingsGrid"
                         visible: root.preparationDraft.matrixDiagnosticsEnabled
 
-                        TextField {
-                            Accessible.name: qsTr("Correlation threshold")
+                        ColumnLayout {
                             Layout.fillWidth: true
-                            enabled: !root.locked
-                            objectName: "preparationCorrelationThreshold"
-                            onEditingFinished: root.textFieldRequested("correlation_threshold",
-                                                                       text)
-                            placeholderText: qsTr("Correlation threshold")
-                            selectByMouse: true
-                            text: root.preparationDraft.correlationThreshold
+                            spacing: Theme.spacingTiny
+
+                            Label {
+                                Layout.fillWidth: true
+                                color: Theme.textMuted
+                                font.family: Theme.sansFamily
+                                font.pixelSize: 11
+                                objectName: "preparationCorrelationThresholdLabel"
+                                text: qsTr("Correlation threshold (absolute r)")
+                                wrapMode: Text.Wrap
+                            }
+
+                            TextField {
+                                Accessible.name: qsTr("Correlation threshold")
+                                Layout.fillWidth: true
+                                enabled: !root.locked
+                                objectName: "preparationCorrelationThreshold"
+                                onEditingFinished: root.textFieldRequested("correlation_threshold",
+                                                                           text)
+                                selectByMouse: true
+                                text: root.preparationDraft.correlationThreshold
+                            }
                         }
 
-                        TextField {
-                            Accessible.name: qsTr("Near-constant relative spread")
+                        ColumnLayout {
                             Layout.fillWidth: true
-                            enabled: !root.locked
-                            objectName: "preparationNearConstantSpread"
-                            onEditingFinished: root.textFieldRequested(
-                                                   "near_constant_relative_spread", text)
-                            placeholderText: qsTr("Near-constant spread")
-                            selectByMouse: true
-                            text: root.preparationDraft.nearConstantRelativeSpread
+                            spacing: Theme.spacingTiny
+
+                            Label {
+                                Layout.fillWidth: true
+                                color: Theme.textMuted
+                                font.family: Theme.sansFamily
+                                font.pixelSize: 11
+                                objectName: "preparationNearConstantSpreadLabel"
+                                text: qsTr("Near-constant relative spread")
+                                wrapMode: Text.Wrap
+                            }
+
+                            TextField {
+                                Accessible.name: qsTr("Near-constant relative spread")
+                                Layout.fillWidth: true
+                                enabled: !root.locked
+                                objectName: "preparationNearConstantSpread"
+                                onEditingFinished: root.textFieldRequested(
+                                                       "near_constant_relative_spread", text)
+                                selectByMouse: true
+                                text: root.preparationDraft.nearConstantRelativeSpread
+                            }
                         }
                     }
 
@@ -1061,38 +1091,81 @@ Item {
                         objectName: "preparationBaselineSettingsGrid"
                         visible: root.preparationDraft.baselineDiagnosticsEnabled
 
-                        TextField {
-                            Accessible.name: qsTr("Baseline random seed")
+                        ColumnLayout {
                             Layout.fillWidth: true
-                            enabled: !root.locked
-                            objectName: "preparationBaselineSeed"
-                            onEditingFinished: root.textFieldRequested("baseline_random_seed", text)
-                            placeholderText: qsTr("Random seed")
-                            selectByMouse: true
-                            text: root.preparationDraft.baselineRandomSeed
+                            spacing: Theme.spacingTiny
+
+                            Label {
+                                Layout.fillWidth: true
+                                color: Theme.textMuted
+                                font.family: Theme.sansFamily
+                                font.pixelSize: 11
+                                objectName: "preparationBaselineSeedLabel"
+                                text: qsTr("Baseline random seed")
+                                wrapMode: Text.Wrap
+                            }
+
+                            TextField {
+                                Accessible.name: qsTr("Baseline random seed")
+                                Layout.fillWidth: true
+                                enabled: !root.locked
+                                objectName: "preparationBaselineSeed"
+                                onEditingFinished: root.textFieldRequested("baseline_random_seed",
+                                                                           text)
+                                selectByMouse: true
+                                text: root.preparationDraft.baselineRandomSeed
+                            }
                         }
 
-                        TextField {
-                            Accessible.name: qsTr("Ridge alpha")
+                        ColumnLayout {
                             Layout.fillWidth: true
-                            enabled: !root.locked
-                            objectName: "preparationRidgeAlpha"
-                            onEditingFinished: root.textFieldRequested("ridge_alpha", text)
-                            placeholderText: qsTr("Ridge alpha")
-                            selectByMouse: true
-                            text: root.preparationDraft.ridgeAlpha
+                            spacing: Theme.spacingTiny
+
+                            Label {
+                                Layout.fillWidth: true
+                                color: Theme.textMuted
+                                font.family: Theme.sansFamily
+                                font.pixelSize: 11
+                                objectName: "preparationRidgeAlphaLabel"
+                                text: qsTr("Ridge alpha")
+                                wrapMode: Text.Wrap
+                            }
+
+                            TextField {
+                                Accessible.name: qsTr("Ridge alpha")
+                                Layout.fillWidth: true
+                                enabled: !root.locked
+                                objectName: "preparationRidgeAlpha"
+                                onEditingFinished: root.textFieldRequested("ridge_alpha", text)
+                                selectByMouse: true
+                                text: root.preparationDraft.ridgeAlpha
+                            }
                         }
 
-                        TextField {
-                            Accessible.name: qsTr("Histogram maximum iterations")
+                        ColumnLayout {
                             Layout.fillWidth: true
-                            enabled: !root.locked
-                            objectName: "preparationHistogramIterations"
-                            onEditingFinished: root.textFieldRequested("histogram_max_iterations",
-                                                                       text)
-                            placeholderText: qsTr("Maximum iterations")
-                            selectByMouse: true
-                            text: root.preparationDraft.histogramMaxIterations
+                            spacing: Theme.spacingTiny
+
+                            Label {
+                                Layout.fillWidth: true
+                                color: Theme.textMuted
+                                font.family: Theme.sansFamily
+                                font.pixelSize: 11
+                                objectName: "preparationHistogramIterationsLabel"
+                                text: qsTr("Histogram maximum iterations")
+                                wrapMode: Text.Wrap
+                            }
+
+                            TextField {
+                                Accessible.name: qsTr("Histogram maximum iterations")
+                                Layout.fillWidth: true
+                                enabled: !root.locked
+                                objectName: "preparationHistogramIterations"
+                                onEditingFinished: root.textFieldRequested(
+                                                       "histogram_max_iterations", text)
+                                selectByMouse: true
+                                text: root.preparationDraft.histogramMaxIterations
+                            }
                         }
                     }
                 }

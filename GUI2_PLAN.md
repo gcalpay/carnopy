@@ -326,8 +326,13 @@ rebind defect when Matrix diagnostics revealed its settings. Source actions,
 roles, categorical settings, source policy, outputs, matrix diagnostics, and
 baseline diagnostics now all cross that queued boundary as well. Focused QML
 interaction coverage invokes the visible Scenario and Matrix controls rather
-than substituting direct Python calls. Native reinspection of the repaired path
-remains required before this checkpoint is accepted.
+than substituting direct Python calls. Native reinspection confirmed that the
+source, Scenario, Matrix, and Baseline controls no longer crash. It also found
+that populated quality fields lost their placeholder-only descriptions and the
+shorter Outputs card was vertically centered as Quality diagnostics expanded.
+The five settings now retain persistent visible labels and both cards remain
+top-aligned; native visual reinspection of that presentation repair remains
+required before this checkpoint is accepted.
 
 No public YAML schema, CLI command, Python API, scientific algorithm, manifest,
 result model, artifact layout, provenance contract, or dependency boundary has
