@@ -313,6 +313,18 @@ failed or stale inspection, or accepting a non-Preparation source hides the tab
 and returns a selected audit tab to Summary. The page remains responsive at
 narrow widths, and QML continues to consume only the controller's typed models.
 
+The native inspection checkpoint after Unit 21B found and repaired two
+presentation-path defects before lifecycle hardening continued. Text-only
+`AppButton` instances marked compact now retain visible labels instead of
+rendering as empty squares; the Preparation source card exposes visible bind,
+clear, and continuation actions, while the empty Preparation page can create a
+bound-source document without a Workspace detour. Scenario Add, Edit, Commit,
+Cancel, list mutation, and nested-editor model changes now cross the existing
+queued root-signal boundary, preventing a Loader/model rebind inside its own
+native click handler. Focused QML interaction coverage invokes those visible
+controls rather than substituting direct Python calls. Native reinspection of
+the repaired path remains required before this checkpoint is accepted.
+
 No public YAML schema, CLI command, Python API, scientific algorithm, manifest,
 result model, artifact layout, provenance contract, or dependency boundary has
 changed. Focused tests accompany each completed implementation unit; the

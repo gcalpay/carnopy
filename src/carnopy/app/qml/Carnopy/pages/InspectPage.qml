@@ -24,6 +24,7 @@ Item {
 
     signal inspectSourceRequested(string path)
     signal moreSourcesRequested
+    signal preparationRequested
     signal preparationSourceBindRequested
     signal preparationSourceClearRequested
     signal previewPageRequested(int pageOffset)
@@ -513,7 +514,7 @@ Item {
                                             qsTr("Inspecting is read-only. An eligible Dataset or Model Sweep becomes Preparation input only after you bind it explicitly.")
                                 title: qsTr("ML Preparation source")
 
-                                RowLayout {
+                                Flow {
                                     Layout.fillWidth: true
                                     spacing: Theme.spacingSmall
 
@@ -533,12 +534,7 @@ Item {
                                                     ? "success" : "neutral")
                                     }
 
-                                    Item {
-                                        Layout.fillWidth: true
-                                    }
-
                                     AppButton {
-                                        compact: true
                                         enabled: root.preparationWorkflowController.inspectedSourceAvailable
                                                  && root.inspectionController.canInspect
                                         objectName: "preparationBindSourceButton"
@@ -548,7 +544,9 @@ Item {
                                                     root.preparationWorkflowController.inspectedSourceMatchesBinding
                                                     ? qsTr("Used for ML Preparation") : qsTr(
                                                           "Use for ML Preparation"))
-                                        visible: root.inspectionController.preparationEligible
+                                        tone: "primary"
+                                        visible: root.inspectionController.preparationEligible &&
+                                                 !root.preparationWorkflowController.inspectedSourceMatchesBinding
 
                                         ToolTip.text: enabled ? qsTr(
                                                                     "Bind this exact verified inspection revision for ML Preparation.") :
@@ -557,13 +555,21 @@ Item {
                                     }
 
                                     AppButton {
-                                        compact: true
                                         enabled: root.preparationWorkflowController.hasBoundSource
                                                  && root.inspectionController.canInspect
                                         objectName: "preparationClearSourceButton"
                                         onClicked: root.preparationSourceClearRequested()
                                         text: qsTr("Clear source")
                                         tone: "quiet"
+                                        visible: root.preparationWorkflowController.hasBoundSource
+                                    }
+
+                                    AppButton {
+                                        enabled: root.preparationWorkflowController.hasBoundSource
+                                        objectName: "preparationContinueButton"
+                                        onClicked: root.preparationRequested()
+                                        text: qsTr("Continue to ML Preparation")
+                                        tone: "primary"
                                         visible: root.preparationWorkflowController.hasBoundSource
                                     }
                                 }

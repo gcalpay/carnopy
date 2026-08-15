@@ -273,9 +273,14 @@ def test_shell_requires_a_bound_source_then_enables_the_preparation_surface(
     _accept_preparation_eligible_inspection(runtime, source)
     _process_events()
     bind_button = _visible_item(root, "preparationBindSourceButton")
+    assert bind_button.width() > 36
+    assert bind_button.property("text") == "Use for ML Preparation"
     assert QMetaObject.invokeMethod(bind_button, "click")
     _process_events()
     assert desktop.preparation_workflow_controller.get_has_bound_source()
+    assert not bind_button.isVisible()
+    assert _visible_item(root, "preparationClearSourceButton").width() > 36
+    assert _visible_item(root, "preparationContinueButton").width() > 36
 
     assert desktop.request_new_dataset("property_table")
     assert root.setProperty("currentPage", "workspace")
@@ -312,6 +317,70 @@ def test_shell_requires_a_bound_source_then_enables_the_preparation_surface(
     _process_events()
     assert root.property("currentPage") == "inspect"
     assert desktop.preparation_workflow_controller.get_bound_source_path() == str(source.resolve())
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_shell_queues_scenario_lifecycle_from_the_visible_preparation_page(
+    runtime: QmlApplicationRuntime,
+    tmp_path: Path,
+) -> None:
+    desktop = runtime.controller
+    controller = desktop.configuration_controller
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    root.setWidth(1440)
+    root.setHeight(1200)
+
+    source = tmp_path / "workspace" / "outputs" / "eligible-source"
+    source.mkdir()
+    _accept_preparation_eligible_inspection(runtime, source)
+    assert root.setProperty("currentPage", "inspect")
+    _process_events()
+    assert QMetaObject.invokeMethod(_visible_item(root, "preparationBindSourceButton"), "click")
+    _process_events()
+
+    continue_button = _visible_item(root, "preparationContinueButton")
+    assert QMetaObject.invokeMethod(continue_button, "click")
+    _process_events()
+    assert root.property("currentPage") == "preparation"
+    assert not controller.get_has_document()
+
+    create_button = _visible_item(root, "preparationCreateDocumentButton")
+    assert QMetaObject.invokeMethod(create_button, "click")
+    _process_events()
+    assert controller.get_document_kind() == "preparation"
+
+    page = root.findChild(QQuickItem, "preparationPage")
+    assert page is not None
+    add_button = _item(page, "preparationAddScenario")
+    assert QMetaObject.invokeMethod(add_button, "click")
+    _process_events()
+    active = controller.preparation_draft.get_active_scenario_draft()
+    assert isinstance(active, ScenarioDraft)
+
+    editor = _item(page, "preparationScenarioEditor")
+    name_field = _item(editor, "preparationScenarioName")
+    assert name_field.setProperty("text", "queued-scenario")
+    assert QMetaObject.invokeMethod(name_field, "editingFinished")
+    _process_events()
+    assert active.get_name() == "queued-scenario"
+
+    commit_button = _item(editor, "preparationScenarioCommitButton")
+    assert QMetaObject.invokeMethod(commit_button, "click")
+    _process_events()
+    assert not controller.preparation_draft.get_has_active_scenario_edit()
+    assert controller.preparation_draft.scenarios_model.rowCount() == 1
+
+    edit_button = _item(page, "preparationScenarioEdit-0")
+    assert edit_button.width() > 36
+    assert QMetaObject.invokeMethod(edit_button, "click")
+    _process_events()
+    assert controller.preparation_draft.get_has_active_scenario_edit()
+
+    editor = _item(page, "preparationScenarioEditor")
+    assert QMetaObject.invokeMethod(_item(editor, "preparationScenarioCancelButton"), "click")
+    _process_events()
+    assert not controller.preparation_draft.get_has_active_scenario_edit()
     assert runtime.warning_capture.runtime_warnings == ()
 
 
@@ -416,7 +485,9 @@ def test_preparation_scenario_qml_resource_and_controller_boundary_are_explicit(
 
     assert "PreparationScenarioEditor 1.0 components/PreparationScenarioEditor.qml" in qmldir
     assert "qml/Carnopy/components/PreparationScenarioEditor.qml" in MANDATORY_QML_FILES
-    assert "requestPreparationScenario" in source
+    assert "scenarioFieldChangeRequested" in source
+    assert "scenarioTransformationAddRequested" in source
+    assert "desktopController.requestPreparationScenario" not in source
     assert 'Accessible.name: qsTr("Scenario name")' in source
     assert 'Accessible.name: qsTr("Scenario partitions")' in source
     assert 'Accessible.name: qsTr("Scenario transformations")' in source
@@ -595,6 +666,7 @@ def test_preparation_page_qml_resource_and_controller_boundary_are_explicit() ->
     assert ".setRoleSelected(" not in source
     assert ".beginAddScenario(" not in source
     assert ".commitScenario(" not in source
+    assert "desktopController.requestPreparationScenario" not in source
     assert "PreparationAuditView" not in source
     assert "TextArea" not in source
     main_source = (qml_root / "Main.qml").read_text(encoding="utf-8")

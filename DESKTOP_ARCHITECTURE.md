@@ -836,6 +836,14 @@ explicit bound source; without one, the Python composition reports the exact
 prerequisite and routes to Inspect. Opening an existing Preparation YAML still
 routes directly to the editor without inventing a source binding.
 
+Preparation source and scenario interactions follow the same queued root-signal
+boundary as the established Dataset and Visualization delegates. Native source
+binding presents visible text actions and may continue to the Preparation page;
+an empty page offers explicit New or source-selection actions without making
+navigation itself create or replace a document. Scenario controls never mutate
+or destroy their active Loader or list models synchronously from the originating
+click handler.
+
 The QML Inspect workbench consumes only the typed Qt models owned by
 `InspectionController`. Workspace discovery is direct-child, symlink-excluding,
 newest-first, and revealed 20 entries at a time. Explicit source inspection can

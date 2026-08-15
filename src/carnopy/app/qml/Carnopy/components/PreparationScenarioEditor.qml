@@ -25,6 +25,22 @@ Card {
     signal cancelRequested
     signal commitRequested
     signal kindChangeDialogRequested
+    signal scenarioCategoricalHoldoutRequested(var draft, string partition, string values)
+    signal scenarioCoordinateHoldoutRequested(var draft, string partition, string field,
+                                              string minimum, string maximum)
+    signal scenarioFieldChangeRequested(var draft, string field, string value)
+    signal scenarioKindChangeRequested(var draft, string kind, bool confirmed)
+    signal scenarioNumericBinsRequested(var draft, string field, string boundaries)
+    signal scenarioPartitionRequested(var draft, string partition, string ratio)
+    signal scenarioRangeHoldoutRequested(var draft, string partition, string minimum,
+                                         string maximum)
+    signal scenarioRemoveHoldoutRequested(var draft, string partition)
+    signal scenarioRemoveNumericBinsRequested(var draft, string field)
+    signal scenarioRemovePartitionRequested(var draft, string partition)
+    signal scenarioStrataRequested(var draft, string fields)
+    signal scenarioTransformationAddRequested(var draft, string field, string methods)
+    signal scenarioTransformationMoveRequested(var draft, int source, int destination)
+    signal scenarioTransformationRemoveRequested(var draft, int row)
 
     function focusField(field, row) {
         let target = nameField;
@@ -95,8 +111,7 @@ Card {
                 Layout.fillWidth: true
                 enabled: !root.locked
                 objectName: "preparationScenarioName"
-                onEditingFinished: root.desktopController.requestPreparationScenarioFieldChange(
-                                       root.draft, "name", text)
+                onEditingFinished: root.scenarioFieldChangeRequested(root.draft, "name", text)
                 selectByMouse: true
                 text: root.draft.name
             }
@@ -150,8 +165,7 @@ Card {
                 enabled: !root.locked
                 inputMethodHints: Qt.ImhDigitsOnly
                 objectName: "preparationScenarioSeed"
-                onEditingFinished: root.desktopController.requestPreparationScenarioFieldChange(
-                                       root.draft, "seed", text)
+                onEditingFinished: root.scenarioFieldChangeRequested(root.draft, "seed", text)
                 selectByMouse: true
                 text: root.draft.seedText
             }
@@ -177,9 +191,8 @@ Card {
                 enabled: !root.locked
                 model: root.draft.fieldChoices
                 objectName: "preparationScenarioField"
-                onActivated: root.desktopController.requestPreparationScenarioFieldChange(root.draft,
-                                                                                          "field", String(
-                                                                                              currentValue))
+                onActivated: root.scenarioFieldChangeRequested(root.draft, "field", String(
+                                                                   currentValue))
             }
         }
 
@@ -203,9 +216,8 @@ Card {
                 enabled: !root.locked
                 model: ["train", "validation", "test"]
                 objectName: "preparationScenarioRemainder"
-                onActivated: root.desktopController.requestPreparationScenarioFieldChange(root.draft,
-                                                                                          "remainder",
-                                                                                          String(currentValue))
+                onActivated: root.scenarioFieldChangeRequested(root.draft, "remainder", String(
+                                                                   currentValue))
             }
         }
     }
@@ -264,8 +276,8 @@ Card {
                     Accessible.name: qsTr("Ratio for %1 partition").arg(partitionRow.partition)
                     enabled: !root.locked
                     objectName: "preparationScenarioPartitionRatio-" + partitionRow.index
-                    onEditingFinished: root.desktopController.requestPreparationScenarioPartition(
-                                           root.draft, partitionRow.partition, text)
+                    onEditingFinished: root.scenarioPartitionRequested(root.draft,
+                                                                       partitionRow.partition, text)
                     selectByMouse: true
                     text: String(partitionRow.ratio)
                 }
@@ -273,8 +285,8 @@ Card {
                 AppButton {
                     compact: true
                     enabled: !root.locked
-                    onClicked: root.desktopController.requestPreparationScenarioRemovePartition(
-                                   root.draft, partitionRow.partition)
+                    onClicked: root.scenarioRemovePartitionRequested(root.draft,
+                                                                     partitionRow.partition)
                     text: qsTr("Remove")
                 }
             }
@@ -304,9 +316,9 @@ Card {
 
             AppButton {
                 enabled: !root.locked
-                onClicked: root.desktopController.requestPreparationScenarioPartition(root.draft,
-                                                                                      String(partitionName.currentValue),
-                                                                                      partitionRatio.text)
+                onClicked: root.scenarioPartitionRequested(root.draft, String(
+                                                               partitionName.currentValue),
+                                                           partitionRatio.text)
                 text: qsTr("Set")
             }
         }
@@ -363,8 +375,7 @@ Card {
                 AppButton {
                     compact: true
                     enabled: !root.locked
-                    onClicked: root.desktopController.requestPreparationScenarioRemoveHoldout(
-                                   root.draft, holdoutRow.partition)
+                    onClicked: root.scenarioRemoveHoldoutRequested(root.draft, holdoutRow.partition)
                     text: qsTr("Remove")
                 }
             }
@@ -432,20 +443,15 @@ Card {
                 onClicked: {
                     const partition = String(holdoutPartition.currentValue);
                     if (root.categoricalHoldoutKind)
-                    root.desktopController.requestPreparationScenarioCategoricalHoldout(root.draft,
-                                                                                        partition,
-                                                                                        categoricalValues.text);
+                    root.scenarioCategoricalHoldoutRequested(root.draft, partition,
+                                                             categoricalValues.text);
                     else if (root.draft.kind === "range_holdout")
-                    root.desktopController.requestPreparationScenarioRangeHoldout(root.draft,
-                                                                                  partition,
-                                                                                  minimumValue.text,
-                                                                                  maximumValue.text);
+                    root.scenarioRangeHoldoutRequested(root.draft, partition, minimumValue.text,
+                                                       maximumValue.text);
                     else
-                    root.desktopController.requestPreparationScenarioCoordinateHoldout(root.draft,
-                                                                                       partition,
-                                                                                       String(holdoutField.currentValue),
-                                                                                       minimumValue.text,
-                                                                                       maximumValue.text);
+                    root.scenarioCoordinateHoldoutRequested(root.draft, partition, String(
+                                                                holdoutField.currentValue),
+                                                            minimumValue.text, maximumValue.text);
                 }
                 text: qsTr("Set holdout")
             }
@@ -468,8 +474,7 @@ Card {
             Layout.fillWidth: true
             enabled: !root.locked
             objectName: "preparationScenarioStrataFields"
-            onEditingFinished: root.desktopController.requestPreparationScenarioStrata(root.draft,
-                                                                                       text)
+            onEditingFinished: root.scenarioStrataRequested(root.draft, text)
             placeholderText: qsTr("fluid, phase")
             selectByMouse: true
             text: root.draft.strataCategoricalText
@@ -499,9 +504,9 @@ Card {
 
             AppButton {
                 enabled: !root.locked
-                onClicked: root.desktopController.requestPreparationScenarioNumericBins(root.draft,
-                                                                                        String(binField.currentValue),
-                                                                                        binBoundaries.text)
+                onClicked: root.scenarioNumericBinsRequested(root.draft, String(
+                                                                 binField.currentValue),
+                                                             binBoundaries.text)
                 text: qsTr("Set bins")
             }
         }
@@ -534,8 +539,8 @@ Card {
                 AppButton {
                     compact: true
                     enabled: !root.locked
-                    onClicked: root.desktopController.requestPreparationScenarioRemoveNumericBins(
-                                   root.draft, numericBinRow.field)
+                    onClicked: root.scenarioRemoveNumericBinsRequested(root.draft,
+                                                                       numericBinRow.field)
                     text: qsTr("Remove")
                 }
             }
@@ -582,24 +587,26 @@ Card {
                 AppButton {
                     compact: true
                     enabled: !root.locked && transformationRow.index > 0
-                    onClicked: root.desktopController.requestPreparationScenarioTransformationMove(
-                                   root.draft, transformationRow.index, transformationRow.index - 1)
+                    onClicked: root.scenarioTransformationMoveRequested(root.draft,
+                                                                        transformationRow.index,
+                                                                        transformationRow.index - 1)
                     text: qsTr("Up")
                 }
 
                 AppButton {
                     compact: true
                     enabled: !root.locked && transformationRow.index + 1 < transformationsList.count
-                    onClicked: root.desktopController.requestPreparationScenarioTransformationMove(
-                                   root.draft, transformationRow.index, transformationRow.index + 1)
+                    onClicked: root.scenarioTransformationMoveRequested(root.draft,
+                                                                        transformationRow.index,
+                                                                        transformationRow.index + 1)
                     text: qsTr("Down")
                 }
 
                 AppButton {
                     compact: true
                     enabled: !root.locked
-                    onClicked: root.desktopController.requestPreparationScenarioTransformationRemove(
-                                   root.draft, transformationRow.index)
+                    onClicked: root.scenarioTransformationRemoveRequested(root.draft,
+                                                                          transformationRow.index)
                     text: qsTr("Remove")
                 }
             }
@@ -638,9 +645,9 @@ Card {
 
             AppButton {
                 enabled: !root.locked
-                onClicked: root.desktopController.requestPreparationScenarioTransformationAdd(
-                               root.draft, String(transformField.currentValue),
-                               transformMethods.text)
+                onClicked: root.scenarioTransformationAddRequested(root.draft, String(
+                                                                       transformField.currentValue),
+                                                                   transformMethods.text)
                 text: qsTr("Add")
             }
         }
@@ -683,9 +690,7 @@ Card {
                               "Changing scenario kind discards temporary partitions, holdouts, strata, field, and remainder values that do not belong to the new shape. The seed and transformations are retained.")
                 objectName: "preparationScenarioKindChangeDialog"
                 onAccepted: {
-                    root.desktopController.requestPreparationScenarioKindChange(root.draft,
-                                                                                root.pendingKind,
-                                                                                true);
+                    root.scenarioKindChangeRequested(root.draft, root.pendingKind, true);
                     root.pendingKind = "";
                 }
                 onRejected: root.pendingKind = ""

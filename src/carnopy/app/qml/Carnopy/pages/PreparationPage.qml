@@ -29,6 +29,29 @@ Item {
 
     signal categoryModeDialogRequested
     signal inspectSourceRequested
+    signal newPreparationRequested
+    signal scenarioAddRequested
+    signal scenarioCancelRequested
+    signal scenarioCommitRequested
+    signal scenarioEditRequested(int row)
+    signal scenarioMoveRequested(int source, int destination)
+    signal scenarioRemoveRequested(int row)
+    signal scenarioFieldChangeRequested(var draft, string field, string value)
+    signal scenarioKindChangeRequested(var draft, string kind, bool confirmed)
+    signal scenarioPartitionRequested(var draft, string partition, string ratio)
+    signal scenarioRemovePartitionRequested(var draft, string partition)
+    signal scenarioCategoricalHoldoutRequested(var draft, string partition, string values)
+    signal scenarioRangeHoldoutRequested(var draft, string partition, string minimum,
+                                         string maximum)
+    signal scenarioCoordinateHoldoutRequested(var draft, string partition, string field,
+                                              string minimum, string maximum)
+    signal scenarioRemoveHoldoutRequested(var draft, string partition)
+    signal scenarioStrataRequested(var draft, string fields)
+    signal scenarioNumericBinsRequested(var draft, string field, string boundaries)
+    signal scenarioRemoveNumericBinsRequested(var draft, string field)
+    signal scenarioTransformationAddRequested(var draft, string field, string methods)
+    signal scenarioTransformationRemoveRequested(var draft, int row)
+    signal scenarioTransformationMoveRequested(var draft, int source, int destination)
     signal workspaceRequested
 
     function reveal(item) {
@@ -169,11 +192,32 @@ Item {
                 title: qsTr("No ML Preparation configuration is active")
                 visible: !root.documentActive
 
-                AppButton {
-                    objectName: "preparationOpenWorkspaceButton"
-                    onClicked: root.workspaceRequested()
-                    text: qsTr("Open Workspace")
-                    tone: "primary"
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: Theme.spacingSmall
+
+                    AppButton {
+                        objectName: "preparationCreateDocumentButton"
+                        onClicked: root.newPreparationRequested()
+                        text: qsTr("New ML Preparation")
+                        tone: "primary"
+                        visible: root.workflowController.hasBoundSource
+                    }
+
+                    AppButton {
+                        objectName: "preparationChooseSourceButton"
+                        onClicked: root.inspectSourceRequested()
+                        text: qsTr("Choose source in Inspect")
+                        tone: "primary"
+                        visible: !root.workflowController.hasBoundSource
+                    }
+
+                    AppButton {
+                        objectName: "preparationOpenWorkspaceButton"
+                        onClicked: root.workspaceRequested()
+                        text: qsTr("Open Workspace")
+                        tone: "quiet"
+                    }
                 }
             }
 
@@ -635,7 +679,7 @@ Item {
                         Accessible.description: qsTr("Open a temporary Preparation scenario editor")
                         enabled: !root.locked && !root.preparationDraft.hasActiveScenarioEdit
                         objectName: "preparationAddScenario"
-                        onClicked: root.desktopController.requestPreparationAddScenario()
+                        onClicked: root.scenarioAddRequested()
                         text: qsTr("Add scenario")
                         tone: "primary"
                     }
@@ -678,8 +722,7 @@ Item {
                             compact: true
                             enabled: !root.locked && !root.preparationDraft.hasActiveScenarioEdit
                             objectName: "preparationScenarioEdit-" + scenarioRow.index
-                            onClicked: root.desktopController.requestPreparationEditScenario(
-                                           scenarioRow.index)
+                            onClicked: root.scenarioEditRequested(scenarioRow.index)
                             text: qsTr("Edit")
                         }
 
@@ -690,8 +733,8 @@ Item {
                             enabled: !root.locked && !root.preparationDraft.hasActiveScenarioEdit
                                      && scenarioRow.index > 0
                             objectName: "preparationScenarioUp-" + scenarioRow.index
-                            onClicked: root.desktopController.requestPreparationMoveScenario(
-                                           scenarioRow.index, scenarioRow.index - 1)
+                            onClicked: root.scenarioMoveRequested(scenarioRow.index,
+                                                                  scenarioRow.index - 1)
                             text: qsTr("Up")
                         }
 
@@ -702,8 +745,8 @@ Item {
                             enabled: !root.locked && !root.preparationDraft.hasActiveScenarioEdit
                                      && scenarioRow.index + 1 < scenarioList.count
                             objectName: "preparationScenarioDown-" + scenarioRow.index
-                            onClicked: root.desktopController.requestPreparationMoveScenario(
-                                           scenarioRow.index, scenarioRow.index + 1)
+                            onClicked: root.scenarioMoveRequested(scenarioRow.index,
+                                                                  scenarioRow.index + 1)
                             text: qsTr("Down")
                         }
 
@@ -712,8 +755,7 @@ Item {
                             compact: true
                             enabled: !root.locked && !root.preparationDraft.hasActiveScenarioEdit
                             objectName: "preparationScenarioRemove-" + scenarioRow.index
-                            onClicked: root.desktopController.requestPreparationRemoveScenario(
-                                           scenarioRow.index)
+                            onClicked: root.scenarioRemoveRequested(scenarioRow.index)
                             text: qsTr("Remove")
                         }
                     }
@@ -744,8 +786,53 @@ Item {
                         dialogsEnabled: root.dialogsEnabled
                         draft: root.preparationDraft.activeScenarioDraft
                         locked: root.locked
-                        onCancelRequested: root.desktopController.requestPreparationCancelScenario()
-                        onCommitRequested: root.desktopController.requestPreparationCommitScenario()
+                        onCancelRequested: root.scenarioCancelRequested()
+                        onCommitRequested: root.scenarioCommitRequested()
+                        onScenarioCategoricalHoldoutRequested: (draft, partition, values)
+                                                               => root.scenarioCategoricalHoldoutRequested(
+                                                                      draft, partition, values)
+                        onScenarioCoordinateHoldoutRequested: (draft, partition, field, minimum,
+                                                               maximum)
+                                                              => root.scenarioCoordinateHoldoutRequested(
+                                                                     draft, partition, field,
+                                                                     minimum, maximum)
+                        onScenarioFieldChangeRequested: (draft, field, value)
+                                                        => root.scenarioFieldChangeRequested(draft,
+                                                                                             field, value)
+                        onScenarioKindChangeRequested: (draft, kind, confirmed)
+                                                       => root.scenarioKindChangeRequested(draft,
+                                                                                           kind, confirmed)
+                        onScenarioNumericBinsRequested: (draft, field, boundaries)
+                                                        => root.scenarioNumericBinsRequested(draft,
+                                                                                             field, boundaries)
+                        onScenarioPartitionRequested: (draft, partition, ratio)
+                                                      => root.scenarioPartitionRequested(draft,
+                                                                                         partition,
+                                                                                         ratio)
+                        onScenarioRangeHoldoutRequested: (draft, partition, minimum, maximum)
+                                                         => root.scenarioRangeHoldoutRequested(draft,
+                                                                                               partition,
+                                                                                               minimum, maximum)
+                        onScenarioRemoveHoldoutRequested: (draft, partition)
+                                                          => root.scenarioRemoveHoldoutRequested(
+                                                                 draft, partition)
+                        onScenarioRemoveNumericBinsRequested: (draft, field)
+                                                              => root.scenarioRemoveNumericBinsRequested(
+                                                                     draft, field)
+                        onScenarioRemovePartitionRequested: (draft, partition)
+                                                            => root.scenarioRemovePartitionRequested(
+                                                                   draft, partition)
+                        onScenarioStrataRequested: (draft, fields) => root.scenarioStrataRequested(
+                                                                          draft, fields)
+                        onScenarioTransformationAddRequested: (draft, field, methods)
+                                                              => root.scenarioTransformationAddRequested(
+                                                                     draft, field, methods)
+                        onScenarioTransformationMoveRequested: (draft, source, destination)
+                                                               => root.scenarioTransformationMoveRequested(
+                                                                      draft, source, destination)
+                        onScenarioTransformationRemoveRequested: (draft, row)
+                                                                 => root.scenarioTransformationRemoveRequested(
+                                                                        draft, row)
                     }
                 }
             }

@@ -48,6 +48,29 @@ ApplicationWindow {
     signal datasetReloadRequested(bool discardConfirmed)
     signal sweepNewRequested(bool discardConfirmed)
     signal preparationNewRequested(bool discardConfirmed)
+    signal preparationScenarioAddRequested
+    signal preparationScenarioCancelRequested
+    signal preparationScenarioCommitRequested
+    signal preparationScenarioEditRequested(int row)
+    signal preparationScenarioMoveRequested(int source, int destination)
+    signal preparationScenarioRemoveRequested(int row)
+    signal preparationScenarioFieldChangeRequested(var draft, string field, string value)
+    signal preparationScenarioKindChangeRequested(var draft, string kind, bool confirmed)
+    signal preparationScenarioPartitionRequested(var draft, string partition, string ratio)
+    signal preparationScenarioRemovePartitionRequested(var draft, string partition)
+    signal preparationScenarioCategoricalHoldoutRequested(var draft, string partition,
+                                                          string values)
+    signal preparationScenarioRangeHoldoutRequested(var draft, string partition, string minimum,
+                                                    string maximum)
+    signal preparationScenarioCoordinateHoldoutRequested(var draft, string partition, string field,
+                                                         string minimum, string maximum)
+    signal preparationScenarioRemoveHoldoutRequested(var draft, string partition)
+    signal preparationScenarioStrataRequested(var draft, string fields)
+    signal preparationScenarioNumericBinsRequested(var draft, string field, string boundaries)
+    signal preparationScenarioRemoveNumericBinsRequested(var draft, string field)
+    signal preparationScenarioTransformationAddRequested(var draft, string field, string methods)
+    signal preparationScenarioTransformationRemoveRequested(var draft, int row)
+    signal preparationScenarioTransformationMoveRequested(var draft, int source, int destination)
     signal runCancelRequested
     signal runForceStopRequested
     signal runGenerateRequested
@@ -1170,6 +1193,57 @@ ApplicationWindow {
             inspectionController: root.inspectionController
             objectName: "preparationPage"
             onInspectSourceRequested: root.routeTo("inspect")
+            onNewPreparationRequested: root.requestPreparationNew()
+            onScenarioAddRequested: root.preparationScenarioAddRequested()
+            onScenarioCancelRequested: root.preparationScenarioCancelRequested()
+            onScenarioCategoricalHoldoutRequested: (draft, partition, values)
+                                                   => root.preparationScenarioCategoricalHoldoutRequested(
+                                                          draft, partition, values)
+            onScenarioCommitRequested: root.preparationScenarioCommitRequested()
+            onScenarioCoordinateHoldoutRequested: (draft, partition, field, minimum, maximum)
+                                                  => root.preparationScenarioCoordinateHoldoutRequested(
+                                                         draft, partition, field, minimum, maximum)
+            onScenarioEditRequested: row => root.preparationScenarioEditRequested(row)
+            onScenarioFieldChangeRequested: (draft, field, value)
+                                            => root.preparationScenarioFieldChangeRequested(draft,
+                                                                                            field, value)
+            onScenarioKindChangeRequested: (draft, kind, confirmed)
+                                           => root.preparationScenarioKindChangeRequested(draft,
+                                                                                          kind, confirmed)
+            onScenarioMoveRequested: (source, destination) => root.preparationScenarioMoveRequested(
+                                                                  source, destination)
+            onScenarioNumericBinsRequested: (draft, field, boundaries)
+                                            => root.preparationScenarioNumericBinsRequested(draft,
+                                                                                            field, boundaries)
+            onScenarioPartitionRequested: (draft, partition, ratio)
+                                          => root.preparationScenarioPartitionRequested(draft,
+                                                                                        partition,
+                                                                                        ratio)
+            onScenarioRangeHoldoutRequested: (draft, partition, minimum, maximum)
+                                             => root.preparationScenarioRangeHoldoutRequested(draft,
+                                                                                              partition,
+                                                                                              minimum, maximum)
+            onScenarioRemoveHoldoutRequested: (draft, partition)
+                                              => root.preparationScenarioRemoveHoldoutRequested(
+                                                     draft, partition)
+            onScenarioRemoveNumericBinsRequested: (draft, field)
+                                                  => root.preparationScenarioRemoveNumericBinsRequested(
+                                                         draft, field)
+            onScenarioRemovePartitionRequested: (draft, partition)
+                                                => root.preparationScenarioRemovePartitionRequested(
+                                                       draft, partition)
+            onScenarioRemoveRequested: row => root.preparationScenarioRemoveRequested(row)
+            onScenarioStrataRequested: (draft, fields) => root.preparationScenarioStrataRequested(
+                                                              draft, fields)
+            onScenarioTransformationAddRequested: (draft, field, methods)
+                                                  => root.preparationScenarioTransformationAddRequested(
+                                                         draft, field, methods)
+            onScenarioTransformationMoveRequested: (draft, source, destination)
+                                                   => root.preparationScenarioTransformationMoveRequested(
+                                                          draft, source, destination)
+            onScenarioTransformationRemoveRequested: (draft, row)
+                                                     => root.preparationScenarioTransformationRemoveRequested(
+                                                            draft, row)
             onWorkspaceRequested: root.routeTo("workspace")
             preparationDraft: root.configController.preparationDraft
             workflowController: root.preparationWorkflowController
@@ -1262,6 +1336,7 @@ ApplicationWindow {
             preparationWorkflowController: root.preparationWorkflowController
             onInspectSourceRequested: path => root.inspectionInspectRequested(path)
             onMoreSourcesRequested: root.inspectionMoreSourcesRequested()
+            onPreparationRequested: root.routeTo("preparation")
             onPreparationSourceBindRequested: root.preparationSourceBindRequested()
             onPreparationSourceClearRequested: root.preparationSourceClearRequested(false)
             onPreviewPageRequested: pageOffset => root.inspectionPreviewPageRequested(pageOffset)
