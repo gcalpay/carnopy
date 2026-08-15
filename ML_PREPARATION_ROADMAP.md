@@ -54,7 +54,7 @@ name.
 
 GUI-2 Stage 4 established worker-authoritative, revision-bound Preparation
 planning and execution without adding a visible editor. Stage 5 is now
-implemented through Unit 19B:
+implemented through Unit 20A:
 
 - Inspect derives typed Preparation eligibility and capability projections
   from verified dataset-run or model-sweep metadata;
@@ -71,12 +71,16 @@ implemented through Unit 19B:
   identity independently of page lifetime; and
 - the packaged Preparation page and scenario editor are enabled through normal
   navigation, guarded Workspace creation, global document commands, source
-  actions, and typed workflow context state.
+  actions, and typed workflow context state; and
+- finalized `data/quality_flags.parquet` is available through the same
+  containment-checked, hash-verified, revision-bound, and bounded table-preview
+  path as other Preparation tables, while corruption remains a reported quality
+  issue rather than hiding the main bundle.
 
 This is desktop exposure of the implemented preparation contract, not new
-preparation science. Typed audit projection and presentation, lifecycle
-hardening, packaged qualification, and native acceptance remain later Stage 5
-work.
+preparation science. The remaining typed audit projection and presentation,
+lifecycle hardening, packaged qualification, and native acceptance remain later
+Stage 5 work.
 
 ## Reviewed future direction — Optional PyTorch dataset export
 

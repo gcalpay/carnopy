@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 
 from carnopy.app.source_inspection import inspect_for_app, resolve_table
+from carnopy.app.table_preview import preview_table
 from carnopy.inspection import inspect_source
 from carnopy.visualization.models import VisualizationError
 
@@ -363,7 +364,7 @@ def test_shared_preparation_inspection_rejects_recorded_hash_mismatch(tmp_path: 
         inspect_source(root)
 
 
-def test_preparation_descriptors_cover_main_and_scenario_tables(tmp_path: Path) -> None:
+def test_preparation_descriptors_cover_quality_flags_and_scenario_tables(tmp_path: Path) -> None:
     root = tmp_path / "preparation"
     data = root / "data"
     scenario = data / "scenarios" / "shuffle"
@@ -375,6 +376,13 @@ def test_preparation_descriptors_cover_main_and_scenario_tables(tmp_path: Path) 
         "data/provenance.parquet": pd.DataFrame({"prepared_row_id": [0, 1]}),
         "data/diagnostics.parquet": pd.DataFrame({"prepared_row_id": [0, 1]}),
         "data/exclusions.parquet": pd.DataFrame({"primary_reason": []}),
+        "data/quality_flags.parquet": pd.DataFrame(
+            {
+                "prepared_row_id": [0, 1, 1],
+                "flag_code": ["candidate_a", "candidate_b", "candidate_c"],
+                "severity": ["advisory", "warning", "advisory"],
+            }
+        ),
         "data/scenarios/shuffle/train.parquet": pd.DataFrame({"prepared_row_id": [0], "x": [1.0]}),
         "data/scenarios/shuffle/test.parquet": pd.DataFrame({"prepared_row_id": [1], "x": [2.0]}),
     }
@@ -394,6 +402,7 @@ def test_preparation_descriptors_cover_main_and_scenario_tables(tmp_path: Path) 
             "exclusions": "data/exclusions.parquet",
         },
         "artifact_hashes": hashes,
+        "quality_artifacts": {"flags": "data/quality_flags.parquet"},
         "array_exports": {
             "enabled": True,
             "exports": [{"path": "data/arrays/features.float32.npy", "format": "npy"}],
@@ -429,10 +438,32 @@ def test_preparation_descriptors_cover_main_and_scenario_tables(tmp_path: Path) 
         "provenance",
         "diagnostics",
         "exclusions",
+        "quality_flags",
         "scenario.shuffle.train",
         "scenario.shuffle.test",
     ]
     assert inspected.arrays == ({"path": "data/arrays/features.float32.npy", "format": "npy"},)
+
+    quality_flags = resolve_table(root, "quality_flags", inspected.revision)
+    assert quality_flags.path == data / "quality_flags.parquet"
+    assert quality_flags.sha256 == hashes["data/quality_flags.parquet"]
+    preview = preview_table(quality_flags, offset=1, limit=1)
+    assert preview["table_id"] == "quality_flags"
+    assert preview["total_row_count"] == 3
+    assert preview["block_offset"] == 1
+    assert preview["block_count"] == 1
+    assert preview["rows"] == [[1, "candidate_b", "warning"]]
+    with pytest.raises(ValueError, match="between 1 and 500"):
+        preview_table(quality_flags, offset=0, limit=501)
+
+    quality_flags.path.write_bytes(b"tampered")
+    refreshed = inspect_for_app(root)
+    assert refreshed.revision != inspected.revision
+    assert "quality_flags" not in {table.table_id for table in refreshed.tables}
+    assert refreshed.summary["quality"]["summary"]["status"] == "corrupt_or_missing"
+    assert any("hash mismatch" in issue for issue in refreshed.summary["quality"]["errors"])
+    with pytest.raises(VisualizationError, match="changed"):
+        resolve_table(root, "quality_flags", inspected.revision)
 
 
 def test_sweep_descriptors_cover_comparisons_and_child_datasets(tmp_path: Path) -> None:

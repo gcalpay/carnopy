@@ -211,7 +211,7 @@ audits, partition summaries, correlations, singular values, rank, conditioning,
 and baseline metrics. Missing optional dependencies disable only the affected
 feature and provide exact installation guidance.
 
-### Implementation checkpoint: Units 1–18 and 19A
+### Implementation checkpoint: Units 1–19B and 20A
 
 Stage 5 is in progress on `feat/gui2-stage5`. The implemented checkpoint keeps
 one globally active configuration document while extending its exact-byte,
@@ -263,14 +263,24 @@ and source-change actions bind the existing authoritative controllers. Focused
 QML coverage also holds optional ML and analysis controls unavailable under an
 app-only capability projection while keeping the page usable.
 
+Unit 20A begins finalized audit exposure without adding presentation state.
+Current Preparation `quality_flags` are now an integrity-verified table in the
+worker inspection catalog and therefore contribute to the exact inspection
+revision and reuse the established 500-row worker blocks and 100-row local
+pages. An invalid optional flags artifact remains omitted from table control and
+is reported through the existing Preparation quality error instead of making
+the main bundle uninspectable. Typed audit projections and their QML surface
+remain in Units 20B, 20C, and 21.
+
 No public YAML schema, CLI command, Python API, scientific algorithm, manifest,
 result model, artifact layout, provenance contract, or dependency boundary has
 changed. Focused tests accompany each completed implementation unit; the
 complete Stage 5 gate and native acceptance remain pending.
 
-The remaining implementation order after Unit 19B is:
+The remaining implementation order after Unit 20A is:
 
-1. Units 20 and 21 project and present typed preparation audit diagnostics.
+1. Units 20B, 20C, and 21 project and present typed preparation audit
+   diagnostics.
 2. Unit 22 hardens cross-workflow lifecycle and semantic response guards.
 3. Unit 23 qualifies packaged Stage 5 QML and runs the complete gate.
 4. Unit 24 records completion only after automated and manual acceptance.

@@ -347,6 +347,18 @@ def _preparation_tables(
                 )
             )
 
+    quality_artifacts = manifest.get("quality_artifacts")
+    quality_flags = quality_artifacts.get("flags") if isinstance(quality_artifacts, dict) else None
+    if isinstance(quality_flags, str):
+        try:
+            path = _safe_artifact(root, quality_flags, "quality flags", artifact_hashes)
+        except VisualizationError:
+            # Quality artifacts are advisory. Shared inspection reports their
+            # integrity error without making the main prepared bundle unusable.
+            pass
+        else:
+            tables.append(_table("quality_flags", "Quality flags", path))
+
     scenarios = manifest.get("scenarios")
     scenario_items = scenarios.get("scenarios") if isinstance(scenarios, dict) else None
     if isinstance(scenario_items, list):

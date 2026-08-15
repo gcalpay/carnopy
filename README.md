@@ -501,7 +501,7 @@ gates, native acceptance, [PyPI publication](https://pypi.org/project/carnopy/0.
 and [version-specific Zenodo archive](https://doi.org/10.5281/zenodo.21709965)
 are complete. GUI-2 Stage 4 is implemented on the current development branch
 without changing the published `0.1.0a4` artifacts. Stage 5 is in progress on
-its dedicated feature branch; its structured Sweep and partial Preparation
+its dedicated feature branch; its structured Sweep and Preparation
 desktop implementation does not change the published `0.1.0a4` artifacts.
 
 ## License

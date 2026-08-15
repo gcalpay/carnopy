@@ -49,8 +49,9 @@ The source tree has one desktop presentation implementation:
   are owned by focused workflow controllers rather than the configuration
   controller or QML pages;
 - source discovery, worker inspection, typed source summaries, logical-array
-  metadata, table selection, and bounded preview state are owned by one
-  `InspectionController`; the public QML Inspect workbench is its view;
+  metadata, integrity-verified Preparation quality flags, table selection, and
+  bounded preview state are owned by one `InspectionController`; the public QML
+  Inspect workbench is its view;
 - private Run-activity loading, typed projection, record-only removal,
   interrupted-state projection, and identity-checked staging recovery are owned
   by one `ActivityController`; the public QML Activity page is its view;
@@ -302,6 +303,9 @@ workflow. It owns:
 - three independent dataset failure aggregates for layer, code, and property;
 - one typed row per logical array, including distinct shapes and dtypes within
   a shared artifact;
+- an integrity-verified `quality_flags` table for current Preparation bundles,
+  omitted from table control when its optional artifact is missing or corrupt
+  while the worker-reported quality error keeps the main bundle inspectable;
 - selected table identity, 500-row worker blocks, and 100-row local pages; and
 - the copied inspected plot context consumed by `SessionPlotController`.
 
