@@ -9,6 +9,7 @@ BlockingBanner 1.0 components/BlockingBanner.qml
 Card 1.0 components/Card.qml
 CommandBar 1.0 components/CommandBar.qml
 ComparisonPlotEditor 1.0 components/ComparisonPlotEditor.qml
+PreparationAuditView 1.0 components/PreparationAuditView.qml
 PreparationScenarioEditor 1.0 components/PreparationScenarioEditor.qml
 ContextInspector 1.0 components/ContextInspector.qml
 RunContextInspector 1.0 components/RunContextInspector.qml

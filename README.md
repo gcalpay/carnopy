@@ -190,7 +190,8 @@ Preparation configuration with one Save, Reload, Close, dirty-state, and YAML
 Preview lifecycle. Generic Open dispatches from the YAML `document_type`.
 Preparation source profiling, explicit source binding, complete structured
 drafts, planning, execution, and its packaged editor are implemented on the
-Stage 5 branch and enabled in the normal shell. Preparation audit presentation,
+Stage 5 branch and enabled in the normal shell. A typed Preparation audit view
+is packaged and directly tested, while its normal Inspect integration,
 lifecycle hardening, packaged qualification, and acceptance remain unfinished.
 
 Scientific generation, inspection, and Matplotlib rendering run in short-lived
@@ -459,8 +460,9 @@ The accepted direction is workflow depth now, source breadth next, and advanced
 model breadth later. GUI-2 Stage 4 brought the existing model-sweep and
 preparation workflows into the desktop's controlled nonvisual worker boundary.
 Stage 5 is in progress: the complete structured Model Sweep and Preparation
-editors are enabled, while Preparation audit presentation, lifecycle hardening,
-packaged qualification, and acceptance remain. After that milestone, Carnopy
+editors are enabled and the typed Preparation audit view is packaged for its
+pending Inspect integration, while lifecycle hardening, packaged qualification,
+and acceptance remain. After that milestone, Carnopy
 will establish a validated import/source contract and one evidence-driven
 source expansion.
 

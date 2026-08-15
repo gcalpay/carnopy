@@ -79,7 +79,7 @@ implementation.
 | 2 | Complete | Added the packaged QML shell and Dataset/YAML/Save workflows |
 | 3 | Complete | Reached parity, migrated both launchers, retired Widgets, and qualified `0.1.0a4` |
 | 4 | Complete | Added controlled sweep and preparation worker operations for the existing public contracts |
-| 5 | In progress | Structured Sweep and Preparation are enabled; audit presentation and qualification remain |
+| 5 | In progress | Structured Sweep and Preparation are enabled; the audit view awaits Inspect integration, lifecycle hardening, and qualification |
 | 6 | Pending | Build exact emitted-value 3D scenes |
 | 7 | Pending | Add native interactive 3D to QML |
 | 8 | Pending | Qualify native 3D packaging, platforms, and a later release |
@@ -211,7 +211,7 @@ audits, partition summaries, correlations, singular values, rank, conditioning,
 and baseline metrics. Missing optional dependencies disable only the affected
 feature and provide exact installation guidance.
 
-### Implementation checkpoint: Units 1–20C
+### Implementation checkpoint: Units 1–21A
 
 Stage 5 is in progress on `feat/gui2-stage5`. The implemented checkpoint keeps
 one globally active configuration document while extending its exact-byte,
@@ -291,22 +291,32 @@ inspectable but expose no leakage evidence. A focused `PreparationAuditModel`
 owns the exact section list models, while `InspectionController` validates the
 complete projection before accepting the response, rejects audit data attached
 to another source kind, and clears audit state when inspection becomes stale.
-No audit QML is added before Unit 21.
+
+Unit 21A adds the reusable packaged `PreparationAuditView` without yet changing
+normal Inspect navigation. The component consumes only the focused typed audit
+object, groups quality/scenario, matrix, and baseline evidence into explicit
+sections, uses bounded reusable list delegates for potentially large evidence,
+and distinguishes unavailable evidence from an available section with no
+findings. It retains scenario, partition, fit, target, model, and source-group
+context in visible summaries, stacks its cards at narrow widths, and is directly
+instantiated with populated and unavailable projections under the QML warning
+capture. Unit 21B remains responsible for placing this component in the Inspect
+workflow and completing the integrated interaction tests.
 
 No public YAML schema, CLI command, Python API, scientific algorithm, manifest,
 result model, artifact layout, provenance contract, or dependency boundary has
 changed. Focused tests accompany each completed implementation unit; the
 complete Stage 5 gate and native acceptance remain pending.
 
-The remaining implementation order after Unit 20C is:
+The remaining implementation order after Unit 21A is:
 
-1. Unit 21 presents the integrated typed preparation audit diagnostics.
+1. Unit 21B integrates the typed Preparation audit component into Inspect.
 2. Unit 22 hardens cross-workflow lifecycle and semantic response guards.
 3. Unit 23 qualifies packaged Stage 5 QML and runs the complete gate.
 4. Unit 24 records completion only after automated and manual acceptance.
 
 The first normal-application Preparation inspection is the next checkpoint
-after the Unit 19B commit. Audit presentation is inspected again after Unit 21,
+after the Unit 19B commit. Audit presentation is inspected again after Unit 21B,
 lifecycle paths after Unit 22, and the final installed application after Unit
 23; acceptance must not be deferred until the documentation-only completion
 unit.
