@@ -320,7 +320,7 @@ def test_shell_requires_a_bound_source_then_enables_the_preparation_surface(
     assert runtime.warning_capture.runtime_warnings == ()
 
 
-def test_shell_queues_scenario_lifecycle_from_the_visible_preparation_page(
+def test_shell_queues_mutations_from_the_visible_preparation_page(
     runtime: QmlApplicationRuntime,
     tmp_path: Path,
 ) -> None:
@@ -381,6 +381,19 @@ def test_shell_queues_scenario_lifecycle_from_the_visible_preparation_page(
     assert QMetaObject.invokeMethod(_item(editor, "preparationScenarioCancelButton"), "click")
     _process_events()
     assert not controller.preparation_draft.get_has_active_scenario_edit()
+
+    matrix_check = _item(page, "preparationMatrixDiagnostics")
+    matrix_settings = _item(page, "preparationMatrixSettingsGrid")
+    assert not controller.preparation_draft.get_matrix_enabled()
+    assert not matrix_settings.isVisible()
+    assert QMetaObject.invokeMethod(matrix_check, "click")
+    _process_events()
+    assert controller.preparation_draft.get_matrix_enabled()
+    assert matrix_settings.isVisible()
+    assert QMetaObject.invokeMethod(matrix_check, "click")
+    _process_events()
+    assert not controller.preparation_draft.get_matrix_enabled()
+    assert not matrix_settings.isVisible()
     assert runtime.warning_capture.runtime_warnings == ()
 
 
@@ -659,13 +672,17 @@ def test_preparation_page_qml_resource_and_controller_boundary_are_explicit() ->
 
     assert "PreparationPage 1.0 pages/PreparationPage.qml" in qmldir
     assert "qml/Carnopy/pages/PreparationPage.qml" in MANDATORY_QML_FILES
-    assert "requestPreparation" in source
+    assert "booleanFieldRequested" in source
+    assert "roleSelectionRequested" in source
     assert "requestWorkflow" in source
     assert 'Accessible.name: qsTr("Committed Preparation scenarios")' in source
     assert 'Accessible.name: qsTr("Enable matrix diagnostics")' in source
     assert ".setRoleSelected(" not in source
     assert ".beginAddScenario(" not in source
     assert ".commitScenario(" not in source
+    assert "desktopController.requestPreparation" not in source
+    assert "desktopController.requestBindInspectedPreparationSource" not in source
+    assert "desktopController.requestClearPreparationSource" not in source
     assert "desktopController.requestPreparationScenario" not in source
     assert "PreparationAuditView" not in source
     assert "TextArea" not in source

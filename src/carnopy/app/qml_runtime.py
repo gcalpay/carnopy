@@ -491,6 +491,34 @@ class QmlApplicationRuntime:
             ("sweepNewRequested", self.controller.request_new_sweep),
             ("preparationNewRequested", self.controller.request_new_preparation),
             (
+                "preparationArrayFormatSelectionRequested",
+                self.controller.request_preparation_array_format_selection,
+            ),
+            (
+                "preparationBaselineModelSelectionRequested",
+                self.controller.request_preparation_baseline_model_selection,
+            ),
+            (
+                "preparationBooleanFieldRequested",
+                self.controller.request_preparation_boolean_field,
+            ),
+            (
+                "preparationCategoricalSelectionRequested",
+                self.controller.request_preparation_categorical_selection,
+            ),
+            (
+                "preparationCategoryModeRequested",
+                self.controller.request_preparation_category_mode,
+            ),
+            (
+                "preparationExplicitCategoriesRequested",
+                self.controller.request_preparation_explicit_categories,
+            ),
+            (
+                "preparationRoleSelectionRequested",
+                self.controller.request_preparation_role_selection,
+            ),
+            (
                 "preparationScenarioAddRequested",
                 self.controller.request_preparation_add_scenario,
             ),
@@ -569,6 +597,10 @@ class QmlApplicationRuntime:
             (
                 "preparationScenarioTransformationMoveRequested",
                 self.controller.request_preparation_scenario_transformation_move,
+            ),
+            (
+                "preparationTextFieldRequested",
+                self.controller.request_preparation_text_field,
             ),
             (
                 "configurationImportRequested",

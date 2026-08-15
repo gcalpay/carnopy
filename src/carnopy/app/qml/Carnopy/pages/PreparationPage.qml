@@ -27,9 +27,16 @@ Item {
     readonly property bool documentActive: configController.documentKind === "preparation"
     readonly property bool locked: !documentActive || !configController.canEdit
 
+    signal arrayFormatSelectionRequested(string value, bool selected)
+    signal baselineModelSelectionRequested(string value, bool selected)
+    signal booleanFieldRequested(string field, bool value)
+    signal categoricalSelectionRequested(string field, bool selected)
+    signal categoryModeRequested(string field, string mode, bool confirmed)
     signal categoryModeDialogRequested
+    signal explicitCategoriesRequested(string field, string values)
     signal inspectSourceRequested
     signal newPreparationRequested
+    signal roleSelectionRequested(string role, string value, bool selected)
     signal scenarioAddRequested
     signal scenarioCancelRequested
     signal scenarioCommitRequested
@@ -52,6 +59,9 @@ Item {
     signal scenarioTransformationAddRequested(var draft, string field, string methods)
     signal scenarioTransformationRemoveRequested(var draft, int row)
     signal scenarioTransformationMoveRequested(var draft, int source, int destination)
+    signal sourceBindRequested
+    signal sourceClearRequested(bool confirmed)
+    signal textFieldRequested(string field, string value)
     signal workspaceRequested
 
     function reveal(item) {
@@ -314,7 +324,7 @@ Item {
                                  && root.inspectionController.canInspect &&
                                  !root.workflowController.operationActive
                         objectName: "preparationUseInspectedSource"
-                        onClicked: root.desktopController.requestBindInspectedPreparationSource()
+                        onClicked: root.sourceBindRequested()
                         text: root.workflowController.boundSourceRefreshAvailable ? qsTr(
                                                                                         "Use refreshed source") :
                                                                                     qsTr("Use inspected source")
@@ -334,7 +344,7 @@ Item {
                         enabled: root.workflowController.hasBoundSource &&
                                  !root.workflowController.operationActive
                         objectName: "preparationClearSource"
-                        onClicked: root.desktopController.requestClearPreparationSource(false)
+                        onClicked: root.sourceClearRequested(false)
                         text: qsTr("Clear source")
                         tone: "danger"
                         visible: root.workflowController.hasBoundSource
@@ -385,8 +395,8 @@ Item {
                                 checked: parent.selected
                                 enabled: !root.locked && (parent.compatible || parent.selected)
                                 objectName: "preparationNumeric-" + parent.value
-                                onClicked: root.desktopController.requestPreparationRoleSelection(
-                                               "numeric", parent.value, checked)
+                                onClicked: root.roleSelectionRequested("numeric", parent.value,
+                                                                       checked)
                                 text: parent.display
 
                                 ToolTip.text: parent.issue
@@ -430,8 +440,8 @@ Item {
                                 checked: parent.selected
                                 enabled: !root.locked && (parent.compatible || parent.selected)
                                 objectName: "preparationDerived-" + parent.value
-                                onClicked: root.desktopController.requestPreparationRoleSelection(
-                                               "derived", parent.value, checked)
+                                onClicked: root.roleSelectionRequested("derived", parent.value,
+                                                                       checked)
                                 text: parent.display
 
                                 ToolTip.text: parent.issue
@@ -474,8 +484,8 @@ Item {
                                 checked: parent.selected
                                 enabled: !root.locked && (parent.compatible || parent.selected)
                                 objectName: "preparationTarget-" + parent.value
-                                onClicked: root.desktopController.requestPreparationRoleSelection(
-                                               "target", parent.value, checked)
+                                onClicked: root.roleSelectionRequested("target", parent.value,
+                                                                       checked)
                                 text: parent.display
 
                                 ToolTip.text: parent.issue
@@ -519,8 +529,8 @@ Item {
                                 checked: parent.selected
                                 enabled: !root.locked && (parent.compatible || parent.selected)
                                 objectName: "preparationAuxiliary-" + parent.value
-                                onClicked: root.desktopController.requestPreparationRoleSelection(
-                                               "auxiliary", parent.value, checked)
+                                onClicked: root.roleSelectionRequested("auxiliary", parent.value,
+                                                                       checked)
                                 text: parent.display
 
                                 ToolTip.text: parent.issue
@@ -569,9 +579,8 @@ Item {
                                 enabled: !root.locked && (categoryRow.compatible
                                                           || categoryRow.selected)
                                 objectName: "preparationCategorical-" + categoryRow.value
-                                onClicked:
-                                root.desktopController.requestPreparationCategoricalSelection(
-                                    categoryRow.value, checked)
+                                onClicked: root.categoricalSelectionRequested(categoryRow.value,
+                                                                              checked)
                                 text: categoryRow.display
 
                                 ToolTip.text: categoryRow.issue
@@ -601,8 +610,8 @@ Item {
                                         root.pendingCategoryMode = selectedMode;
                                         root.categoryModeDialogRequested();
                                     } else {
-                                        root.desktopController.requestPreparationCategoryMode(
-                                            categoryRow.value, selectedMode, false);
+                                        root.categoryModeRequested(categoryRow.value, selectedMode,
+                                                                   false);
                                     }
                                 }
                                 visible: categoryRow.selected
@@ -614,9 +623,8 @@ Item {
                                 Layout.fillWidth: true
                                 enabled: !root.locked && categoryRow.selected
                                 objectName: "preparationExplicitCategories-" + categoryRow.value
-                                onEditingFinished:
-                                root.desktopController.requestPreparationExplicitCategories(
-                                    categoryRow.value, text)
+                                onEditingFinished: root.explicitCategoriesRequested(
+                                                       categoryRow.value, text)
                                 placeholderText: qsTr("Comma-separated categories")
                                 selectByMouse: true
                                 text: root.preparationDraft.explicit_categories_text(
@@ -666,8 +674,7 @@ Item {
                         enabled: !root.locked && root.workflowController.boundSourceKind
                                  === "model_sweep"
                         objectName: "preparationAllowPartialSweep"
-                        onClicked: root.desktopController.requestPreparationBooleanField(
-                                       "allow_partial_sweep", checked)
+                        onClicked: root.booleanFieldRequested("allow_partial_sweep", checked)
                         text: qsTr("Allow eligible partial Sweep sources")
                     }
 
@@ -871,8 +878,7 @@ Item {
                         checked: root.preparationDraft.arrayOutputsEnabled
                         enabled: !root.locked
                         objectName: "preparationArrayOutputs"
-                        onClicked: root.desktopController.requestPreparationBooleanField(
-                                       "array_outputs", checked)
+                        onClicked: root.booleanFieldRequested("array_outputs", checked)
                         text: qsTr("Array artifacts")
                     }
 
@@ -902,9 +908,8 @@ Item {
                                     checked: parent.selected
                                     enabled: !root.locked && (parent.compatible || parent.selected)
                                     objectName: "preparationArrayFormat-" + parent.value
-                                    onClicked:
-                                    root.desktopController.requestPreparationArrayFormatSelection(
-                                        parent.value, checked)
+                                    onClicked: root.arrayFormatSelectionRequested(parent.value,
+                                                                                  checked)
                                     text: parent.display
 
                                     ToolTip.text: parent.issue
@@ -921,8 +926,7 @@ Item {
                         enabled: !root.locked && root.preparationDraft.arrayOutputsEnabled
                         model: ["float32", "float64"]
                         objectName: "preparationArrayDtype"
-                        onActivated: root.desktopController.requestPreparationTextField(
-                                         "array_dtype", String(currentValue))
+                        onActivated: root.textFieldRequested("array_dtype", String(currentValue))
                         visible: root.preparationDraft.arrayOutputsEnabled
                     }
 
@@ -931,8 +935,7 @@ Item {
                         checked: root.preparationDraft.includeAuxiliary
                         enabled: !root.locked && root.preparationDraft.arrayOutputsEnabled
                         objectName: "preparationArrayIncludeAuxiliary"
-                        onClicked: root.desktopController.requestPreparationBooleanField(
-                                       "include_auxiliary", checked)
+                        onClicked: root.booleanFieldRequested("include_auxiliary", checked)
                         text: qsTr("Include auxiliary fields in arrays")
                         visible: root.preparationDraft.arrayOutputsEnabled
                     }
@@ -953,8 +956,7 @@ Item {
                         checked: root.preparationDraft.matrixDiagnosticsEnabled
                         enabled: !root.locked
                         objectName: "preparationMatrixDiagnostics"
-                        onClicked: root.desktopController.requestPreparationBooleanField(
-                                       "matrix_diagnostics", checked)
+                        onClicked: root.booleanFieldRequested("matrix_diagnostics", checked)
                         text: qsTr("Matrix diagnostics")
                     }
 
@@ -969,8 +971,8 @@ Item {
                             Layout.fillWidth: true
                             enabled: !root.locked
                             objectName: "preparationCorrelationThreshold"
-                            onEditingFinished: root.desktopController.requestPreparationTextField(
-                                                   "correlation_threshold", text)
+                            onEditingFinished: root.textFieldRequested("correlation_threshold",
+                                                                       text)
                             placeholderText: qsTr("Correlation threshold")
                             selectByMouse: true
                             text: root.preparationDraft.correlationThreshold
@@ -981,7 +983,7 @@ Item {
                             Layout.fillWidth: true
                             enabled: !root.locked
                             objectName: "preparationNearConstantSpread"
-                            onEditingFinished: root.desktopController.requestPreparationTextField(
+                            onEditingFinished: root.textFieldRequested(
                                                    "near_constant_relative_spread", text)
                             placeholderText: qsTr("Near-constant spread")
                             selectByMouse: true
@@ -1000,8 +1002,7 @@ Item {
                                      root.preparationDraft.baselineDiagnosticsAvailable
                                      || root.preparationDraft.baselineDiagnosticsEnabled)
                         objectName: "preparationBaselineDiagnostics"
-                        onClicked: root.desktopController.requestPreparationBooleanField(
-                                       "baseline_diagnostics", checked)
+                        onClicked: root.booleanFieldRequested("baseline_diagnostics", checked)
                         text: qsTr("Baseline diagnostics")
                     }
 
@@ -1043,9 +1044,8 @@ Item {
                                     checked: parent.selected
                                     enabled: !root.locked && (parent.compatible || parent.selected)
                                     objectName: "preparationBaselineModel-" + parent.value
-                                    onClicked:
-                                    root.desktopController.requestPreparationBaselineModelSelection(
-                                        parent.value, checked)
+                                    onClicked: root.baselineModelSelectionRequested(parent.value,
+                                                                                    checked)
                                     text: parent.display
 
                                     ToolTip.text: parent.issue
@@ -1066,8 +1066,7 @@ Item {
                             Layout.fillWidth: true
                             enabled: !root.locked
                             objectName: "preparationBaselineSeed"
-                            onEditingFinished: root.desktopController.requestPreparationTextField(
-                                                   "baseline_random_seed", text)
+                            onEditingFinished: root.textFieldRequested("baseline_random_seed", text)
                             placeholderText: qsTr("Random seed")
                             selectByMouse: true
                             text: root.preparationDraft.baselineRandomSeed
@@ -1078,8 +1077,7 @@ Item {
                             Layout.fillWidth: true
                             enabled: !root.locked
                             objectName: "preparationRidgeAlpha"
-                            onEditingFinished: root.desktopController.requestPreparationTextField(
-                                                   "ridge_alpha", text)
+                            onEditingFinished: root.textFieldRequested("ridge_alpha", text)
                             placeholderText: qsTr("Ridge alpha")
                             selectByMouse: true
                             text: root.preparationDraft.ridgeAlpha
@@ -1090,8 +1088,8 @@ Item {
                             Layout.fillWidth: true
                             enabled: !root.locked
                             objectName: "preparationHistogramIterations"
-                            onEditingFinished: root.desktopController.requestPreparationTextField(
-                                                   "histogram_max_iterations", text)
+                            onEditingFinished: root.textFieldRequested("histogram_max_iterations",
+                                                                       text)
                             placeholderText: qsTr("Maximum iterations")
                             selectByMouse: true
                             text: root.preparationDraft.histogramMaxIterations
@@ -1131,9 +1129,8 @@ Item {
                               "Using source-observed categories discards the temporary explicit category list for this field.")
                 objectName: "preparationCategoryModeDialog"
                 onAccepted: {
-                    root.desktopController.requestPreparationCategoryMode(root.pendingCategoryField,
-                                                                          root.pendingCategoryMode,
-                                                                          true);
+                    root.categoryModeRequested(root.pendingCategoryField, root.pendingCategoryMode,
+                                               true);
                     root.pendingCategoryField = "";
                     root.pendingCategoryMode = "";
                 }

@@ -321,9 +321,13 @@ clear, and continuation actions, while the empty Preparation page can create a
 bound-source document without a Workspace detour. Scenario Add, Edit, Commit,
 Cancel, list mutation, and nested-editor model changes now cross the existing
 queued root-signal boundary, preventing a Loader/model rebind inside its own
-native click handler. Focused QML interaction coverage invokes those visible
-controls rather than substituting direct Python calls. Native reinspection of
-the repaired path remains required before this checkpoint is accepted.
+native click handler. Continued native inspection exposed the same synchronous
+rebind defect when Matrix diagnostics revealed its settings. Source actions,
+roles, categorical settings, source policy, outputs, matrix diagnostics, and
+baseline diagnostics now all cross that queued boundary as well. Focused QML
+interaction coverage invokes the visible Scenario and Matrix controls rather
+than substituting direct Python calls. Native reinspection of the repaired path
+remains required before this checkpoint is accepted.
 
 No public YAML schema, CLI command, Python API, scientific algorithm, manifest,
 result model, artifact layout, provenance contract, or dependency boundary has

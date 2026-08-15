@@ -48,6 +48,13 @@ ApplicationWindow {
     signal datasetReloadRequested(bool discardConfirmed)
     signal sweepNewRequested(bool discardConfirmed)
     signal preparationNewRequested(bool discardConfirmed)
+    signal preparationArrayFormatSelectionRequested(string value, bool selected)
+    signal preparationBaselineModelSelectionRequested(string value, bool selected)
+    signal preparationBooleanFieldRequested(string field, bool value)
+    signal preparationCategoricalSelectionRequested(string field, bool selected)
+    signal preparationCategoryModeRequested(string field, string mode, bool confirmed)
+    signal preparationExplicitCategoriesRequested(string field, string values)
+    signal preparationRoleSelectionRequested(string role, string value, bool selected)
     signal preparationScenarioAddRequested
     signal preparationScenarioCancelRequested
     signal preparationScenarioCommitRequested
@@ -71,6 +78,7 @@ ApplicationWindow {
     signal preparationScenarioTransformationAddRequested(var draft, string field, string methods)
     signal preparationScenarioTransformationRemoveRequested(var draft, int row)
     signal preparationScenarioTransformationMoveRequested(var draft, int source, int destination)
+    signal preparationTextFieldRequested(string field, string value)
     signal runCancelRequested
     signal runForceStopRequested
     signal runGenerateRequested
@@ -1192,8 +1200,28 @@ ApplicationWindow {
             expectedColumns: root.cardColumnCount
             inspectionController: root.inspectionController
             objectName: "preparationPage"
+            onArrayFormatSelectionRequested: (value, selected)
+                                             => root.preparationArrayFormatSelectionRequested(value,
+                                                                                              selected)
+            onBaselineModelSelectionRequested: (value, selected)
+                                               => root.preparationBaselineModelSelectionRequested(
+                                                      value, selected)
+            onBooleanFieldRequested: (field, value) => root.preparationBooleanFieldRequested(field,
+                                                                                             value)
+            onCategoricalSelectionRequested: (field, selected)
+                                             => root.preparationCategoricalSelectionRequested(field,
+                                                                                              selected)
+            onCategoryModeRequested: (field, mode, confirmed)
+                                     => root.preparationCategoryModeRequested(field, mode,
+                                                                              confirmed)
+            onExplicitCategoriesRequested: (field, values)
+                                           => root.preparationExplicitCategoriesRequested(field,
+                                                                                          values)
             onInspectSourceRequested: root.routeTo("inspect")
             onNewPreparationRequested: root.requestPreparationNew()
+            onRoleSelectionRequested: (role, value, selected)
+                                      => root.preparationRoleSelectionRequested(role, value,
+                                                                                selected)
             onScenarioAddRequested: root.preparationScenarioAddRequested()
             onScenarioCancelRequested: root.preparationScenarioCancelRequested()
             onScenarioCategoricalHoldoutRequested: (draft, partition, values)
@@ -1244,6 +1272,9 @@ ApplicationWindow {
             onScenarioTransformationRemoveRequested: (draft, row)
                                                      => root.preparationScenarioTransformationRemoveRequested(
                                                             draft, row)
+            onSourceBindRequested: root.preparationSourceBindRequested()
+            onSourceClearRequested: confirmed => root.preparationSourceClearRequested(confirmed)
+            onTextFieldRequested: (field, value) => root.preparationTextFieldRequested(field, value)
             onWorkspaceRequested: root.routeTo("workspace")
             preparationDraft: root.configController.preparationDraft
             workflowController: root.preparationWorkflowController
