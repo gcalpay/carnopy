@@ -197,6 +197,12 @@ class PreparationAuditProjection:
     available: bool
     quality_status: str
     quality_errors: tuple[str, ...]
+    scenario_evidence_available: bool
+    leakage_evidence_available: bool
+    duplicate_state_evidence_available: bool
+    grid_evidence_available: bool
+    matrix_evidence_available: bool
+    baseline_evidence_available: bool
     quality_overview: tuple[dict[str, object], ...]
     scenarios: tuple[dict[str, object], ...]
     partitions: tuple[dict[str, object], ...]
@@ -228,17 +234,17 @@ class PreparationAuditProjection:
         quality_status = _status(quality_summary.get("status"), default="absent")
 
         scenario_evidence, scenario_evidence_available = _scenario_evidence(payload)
+        raw_scenarios = summary.get("scenarios")
         scenarios, partitions, leakage_audits, scenario_status = _scenario_rows(
-            summary.get("scenarios"),
+            raw_scenarios,
             scenario_evidence,
             evidence_available=scenario_evidence_available,
         )
-        duplicate_rows, duplicate_status = _duplicate_state_rows(
-            quality_summary.get("duplicate_state_candidates")
-        )
-        grid_groups, grid_spacing, grid_phases, grid_status = _grid_rows(
-            quality_summary.get("structured_grid")
-        )
+        raw_duplicates = quality_summary.get("duplicate_state_candidates")
+        duplicate_rows, duplicate_status = _duplicate_state_rows(raw_duplicates)
+        raw_grid = quality_summary.get("structured_grid")
+        grid_groups, grid_spacing, grid_phases, grid_status = _grid_rows(raw_grid)
+        raw_matrix = quality_summary.get("matrix_diagnostics")
         (
             matrix_checks,
             matrix_feature_flags,
@@ -246,9 +252,10 @@ class PreparationAuditProjection:
             correlated_pairs,
             target_correlations,
             matrix_status,
-        ) = _matrix_rows(quality_summary.get("matrix_diagnostics"))
+        ) = _matrix_rows(raw_matrix)
+        raw_baseline = quality_summary.get("baseline_diagnostics")
         baseline_checks, baseline_metrics, baseline_failures, baseline_status = _baseline_rows(
-            quality_summary.get("baseline_diagnostics")
+            raw_baseline
         )
 
         eligible, eligible_available = _optional_nonnegative_integer(
@@ -324,6 +331,12 @@ class PreparationAuditProjection:
             available=available,
             quality_status=quality_status,
             quality_errors=errors,
+            scenario_evidence_available=raw_scenarios is not None,
+            leakage_evidence_available=scenario_evidence_available,
+            duplicate_state_evidence_available=raw_duplicates is not None,
+            grid_evidence_available=raw_grid is not None,
+            matrix_evidence_available=raw_matrix is not None,
+            baseline_evidence_available=raw_baseline is not None,
             quality_overview=overview,
             scenarios=scenarios,
             partitions=partitions,

@@ -211,7 +211,7 @@ audits, partition summaries, correlations, singular values, rank, conditioning,
 and baseline metrics. Missing optional dependencies disable only the affected
 feature and provide exact installation guidance.
 
-### Implementation checkpoint: Units 1–20B
+### Implementation checkpoint: Units 1–20C
 
 Stage 5 is in progress on `feat/gui2-stage5`. The implemented checkpoint keeps
 one globally active configuration document while extending its exact-byte,
@@ -281,14 +281,26 @@ claims. A versioned private scenario-detail input is defined for the verified
 `scenario.json` evidence that Unit 20C will supply; no controller or QML wiring
 is part of Unit 20B.
 
+Unit 20C completes the private worker/controller integration. Current scenario
+audit artifacts are resolved within the finalized bundle, checked against their
+recorded hashes, read as exact bytes, and required to match the manifest's
+scenario name, kind, and partition counts before their leakage evidence enters
+the private worker payload. Their file identities contribute to the inspection
+revision. Legacy bundles without recorded scenario audit artifacts remain
+inspectable but expose no leakage evidence. A focused `PreparationAuditModel`
+owns the exact section list models, while `InspectionController` validates the
+complete projection before accepting the response, rejects audit data attached
+to another source kind, and clears audit state when inspection becomes stale.
+No audit QML is added before Unit 21.
+
 No public YAML schema, CLI command, Python API, scientific algorithm, manifest,
 result model, artifact layout, provenance contract, or dependency boundary has
 changed. Focused tests accompany each completed implementation unit; the
 complete Stage 5 gate and native acceptance remain pending.
 
-The remaining implementation order after Unit 20B is:
+The remaining implementation order after Unit 20C is:
 
-1. Units 20C and 21 integrate and present typed preparation audit diagnostics.
+1. Unit 21 presents the integrated typed preparation audit diagnostics.
 2. Unit 22 hardens cross-workflow lifecycle and semantic response guards.
 3. Unit 23 qualifies packaged Stage 5 QML and runs the complete gate.
 4. Unit 24 records completion only after automated and manual acceptance.

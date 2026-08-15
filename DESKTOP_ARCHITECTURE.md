@@ -306,6 +306,10 @@ workflow. It owns:
 - an integrity-verified `quality_flags` table for current Preparation bundles,
   omitted from table control when its optional artifact is missing or corrupt
   while the worker-reported quality error keeps the main bundle inspectable;
+- one focused Preparation audit-state object containing fixed typed models for
+  quality overview, scenarios, partitions, leakage, duplicate-state and grid
+  evidence, matrix diagnostics, correlations, singular values, and baseline
+  metrics or failures;
 - selected table identity, 500-row worker blocks, and 100-row local pages; and
 - the copied inspected plot context consumed by `SessionPlotController`.
 
@@ -329,6 +333,16 @@ only JSON-compatible worker payloads. The first bounded
 preview is queued after an explicit successful inspection because the request
 coordinator releases its active session only after delivering the terminal
 result.
+
+For current Preparation bundles, private scenario audit evidence is read only
+from the canonical contained `data/scenarios/<name>/scenario.json` path after
+its recorded hash is verified. The exact bytes must agree with the finalized
+scenario name, kind, and partition counts before leakage fields enter the
+worker payload. Each resolved scenario audit file identity contributes to the
+inspection revision. Missing legacy evidence remains unavailable rather than
+being inferred. The controller validates the complete detached audit
+projection before replacing any audit models, rejects audit payloads on other
+source kinds, and clears those models when inspection becomes stale.
 
 The preparation profile projects source kind and revision, available models,
 eligible numeric, target, categorical, and auxiliary fields, observed category
@@ -1063,7 +1077,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 2 | Package the Precision Grid QML Workspace, Dataset, Visualization, and YAML/Save workflows | Complete; automated, remote, and native acceptance passed |
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete |
 | 4 | Add controlled sweep and preparation worker operations | Complete |
-| 5 | Add structured sweep and preparation QML workflows | In progress through Unit 20B; both editors enabled, typed audit projection awaits integration |
+| 5 | Add structured sweep and preparation QML workflows | In progress through Unit 20C; both editors enabled, typed audit presentation pending |
 | 6 | Build exact emitted-value 3D scene contracts | Pending |
 | 7 | Integrate native interactive 3D into QML | Pending |
 | 8 | Complete native-3D platform, distribution, documentation, and later-release qualification | Pending |
@@ -1134,7 +1148,7 @@ six-row generation, configured plot, verified inspection, clean workspace
 reopen, and workspace-scoped installed smoke. Its lifecycle regression raised
 the exhaustively verified suite to 837 tests.
 
-Stage 5 is implemented through Unit 20B on `feat/gui2-stage5`. The former
+Stage 5 is implemented through Unit 20C on `feat/gui2-stage5`. The former
 Dataset-only document and controller now provide one global exact-file
 lifecycle for all three public configuration types. The complete structured
 Sweep workflow is enabled in QML. Preparation source profiling, explicit
@@ -1145,13 +1159,19 @@ creation. Finalized quality flags are also available through verified bounded
 table inspection. A Qt-independent Preparation audit projection now validates
 and flattens finalized scenario, partition, duplicate-state, structured-grid,
 matrix, correlation, singular-value, and baseline evidence into exact typed row
-contracts. It represents absent values explicitly and reserves a versioned
-private scenario-detail input for worker-verified leakage evidence rather than
-inferring it from successful finalization. Inspection-controller integration
-and audit presentation, lifecycle hardening, packaged qualification, complete
-gates, native acceptance, and completion documentation remain unfinished. This
-checkpoint changes private desktop ownership and presentation infrastructure
-only; public scientific and distribution contracts remain unchanged.
+contracts. It represents absent values explicitly and never infers leakage from
+successful finalization. The worker now supplies the versioned private scenario
+details only after containment, recorded-hash, exact-byte, and scenario
+identity checks; their file identities contribute to the inspection revision.
+Legacy bundles without recorded details remain inspectable with leakage evidence
+unavailable. A focused audit-state object owns the fixed list models, and the
+inspection controller validates the complete projection before accepting it,
+rejects cross-kind audit payloads, and clears the state when inspection becomes
+stale. Audit presentation, lifecycle hardening, packaged qualification,
+complete gates, native acceptance, and completion documentation remain
+unfinished. This checkpoint changes private desktop ownership and presentation
+infrastructure only; public scientific and distribution contracts remain
+unchanged.
 
 ## Known current limitations
 

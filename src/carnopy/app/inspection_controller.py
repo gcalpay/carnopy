@@ -13,6 +13,8 @@ from typing import Any, cast
 from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
 
 from carnopy.app.inspection_models import InspectionListModel
+from carnopy.app.preparation_audit import PreparationAuditProjection
+from carnopy.app.preparation_audit_models import PreparationAuditModel
 from carnopy.app.protocol import RequestType
 from carnopy.app.request_coordinator import (
     DesktopRequestCoordinator,
@@ -98,6 +100,7 @@ class InspectionController(QObject):
         self.failure_property_counts_model = InspectionListModel(("property", "count"), self)
         self.sweep_delta_reason_counts_model = InspectionListModel(("reason", "count"), self)
         self.preparation_quality_errors_model = InspectionListModel(("message",), self)
+        self.preparation_audit_model = PreparationAuditModel(self)
         preparation_field_roles = (
             "name",
             "column",
@@ -529,6 +532,11 @@ class InspectionController(QObject):
         constant=True,
     )
 
+    def get_preparation_audit_model(self) -> QObject:
+        return self.preparation_audit_model
+
+    preparationAudit = Property(QObject, get_preparation_audit_model, constant=True)
+
     def get_preparation_models_model(self) -> QObject:
         return self._model_property(self.preparation_models_model)
 
@@ -874,6 +882,22 @@ class InspectionController(QObject):
                     {"message": f"worker preparation profile is inconsistent: {exc}"},
                 )
                 return
+        audit_projection: PreparationAuditProjection | None = None
+        if source_kind == "preparation":
+            try:
+                audit_projection = PreparationAuditProjection.from_worker_payload(payload)
+            except ValueError as exc:
+                self._accept_failure(
+                    "inspection",
+                    {"message": f"worker preparation audit is inconsistent: {exc}"},
+                )
+                return
+        elif payload.get("preparation_audit") is not None:
+            self._accept_failure(
+                "inspection",
+                {"message": "worker inspection attached Preparation audit to another source"},
+            )
+            return
         self._payload = copy.deepcopy(payload)
         self._source_kind = source_kind
         self._revision = revision
@@ -893,7 +917,7 @@ class InspectionController(QObject):
         self._issue = ""
         self._state = "ready"
         self._preview_state = "empty"
-        self._project_payload(payload)
+        self._project_payload(payload, preparation_audit=audit_projection)
         if normalized_profile is not None:
             self._project_preparation_profile(normalized_profile)
         first = self.tables_model.get(0)
@@ -954,6 +978,8 @@ class InspectionController(QObject):
         self._payload = None
         self._plot_context = None
         self.table_model.clear()
+        self.preparation_quality_errors_model.clear()
+        self.preparation_audit_model.clear()
         self.inspection_changed.emit(None)
         self.state_changed.emit()
 
@@ -1013,8 +1039,14 @@ class InspectionController(QObject):
             self.arrays_model,
         ):
             model.clear()
+        self.preparation_audit_model.clear()
 
-    def _project_payload(self, payload: dict[str, Any]) -> None:
+    def _project_payload(
+        self,
+        payload: dict[str, Any],
+        *,
+        preparation_audit: PreparationAuditProjection | None,
+    ) -> None:
         self._reset_projection()
         summary = cast(dict[str, Any], payload["summary"])
         source_kind = cast(str, payload["source_kind"])
@@ -1033,7 +1065,8 @@ class InspectionController(QObject):
         elif source_kind == "model_sweep":
             self._project_sweep(summary)
         else:
-            self._project_preparation(summary)
+            assert preparation_audit is not None
+            self._project_preparation(summary, preparation_audit)
 
     def _project_dataset(self, summary: dict[str, Any]) -> None:
         source = _mapping(summary.get("source"))
@@ -1150,7 +1183,11 @@ class InspectionController(QObject):
         self._integrity_status = "worker_inspected"
         self._integrity_label = "Worker-inspected model-sweep bundle"
 
-    def _project_preparation(self, summary: dict[str, Any]) -> None:
+    def _project_preparation(
+        self,
+        summary: dict[str, Any],
+        audit: PreparationAuditProjection,
+    ) -> None:
         self.source_summary_model.set_rows(
             _summary_rows(summary, (("source", "Source"), ("status", "Status"))),
             available=True,
@@ -1186,15 +1223,11 @@ class InspectionController(QObject):
             ),
             available=bool(row_counts),
         )
-        quality = _mapping(summary.get("quality"))
-        errors = quality.get("errors")
-        error_rows = (
-            ({"message": str(message)} for message in errors) if isinstance(errors, list) else ()
-        )
         self.preparation_quality_errors_model.set_rows(
-            error_rows,
-            available=isinstance(errors, list),
+            ({"message": message} for message in audit.quality_errors),
+            available=True,
         )
+        self.preparation_audit_model.replace(audit)
         self.diagnostics_model.set_rows(
             _preparation_diagnostics(summary),
             available=True,

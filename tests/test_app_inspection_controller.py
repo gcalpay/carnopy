@@ -142,6 +142,52 @@ def preparation_profile(
     }
 
 
+def finalized_preparation_audit_payload(source: Path) -> dict[str, object]:
+    return {
+        "source_kind": "preparation",
+        "summary": {
+            "source": str(source.resolve()),
+            "status": "completed",
+            "row_counts": {"source": 2, "eligible": 2, "excluded": 0},
+            "scenarios": {
+                "status": "completed",
+                "scenario_count": 1,
+                "partition_count": 2,
+                "scenarios": [
+                    {
+                        "name": "shuffle",
+                        "kind": "shuffle",
+                        "partition_counts": {"test": 1, "train": 1},
+                        "transformations": [],
+                    }
+                ],
+            },
+            "quality": {
+                "errors": [],
+                "summary": {
+                    "status": "completed",
+                    "row_counts": {"eligible": 2, "excluded": 0},
+                    "matrix_diagnostics": {"status": "not_requested", "fits": []},
+                    "baseline_diagnostics": {"status": "not_requested", "fits": []},
+                },
+            },
+        },
+        "preparation_audit": {
+            "audit_schema_version": 1,
+            "scenario_details": [
+                {
+                    "name": "shuffle",
+                    "state_leakage": {
+                        "identity_column": "source_state_hash",
+                        "duplicate_state_group_count": 0,
+                        "cross_partition_group_count": 0,
+                    },
+                }
+            ],
+        },
+    }
+
+
 def test_workspace_sources_are_direct_bounded_and_newest_first(tmp_path: Path) -> None:
     workspace = initialize_workspace(tmp_path / "workspace")
     for index in range(25):
@@ -545,6 +591,78 @@ def test_arrays_project_each_logical_array_with_its_own_dtype(tmp_path: Path) ->
             "issue": "Logical array metadata is unavailable for this legacy artifact.",
         },
     )
+    coordinator.shutdown()
+
+
+def test_preparation_audit_is_owned_by_controller_and_cleared_when_stale(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "preparation"
+    source.mkdir()
+    controller, coordinator = controller_for()
+
+    prepare_payload(controller, source, finalized_preparation_audit_payload(source))
+
+    audit = controller.preparation_audit_model
+    assert controller.get_state() == "ready"
+    assert controller.property("preparationAudit") is audit
+    assert audit.get_available()
+    assert audit.get_scenario_evidence_available()
+    assert audit.get_leakage_evidence_available()
+    assert audit.scenarios.rows()[0]["name"] == "shuffle"
+    assert [row["partition"] for row in audit.partitions.rows()] == ["train", "test"]
+    assert audit.leakage_audits.rows()[0]["crossPartitionGroupCount"] == 0
+    assert audit.matrix_checks.get_available()
+    assert audit.baseline_checks.get_available()
+
+    controller._mark_stale("inspection revision changed")
+
+    assert controller.get_state() == "stale"
+    assert not audit.get_available()
+    assert audit.scenarios.get_count() == 0
+    assert audit.leakage_audits.get_count() == 0
+    assert not controller.preparation_quality_errors_model.get_available()
+    coordinator.shutdown()
+
+
+def test_inconsistent_preparation_audit_is_rejected_before_projection(tmp_path: Path) -> None:
+    source = tmp_path / "preparation"
+    source.mkdir()
+    controller, coordinator = controller_for()
+    payload = finalized_preparation_audit_payload(source)
+    audit = cast(dict[str, object], payload["preparation_audit"])
+    audit["audit_schema_version"] = 2
+
+    prepare_payload(controller, source, payload)
+
+    assert controller.get_state() == "failed"
+    assert "unsupported schema version" in controller.get_issue()
+    assert not controller.preparation_audit_model.get_available()
+    assert controller.preparation_audit_model.scenarios.get_count() == 0
+    coordinator.shutdown()
+
+
+def test_nonpreparation_inspection_cannot_attach_preparation_audit(tmp_path: Path) -> None:
+    source = tmp_path / "dataset.parquet"
+    source.touch()
+    controller, coordinator = controller_for()
+
+    prepare_payload(
+        controller,
+        source,
+        {
+            "source_kind": "dataset",
+            "summary": {},
+            "preparation_audit": {
+                "audit_schema_version": 1,
+                "scenario_details": [],
+            },
+        },
+    )
+
+    assert controller.get_state() == "failed"
+    assert "attached Preparation audit to another source" in controller.get_issue()
+    assert not controller.preparation_audit_model.get_available()
     coordinator.shutdown()
 
 

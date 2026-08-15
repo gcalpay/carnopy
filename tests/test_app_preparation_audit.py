@@ -236,6 +236,12 @@ def test_projection_flattens_finalized_audit_evidence_deterministically() -> Non
     assert projection.available is True
     assert projection.quality_status == "completed"
     assert projection.quality_errors == ()
+    assert projection.scenario_evidence_available is True
+    assert projection.leakage_evidence_available is True
+    assert projection.duplicate_state_evidence_available is True
+    assert projection.grid_evidence_available is True
+    assert projection.matrix_evidence_available is True
+    assert projection.baseline_evidence_available is True
     assert projection.quality_overview[0] == {
         "status": "completed",
         "eligibleRowCount": 8,
@@ -313,6 +319,8 @@ def test_projection_represents_legacy_quality_absence_without_fabricating_rows()
 
     assert projection.available is False
     assert projection.quality_status == "absent"
+    assert projection.scenario_evidence_available is False
+    assert projection.leakage_evidence_available is False
     assert projection.quality_overview[0]["status"] == "absent"
     assert projection.scenarios == ()
     assert projection.matrix_checks == ()

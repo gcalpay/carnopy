@@ -390,7 +390,25 @@ def test_preparation_descriptors_cover_quality_flags_and_scenario_tables(tmp_pat
         destination = root / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
         frame.to_parquet(destination, index=False)
+    scenario_artifact = scenario / "scenario.json"
+    scenario_artifact.write_text(
+        json.dumps(
+            {
+                "name": "shuffle",
+                "kind": "shuffle",
+                "partition_counts": {"train": 1, "test": 1},
+                "state_leakage": {
+                    "identity_column": "source_state_hash",
+                    "duplicate_state_group_count": 0,
+                    "cross_partition_group_count": 0,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     hashes = {relative: _sha(root / relative) for relative in paths}
+    scenario_relative = "data/scenarios/shuffle/scenario.json"
+    hashes[scenario_relative] = _sha(scenario_artifact)
     manifest = {
         "status": "completed",
         "eligible_row_count": 2,
@@ -408,12 +426,15 @@ def test_preparation_descriptors_cover_quality_flags_and_scenario_tables(tmp_pat
             "exports": [{"path": "data/arrays/features.float32.npy", "format": "npy"}],
         },
         "scenarios": {
+            "status": "completed",
             "scenario_count": 1,
             "partition_count": 2,
             "scenarios": [
                 {
                     "name": "shuffle",
+                    "kind": "shuffle",
                     "partition_counts": {"train": 1, "test": 1},
+                    "transformations": [],
                     "partition_artifacts": [
                         "data/scenarios/shuffle/train.parquet",
                         "data/scenarios/shuffle/test.parquet",
@@ -423,6 +444,15 @@ def test_preparation_descriptors_cover_quality_flags_and_scenario_tables(tmp_pat
                         for key in (
                             "data/scenarios/shuffle/train.parquet",
                             "data/scenarios/shuffle/test.parquet",
+                        )
+                    },
+                    "scenario_artifact": scenario_relative,
+                    "artifact_hashes": {
+                        key: hashes[key]
+                        for key in (
+                            "data/scenarios/shuffle/train.parquet",
+                            "data/scenarios/shuffle/test.parquet",
+                            scenario_relative,
                         )
                     },
                 }
@@ -443,6 +473,20 @@ def test_preparation_descriptors_cover_quality_flags_and_scenario_tables(tmp_pat
         "scenario.shuffle.test",
     ]
     assert inspected.arrays == ({"path": "data/arrays/features.float32.npy", "format": "npy"},)
+    assert inspected.preparation_audit == {
+        "audit_schema_version": 1,
+        "scenario_details": [
+            {
+                "name": "shuffle",
+                "state_leakage": {
+                    "identity_column": "source_state_hash",
+                    "duplicate_state_group_count": 0,
+                    "cross_partition_group_count": 0,
+                },
+            }
+        ],
+    }
+    assert inspected.public_payload()["preparation_audit"] == inspected.preparation_audit
 
     quality_flags = resolve_table(root, "quality_flags", inspected.revision)
     assert quality_flags.path == data / "quality_flags.parquet"
@@ -455,6 +499,19 @@ def test_preparation_descriptors_cover_quality_flags_and_scenario_tables(tmp_pat
     assert preview["rows"] == [[1, "candidate_b", "warning"]]
     with pytest.raises(ValueError, match="between 1 and 500"):
         preview_table(quality_flags, offset=0, limit=501)
+
+    scenario_bytes = scenario_artifact.read_bytes()
+    replacement = scenario_artifact.with_name("scenario-replacement.json")
+    replacement.write_bytes(scenario_bytes)
+    replacement.replace(scenario_artifact)
+    same_content = inspect_for_app(root)
+    assert same_content.revision != inspected.revision
+    assert same_content.preparation_audit == inspected.preparation_audit
+
+    scenario_artifact.write_text("{}", encoding="utf-8")
+    with pytest.raises(VisualizationError, match="scenario shuffle audit artifact hash mismatch"):
+        inspect_for_app(root)
+    scenario_artifact.write_bytes(scenario_bytes)
 
     quality_flags.path.write_bytes(b"tampered")
     refreshed = inspect_for_app(root)

@@ -77,6 +77,7 @@ class ResolvedInspection:
     preparation_ineligible_reason: str = ""
     preparation_source_descriptor: dict[str, Any] | None = None
     preparation_profile: dict[str, Any] | None = None
+    preparation_audit: dict[str, Any] | None = None
 
     def public_payload(self) -> dict[str, Any]:
         return {
@@ -91,6 +92,7 @@ class ResolvedInspection:
             "preparation_ineligible_reason": self.preparation_ineligible_reason,
             "preparation_source_descriptor": self.preparation_source_descriptor,
             "preparation_profile": self.preparation_profile,
+            "preparation_audit": self.preparation_audit,
         }
 
 
@@ -101,6 +103,14 @@ class ResolvedCatalog:
     tables: tuple[ResolvedTable, ...]
     arrays: tuple[dict[str, Any], ...]
     controls: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class ResolvedScenarioAudit:
+    name: str
+    summary: dict[str, Any]
+    path: Path
+    sha256: str
 
 
 def inspect_for_app(source: str | Path) -> ResolvedInspection:
@@ -121,6 +131,11 @@ def inspect_for_app(source: str | Path) -> ResolvedInspection:
     if kind != catalog.source_kind:
         raise VisualizationError("inspection source classification changed during inspection")
     summary = inspection.to_dict()
+    preparation_audit = (
+        _preparation_audit_payload(requested, inspection.manifest)
+        if isinstance(inspection, PreparationInspection)
+        else None
+    )
     eligible, ineligible_reason, preparation_descriptor, preparation_profile = (
         _preparation_eligibility(
             requested,
@@ -141,6 +156,7 @@ def inspect_for_app(source: str | Path) -> ResolvedInspection:
         preparation_ineligible_reason=ineligible_reason,
         preparation_source_descriptor=preparation_descriptor,
         preparation_profile=preparation_profile,
+        preparation_audit=preparation_audit,
     )
 
 
@@ -194,6 +210,14 @@ def _resolve_catalog(source: Path) -> ResolvedCatalog:
                 "scenario_report.json",
             ),
         )
+        scenario_audits = _resolve_scenario_audits(source, manifest)
+        if scenario_audits is not None:
+            controls.update(
+                {
+                    f"scenario:{item.name}": _control_descriptor(item.path)
+                    for item in scenario_audits
+                }
+            )
         return ResolvedCatalog(
             "preparation",
             _catalog_revision("preparation", tables, controls),
@@ -315,6 +339,120 @@ def _sweep_tables(root: Path, metadata: dict[str, Any]) -> tuple[ResolvedTable, 
                 )
             )
     return tuple(tables)
+
+
+def _preparation_audit_payload(
+    root: Path,
+    manifest: dict[str, Any],
+) -> dict[str, Any] | None:
+    artifacts = _resolve_scenario_audits(root, manifest)
+    if artifacts is None:
+        return None
+    return {
+        "audit_schema_version": 1,
+        "scenario_details": [_read_scenario_audit(artifact) for artifact in artifacts],
+    }
+
+
+def _resolve_scenario_audits(
+    root: Path,
+    manifest: dict[str, Any],
+) -> tuple[ResolvedScenarioAudit, ...] | None:
+    scenario_summary = manifest.get("scenarios")
+    if not isinstance(scenario_summary, dict):
+        return None
+    raw_scenarios = scenario_summary.get("scenarios")
+    if not isinstance(raw_scenarios, list):
+        raise VisualizationError("preparation scenario summary does not contain a scenario list")
+    if not raw_scenarios:
+        return ()
+    if any(
+        not isinstance(item, dict)
+        or "scenario_artifact" not in item
+        or "artifact_hashes" not in item
+        for item in raw_scenarios
+    ):
+        # Bundles finalized before scenario audit artifacts were recorded remain
+        # inspectable, but cannot claim verified leakage evidence.
+        return None
+    resolved: list[ResolvedScenarioAudit] = []
+    names: set[str] = set()
+    paths: set[str] = set()
+    for raw_item in raw_scenarios:
+        item = cast(dict[str, Any], raw_item)
+        name = item.get("name")
+        relative = item.get("scenario_artifact")
+        raw_hashes = item.get("artifact_hashes")
+        if not isinstance(name, str) or not name:
+            raise VisualizationError("preparation scenario audit has an invalid scenario name")
+        if name in names:
+            raise VisualizationError(f"preparation scenario audit repeats scenario {name!r}")
+        if not isinstance(relative, str) or not relative:
+            raise VisualizationError(f"preparation scenario {name!r} has an invalid artifact path")
+        if relative != f"data/scenarios/{name}/scenario.json":
+            raise VisualizationError(
+                f"preparation scenario {name!r} has an unexpected audit artifact path"
+            )
+        if relative in paths:
+            raise VisualizationError("preparation scenarios share one scenario audit artifact")
+        if not isinstance(raw_hashes, dict):
+            raise VisualizationError(
+                f"preparation scenario {name!r} does not contain artifact hashes"
+            )
+        expected = raw_hashes.get(relative)
+        if not isinstance(expected, str) or not expected:
+            raise VisualizationError(
+                f"preparation scenario {name!r} does not record its audit artifact hash"
+            )
+        path = _safe_artifact(
+            root,
+            relative,
+            f"scenario {name} audit",
+            {relative: expected},
+        )
+        names.add(name)
+        paths.add(relative)
+        resolved.append(
+            ResolvedScenarioAudit(
+                name=name,
+                summary=item,
+                path=path,
+                sha256=expected,
+            )
+        )
+    return tuple(resolved)
+
+
+def _read_scenario_audit(artifact: ResolvedScenarioAudit) -> dict[str, Any]:
+    try:
+        raw = artifact.path.read_bytes()
+    except OSError as exc:
+        raise VisualizationError(
+            f"could not read scenario {artifact.name!r} audit artifact: {exc}"
+        ) from exc
+    if hashlib.sha256(raw).hexdigest() != artifact.sha256:
+        raise VisualizationError(f"scenario {artifact.name} audit artifact hash mismatch")
+    try:
+        value = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise VisualizationError(
+            f"could not read scenario {artifact.name!r} audit artifact: {exc}"
+        ) from exc
+    if not isinstance(value, dict):
+        raise VisualizationError(f"scenario {artifact.name!r} audit artifact must be an object")
+    if value.get("name") != artifact.name:
+        raise VisualizationError(f"scenario {artifact.name!r} audit identity does not match")
+    if value.get("kind") != artifact.summary.get("kind"):
+        raise VisualizationError(f"scenario {artifact.name!r} audit kind does not match")
+    if value.get("partition_counts") != artifact.summary.get("partition_counts"):
+        raise VisualizationError(f"scenario {artifact.name!r} audit partitions do not match")
+    leakage = value.get("state_leakage")
+    if not isinstance(leakage, dict):
+        raise VisualizationError(f"scenario {artifact.name!r} audit has no leakage evidence")
+    return {
+        "name": artifact.name,
+        "state_leakage": copy.deepcopy(leakage),
+    }
 
 
 def _preparation_tables(
