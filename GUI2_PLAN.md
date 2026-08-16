@@ -211,7 +211,7 @@ audits, partition summaries, correlations, singular values, rank, conditioning,
 and baseline metrics. Missing optional dependencies disable only the affected
 feature and provide exact installation guidance.
 
-### Implementation checkpoint: Units 1–22C
+### Implementation checkpoint: Units 1–22C and focused native repair
 
 Stage 5 is in progress on `feat/gui2-stage5`. The implemented checkpoint keeps
 one globally active configuration document while extending its exact-byte,
@@ -404,6 +404,18 @@ continue to cover exact-byte plan restoration, explicit Preparation rebinding,
 immutable execution snapshots, stale/unrelated persistent results, cancellation,
 and protected finalization.
 
+The focused native checkpoint after Unit 22C found that the shared Sweep and
+Preparation run panel still invoked Plan, Execute, Cancel, Force Stop, and
+Inspect Result directly from its originating QML input handler. Planning emits
+workflow state and replaces blocker projections immediately, so the direct
+call could re-enter and destroy panel delegates while their Plan click was
+still unwinding. Both workflow pages now forward all five actions through the
+same root-level queued facade used by the accepted Preparation controls. An
+enabled-button regression for each workflow verifies that a Plan click emits
+its request synchronously but cannot start the worker until Qt processes the
+queued connection. This is a presentation-boundary repair; planning,
+execution, worker authority, and scientific contracts are unchanged.
+
 No public YAML schema, CLI command, Python API, scientific algorithm, manifest,
 result model, artifact layout, provenance contract, or dependency boundary has
 changed. Focused tests accompany each completed implementation unit; the
@@ -415,10 +427,11 @@ The remaining implementation order after Unit 22C is:
 2. Unit 24 records completion only after automated and manual acceptance.
 
 The Unit 21B audit-presentation checkpoint and its focused native repair cycle
-are complete. The hardened lifecycle paths require their focused native
-inspection at the Unit 22C checkpoint, and the final installed application is
-inspected after Unit 23; acceptance must not be deferred until the
-documentation-only completion unit.
+are complete. The focused Unit 22C inspection found and repaired the shared
+workflow-action re-entrancy boundary described above. Sweep and Preparation
+Plan must now be reinspected natively before Unit 23; the final installed
+application is inspected again after Unit 23, and acceptance must not be
+deferred until the documentation-only completion unit.
 
 ## Stage 6: exact scientific 3D scenes
 

@@ -182,6 +182,39 @@ def _visible_item(root: QQuickWindow, object_name: str) -> QQuickItem:
     return matches[0]
 
 
+def _field_profile(name: str) -> dict[str, object]:
+    source = (
+        "coordinate"
+        if name in {"temperature", "pressure"}
+        else "property"
+        if name in {"mass_density", "specific_enthalpy"}
+        else "categorical"
+        if name == "phase"
+        else "auxiliary"
+    )
+    return {
+        "name": name,
+        "column": name,
+        "unit": None,
+        "source": source,
+        "reference_dependent": name == "specific_enthalpy",
+    }
+
+
+def _open_saved_preparation(runtime: QmlApplicationRuntime) -> None:
+    controller = runtime.controller.configuration_controller
+    workspace = controller.workspace
+    assert workspace is not None
+    payload = yaml.safe_load(template_text(cast(Any, "preparation")))
+    assert isinstance(payload, dict)
+    document = new_document(payload)
+    destination = workspace.configs / "qml-plan-preparation.yaml"
+    content = document.yaml_bytes
+    destination.write_bytes(content)
+    document.mark_saved(destination, content)
+    assert controller.open_document(document)
+
+
 def _accept_preparation_eligible_inspection(
     runtime: QmlApplicationRuntime,
     source: Path,
@@ -210,12 +243,41 @@ def _accept_preparation_eligible_inspection(
         "available_models": ["heos"],
         "declared_models": [],
         "reference_model": "heos",
-        "numeric_candidates": [],
-        "target_candidates": [],
-        "categorical_candidates": [],
-        "auxiliary_candidates": [],
-        "observed_category_values": {},
-        "derived_features": [],
+        "numeric_candidates": [
+            _field_profile("temperature"),
+            _field_profile("pressure"),
+            _field_profile("mass_density"),
+            _field_profile("specific_enthalpy"),
+        ],
+        "target_candidates": [
+            _field_profile("temperature"),
+            _field_profile("pressure"),
+            _field_profile("mass_density"),
+            _field_profile("specific_enthalpy"),
+        ],
+        "categorical_candidates": [_field_profile("phase")],
+        "auxiliary_candidates": [
+            _field_profile("fluid"),
+            _field_profile("backend_model"),
+            _field_profile("phase"),
+            _field_profile("run_id"),
+            _field_profile("case_id"),
+        ],
+        "observed_category_values": {"phase": ["liquid", "gas"]},
+        "derived_features": [
+            {
+                "name": "specific_volume",
+                "status": "ready",
+                "available": True,
+                "ready_row_count": 10,
+                "source_row_count": 10,
+                "reason": "",
+                "reason_codes": [],
+                "missing_dependencies": [],
+                "dependencies": ["mass_density"],
+                "unit": "m^3/kg",
+            }
+        ],
         "model_holdout": {
             "available": False,
             "reason": "Model holdout scenarios require a model-sweep source.",
@@ -402,6 +464,36 @@ def test_shell_queues_mutations_from_the_visible_preparation_page(
     _process_events()
     assert not controller.preparation_draft.get_matrix_enabled()
     assert not matrix_settings.isVisible()
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_shell_queues_an_enabled_preparation_plan_click(
+    runtime: QmlApplicationRuntime,
+    tmp_path: Path,
+) -> None:
+    desktop = runtime.controller
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    source = tmp_path / "workspace" / "outputs" / "eligible-plan-source"
+    source.mkdir()
+    _accept_preparation_eligible_inspection(runtime, source)
+    assert desktop.request_bind_inspected_preparation_source()
+    _open_saved_preparation(runtime)
+    assert root.setProperty("currentPage", "preparation")
+    _process_events()
+
+    requested: list[str] = []
+    root.workflowPlanRequested.connect(requested.append)
+    plan_button = _visible_item(root, "preparationPlanButton")
+    assert plan_button.property("enabled") is True
+
+    assert QMetaObject.invokeMethod(plan_button, "click")
+    assert requested == ["preparation"]
+    assert not desktop.request_coordinator.is_busy
+
+    _process_events()
+    assert desktop.preparation_workflow_controller.get_workflow_operation() == "plan"
+    _wait_for_idle(runtime)
     assert runtime.warning_capture.runtime_warnings == ()
 
 
@@ -732,7 +824,12 @@ def test_preparation_page_qml_resource_and_controller_boundary_are_explicit() ->
     assert "qml/Carnopy/pages/PreparationPage.qml" in MANDATORY_QML_FILES
     assert "booleanFieldRequested" in source
     assert "roleSelectionRequested" in source
-    assert "requestWorkflow" in source
+    assert "workflowPlanRequested" in source
+    assert "workflowExecuteRequested" in source
+    assert "workflowCancelRequested" in source
+    assert "workflowForceStopRequested" in source
+    assert "workflowInspectResultRequested" in source
+    assert "desktopController.requestWorkflow" not in source
     assert 'Accessible.name: qsTr("Committed Preparation scenarios")' in source
     assert 'Accessible.name: qsTr("Enable matrix diagnostics")' in source
     assert ".setRoleSelected(" not in source

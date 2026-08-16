@@ -31,6 +31,11 @@ Item {
     readonly property bool locked: !documentActive || !configController.canEdit
 
     signal shapeDialogRequested
+    signal workflowCancelRequested(string workflow)
+    signal workflowExecuteRequested(string workflow)
+    signal workflowForceStopRequested(string workflow)
+    signal workflowInspectResultRequested(string workflow)
+    signal workflowPlanRequested(string workflow)
     signal workspaceRequested
 
     function reveal(item) {
@@ -621,17 +626,12 @@ Item {
                 Layout.fillWidth: true
                 workflowController: root.workflowController
                 workflowKind: "sweep"
-                onCancelRequested: workflow => root.desktopController.requestWorkflowCancel(
-                                                   workflow)
-                onExecuteRequested: workflow => root.desktopController.requestWorkflowExecute(
-                                                    workflow)
-                onForceStopRequested: workflow => root.desktopController.requestWorkflowForceStop(
-                                                      workflow)
-                onInspectResultRequested: workflow
-                                          => root.desktopController.requestWorkflowInspectResult(
-                                                 workflow)
+                onCancelRequested: workflow => root.workflowCancelRequested(workflow)
+                onExecuteRequested: workflow => root.workflowExecuteRequested(workflow)
+                onForceStopRequested: workflow => root.workflowForceStopRequested(workflow)
+                onInspectResultRequested: workflow => root.workflowInspectResultRequested(workflow)
                 onIssueFocusRequested: (section, field, row) => root.focusField(field, row)
-                onPlanRequested: workflow => root.desktopController.requestWorkflowPlan(workflow)
+                onPlanRequested: workflow => root.workflowPlanRequested(workflow)
             }
         }
     }

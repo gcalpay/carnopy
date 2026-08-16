@@ -94,6 +94,11 @@ ApplicationWindow {
     signal inspectionTableRequested(string tableId)
     signal preparationSourceBindRequested
     signal preparationSourceClearRequested(bool confirmed)
+    signal workflowCancelRequested(string workflow)
+    signal workflowExecuteRequested(string workflow)
+    signal workflowForceStopRequested(string workflow)
+    signal workflowInspectResultRequested(string workflow)
+    signal workflowPlanRequested(string workflow)
     signal activityInspectRunRequested
     signal activityRecordSelectionRequested(string recordId)
     signal activityRecordsRefreshRequested
@@ -1182,6 +1187,12 @@ ApplicationWindow {
             desktopController: root.desktopController
             expectedColumns: root.cardColumnCount
             objectName: "modelSweepPage"
+            onWorkflowCancelRequested: workflow => root.workflowCancelRequested(workflow)
+            onWorkflowExecuteRequested: workflow => root.workflowExecuteRequested(workflow)
+            onWorkflowForceStopRequested: workflow => root.workflowForceStopRequested(workflow)
+            onWorkflowInspectResultRequested: workflow => root.workflowInspectResultRequested(
+                                                              workflow)
+            onWorkflowPlanRequested: workflow => root.workflowPlanRequested(workflow)
             onWorkspaceRequested: root.routeTo("workspace")
             sweepDraft: root.configController.sweepDraft
             workflowController: root.sweepWorkflowController
@@ -1275,6 +1286,12 @@ ApplicationWindow {
             onSourceBindRequested: root.preparationSourceBindRequested()
             onSourceClearRequested: confirmed => root.preparationSourceClearRequested(confirmed)
             onTextFieldRequested: (field, value) => root.preparationTextFieldRequested(field, value)
+            onWorkflowCancelRequested: workflow => root.workflowCancelRequested(workflow)
+            onWorkflowExecuteRequested: workflow => root.workflowExecuteRequested(workflow)
+            onWorkflowForceStopRequested: workflow => root.workflowForceStopRequested(workflow)
+            onWorkflowInspectResultRequested: workflow => root.workflowInspectResultRequested(
+                                                              workflow)
+            onWorkflowPlanRequested: workflow => root.workflowPlanRequested(workflow)
             onWorkspaceRequested: root.routeTo("workspace")
             preparationDraft: root.configController.preparationDraft
             workflowController: root.preparationWorkflowController

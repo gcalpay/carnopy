@@ -5,15 +5,17 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+import yaml
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QCoreApplication, QEventLoop, QObject, QSettings, QTimer
+from PySide6.QtCore import QCoreApplication, QEventLoop, QMetaObject, QObject, QSettings, QTimer
 from PySide6.QtQml import QQmlComponent
 from PySide6.QtQuick import QQuickItem, QQuickWindow
 from PySide6.QtWidgets import QApplication
 
+from carnopy.app.config_document import new_document
 from carnopy.app.qml_resources import MANDATORY_QML_FILES
 from carnopy.app.qml_runtime import QmlApplicationRuntime, create_qml_runtime
 from carnopy.app.workspace import initialize_workspace
@@ -139,6 +141,20 @@ def _visible_item(root: QQuickWindow, object_name: str) -> QQuickItem:
     return matches[0]
 
 
+def _open_saved_sweep(runtime: QmlApplicationRuntime) -> None:
+    controller = runtime.controller.configuration_controller
+    workspace = controller.workspace
+    assert workspace is not None
+    payload = yaml.safe_load(template_text("model_sweep"))
+    assert isinstance(payload, dict)
+    document = new_document(payload)
+    destination = workspace.configs / "qml-plan-sweep.yaml"
+    content = document.yaml_bytes
+    destination.write_bytes(content)
+    document.mark_saved(destination, content)
+    assert controller.open_document(document)
+
+
 def test_shell_creates_and_enables_the_structured_sweep_surface(
     runtime: QmlApplicationRuntime,
 ) -> None:
@@ -174,6 +190,31 @@ def test_shell_creates_and_enables_the_structured_sweep_surface(
     assert command_bar.property("pageTitle") == "Model Sweeps"
     assert command_bar.property("statusLabel") == "Unsaved Sweep"
     assert inspector.property("visible") is True
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_shell_queues_an_enabled_sweep_plan_click(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    desktop = runtime.controller
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    _open_saved_sweep(runtime)
+    assert root.setProperty("currentPage", "sweeps")
+    _process_events()
+
+    requested: list[str] = []
+    root.workflowPlanRequested.connect(requested.append)
+    plan_button = _visible_item(root, "sweepPlanButton")
+    assert plan_button.property("enabled") is True
+
+    assert QMetaObject.invokeMethod(plan_button, "click")
+    assert requested == ["sweep"]
+    assert not desktop.request_coordinator.is_busy
+
+    _process_events()
+    assert desktop.sweep_workflow_controller.get_workflow_operation() == "plan"
+    _wait_for_idle(runtime)
     assert runtime.warning_capture.runtime_warnings == ()
 
 
@@ -378,7 +419,13 @@ def test_sweep_qml_resources_and_controller_boundary_are_explicit() -> None:
     assert "qml/Carnopy/components/WorkflowRunPanel.qml" in MANDATORY_QML_FILES
     assert "qml/Carnopy/components/WorkflowContextInspector.qml" in MANDATORY_QML_FILES
     assert "requestSweep" in page_source
-    assert "requestWorkflow" in page_source
+    assert "workflowPlanRequested" in page_source
+    assert "workflowExecuteRequested" in page_source
+    assert "workflowCancelRequested" in page_source
+    assert "workflowForceStopRequested" in page_source
+    assert "workflowInspectResultRequested" in page_source
+    assert "desktopController.requestWorkflow" not in page_source
+    assert "workflowPlanRequested" in main_source
     assert "requestSweep" in editor_source
     assert 'Accessible.name: qsTr("Sweep reference model")' in page_source
     assert 'Accessible.name: qsTr("Committed comparison plots")' in page_source

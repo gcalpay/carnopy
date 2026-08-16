@@ -826,6 +826,15 @@ portable centering and modality contract.
 Window close is routed through the composition-owned active-edit, worker-busy,
 and dirty-document guards before runtime teardown.
 
+The shared Sweep and Preparation workflow panel follows this boundary for
+Plan, Execute, Cancel, Force Stop, and Inspect Result. Those actions may change
+operation properties and replace blocker/result projections immediately, so a
+workflow page emits a page request, `Main.qml` forwards it through the root
+facade, and only the queued runtime connection calls `DesktopController`.
+Neither page calls the workflow facade synchronously from the originating
+button handler. Enabled Plan-button regressions cover both workflow kinds and
+verify that worker ownership begins only after the queued event is processed.
+
 Busy close is operation-specific. Generation offers cooperative cancellation
 and closes only after the coordinator releases the request. Plot rendering may
 offer explicit force-stop only through `SessionPlotController` and the
@@ -890,6 +899,12 @@ and the adjacent Outputs and Quality diagnostics cards remain top-aligned as
 either card expands. Native application reinspection confirmed explicit source
 binding, Scenario creation, Matrix and Baseline expansion, persistent labels,
 and stable card alignment without a presentation-path crash.
+
+The focused native checkpoint after Unit 22C applied the same rule to the
+shared workflow run panel after both Sweep and Preparation Plan clicks exposed
+the remaining direct-call path. The repair changes only Qt call-stack
+ownership: exact saved snapshots, plan identities, worker recomputation, and
+execution contracts remain unchanged.
 
 The QML Inspect workbench consumes only the typed Qt models owned by
 `InspectionController`. Workspace discovery is direct-child, symlink-excluding,
