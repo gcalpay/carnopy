@@ -275,7 +275,7 @@ def test_public_roadmap_separates_current_contracts_from_future_direction() -> N
     assert "| 5 | In progress |" in gui_plan
     assert "| 4 | Add controlled sweep and preparation worker operations | Complete" in desktop
     assert (
-        "| 5 | Add structured sweep and preparation QML workflows | In progress through Unit 23A"
+        "| 5 | Add structured sweep and preparation QML workflows | In progress through Unit 23B"
         in desktop
     )
 

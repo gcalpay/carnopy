@@ -1159,7 +1159,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 2 | Package the Precision Grid QML Workspace, Dataset, Visualization, and YAML/Save workflows | Complete; automated, remote, and native acceptance passed |
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete |
 | 4 | Add controlled sweep and preparation worker operations | Complete |
-| 5 | Add structured sweep and preparation QML workflows | In progress through Unit 23A; packaged QML qualification complete, full gate and acceptance pending |
+| 5 | Add structured sweep and preparation QML workflows | In progress through Unit 23B; complete local gate passed, final native acceptance pending |
 | 6 | Build exact emitted-value 3D scene contracts | Pending |
 | 7 | Integrate native interactive 3D into QML | Pending |
 | 8 | Complete native-3D platform, distribution, documentation, and later-release qualification | Pending |
@@ -1230,7 +1230,7 @@ six-row generation, configured plot, verified inspection, clean workspace
 reopen, and workspace-scoped installed smoke. Its lifecycle regression raised
 the exhaustively verified suite to 837 tests.
 
-Stage 5 is implemented through Unit 23A on `feat/gui2-stage5`. The former
+Stage 5 is implemented through Unit 23B on `feat/gui2-stage5`. The former
 Dataset-only document and controller now provide one global exact-file
 lifecycle for all three public configuration types. The complete structured
 Sweep workflow is enabled in QML. Preparation source profiling, explicit
@@ -1284,8 +1284,16 @@ installed launcher smokes. The build deliberately serializes Core Metadata
 2.4 because it is the lowest sufficient format for Carnopy's declarations and
 the current stable Twine checker cannot consume Hatchling's incidental 2.5
 default. This affects archive metadata compatibility only; runtime contents,
-extras, and dependencies remain unchanged. The complete locked gate and final
-native acceptance remain Unit 23B work.
+extras, and dependencies remain unchanged. At the Unit 23A checkpoint, the
+complete locked gate and final native acceptance remained pending.
+
+Unit 23B passed the complete locked local gate on 2026-08-16 at `3bc44a6`
+without a remediation diff. Both the direct and preflight-owned suites passed
+1,073 tests. Lock consistency, Ruff, formatting across 224 files, strict mypy
+across 139 source files, preflight, compatibility across 70 installed packages,
+isolated wheel/sdist construction, Twine, and exact distribution verification
+also passed. Final native workflow acceptance and the completion record remain;
+this automated evidence does not substitute for them.
 
 ## Known current limitations
 

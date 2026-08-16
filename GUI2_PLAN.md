@@ -79,7 +79,7 @@ implementation.
 | 2 | Complete | Added the packaged QML shell and Dataset/YAML/Save workflows |
 | 3 | Complete | Reached parity, migrated both launchers, retired Widgets, and qualified `0.1.0a4` |
 | 4 | Complete | Added controlled sweep and preparation worker operations for the existing public contracts |
-| 5 | In progress | Structured Sweep, Preparation, and typed audit inspection are enabled; packaged QML qualification passed, while the complete gate and acceptance remain |
+| 5 | In progress | Structured Sweep, Preparation, and typed audit inspection are enabled; the complete local gate passed, while final native acceptance and the completion record remain |
 | 6 | Pending | Build exact emitted-value 3D scenes |
 | 7 | Pending | Add native interactive 3D to QML |
 | 8 | Pending | Qualify native 3D packaging, platforms, and a later release |
@@ -211,7 +211,7 @@ audits, partition summaries, correlations, singular values, rank, conditioning,
 and baseline metrics. Missing optional dependencies disable only the affected
 feature and provide exact installation guidance.
 
-### Implementation checkpoint: Units 1–23A and focused native repair
+### Implementation checkpoint: Units 1–23B and focused native repair
 
 Stage 5 is in progress on `feat/gui2-stage5`. The implemented checkpoint keeps
 one globally active configuration document while extending its exact-byte,
@@ -432,23 +432,31 @@ Hatchling default to 2.5 that stable Twine 6.2.0 cannot yet validate; it changes
 neither packaged contents nor dependencies, and the distribution checker now
 enforces the intentional version for both archive types.
 
+Unit 23B passed the complete locked local gate on 2026-08-16 at `3bc44a6`
+without requiring implementation remediation. The direct suite and the
+preflight-owned repeat each passed 1,073 tests. Lock consistency, Ruff, the
+224-file formatting check, strict mypy across 139 source files, preflight,
+compatibility across 70 installed packages, isolated wheel/sdist construction,
+Twine, and exact distribution inspection also passed. Rehearsal artifacts stay
+ignored under `prerelease/gui2-stage5-unit23b-local-gate/`.
+
 No public YAML schema, CLI command, Python API, scientific algorithm, manifest,
 result model, artifact layout, provenance contract, or dependency boundary has
-changed. Focused tests accompany each completed implementation unit; Unit 23B's
-complete Stage 5 gate and final native acceptance remain pending.
+changed. Focused tests accompany each completed implementation unit. Final
+native acceptance and Unit 24's completion record remain pending.
 
-The remaining implementation order after Unit 23A is:
+The remaining implementation order after Unit 23B is:
 
-1. Unit 23B runs the complete locked gate and remediates only concrete failures.
-2. Unit 24 records completion only after automated and manual acceptance.
+1. Perform final native acceptance against the qualified installed application.
+2. Unit 24 records completion only after that manual acceptance passes.
 
 The Unit 21B audit-presentation checkpoint and its focused native repair cycle
 are complete. The focused Unit 22C inspection found and repaired the shared
 workflow-action re-entrancy boundary described above. Sweep and Preparation
 Plan interactions have focused enabled-button coverage, and Preparation Plan
 was reinspected natively after the repair. Sweep Plan and the final installed
-application must be inspected after Unit 23B; acceptance must not be deferred
-until the documentation-only completion unit.
+application must now be inspected; acceptance must not be deferred until the
+documentation-only completion unit.
 
 ## Stage 6: exact scientific 3D scenes
 

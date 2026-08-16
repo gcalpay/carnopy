@@ -54,7 +54,7 @@ name.
 
 GUI-2 Stage 4 established worker-authoritative, revision-bound Preparation
 planning and execution without adding a visible editor. Stage 5 is now
-implemented through Unit 23A plus its focused native workflow-action repair:
+implemented through Unit 23B plus its focused native workflow-action repair:
 
 - Inspect derives typed Preparation eligibility and capability projections
   from verified dataset-run or model-sweep metadata;
@@ -103,8 +103,9 @@ implemented through Unit 23A plus its focused native workflow-action repair:
   bind, and responsively resize that page without runtime warnings.
 
 This is desktop exposure of the implemented preparation contract, not new
-preparation science. Unit 23B's complete gate and final native acceptance remain
-later Stage 5 work.
+preparation science. The complete locked local gate passed with both 1,073-test
+suites and final distribution verification. Final native acceptance and the
+Stage 5 completion record remain.
 
 ## Reviewed future direction — Optional PyTorch dataset export
 
