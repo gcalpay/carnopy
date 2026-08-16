@@ -191,8 +191,9 @@ Preview lifecycle. Generic Open dispatches from the YAML `document_type`.
 Preparation source profiling, explicit source binding, complete structured
 drafts, planning, execution, and its packaged editor are implemented on the
 Stage 5 branch and enabled in the normal shell. Inspect now exposes the typed
-Preparation audit view for accepted Preparation bundles, while lifecycle
-hardening, packaged qualification, and acceptance remain unfinished.
+Preparation audit view for accepted Preparation bundles. Lifecycle hardening
+and packaged QML qualification are complete; the full gate and final native
+acceptance remain unfinished.
 
 Scientific generation, inspection, and Matplotlib rendering run in short-lived
 workers. The QML process does not import CoolProp, NumPy, pandas, PyArrow, or
@@ -460,8 +461,9 @@ The accepted direction is workflow depth now, source breadth next, and advanced
 model breadth later. GUI-2 Stage 4 brought the existing model-sweep and
 preparation workflows into the desktop's controlled nonvisual worker boundary.
 Stage 5 is in progress: the complete structured Model Sweep and Preparation
-editors and typed Preparation audit inspection are enabled, while lifecycle
-hardening, packaged qualification, and acceptance remain. After that
+editors and typed Preparation audit inspection are enabled. Lifecycle
+hardening and packaged QML qualification are complete; the complete gate and
+final native acceptance remain. After that
 milestone, Carnopy
 will establish a validated import/source contract and one evidence-driven
 source expansion.

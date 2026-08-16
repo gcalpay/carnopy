@@ -1159,7 +1159,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 2 | Package the Precision Grid QML Workspace, Dataset, Visualization, and YAML/Save workflows | Complete; automated, remote, and native acceptance passed |
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete |
 | 4 | Add controlled sweep and preparation worker operations | Complete |
-| 5 | Add structured sweep and preparation QML workflows | In progress through Unit 22C; lifecycle hardening complete, packaged qualification and acceptance pending |
+| 5 | Add structured sweep and preparation QML workflows | In progress through Unit 23A; packaged QML qualification complete, full gate and acceptance pending |
 | 6 | Build exact emitted-value 3D scene contracts | Pending |
 | 7 | Integrate native interactive 3D into QML | Pending |
 | 8 | Complete native-3D platform, distribution, documentation, and later-release qualification | Pending |
@@ -1230,7 +1230,7 @@ six-row generation, configured plot, verified inspection, clean workspace
 reopen, and workspace-scoped installed smoke. Its lifecycle regression raised
 the exhaustively verified suite to 837 tests.
 
-Stage 5 is implemented through Unit 22C on `feat/gui2-stage5`. The former
+Stage 5 is implemented through Unit 23A on `feat/gui2-stage5`. The former
 Dataset-only document and controller now provide one global exact-file
 lifecycle for all three public configuration types. The complete structured
 Sweep workflow is enabled in QML. Preparation source profiling, explicit
@@ -1259,9 +1259,10 @@ Preparation inspection hides the tab and restores Summary selection.
 Operation-specific response contexts now prevent terminal configuration,
 inspection, preview, and workflow responses from crossing document, source,
 workspace, saved-snapshot, or plan/source-context replacement. Returned load
-sources and preview blocks must match their requests. Packaged qualification,
-complete gates, native lifecycle acceptance, and completion documentation
-remain unfinished. Direct desktop slots now enforce global request idleness,
+sources and preview blocks must match their requests. At the Unit 22C
+checkpoint, packaged qualification, complete gates, native lifecycle
+acceptance, and completion documentation remained unfinished. Direct desktop
+slots now enforce global request idleness,
 transient-editor focus, document
 kind, operation-aware edit locking, owned nested state, and session-render
 locking without trusting QML enablement. Shutdown consent is now bound to the
@@ -1270,6 +1271,21 @@ protected finalization waits safely, and close processing sequences worker,
 temporary-edit, and dirty-document resolution before native teardown. This
 checkpoint changes private desktop ownership and presentation infrastructure
 only; public scientific and distribution contracts remain unchanged.
+
+Unit 23A closes the packaged-QML portion of that checkpoint. The runtime's
+mandatory inventory exactly matches all 47 packaged QML files, and the exact
+wheel/sdist inventories require every Stage 5 draft, workflow, planning,
+worker, and audit module. Each installed public launcher now selects both
+workflow pages, verifies configuration/workflow-controller binding, resizes
+them through wide and narrow layouts, and rejects runtime warnings under an
+app-only installation. Rehearsal wheel and sdist artifacts passed isolated
+build, Twine, exact inventory verification, dependency compatibility, and both
+installed launcher smokes. The build deliberately serializes Core Metadata
+2.4 because it is the lowest sufficient format for Carnopy's declarations and
+the current stable Twine checker cannot consume Hatchling's incidental 2.5
+default. This affects archive metadata compatibility only; runtime contents,
+extras, and dependencies remain unchanged. The complete locked gate and final
+native acceptance remain Unit 23B work.
 
 ## Known current limitations
 

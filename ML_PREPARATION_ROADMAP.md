@@ -54,7 +54,7 @@ name.
 
 GUI-2 Stage 4 established worker-authoritative, revision-bound Preparation
 planning and execution without adding a visible editor. Stage 5 is now
-implemented through Unit 22C plus its focused native workflow-action repair:
+implemented through Unit 23A plus its focused native workflow-action repair:
 
 - Inspect derives typed Preparation eligibility and capability projections
   from verified dataset-run or model-sweep metadata;
@@ -97,10 +97,13 @@ implemented through Unit 22C plus its focused native workflow-action repair:
   identity-bound multi-step shutdown now protect the complete desktop
   lifecycle, while shared Plan, Execute, Cancel, Force Stop, and Inspect Result
   actions cross a queued root facade instead of mutating workflow projections
-  inside their originating QML click handler.
+  inside their originating QML click handler; and
+- the exact packaged QML and Python inventories include the complete
+  Preparation surface, while both installed app-only launchers instantiate,
+  bind, and responsively resize that page without runtime warnings.
 
 This is desktop exposure of the implemented preparation contract, not new
-preparation science. Packaged qualification and final native acceptance remain
+preparation science. Unit 23B's complete gate and final native acceptance remain
 later Stage 5 work.
 
 ## Reviewed future direction — Optional PyTorch dataset export

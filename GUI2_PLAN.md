@@ -79,7 +79,7 @@ implementation.
 | 2 | Complete | Added the packaged QML shell and Dataset/YAML/Save workflows |
 | 3 | Complete | Reached parity, migrated both launchers, retired Widgets, and qualified `0.1.0a4` |
 | 4 | Complete | Added controlled sweep and preparation worker operations for the existing public contracts |
-| 5 | In progress | Structured Sweep, Preparation, and typed audit inspection are enabled; packaged qualification and acceptance remain |
+| 5 | In progress | Structured Sweep, Preparation, and typed audit inspection are enabled; packaged QML qualification passed, while the complete gate and acceptance remain |
 | 6 | Pending | Build exact emitted-value 3D scenes |
 | 7 | Pending | Add native interactive 3D to QML |
 | 8 | Pending | Qualify native 3D packaging, platforms, and a later release |
@@ -211,7 +211,7 @@ audits, partition summaries, correlations, singular values, rank, conditioning,
 and baseline metrics. Missing optional dependencies disable only the affected
 feature and provide exact installation guidance.
 
-### Implementation checkpoint: Units 1–22C and focused native repair
+### Implementation checkpoint: Units 1–23A and focused native repair
 
 Stage 5 is in progress on `feat/gui2-stage5`. The implemented checkpoint keeps
 one globally active configuration document while extending its exact-byte,
@@ -416,22 +416,39 @@ its request synchronously but cannot start the worker until Qt processes the
 queued connection. This is a presentation-boundary repair; planning,
 execution, worker authority, and scientific contracts are unchanged.
 
+Unit 23A qualifies the packaged Stage 5 application surface without claiming
+the complete Stage 5 gate. The mandatory runtime inventory now exactly matches
+all 47 files under the QML package, and the wheel/sdist checker explicitly
+requires every Stage 5 draft, workflow, planning, worker, and audit module.
+Both installed public launchers instantiate the Sweep and Preparation pages,
+verify their authoritative controller bindings, exercise wide and narrow
+responsive layouts, and require a warning-free app-only QML runtime. A
+rehearsal isolated wheel and sdist passed Twine, exact distribution inventory,
+app-only installation compatibility, and both installed launcher smokes.
+
+The build targets deliberately emit Core Metadata 2.4, the lowest version that
+contains every metadata field Carnopy declares. This avoids an incidental
+Hatchling default to 2.5 that stable Twine 6.2.0 cannot yet validate; it changes
+neither packaged contents nor dependencies, and the distribution checker now
+enforces the intentional version for both archive types.
+
 No public YAML schema, CLI command, Python API, scientific algorithm, manifest,
 result model, artifact layout, provenance contract, or dependency boundary has
-changed. Focused tests accompany each completed implementation unit; the
-complete Stage 5 gate and native acceptance remain pending.
+changed. Focused tests accompany each completed implementation unit; Unit 23B's
+complete Stage 5 gate and final native acceptance remain pending.
 
-The remaining implementation order after Unit 22C is:
+The remaining implementation order after Unit 23A is:
 
-1. Unit 23 qualifies packaged Stage 5 QML and runs the complete gate.
+1. Unit 23B runs the complete locked gate and remediates only concrete failures.
 2. Unit 24 records completion only after automated and manual acceptance.
 
 The Unit 21B audit-presentation checkpoint and its focused native repair cycle
 are complete. The focused Unit 22C inspection found and repaired the shared
 workflow-action re-entrancy boundary described above. Sweep and Preparation
-Plan must now be reinspected natively before Unit 23; the final installed
-application is inspected again after Unit 23, and acceptance must not be
-deferred until the documentation-only completion unit.
+Plan interactions have focused enabled-button coverage, and Preparation Plan
+was reinspected natively after the repair. Sweep Plan and the final installed
+application must be inspected after Unit 23B; acceptance must not be deferred
+until the documentation-only completion unit.
 
 ## Stage 6: exact scientific 3D scenes
 

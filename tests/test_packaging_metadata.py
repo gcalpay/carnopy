@@ -160,6 +160,9 @@ def test_alpha_metadata_uses_modern_license_and_release_urls() -> None:
         "requires": ["hatchling>=1.27.0"],
         "build-backend": "hatchling.build",
     }
+    hatch_targets = pyproject["tool"]["hatch"]["build"]["targets"]
+    assert hatch_targets["wheel"]["core-metadata-version"] == "2.4"
+    assert hatch_targets["sdist"]["core-metadata-version"] == "2.4"
     project = pyproject["project"]
     assert project["requires-python"] == ">=3.11"
     assert project["description"] == (
@@ -272,7 +275,7 @@ def test_public_roadmap_separates_current_contracts_from_future_direction() -> N
     assert "| 5 | In progress |" in gui_plan
     assert "| 4 | Add controlled sweep and preparation worker operations | Complete" in desktop
     assert (
-        "| 5 | Add structured sweep and preparation QML workflows | In progress through Unit 19B"
+        "| 5 | Add structured sweep and preparation QML workflows | In progress through Unit 23A"
         in desktop
     )
 

@@ -114,9 +114,11 @@ carnopy-gui = "carnopy.app.qml_launcher:main_gui"
 path = "src/carnopy/_version.py"
 
 [tool.hatch.build.targets.wheel]
+core-metadata-version = "2.4"
 packages = ["src/carnopy"]
 
 [tool.hatch.build.targets.sdist]
+core-metadata-version = "2.4"
 include = [
   "/AGENTS.md",
   "/CITATION.cff",

@@ -96,6 +96,13 @@ def test_packaged_resource_manifest_matches_every_installed_byte() -> None:
         if record.owner == "Lucide" and record.packaged_path.startswith("icons/")
     } == set(MANDATORY_ICON_FILES) - first_party_paths
     assert all(packaged_path(path).is_file() for path in MANDATORY_QML_FILES)
+    qml_root = ROOT / "src" / "carnopy" / "app" / "qml"
+    actual_qml = {
+        f"qml/{path.relative_to(qml_root).as_posix()}"
+        for path in qml_root.rglob("*")
+        if path.is_file()
+    }
+    assert set(MANDATORY_QML_FILES) == actual_qml
 
 
 def test_private_qml_runtime_loads_one_warning_free_root(

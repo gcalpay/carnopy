@@ -1100,6 +1100,42 @@ def _exercise_installed_qml_smoke(runtime: QmlApplicationRuntime) -> None:
         raise QmlStartupError("installed QML smoke did not instantiate the YAML page")
     if runtime.controller.configuration_controller.get_yaml_available():
         raise QmlStartupError("installed QML smoke unexpectedly exposed YAML without a document")
+
+    workflow_pages = (
+        (
+            "sweeps",
+            "modelSweepPage",
+            "sweepWorkflowRunPanel",
+            runtime.controller.sweep_workflow_controller,
+        ),
+        (
+            "preparation",
+            "preparationPage",
+            "preparationWorkflowRunPanel",
+            runtime.controller.preparation_workflow_controller,
+        ),
+    )
+    for page_key, page_name, panel_name, workflow_controller in workflow_pages:
+        if not root.setProperty("width", 1440) or not root.setProperty("height", 1000):
+            raise QmlStartupError(f"installed QML smoke could not resize {page_key} wide")
+        if not root.setProperty("currentPage", page_key):
+            raise QmlStartupError(f"installed QML smoke could not select {page_key}")
+        runtime.application.processEvents()
+        page = root.findChild(QObject, page_name)
+        if page is None or root.findChild(QObject, panel_name) is None:
+            raise QmlStartupError(f"installed QML smoke did not instantiate {page_key}")
+        if page.property("configController") is not runtime.controller.configuration_controller:
+            raise QmlStartupError(f"installed QML smoke misbound {page_key} configuration state")
+        if page.property("workflowController") is not workflow_controller:
+            raise QmlStartupError(f"installed QML smoke misbound {page_key} workflow state")
+        if root.property("shellMode") != "wide" or page.property("expectedColumns") < 2:
+            raise QmlStartupError(f"installed QML smoke did not lay out {page_key} wide")
+
+        if not root.setProperty("width", 640) or not root.setProperty("height", 900):
+            raise QmlStartupError(f"installed QML smoke could not resize {page_key} narrow")
+        runtime.application.processEvents()
+        if root.property("shellMode") != "narrow" or page.property("expectedColumns") != 1:
+            raise QmlStartupError(f"installed QML smoke did not stack {page_key} narrow")
     if runtime.warning_capture.runtime_warnings:
         details = "\n".join(runtime.warning_capture.runtime_warnings)
         raise QmlStartupError(f"installed QML smoke emitted runtime warnings:\n{details}")
