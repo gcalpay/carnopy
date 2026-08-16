@@ -79,7 +79,7 @@ implementation.
 | 2 | Complete | Added the packaged QML shell and Dataset/YAML/Save workflows |
 | 3 | Complete | Reached parity, migrated both launchers, retired Widgets, and qualified `0.1.0a4` |
 | 4 | Complete | Added controlled sweep and preparation worker operations for the existing public contracts |
-| 5 | In progress | Structured Sweep, Preparation, and typed audit inspection are enabled; lifecycle hardening and qualification remain |
+| 5 | In progress | Structured Sweep, Preparation, and typed audit inspection are enabled; packaged qualification and acceptance remain |
 | 6 | Pending | Build exact emitted-value 3D scenes |
 | 7 | Pending | Add native interactive 3D to QML |
 | 8 | Pending | Qualify native 3D packaging, platforms, and a later release |
@@ -211,7 +211,7 @@ audits, partition summaries, correlations, singular values, rank, conditioning,
 and baseline metrics. Missing optional dependencies disable only the affected
 feature and provide exact installation guidance.
 
-### Implementation checkpoint: Units 1–22B
+### Implementation checkpoint: Units 1–22C
 
 Stage 5 is in progress on `feat/gui2-stage5`. The implemented checkpoint keeps
 one globally active configuration document while extending its exact-byte,
@@ -376,24 +376,48 @@ controllers.
 Focused facade regressions call the Python slots directly, bypassing QML
 enablement. They cover every global lifecycle and worker-start family, both
 nested-editor kinds, Dataset and Visualization editing under configuration
-work and execution, owned-object checks, and session rendering. Unit 22C still
-owns multi-step shutdown and the remaining cross-workflow transition matrix.
+work and execution, owned-object checks, and session rendering. That checkpoint
+left multi-step shutdown and the remaining cross-workflow transition matrix to
+Unit 22C.
+
+Unit 22C completes that shutdown and transition boundary. Busy-close consent is
+bound to the exact worker session that produced the dialog, and a delayed
+confirmation cannot cancel a replacement request even when its workflow and
+operation names are identical. Pending cooperative cancellation likewise
+retains the accepted session identity. Protected finalization is wait-only and
+continues closing only after the worker releases the coordinator. Sweep and
+Preparation cancellation dialogs now say Cancel rather than Force stop; only
+the session-render path uses force-stop wording.
+
+Transient-edit consent is bound to the exact configured plot, session plot,
+Sweep comparison, and Preparation scenario identities shown to the user.
+Dirty-document consent is bound to the same configuration object and
+configuration-state revision. Changed state rejects the old confirmation
+instead of discarding a replacement edit or newer document state. After a
+worker finishes, the controller advances explicitly through transient-edit
+Cancel and then dirty-document discard; it emits the final window-close request
+only after every remaining guard passes. Focused transition tests cover stale
+busy, transient, and dirty confirmations, same-operation worker replacement,
+protected finalization, the complete worker-to-edit-to-dirty sequence, and the
+truthful QML policy labels. Existing focused configuration and workflow tests
+continue to cover exact-byte plan restoration, explicit Preparation rebinding,
+immutable execution snapshots, stale/unrelated persistent results, cancellation,
+and protected finalization.
 
 No public YAML schema, CLI command, Python API, scientific algorithm, manifest,
 result model, artifact layout, provenance contract, or dependency boundary has
 changed. Focused tests accompany each completed implementation unit; the
 complete Stage 5 gate and native acceptance remain pending.
 
-The remaining implementation order after Unit 22B is:
+The remaining implementation order after Unit 22C is:
 
-1. Unit 22C completes multi-step shutdown and cross-workflow transition
-   hardening.
-2. Unit 23 qualifies packaged Stage 5 QML and runs the complete gate.
-3. Unit 24 records completion only after automated and manual acceptance.
+1. Unit 23 qualifies packaged Stage 5 QML and runs the complete gate.
+2. Unit 24 records completion only after automated and manual acceptance.
 
 The Unit 21B audit-presentation checkpoint and its focused native repair cycle
-are complete. Lifecycle paths are inspected after Unit 22C, and the final
-installed application after Unit 23; acceptance must not be deferred until the
+are complete. The hardened lifecycle paths require their focused native
+inspection at the Unit 22C checkpoint, and the final installed application is
+inspected after Unit 23; acceptance must not be deferred until the
 documentation-only completion unit.
 
 ## Stage 6: exact scientific 3D scenes

@@ -226,6 +226,8 @@ def test_qml_shutdown_requires_explicit_dirty_discard_confirmation(
     assert confirmations == ["confirm"]
     assert not desktop.confirm_shutdown(False)
     assert close_requests == []
+    assert not desktop.request_shutdown()
+    assert confirmations == ["confirm", "confirm"]
     assert desktop.confirm_shutdown(True)
     assert close_requests == ["close"]
     assert desktop.request_shutdown()
@@ -435,14 +437,21 @@ def test_qml_shutdown_explicitly_cancels_transient_plot_edits_before_close(
     confirmations: list[str] = []
     close_requests: list[str] = []
     cancellations: list[str] = []
+    active = {"value": True}
     desktop.transientEditShutdownConfirmationRequested.connect(confirmations.append)
     desktop.closeWindowRequested.connect(lambda: close_requests.append("close"))
     monkeypatch.setattr(desktop, "get_has_active_plot_edit", lambda: False)
-    monkeypatch.setattr(desktop, "get_has_session_plot_edit", lambda: True)
+    monkeypatch.setattr(desktop, "get_has_session_plot_edit", lambda: active["value"])
+
+    def cancel_session_edit() -> bool:
+        cancellations.append("session")
+        active["value"] = False
+        return True
+
     monkeypatch.setattr(
         desktop.session_plot_controller,
         "cancel_edit",
-        lambda: cancellations.append("session") or True,
+        cancel_session_edit,
     )
 
     assert not desktop.request_shutdown()
@@ -452,6 +461,11 @@ def test_qml_shutdown_explicitly_cancels_transient_plot_edits_before_close(
     assert not desktop.confirm_transient_edit_shutdown(False)
     assert cancellations == []
     assert close_requests == []
+    assert not desktop.request_shutdown()
+    assert confirmations == [
+        "A session plot edit is still open. Cancel the edit and close Carnopy?",
+        "A session plot edit is still open. Cancel the edit and close Carnopy?",
+    ]
     assert desktop.confirm_transient_edit_shutdown(True)
     assert cancellations == ["session"]
     assert close_requests == ["close"]
@@ -467,13 +481,20 @@ def test_qml_shutdown_explicitly_cancels_a_transient_sweep_edit_before_close(
     confirmations: list[str] = []
     close_requests: list[str] = []
     cancellations: list[str] = []
+    active = {"value": True}
     desktop.transientEditShutdownConfirmationRequested.connect(confirmations.append)
     desktop.closeWindowRequested.connect(lambda: close_requests.append("close"))
-    monkeypatch.setattr(desktop, "get_has_active_sweep_edit", lambda: True)
+    monkeypatch.setattr(desktop, "get_has_active_sweep_edit", lambda: active["value"])
+
+    def cancel_comparison() -> bool:
+        cancellations.append("comparison")
+        active["value"] = False
+        return True
+
     monkeypatch.setattr(
         desktop.configuration_controller.sweep_draft,
         "cancel_comparison",
-        lambda: cancellations.append("comparison") or True,
+        cancel_comparison,
     )
 
     assert not desktop.request_shutdown()
@@ -483,6 +504,11 @@ def test_qml_shutdown_explicitly_cancels_a_transient_sweep_edit_before_close(
     assert not desktop.confirm_transient_edit_shutdown(False)
     assert cancellations == []
     assert close_requests == []
+    assert not desktop.request_shutdown()
+    assert confirmations == [
+        "A Sweep comparison edit is still open. Cancel the edit and close Carnopy?",
+        "A Sweep comparison edit is still open. Cancel the edit and close Carnopy?",
+    ]
     assert desktop.confirm_transient_edit_shutdown(True)
     assert cancellations == ["comparison"]
     assert close_requests == ["close"]
@@ -498,13 +524,24 @@ def test_qml_shutdown_explicitly_cancels_a_transient_preparation_edit_before_clo
     confirmations: list[str] = []
     close_requests: list[str] = []
     cancellations: list[str] = []
+    active = {"value": True}
     desktop.transientEditShutdownConfirmationRequested.connect(confirmations.append)
     desktop.closeWindowRequested.connect(lambda: close_requests.append("close"))
-    monkeypatch.setattr(desktop, "get_has_active_preparation_edit", lambda: True)
+    monkeypatch.setattr(
+        desktop,
+        "get_has_active_preparation_edit",
+        lambda: active["value"],
+    )
+
+    def cancel_scenario() -> bool:
+        cancellations.append("scenario")
+        active["value"] = False
+        return True
+
     monkeypatch.setattr(
         desktop.configuration_controller.preparation_draft,
         "cancel_scenario",
-        lambda: cancellations.append("scenario") or True,
+        cancel_scenario,
     )
 
     assert not desktop.request_shutdown()
@@ -514,9 +551,266 @@ def test_qml_shutdown_explicitly_cancels_a_transient_preparation_edit_before_clo
     assert not desktop.confirm_transient_edit_shutdown(False)
     assert cancellations == []
     assert close_requests == []
+    assert not desktop.request_shutdown()
+    assert confirmations == [
+        "A Preparation scenario edit is still open. Cancel the edit and close Carnopy?",
+        "A Preparation scenario edit is still open. Cancel the edit and close Carnopy?",
+    ]
     assert desktop.confirm_transient_edit_shutdown(True)
     assert cancellations == ["scenario"]
     assert close_requests == ["close"]
+
+
+def test_busy_shutdown_confirmation_is_bound_to_the_exact_worker_session(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    cancellations: list[str] = []
+    confirmations: list[str] = []
+    close_requests: list[str] = []
+    desktop.busyShutdownConfirmationRequested.connect(
+        lambda mode, _message: confirmations.append(mode)
+    )
+    desktop.closeWindowRequested.connect(lambda: close_requests.append("close"))
+    first = SimpleNamespace(owner="sweep", request_type="execute_sweep")
+    replacement = SimpleNamespace(
+        owner="preparation",
+        request_type="execute_preparation",
+    )
+    desktop.request_coordinator._active_session = first
+    monkeypatch.setattr(
+        desktop.sweep_workflow_controller,
+        "cancel",
+        lambda: cancellations.append("sweep") or True,
+    )
+    monkeypatch.setattr(
+        desktop.sweep_workflow_controller,
+        "get_cancellation_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        desktop.preparation_workflow_controller,
+        "cancel",
+        lambda: cancellations.append("preparation") or True,
+    )
+    monkeypatch.setattr(
+        desktop.preparation_workflow_controller,
+        "get_cancellation_available",
+        lambda: True,
+    )
+
+    assert not desktop.request_shutdown()
+    assert confirmations == ["cancel_sweep"]
+    desktop.request_coordinator._active_session = replacement
+    assert not desktop.confirm_busy_shutdown(True)
+    assert cancellations == []
+    assert "worker request changed" in desktop.get_workspace_error_message()
+
+    assert not desktop.request_shutdown()
+    assert confirmations == ["cancel_sweep", "cancel_preparation"]
+    assert desktop.confirm_busy_shutdown(True)
+    assert cancellations == ["preparation"]
+    desktop.request_coordinator._active_session = None
+    desktop._complete_busy_shutdown()
+
+    assert close_requests == ["close"]
+
+
+def test_pending_busy_shutdown_never_cancels_a_replacement_session(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    cancellations: list[str] = []
+    first = SimpleNamespace(owner="sweep", request_type="execute_sweep")
+    replacement = SimpleNamespace(owner="sweep", request_type="execute_sweep")
+    desktop.request_coordinator._active_session = first
+    monkeypatch.setattr(
+        desktop.sweep_workflow_controller,
+        "get_cancellation_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        desktop.sweep_workflow_controller,
+        "cancel",
+        lambda: cancellations.append("cancel") or True,
+    )
+
+    assert not desktop.request_shutdown()
+    assert desktop.confirm_busy_shutdown(True)
+    assert desktop._pending_busy_shutdown == "sweep_waiting"
+    desktop.request_coordinator._active_session = replacement
+    desktop._continue_pending_busy_shutdown()
+
+    assert cancellations == []
+    assert desktop._pending_busy_shutdown == ""
+    assert "Another worker request started" in desktop.get_workspace_error_message()
+    desktop.request_coordinator._active_session = None
+    assert desktop.shutdown()
+
+
+def test_protected_finalization_waits_without_offering_cancellation(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    confirmations: list[str] = []
+    close_requests: list[str] = []
+    session = SimpleNamespace(
+        owner="preparation",
+        request_type="execute_preparation",
+        termination_protected=True,
+    )
+    desktop.request_coordinator._active_session = session
+    desktop.busyShutdownConfirmationRequested.connect(
+        lambda mode, _message: confirmations.append(mode)
+    )
+    desktop.closeWindowRequested.connect(lambda: close_requests.append("close"))
+
+    assert not desktop.request_shutdown()
+    assert confirmations == []
+    assert close_requests == []
+    assert desktop._pending_busy_shutdown == "protected_finalization"
+    assert "Finalizing safely" in desktop.get_workspace_error_message()
+
+    desktop.request_coordinator._active_session = None
+    desktop._complete_busy_shutdown()
+    assert close_requests == ["close"]
+
+
+def test_shutdown_sequences_worker_transient_edit_and_dirty_document(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    busy_confirmations: list[str] = []
+    transient_confirmations: list[str] = []
+    dirty_confirmations: list[str] = []
+    cancellations: list[str] = []
+    close_requests: list[str] = []
+    edit = QObject()
+    edit_active = {"value": True}
+    session = SimpleNamespace(owner="sweep", request_type="execute_sweep")
+    desktop.request_coordinator._active_session = session
+    desktop.busyShutdownConfirmationRequested.connect(
+        lambda mode, _message: busy_confirmations.append(mode)
+    )
+    desktop.transientEditShutdownConfirmationRequested.connect(transient_confirmations.append)
+    desktop.shutdownConfirmationRequested.connect(lambda: dirty_confirmations.append("dirty"))
+    desktop.closeWindowRequested.connect(lambda: close_requests.append("close"))
+    monkeypatch.setattr(
+        desktop.sweep_workflow_controller,
+        "get_cancellation_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        desktop.sweep_workflow_controller,
+        "cancel",
+        lambda: cancellations.append("worker") or True,
+    )
+    monkeypatch.setattr(
+        desktop,
+        "get_has_active_sweep_edit",
+        lambda: edit_active["value"],
+    )
+    monkeypatch.setattr(
+        desktop.configuration_controller.sweep_draft,
+        "get_active_comparison_draft",
+        lambda: edit if edit_active["value"] else None,
+    )
+
+    def cancel_edit() -> bool:
+        cancellations.append("edit")
+        edit_active["value"] = False
+        return True
+
+    monkeypatch.setattr(
+        desktop.configuration_controller.sweep_draft,
+        "cancel_comparison",
+        cancel_edit,
+    )
+    monkeypatch.setattr(
+        desktop.configuration_controller,
+        "needs_discard_confirmation",
+        lambda: True,
+    )
+
+    assert not desktop.request_shutdown()
+    assert busy_confirmations == ["cancel_sweep"]
+    assert desktop.confirm_busy_shutdown(True)
+    assert cancellations == ["worker"]
+
+    desktop.request_coordinator._active_session = None
+    desktop._complete_busy_shutdown()
+    assert len(transient_confirmations) == 1
+    assert dirty_confirmations == []
+    assert close_requests == []
+
+    assert desktop.confirm_transient_edit_shutdown(True)
+    assert cancellations == ["worker", "edit"]
+    assert dirty_confirmations == ["dirty"]
+    assert close_requests == []
+
+    assert desktop.confirm_shutdown(True)
+    assert close_requests == ["close"]
+    assert desktop.request_shutdown()
+
+
+def test_shutdown_confirmations_reject_changed_transient_and_document_state(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    first = QObject()
+    replacement = QObject()
+    active = {"draft": first}
+    cancellations: list[str] = []
+    monkeypatch.setattr(desktop, "get_has_session_plot_edit", lambda: True)
+    monkeypatch.setattr(
+        desktop.session_plot_controller,
+        "get_active_plot_draft",
+        lambda: active["draft"],
+    )
+    monkeypatch.setattr(
+        desktop.session_plot_controller,
+        "cancel_edit",
+        lambda: cancellations.append("cancel") or True,
+    )
+
+    assert not desktop.request_shutdown()
+    active["draft"] = replacement
+    assert not desktop.confirm_transient_edit_shutdown(True)
+    assert cancellations == []
+    assert "unfinished edits changed" in desktop.get_workspace_error_message()
+
+    monkeypatch.setattr(desktop, "get_has_session_plot_edit", lambda: False)
+    monkeypatch.setattr(
+        desktop.configuration_controller,
+        "needs_discard_confirmation",
+        lambda: True,
+    )
+    assert not desktop.request_shutdown()
+    desktop._configuration_state_changed()
+    assert not desktop.confirm_shutdown(True)
+    assert "configuration changed" in desktop.get_workspace_error_message()
+    assert not desktop.confirm_shutdown(True)
+
+    monkeypatch.setattr(
+        desktop.configuration_controller,
+        "needs_discard_confirmation",
+        lambda: False,
+    )
+    assert desktop.shutdown()
 
 
 def test_configuration_attention_facade_accepts_only_stable_sections(

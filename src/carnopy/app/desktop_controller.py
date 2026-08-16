@@ -154,6 +154,15 @@ class DesktopController(QObject):
         self.workspace_controller.pending_operation_changed.connect(
             self.workspace_confirmation_changed
         )
+        self._configuration_state_revision = 0
+        self._pending_busy_shutdown = ""
+        self._pending_busy_confirmation_session: object | None = None
+        self._pending_busy_shutdown_session: object | None = None
+        self._pending_transient_shutdown_context: tuple[tuple[bool, object | None], ...] | None = (
+            None
+        )
+        self._pending_discard_shutdown_context: tuple[object | None, int] | None = None
+        self._approved_discard_shutdown_context: tuple[object | None, int] | None = None
         self.configuration_controller.state_changed.connect(self._configuration_state_changed)
         self.configuration_controller.configuration_document_opened.connect(
             self.configurationDocumentOpened
@@ -172,9 +181,7 @@ class DesktopController(QObject):
         self._workspace_request_timer.setInterval(0)
         self._workspace_request_timer.timeout.connect(self._run_queued_workspace_request)
         self._shutdown = False
-        self._shutdown_discard_confirmed = False
         self._pending_explore_source: Path | None = None
-        self._pending_busy_shutdown = ""
 
     def get_workspace_controller(self) -> QObject:
         return self.workspace_controller
@@ -1772,8 +1779,28 @@ class DesktopController(QObject):
 
     @Slot(result=bool, name="requestShutdown")
     def request_shutdown(self) -> bool:
+        if self._shutdown:
+            return True
         active_session = self.request_coordinator.active_session
         if active_session is not None:
+            if (
+                self._pending_busy_shutdown
+                and active_session is self._pending_busy_shutdown_session
+            ):
+                self.workspace_controller.report_error(
+                    "Carnopy will close after the active worker request finishes safely."
+                )
+                return False
+            self._clear_pending_shutdown_decisions()
+            if bool(getattr(active_session, "termination_protected", False)):
+                self._pending_busy_shutdown = "protected_finalization"
+                self._pending_busy_shutdown_session = active_session
+                self.workspace_controller.report_error(
+                    "Finalizing safely. Carnopy will close after the worker finishes and "
+                    "the remaining close checks pass."
+                )
+                return False
+            self._pending_busy_confirmation_session = active_session
             if (
                 active_session.owner == "execution"
                 and active_session.request_type == "generate_dataset"
@@ -1809,16 +1836,22 @@ class DesktopController(QObject):
                     "after its owned staging cleanup succeeds?",
                 )
             else:
+                self._pending_busy_confirmation_session = None
                 self.workspace_controller.report_error(
                     "Wait for the active worker request to finish before closing Carnopy."
                 )
             return False
         if self.request_coordinator.is_busy:
+            self._pending_busy_confirmation_session = None
             self.workspace_controller.report_error(
                 "Wait for the active worker request to finish before closing Carnopy."
             )
             return False
         if self.get_has_any_transient_edit():
+            self._pending_busy_confirmation_session = None
+            self._approved_discard_shutdown_context = None
+            self._pending_discard_shutdown_context = None
+            self._pending_transient_shutdown_context = self._transient_shutdown_context()
             edit_names = []
             if self.get_has_active_plot_edit():
                 edit_names.append("configured plot")
@@ -1833,23 +1866,35 @@ class DesktopController(QObject):
                 f"A {description} edit is still open. Cancel the edit and close Carnopy?"
             )
             return False
-        if (
-            self.configuration_controller.needs_discard_confirmation()
-            and not self._shutdown_discard_confirmed
-        ):
-            self.shutdownConfirmationRequested.emit()
-            return False
-        self._shutdown_discard_confirmed = False
+        self._pending_transient_shutdown_context = None
+        if self.configuration_controller.needs_discard_confirmation():
+            context = self._discard_shutdown_context()
+            if not self._same_discard_shutdown_context(
+                self._approved_discard_shutdown_context,
+                context,
+            ):
+                self._approved_discard_shutdown_context = None
+                self._pending_discard_shutdown_context = context
+                self.shutdownConfirmationRequested.emit()
+                return False
+        self._pending_discard_shutdown_context = None
+        self._approved_discard_shutdown_context = None
         return self.shutdown()
 
     @Slot(bool, result=bool, name="confirmBusyShutdown")
     def confirm_busy_shutdown(self, confirmed: bool) -> bool:
         if not confirmed:
-            self._pending_busy_shutdown = ""
+            self._clear_pending_busy_shutdown()
             return False
         session = self.request_coordinator.active_session
-        if session is None:
+        if session is None or session is not self._pending_busy_confirmation_session:
+            self._clear_pending_busy_shutdown()
+            self.workspace_controller.report_error(
+                "The active worker request changed. Close Carnopy again to review it."
+            )
             return False
+        self._pending_busy_confirmation_session = None
+        self._pending_busy_shutdown_session = session
         if session.owner == "execution" and session.request_type == "generate_dataset":
             self._pending_busy_shutdown = "generation_waiting"
             self._continue_pending_busy_shutdown()
@@ -1864,23 +1909,38 @@ class DesktopController(QObject):
             return True
         if session.owner == "plot" and session.request_type == "render_plot":
             if not self.session_plot_controller.force_stop():
+                self._clear_pending_busy_shutdown()
                 self.workspace_controller.report_error(
                     "The plot worker cannot be force-stopped safely yet."
                 )
                 return False
             self._pending_busy_shutdown = "plot"
             return True
+        self._clear_pending_busy_shutdown()
         return False
 
     @Slot(bool, result=bool, name="confirmTransientEditShutdown")
     def confirm_transient_edit_shutdown(self, discard_confirmed: bool) -> bool:
         if not discard_confirmed:
+            self._pending_transient_shutdown_context = None
             return False
         if self.request_coordinator.is_busy:
+            self._pending_transient_shutdown_context = None
             self.workspace_controller.report_error(
                 "Wait for the active worker request to finish before closing Carnopy."
             )
             return False
+        context = self._pending_transient_shutdown_context
+        if not self._same_transient_shutdown_context(
+            context,
+            self._transient_shutdown_context(),
+        ):
+            self._pending_transient_shutdown_context = None
+            self.workspace_controller.report_error(
+                "The unfinished edits changed. Close Carnopy again to review them."
+            )
+            return False
+        self._pending_transient_shutdown_context = None
         if self.get_has_active_plot_edit() and not self.visualization_draft.cancel_plot():
             return False
         if self.get_has_session_plot_edit() and not self.session_plot_controller.cancel_edit():
@@ -1895,13 +1955,22 @@ class DesktopController(QObject):
             and not self.configuration_controller.preparation_draft.cancel_scenario()
         ):
             return False
-        self.closeWindowRequested.emit()
+        self._continue_guarded_shutdown()
         return True
 
     @Slot(bool, result=bool, name="confirmShutdown")
     def confirm_shutdown(self, discard_confirmed: bool) -> bool:
         if not discard_confirmed:
-            self._shutdown_discard_confirmed = False
+            self._pending_discard_shutdown_context = None
+            self._approved_discard_shutdown_context = None
+            return False
+        context = self._pending_discard_shutdown_context
+        if not self._same_discard_shutdown_context(context, self._discard_shutdown_context()):
+            self._pending_discard_shutdown_context = None
+            self._approved_discard_shutdown_context = None
+            self.workspace_controller.report_error(
+                "The open configuration changed. Close Carnopy again to review it."
+            )
             return False
         if not self._guard_configuration_lifecycle("closing Carnopy"):
             return False
@@ -1912,9 +1981,9 @@ class DesktopController(QObject):
                 "Wait for the active worker request to finish before closing Carnopy."
             )
             return False
-        self._shutdown_discard_confirmed = True
-        self.closeWindowRequested.emit()
-        return True
+        self._pending_discard_shutdown_context = None
+        self._approved_discard_shutdown_context = context
+        return self._continue_guarded_shutdown()
 
     def _workspace_activated(self, value: object) -> None:
         self._pending_explore_source = None
@@ -1936,6 +2005,7 @@ class DesktopController(QObject):
         self.workspace_confirmation_changed.emit()
 
     def _configuration_state_changed(self) -> None:
+        self._configuration_state_revision += 1
         self.workspace_state_changed.emit()
         self.workspace_confirmation_changed.emit()
 
@@ -1946,6 +2016,8 @@ class DesktopController(QObject):
 
     def _request_state_changed(self, busy: bool) -> None:
         self.workspace_state_changed.emit()
+        if not busy:
+            self._pending_busy_confirmation_session = None
         if not busy and self._pending_busy_shutdown:
             QTimer.singleShot(0, self._complete_busy_shutdown)
 
@@ -1959,6 +2031,12 @@ class DesktopController(QObject):
             return
         session = self.request_coordinator.active_session
         if session is None:
+            return
+        if session is not self._pending_busy_shutdown_session:
+            self._clear_pending_busy_shutdown()
+            self.workspace_controller.report_error(
+                "Another worker request started. Close Carnopy again to review it."
+            )
             return
         if mode == "generation_waiting":
             if (
@@ -1993,9 +2071,19 @@ class DesktopController(QObject):
             self._pending_busy_shutdown = mode
 
     def _complete_busy_shutdown(self) -> None:
-        mode, self._pending_busy_shutdown = self._pending_busy_shutdown, ""
-        if not mode or self.request_coordinator.is_busy:
+        mode = self._pending_busy_shutdown
+        if not mode:
             return
+        active_session = self.request_coordinator.active_session
+        if active_session is self._pending_busy_shutdown_session:
+            return
+        if self.request_coordinator.is_busy:
+            self._clear_pending_busy_shutdown()
+            self.workspace_controller.report_error(
+                "Another worker request started. Close Carnopy again to review it."
+            )
+            return
+        self._clear_pending_busy_shutdown()
         if mode == "plot":
             cleanup_issue = self.session_plot_controller.get_cleanup_issue()
             if cleanup_issue:
@@ -2011,8 +2099,77 @@ class DesktopController(QObject):
                     "The stopped session plot edit could not be cancelled safely."
                 )
                 return
-        if self.request_shutdown():
-            self.closeWindowRequested.emit()
+        self._continue_guarded_shutdown()
+
+    def _continue_guarded_shutdown(self) -> bool:
+        if not self.request_shutdown():
+            return False
+        self.closeWindowRequested.emit()
+        return True
+
+    def _clear_pending_busy_shutdown(self) -> None:
+        self._pending_busy_shutdown = ""
+        self._pending_busy_confirmation_session = None
+        self._pending_busy_shutdown_session = None
+
+    def _clear_pending_shutdown_decisions(self) -> None:
+        self._pending_transient_shutdown_context = None
+        self._pending_discard_shutdown_context = None
+        self._approved_discard_shutdown_context = None
+        self._pending_busy_shutdown = ""
+        self._pending_busy_shutdown_session = None
+        self._pending_busy_confirmation_session = None
+
+    def _transient_shutdown_context(
+        self,
+    ) -> tuple[tuple[bool, object | None], ...]:
+        return (
+            (
+                self.get_has_active_plot_edit(),
+                self.visualization_draft.get_active_plot_draft(),
+            ),
+            (
+                self.get_has_session_plot_edit(),
+                self.session_plot_controller.get_active_plot_draft(),
+            ),
+            (
+                self.get_has_active_sweep_edit(),
+                self.configuration_controller.sweep_draft.get_active_comparison_draft(),
+            ),
+            (
+                self.get_has_active_preparation_edit(),
+                self.configuration_controller.preparation_draft.get_active_scenario_draft(),
+            ),
+        )
+
+    @staticmethod
+    def _same_transient_shutdown_context(
+        expected: tuple[tuple[bool, object | None], ...] | None,
+        current: tuple[tuple[bool, object | None], ...],
+    ) -> bool:
+        if expected is None or len(expected) != len(current):
+            return False
+        return all(
+            expected_active == current_active and expected_draft is current_draft
+            for (expected_active, expected_draft), (current_active, current_draft) in zip(
+                expected,
+                current,
+                strict=True,
+            )
+        )
+
+    def _discard_shutdown_context(self) -> tuple[object | None, int]:
+        return (
+            self.configuration_controller.document,
+            self._configuration_state_revision,
+        )
+
+    @staticmethod
+    def _same_discard_shutdown_context(
+        expected: tuple[object | None, int] | None,
+        current: tuple[object | None, int],
+    ) -> bool:
+        return expected is not None and expected[0] is current[0] and expected[1] == current[1]
 
     def _active_plot_state_changed(self) -> None:
         self.workspace_state_changed.emit()

@@ -1427,8 +1427,9 @@ ApplicationWindow {
         function onBusyShutdownConfirmationRequested(mode, message) {
             busyShutdownDialog.busyMode = mode;
             busyShutdownDialog.bodyText = message;
-            busyShutdownDialog.acceptText = mode === "cancel_generation" ? qsTr("Cancel and close") :
-                                                                           qsTr("Force stop and close");
+            busyShutdownDialog.acceptText = mode === "force_stop_plot" ? qsTr(
+                                                                             "Force stop and close") :
+                                                                         qsTr("Cancel and close");
             busyShutdownDialog.open();
         }
 
@@ -1666,7 +1667,10 @@ ApplicationWindow {
         title: busyMode === "force_stop_plot" ? qsTr("Stop plot render and close?") : (busyMode
                                                                                        === "cancel_sweep"
                                                                                        ? qsTr("Cancel Model Sweep and close?") :
-                                                                                         qsTr("Cancel generation and close?"))
+                                                                                         (busyMode
+                                                                                          === "cancel_preparation"
+                                                                                          ? qsTr("Cancel ML Preparation and close?") :
+                                                                                            qsTr("Cancel generation and close?")))
     }
 
     FileDialog {

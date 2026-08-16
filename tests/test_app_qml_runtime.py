@@ -458,6 +458,41 @@ def test_qml_close_offers_an_explicit_transient_edit_decision(
     assert runtime.close()
 
 
+def test_qml_busy_close_dialog_names_each_worker_policy_truthfully(
+    application: QApplication,
+    tmp_path: Path,
+) -> None:
+    runtime = create_qml_runtime(
+        settings=QSettings(str(tmp_path / "busy-close.ini"), QSettings.Format.IniFormat),
+        application_arguments=[],
+    )
+    root = runtime.engine.rootObjects()[0]
+    dialog = root.findChild(QObject, "busyShutdownDialog")
+    assert dialog is not None
+    cases = (
+        ("cancel_generation", "Cancel generation and close?", "Cancel and close"),
+        ("cancel_sweep", "Cancel Model Sweep and close?", "Cancel and close"),
+        (
+            "cancel_preparation",
+            "Cancel ML Preparation and close?",
+            "Cancel and close",
+        ),
+        ("force_stop_plot", "Stop plot render and close?", "Force stop and close"),
+    )
+
+    for mode, title, accept_text in cases:
+        runtime.controller.busyShutdownConfirmationRequested.emit(mode, "Operation detail")
+        application.processEvents()
+        assert dialog.property("opened") is True
+        assert dialog.property("title") == title
+        assert dialog.property("acceptText") == accept_text
+        assert dialog.property("bodyText") == "Operation detail"
+        dialog.close()
+        application.processEvents()
+
+    assert runtime.close()
+
+
 def test_qml_runtime_teardown_is_idempotent_and_removes_the_close_filter(
     application: QApplication,
     monkeypatch: pytest.MonkeyPatch,

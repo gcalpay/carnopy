@@ -834,6 +834,20 @@ close. Configuration, inspection, and preview operations without a safe
 cancellation path remain wait-only. These decisions are enforced in
 `DesktopController`; QML presents the decision and cannot bypass it.
 
+Every consequential close confirmation is bound to the state its dialog
+described. Busy-close consent retains the exact `RequestSession`; delayed
+cooperative cancellation cannot target a replacement request. Protected
+finalization is wait-only and resumes close processing only after coordinator
+release. Transient-edit consent retains the exact configured plot, session
+plot, Sweep comparison, and Preparation scenario identities, while dirty-close
+consent retains the configuration object and its controller-state revision. A
+stale confirmation is rejected rather than applied to replacement state.
+Worker completion then advances through explicit transient-edit cancellation
+and dirty-document discard in that order, and the final native close request is
+emitted only after every remaining guard passes. QML labels cooperative Sweep
+and Preparation shutdown as cancellation; force-stop wording remains exclusive
+to the eligible session-render path.
+
 The QML Run page follows that same queued root-signal boundary for Validate,
 Generate, Cancel, and Force Stop. It projects the authoritative execution
 controller's exact saved snapshot, progress, terminal result, activity
@@ -1130,7 +1144,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 2 | Package the Precision Grid QML Workspace, Dataset, Visualization, and YAML/Save workflows | Complete; automated, remote, and native acceptance passed |
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete |
 | 4 | Add controlled sweep and preparation worker operations | Complete |
-| 5 | Add structured sweep and preparation QML workflows | In progress through Unit 22B; semantic response and direct-action guards complete, shutdown hardening pending |
+| 5 | Add structured sweep and preparation QML workflows | In progress through Unit 22C; lifecycle hardening complete, packaged qualification and acceptance pending |
 | 6 | Build exact emitted-value 3D scene contracts | Pending |
 | 7 | Integrate native interactive 3D into QML | Pending |
 | 8 | Complete native-3D platform, distribution, documentation, and later-release qualification | Pending |
@@ -1201,7 +1215,7 @@ six-row generation, configured plot, verified inspection, clean workspace
 reopen, and workspace-scoped installed smoke. Its lifecycle regression raised
 the exhaustively verified suite to 837 tests.
 
-Stage 5 is implemented through Unit 22B on `feat/gui2-stage5`. The former
+Stage 5 is implemented through Unit 22C on `feat/gui2-stage5`. The former
 Dataset-only document and controller now provide one global exact-file
 lifecycle for all three public configuration types. The complete structured
 Sweep workflow is enabled in QML. Preparation source profiling, explicit
@@ -1230,15 +1244,17 @@ Preparation inspection hides the tab and restores Summary selection.
 Operation-specific response contexts now prevent terminal configuration,
 inspection, preview, and workflow responses from crossing document, source,
 workspace, saved-snapshot, or plan/source-context replacement. Returned load
-sources and preview blocks must match their requests. Remaining shutdown and
-transition lifecycle hardening, packaged qualification, complete gates, native
-acceptance, and completion documentation remain unfinished. Direct desktop
-slots now enforce global request idleness, transient-editor focus, document
+sources and preview blocks must match their requests. Packaged qualification,
+complete gates, native lifecycle acceptance, and completion documentation
+remain unfinished. Direct desktop slots now enforce global request idleness,
+transient-editor focus, document
 kind, operation-aware edit locking, owned nested state, and session-render
-locking without trusting QML enablement. Unit 22C retains shutdown and the
-remaining transition matrix. This checkpoint changes private desktop ownership
-and presentation infrastructure only; public scientific and distribution
-contracts remain unchanged.
+locking without trusting QML enablement. Shutdown consent is now bound to the
+exact worker, transient editors, and document revision presented by its dialog;
+protected finalization waits safely, and close processing sequences worker,
+temporary-edit, and dirty-document resolution before native teardown. This
+checkpoint changes private desktop ownership and presentation infrastructure
+only; public scientific and distribution contracts remain unchanged.
 
 ## Known current limitations
 
