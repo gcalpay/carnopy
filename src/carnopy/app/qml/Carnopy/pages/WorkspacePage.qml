@@ -20,6 +20,8 @@ Item {
     required property url importFolder
     property int expectedColumns: 1
     readonly property bool controllerAvailable: desktopController !== null
+    readonly property bool configurationActionsVisible: workspaceState === "landing"
+                                                        || workspaceState === "editing"
     readonly property string workspaceState: controllerAvailable ? desktopController.workspaceState :
                                                                    "unavailable"
     property bool initializeSelectionAccepted: false
@@ -34,8 +36,10 @@ Item {
     signal createWorkspaceRequested(string parentPath, string childName)
     signal initializeWorkspaceRequested(string path)
     signal openWorkspaceRequested(string path)
-    signal importDatasetRequested(string path)
+    signal importConfigurationRequested(string path)
     signal newDatasetRequested(string mode)
+    signal newPreparationRequested
+    signal newSweepRequested
     property bool importSelectionAccepted: false
     property string importSelectionPath: ""
 
@@ -90,7 +94,7 @@ Item {
             if (window !== null)
                 window.requestActivate();
             if (root.controllerAvailable)
-                root.importDatasetRequested(path);
+                root.importConfigurationRequested(path);
         });
     }
 
@@ -323,7 +327,7 @@ Item {
                 maximumColumns: 3
                 minimumCardWidth: 300
                 objectName: "newDatasetModeGrid"
-                visible: root.workspaceState === "landing"
+                visible: root.configurationActionsVisible
 
                 Repeater {
                     model: root.controllerAvailable
@@ -345,7 +349,7 @@ Item {
 
                         AppButton {
                             enabled: root.controllerAvailable
-                                     && root.desktopController.datasetConfigController.canCreate
+                                     && root.desktopController.configurationController.canCreate
                             objectName: "newDatasetButton-" + value
                             onClicked: root.newDatasetRequested(value)
                             text: qsTr("New Dataset")
@@ -357,14 +361,67 @@ Item {
 
             Card {
                 Layout.fillWidth: true
+                objectName: "newModelSweepCard"
                 subtitle: qsTr(
-                              "Choose YAML from configs/. Generated datasets are stored in outputs/ and rendered plots in figures/. External YAML remains importable.")
+                              "Compare two or more CoolProp models over one reproducible dataset specification with worker-verified planning and execution.")
+                title: qsTr("Model Sweep")
+                visible: root.configurationActionsVisible
+
+                AppButton {
+                    Accessible.description: qsTr(
+                                                "Create a new structured Model Sweep configuration")
+                    enabled: root.controllerAvailable
+                             && root.desktopController.configurationController.canCreate
+                    iconName: "git-compare-arrows"
+                    objectName: "newModelSweepButton"
+                    onClicked: root.newSweepRequested()
+                    text: qsTr("New Model Sweep")
+                    tone: "primary"
+                }
+            }
+
+            Card {
+                Layout.fillWidth: true
+                meta: root.controllerAvailable
+                      && root.desktopController.preparationWorkflowController.hasBoundSource ? qsTr(
+                                                                                                   "Source bound") :
+                                                                                               qsTr("Source required")
+                metaColor: root.controllerAvailable
+                           && root.desktopController.preparationWorkflowController.hasBoundSource
+                           ? Theme.success : Theme.warning
+                objectName: "newPreparationCard"
+                subtitle: root.controllerAvailable
+                          && root.desktopController.preparationWorkflowController.hasBoundSource
+                          ? qsTr("Create a portable structured Preparation configuration for the explicitly bound verified source.") :
+                            qsTr("Inspect an eligible finalized Dataset or Model Sweep and choose Use for ML Preparation first.")
+                title: qsTr("ML Preparation")
+                visible: root.configurationActionsVisible
+
+                AppButton {
+                    Accessible.description: qsTr(
+                                                "Create a new structured ML Preparation configuration or choose its required source")
+                    enabled: root.controllerAvailable
+                             && root.desktopController.configurationController.canCreate
+                    iconName: "flask-conical"
+                    objectName: "newPreparationButton"
+                    onClicked: root.newPreparationRequested()
+                    text: root.controllerAvailable
+                          && root.desktopController.preparationWorkflowController.hasBoundSource
+                          ? qsTr("New ML Preparation") : qsTr("Choose source in Inspect")
+                    tone: "primary"
+                }
+            }
+
+            Card {
+                Layout.fillWidth: true
+                subtitle: qsTr(
+                              "Choose Dataset, Model Sweep, or Preparation YAML from configs/. The document_type discriminator selects the exact public schema. External YAML remains importable.")
                 title: qsTr("Open or Import Configuration")
-                visible: root.workspaceState === "landing"
+                visible: root.configurationActionsVisible
 
                 AppButton {
                     enabled: root.controllerAvailable
-                             && root.desktopController.datasetConfigController.canImport
+                             && root.desktopController.configurationController.canImport
                     objectName: "importDatasetButton"
                     onClicked: root.openImportDialog()
                     text: qsTr("Choose YAML")

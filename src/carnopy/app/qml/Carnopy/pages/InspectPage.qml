@@ -11,8 +11,12 @@ Item {
     id: root
 
     required property var inspectionController
+    required property var preparationWorkflowController
     property bool focusTable: false
     property int selectedTab: 0
+    readonly property bool preparationInspectionReady: inspectionController.state === "ready"
+                                                       && inspectionController.sourceKind
+                                                       === "preparation"
     property bool fileSelectionAccepted: false
     property string fileSelectionPath: ""
     property bool folderSelectionAccepted: false
@@ -20,10 +24,19 @@ Item {
 
     signal inspectSourceRequested(string path)
     signal moreSourcesRequested
+    signal preparationRequested
+    signal preparationSourceBindRequested
+    signal preparationSourceClearRequested
     signal previewPageRequested(int pageOffset)
     signal refreshRequested
     signal refreshSourcesRequested
     signal selectTableRequested(string tableId)
+
+    onPreparationInspectionReadyChanged: {
+        if (!preparationInspectionReady && selectedTab === 4) {
+            selectedTab = 0;
+        }
+    }
 
     function openExternalFileDialog() {
         if (root.inspectionController.workspaceOutputsUrl.length > 0)
@@ -447,6 +460,14 @@ Item {
                         TabButton {
                             text: qsTr("Diagnostics")
                         }
+                        TabButton {
+                            Accessible.description: qsTr(
+                                                        "Review finalized Preparation quality, scenario, matrix, and baseline evidence")
+                            Accessible.name: qsTr("Preparation audit")
+                            objectName: "inspectionPreparationAuditTab"
+                            text: qsTr("Preparation Audit")
+                            visible: root.preparationInspectionReady
+                        }
                     }
 
                     AppButton {
@@ -483,6 +504,100 @@ Item {
 
                             spacing: Theme.spacingMedium
                             width: parent.width
+
+                            Card {
+                                flat: true
+                                Layout.fillWidth: true
+                                objectName: "preparationSourceCard"
+                                subtitle: root.preparationWorkflowController.hasBoundSource
+                                          ? root.preparationWorkflowController.boundSourcePath :
+                                            qsTr("Inspecting is read-only. An eligible Dataset or Model Sweep becomes Preparation input only after you bind it explicitly.")
+                                title: qsTr("ML Preparation source")
+
+                                Flow {
+                                    Layout.fillWidth: true
+                                    spacing: Theme.spacingSmall
+
+                                    StatusBadge {
+                                        label: {
+                                            if (root.preparationWorkflowController.boundSourceRefreshAvailable)
+                                            return qsTr("Refresh available");
+                                            if (root.preparationWorkflowController.inspectedSourceMatchesBinding)
+                                            return qsTr("Current inspection bound");
+                                            if (root.preparationWorkflowController.hasBoundSource)
+                                            return qsTr("Another source is bound");
+                                            return qsTr("No source bound");
+                                        }
+                                        tone: root.preparationWorkflowController.boundSourceRefreshAvailable
+                                              ? "warning" : (
+                                                    root.preparationWorkflowController.hasBoundSource
+                                                    ? "success" : "neutral")
+                                    }
+
+                                    AppButton {
+                                        enabled: root.preparationWorkflowController.inspectedSourceAvailable
+                                                 && root.inspectionController.canInspect
+                                        objectName: "preparationBindSourceButton"
+                                        onClicked: root.preparationSourceBindRequested()
+                                        text: root.preparationWorkflowController.boundSourceRefreshAvailable
+                                              ? qsTr("Use refreshed source") : (
+                                                    root.preparationWorkflowController.inspectedSourceMatchesBinding
+                                                    ? qsTr("Used for ML Preparation") : qsTr(
+                                                          "Use for ML Preparation"))
+                                        tone: "primary"
+                                        visible: root.inspectionController.preparationEligible &&
+                                                 !root.preparationWorkflowController.inspectedSourceMatchesBinding
+
+                                        ToolTip.text: enabled ? qsTr(
+                                                                    "Bind this exact verified inspection revision for ML Preparation.") :
+                                                                qsTr("This exact inspection revision is already bound.")
+                                        ToolTip.visible: hovered
+                                    }
+
+                                    AppButton {
+                                        enabled: root.preparationWorkflowController.hasBoundSource
+                                                 && root.inspectionController.canInspect
+                                        objectName: "preparationClearSourceButton"
+                                        onClicked: root.preparationSourceClearRequested()
+                                        text: qsTr("Clear source")
+                                        tone: "quiet"
+                                        visible: root.preparationWorkflowController.hasBoundSource
+                                    }
+
+                                    AppButton {
+                                        enabled: root.preparationWorkflowController.hasBoundSource
+                                        objectName: "preparationContinueButton"
+                                        onClicked: root.preparationRequested()
+                                        text: qsTr("Continue to ML Preparation")
+                                        tone: "primary"
+                                        visible: root.preparationWorkflowController.hasBoundSource
+                                    }
+                                }
+
+                                Label {
+                                    Layout.fillWidth: true
+                                    color: Theme.textMuted
+                                    font.family: Theme.sansFamily
+                                    font.pixelSize: 11
+                                    text: {
+                                        if (root.preparationWorkflowController.sourceBindingIssue.length
+                                            > 0)
+                                        return root.preparationWorkflowController.sourceBindingIssue;
+                                        if (root.inspectionController.state === "ready" &&
+                                            !root.inspectionController.preparationEligible)
+                                        return root.inspectionController.preparationIneligibleReason;
+                                        if (root.preparationWorkflowController.hasBoundSource)
+                                        return qsTr("Bound %1 · revision %2").arg(
+                                            root.preparationWorkflowController.boundSourceKind).arg(
+                                            root.preparationWorkflowController.boundSourceRevision.slice(
+                                                0, 12));
+                                        return qsTr(
+                                            "No source is currently bound to ML Preparation.");
+                                    }
+                                    visible: text.length > 0
+                                    wrapMode: Text.Wrap
+                                }
+                            }
 
                             Card {
                                 flat: true
@@ -928,7 +1043,8 @@ Item {
                                 flat: true
                                 Layout.fillWidth: true
                                 title: qsTr("Preparation quality errors")
-                                visible: root.inspectionController.preparationQualityErrorsModel.available
+                                visible: root.inspectionController.preparationQualityErrorsModel.count
+                                         > 0
 
                                 Repeater {
                                     model: root.inspectionController.preparationQualityErrorsModel
@@ -944,6 +1060,62 @@ Item {
                                         wrapMode: Text.Wrap
                                     }
                                 }
+                            }
+                        }
+                    }
+
+                    Flickable {
+                        boundsBehavior: Flickable.StopAtBounds
+                        clip: true
+                        contentHeight: preparationAuditColumn.implicitHeight
+                        contentWidth: width
+                        flickableDirection: Flickable.VerticalFlick
+                        objectName: "inspectionPreparationAuditPane"
+
+                        ScrollBar.vertical: ScrollBar {
+                            policy: ScrollBar.AsNeeded
+                        }
+
+                        ColumnLayout {
+                            id: preparationAuditColumn
+
+                            spacing: Theme.spacingMedium
+                            width: parent.width
+
+                            Card {
+                                flat: true
+                                Layout.fillWidth: true
+                                objectName: "inspectionPreparationAuditIssuesCard"
+                                subtitle: qsTr(
+                                              "Artifact-level audit issues remain visible without hiding the verified evidence that could be accepted.")
+                                title: qsTr("Preparation audit issues")
+                                visible: root.inspectionController.preparationQualityErrorsModel.count
+                                         > 0
+
+                                Repeater {
+                                    model: root.inspectionController.preparationQualityErrorsModel
+
+                                    delegate: Label {
+                                        required property int index
+                                        required property string message
+
+                                        Accessible.name: qsTr("Preparation audit issue: %1").arg(
+                                                             message)
+                                        Layout.fillWidth: true
+                                        color: Theme.danger
+                                        font.family: Theme.sansFamily
+                                        font.pixelSize: 12
+                                        objectName: "inspectionPreparationAuditIssue-" + index
+                                        text: message
+                                        wrapMode: Text.Wrap
+                                    }
+                                }
+                            }
+
+                            PreparationAuditView {
+                                Layout.fillWidth: true
+                                audit: root.inspectionController.preparationAudit
+                                objectName: "inspectionPreparationAuditView"
                             }
                         }
                     }

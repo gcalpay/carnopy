@@ -96,6 +96,13 @@ def test_packaged_resource_manifest_matches_every_installed_byte() -> None:
         if record.owner == "Lucide" and record.packaged_path.startswith("icons/")
     } == set(MANDATORY_ICON_FILES) - first_party_paths
     assert all(packaged_path(path).is_file() for path in MANDATORY_QML_FILES)
+    qml_root = ROOT / "src" / "carnopy" / "app" / "qml"
+    actual_qml = {
+        f"qml/{path.relative_to(qml_root).as_posix()}"
+        for path in qml_root.rglob("*")
+        if path.is_file()
+    }
+    assert set(MANDATORY_QML_FILES) == actual_qml
 
 
 def test_private_qml_runtime_loads_one_warning_free_root(
@@ -458,6 +465,41 @@ def test_qml_close_offers_an_explicit_transient_edit_decision(
     assert runtime.close()
 
 
+def test_qml_busy_close_dialog_names_each_worker_policy_truthfully(
+    application: QApplication,
+    tmp_path: Path,
+) -> None:
+    runtime = create_qml_runtime(
+        settings=QSettings(str(tmp_path / "busy-close.ini"), QSettings.Format.IniFormat),
+        application_arguments=[],
+    )
+    root = runtime.engine.rootObjects()[0]
+    dialog = root.findChild(QObject, "busyShutdownDialog")
+    assert dialog is not None
+    cases = (
+        ("cancel_generation", "Cancel generation and close?", "Cancel and close"),
+        ("cancel_sweep", "Cancel Model Sweep and close?", "Cancel and close"),
+        (
+            "cancel_preparation",
+            "Cancel ML Preparation and close?",
+            "Cancel and close",
+        ),
+        ("force_stop_plot", "Stop plot render and close?", "Force stop and close"),
+    )
+
+    for mode, title, accept_text in cases:
+        runtime.controller.busyShutdownConfirmationRequested.emit(mode, "Operation detail")
+        application.processEvents()
+        assert dialog.property("opened") is True
+        assert dialog.property("title") == title
+        assert dialog.property("acceptText") == accept_text
+        assert dialog.property("bodyText") == "Operation detail"
+        dialog.close()
+        application.processEvents()
+
+    assert runtime.close()
+
+
 def test_qml_runtime_teardown_is_idempotent_and_removes_the_close_filter(
     application: QApplication,
     monkeypatch: pytest.MonkeyPatch,
@@ -642,4 +684,4 @@ def test_qml_sources_pass_non_writing_qt_tooling() -> None:
         timeout=30,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
-    assert completed.stdout == "QML checks passed for 39 file(s).\n"
+    assert completed.stdout == "QML checks passed for 46 file(s).\n"

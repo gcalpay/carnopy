@@ -136,7 +136,7 @@ def test_workspace_page_starts_unavailable_and_uses_only_composition_facade(
     assert "prepare_create" not in _method_names(runtime.controller.workspace_controller)
     assert "prepare_open" not in _method_names(runtime.controller.workspace_controller)
     assert "commit_pending" not in _method_names(runtime.controller.workspace_controller)
-    assert "set_workspace" not in _method_names(runtime.controller.dataset_config_controller)
+    assert "set_workspace" not in _method_names(runtime.controller.configuration_controller)
 
     initialize_dialog = root.findChild(QObject, "initializeFolderDialog")
     open_dialog = root.findChild(QObject, "openFolderDialog")
@@ -230,6 +230,15 @@ def test_qml_facade_creates_workspace_from_parent_and_refreshes_bound_state(
     assert runtime.controller.get_workspace_root_path() == str(target.resolve())
     assert recent.rowCount() == 1
     assert root.findChild(QObject, "newDatasetModeGrid") is not None
+    assert root.findChild(QObject, "newModelSweepCard") is not None
+    sweep_button = root.findChild(QObject, "newModelSweepButton")
+    assert sweep_button is not None
+    assert sweep_button.property("enabled") is True
+    assert root.findChild(QObject, "newPreparationCard") is not None
+    preparation_button = root.findChild(QObject, "newPreparationButton")
+    assert preparation_button is not None
+    assert preparation_button.property("enabled") is True
+    assert preparation_button.property("text") == "Choose source in Inspect"
     assert runtime.warning_capture.runtime_warnings == ()
 
 

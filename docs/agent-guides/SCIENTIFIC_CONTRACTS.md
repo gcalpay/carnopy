@@ -138,8 +138,21 @@ planning and controlled execution for model sweeps and preparation. Planning
 does not create output paths or fit baseline estimators. Execution recomputes
 and verifies the current plan in its short-lived worker, persists Activity only
 for execution, and protects the final immutable rename after all source,
-serialization, and hashing checks succeed. Visible sweep and preparation QML
-workflows remain Stage 5.
+serialization, and hashing checks succeed.
+
+GUI-2 Stage 5 is complete without changing those public contracts. Current
+source uses one exact-byte desktop configuration lifecycle for the three public
+document types, enables the complete structured Model Sweep and Preparation
+QML workflows, and implements Preparation source profiling, explicit source
+binding, structured drafts, planning, execution, and typed inspection of
+finalized Preparation quality, scenario, matrix, and baseline evidence.
+Creating a new Preparation document requires an explicitly bound eligible
+inspection, while opening portable Preparation YAML never invents or serializes
+a source. The source binding is private execution context and never adds a path
+to Preparation YAML. QML remains a typed presentation of the
+same worker-authoritative schemas and scientific operations; no Stage 5 draft,
+profile, issue model, plan projection, or controller property is a public
+Python or inspection interface.
 
 Manual desktop plots must use the inspected dataset source and its integrity
 revision. The GUI supplies a session-only public-shaped request; the worker

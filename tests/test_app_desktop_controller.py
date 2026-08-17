@@ -27,6 +27,7 @@ from carnopy.app.desktop_controller import DesktopController
 from carnopy.app.draft_models import DraftItem
 from carnopy.app.jobs import JobStore
 from carnopy.app.request_coordinator import DesktopRequestCoordinator
+from carnopy.app.scenario_draft import ScenarioDraft
 from carnopy.app.workspace import initialize_workspace
 from carnopy.app.workspace_controller import (
     MAX_RECENT_WORKSPACES,
@@ -91,20 +92,33 @@ def test_desktop_controller_owns_one_composition_and_preserves_settings_identity
     assert desktop.request_coordinator.client is desktop.client
     assert desktop.dataset_draft.parent() is desktop
     assert desktop.visualization_draft.parent() is desktop
-    assert desktop.dataset_config_controller.parent() is desktop
-    assert desktop.dataset_config_controller.coordinator is desktop.request_coordinator
-    assert desktop.dataset_config_controller.dataset_draft is desktop.dataset_draft
-    assert desktop.dataset_config_controller.visualization_draft is desktop.visualization_draft
+    assert desktop.configuration_controller.parent() is desktop
+    assert desktop.configuration_controller.coordinator is desktop.request_coordinator
+    assert desktop.configuration_controller.dataset_draft is desktop.dataset_draft
+    assert desktop.configuration_controller.visualization_draft is desktop.visualization_draft
+    assert desktop.configuration_controller.sweep_draft.parent() is desktop.configuration_controller
+    assert (
+        desktop.configuration_controller.preparation_draft.parent()
+        is desktop.configuration_controller
+    )
     assert desktop.execution_controller.parent() is desktop
     assert desktop.execution_controller.coordinator is desktop.request_coordinator
-    assert desktop.execution_controller.config_controller is desktop.dataset_config_controller
+    assert desktop.execution_controller.config_controller is desktop.configuration_controller
     assert desktop.activity_controller.parent() is desktop
     assert desktop.activity_controller.coordinator is desktop.request_coordinator
     assert desktop.sweep_workflow_controller.parent() is desktop
     assert desktop.sweep_workflow_controller.kind == "sweep"
+    assert (
+        desktop.sweep_workflow_controller.configuration_controller
+        is desktop.configuration_controller
+    )
     assert desktop.preparation_workflow_controller.parent() is desktop
     assert desktop.preparation_workflow_controller.kind == "preparation"
     assert desktop.preparation_workflow_controller.inspection is desktop.inspection_controller
+    assert (
+        desktop.preparation_workflow_controller.configuration_controller
+        is desktop.configuration_controller
+    )
     assert desktop.configured_plot_results_controller.parent() is desktop
     assert desktop.configured_plot_results_controller.activity is desktop.activity_controller
     assert desktop.session_plot_controller.parent() is desktop
@@ -118,8 +132,22 @@ def test_desktop_controller_owns_one_composition_and_preserves_settings_identity
     assert desktop.property("qmlSettings") is desktop.qml_settings
     assert desktop.property("datasetDraft") is desktop.dataset_draft
     assert desktop.property("visualizationDraft") is desktop.visualization_draft
-    assert desktop.property("datasetConfigController") is desktop.dataset_config_controller
+    assert desktop.property("configurationController") is desktop.configuration_controller
+    assert (
+        desktop.configuration_controller.property("sweepDraft")
+        is desktop.configuration_controller.sweep_draft
+    )
+    assert (
+        desktop.configuration_controller.property("preparationDraft")
+        is desktop.configuration_controller.preparation_draft
+    )
+    assert not hasattr(desktop, "dataset_config_controller")
+    assert desktop.property("datasetConfigController") is None
     assert desktop.property("executionController") is desktop.execution_controller
+    assert desktop.property("sweepWorkflowController") is desktop.sweep_workflow_controller
+    assert (
+        desktop.property("preparationWorkflowController") is desktop.preparation_workflow_controller
+    )
     assert desktop.property("activityController") is desktop.activity_controller
     assert (
         desktop.property("configuredPlotResultsController")
@@ -189,7 +217,7 @@ def test_qml_shutdown_requires_explicit_dirty_discard_confirmation(
     desktop.shutdownConfirmationRequested.connect(lambda: confirmations.append("confirm"))
     desktop.closeWindowRequested.connect(lambda: close_requests.append("close"))
     monkeypatch.setattr(
-        desktop.dataset_config_controller,
+        desktop.configuration_controller,
         "needs_discard_confirmation",
         lambda: True,
     )
@@ -198,6 +226,8 @@ def test_qml_shutdown_requires_explicit_dirty_discard_confirmation(
     assert confirmations == ["confirm"]
     assert not desktop.confirm_shutdown(False)
     assert close_requests == []
+    assert not desktop.request_shutdown()
+    assert confirmations == ["confirm", "confirm"]
     assert desktop.confirm_shutdown(True)
     assert close_requests == ["close"]
     assert desktop.request_shutdown()
@@ -271,6 +301,96 @@ def test_qml_shutdown_cancels_generation_then_closes_after_safe_completion(
     assert close_requests == ["close"]
 
 
+def test_qml_shutdown_cancels_sweep_then_closes_after_safe_completion(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    confirmations: list[tuple[str, str]] = []
+    cancellations: list[str] = []
+    close_requests: list[str] = []
+    desktop.busyShutdownConfirmationRequested.connect(
+        lambda mode, message: confirmations.append((mode, message))
+    )
+    desktop.closeWindowRequested.connect(lambda: close_requests.append("close"))
+    desktop.request_coordinator._active_session = SimpleNamespace(
+        owner="sweep",
+        request_type="execute_sweep",
+    )
+    monkeypatch.setattr(
+        desktop.sweep_workflow_controller,
+        "get_cancellation_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        desktop.sweep_workflow_controller,
+        "cancel",
+        lambda: cancellations.append("cancel") or True,
+    )
+
+    assert not desktop.request_shutdown()
+    assert confirmations == [
+        (
+            "cancel_sweep",
+            "Model Sweep execution is active. Cancel it cooperatively and close Carnopy "
+            "after the worker and activity record finish safely?",
+        )
+    ]
+    assert desktop.confirm_busy_shutdown(True)
+    assert cancellations == ["cancel"]
+    desktop.request_coordinator._active_session = None
+    desktop._complete_busy_shutdown()
+
+    assert close_requests == ["close"]
+
+
+def test_qml_shutdown_cancels_preparation_then_closes_after_safe_completion(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    confirmations: list[tuple[str, str]] = []
+    cancellations: list[str] = []
+    close_requests: list[str] = []
+    desktop.busyShutdownConfirmationRequested.connect(
+        lambda mode, message: confirmations.append((mode, message))
+    )
+    desktop.closeWindowRequested.connect(lambda: close_requests.append("close"))
+    desktop.request_coordinator._active_session = SimpleNamespace(
+        owner="preparation",
+        request_type="execute_preparation",
+    )
+    monkeypatch.setattr(
+        desktop.preparation_workflow_controller,
+        "get_cancellation_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        desktop.preparation_workflow_controller,
+        "cancel",
+        lambda: cancellations.append("cancel") or True,
+    )
+
+    assert not desktop.request_shutdown()
+    assert confirmations == [
+        (
+            "cancel_preparation",
+            "ML Preparation execution is active. Cancel it cooperatively and close Carnopy "
+            "after the worker and activity record finish safely?",
+        )
+    ]
+    assert desktop.confirm_busy_shutdown(True)
+    assert cancellations == ["cancel"]
+    desktop.request_coordinator._active_session = None
+    desktop._complete_busy_shutdown()
+
+    assert close_requests == ["close"]
+
+
 def test_plot_cleanup_failure_aborts_pending_busy_shutdown(
     tmp_path: Path,
     application: QCoreApplication,
@@ -317,14 +437,21 @@ def test_qml_shutdown_explicitly_cancels_transient_plot_edits_before_close(
     confirmations: list[str] = []
     close_requests: list[str] = []
     cancellations: list[str] = []
+    active = {"value": True}
     desktop.transientEditShutdownConfirmationRequested.connect(confirmations.append)
     desktop.closeWindowRequested.connect(lambda: close_requests.append("close"))
     monkeypatch.setattr(desktop, "get_has_active_plot_edit", lambda: False)
-    monkeypatch.setattr(desktop, "get_has_session_plot_edit", lambda: True)
+    monkeypatch.setattr(desktop, "get_has_session_plot_edit", lambda: active["value"])
+
+    def cancel_session_edit() -> bool:
+        cancellations.append("session")
+        active["value"] = False
+        return True
+
     monkeypatch.setattr(
         desktop.session_plot_controller,
         "cancel_edit",
-        lambda: cancellations.append("session") or True,
+        cancel_session_edit,
     )
 
     assert not desktop.request_shutdown()
@@ -334,9 +461,356 @@ def test_qml_shutdown_explicitly_cancels_transient_plot_edits_before_close(
     assert not desktop.confirm_transient_edit_shutdown(False)
     assert cancellations == []
     assert close_requests == []
+    assert not desktop.request_shutdown()
+    assert confirmations == [
+        "A session plot edit is still open. Cancel the edit and close Carnopy?",
+        "A session plot edit is still open. Cancel the edit and close Carnopy?",
+    ]
     assert desktop.confirm_transient_edit_shutdown(True)
     assert cancellations == ["session"]
     assert close_requests == ["close"]
+
+
+def test_qml_shutdown_explicitly_cancels_a_transient_sweep_edit_before_close(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    confirmations: list[str] = []
+    close_requests: list[str] = []
+    cancellations: list[str] = []
+    active = {"value": True}
+    desktop.transientEditShutdownConfirmationRequested.connect(confirmations.append)
+    desktop.closeWindowRequested.connect(lambda: close_requests.append("close"))
+    monkeypatch.setattr(desktop, "get_has_active_sweep_edit", lambda: active["value"])
+
+    def cancel_comparison() -> bool:
+        cancellations.append("comparison")
+        active["value"] = False
+        return True
+
+    monkeypatch.setattr(
+        desktop.configuration_controller.sweep_draft,
+        "cancel_comparison",
+        cancel_comparison,
+    )
+
+    assert not desktop.request_shutdown()
+    assert confirmations == [
+        "A Sweep comparison edit is still open. Cancel the edit and close Carnopy?"
+    ]
+    assert not desktop.confirm_transient_edit_shutdown(False)
+    assert cancellations == []
+    assert close_requests == []
+    assert not desktop.request_shutdown()
+    assert confirmations == [
+        "A Sweep comparison edit is still open. Cancel the edit and close Carnopy?",
+        "A Sweep comparison edit is still open. Cancel the edit and close Carnopy?",
+    ]
+    assert desktop.confirm_transient_edit_shutdown(True)
+    assert cancellations == ["comparison"]
+    assert close_requests == ["close"]
+
+
+def test_qml_shutdown_explicitly_cancels_a_transient_preparation_edit_before_close(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    confirmations: list[str] = []
+    close_requests: list[str] = []
+    cancellations: list[str] = []
+    active = {"value": True}
+    desktop.transientEditShutdownConfirmationRequested.connect(confirmations.append)
+    desktop.closeWindowRequested.connect(lambda: close_requests.append("close"))
+    monkeypatch.setattr(
+        desktop,
+        "get_has_active_preparation_edit",
+        lambda: active["value"],
+    )
+
+    def cancel_scenario() -> bool:
+        cancellations.append("scenario")
+        active["value"] = False
+        return True
+
+    monkeypatch.setattr(
+        desktop.configuration_controller.preparation_draft,
+        "cancel_scenario",
+        cancel_scenario,
+    )
+
+    assert not desktop.request_shutdown()
+    assert confirmations == [
+        "A Preparation scenario edit is still open. Cancel the edit and close Carnopy?"
+    ]
+    assert not desktop.confirm_transient_edit_shutdown(False)
+    assert cancellations == []
+    assert close_requests == []
+    assert not desktop.request_shutdown()
+    assert confirmations == [
+        "A Preparation scenario edit is still open. Cancel the edit and close Carnopy?",
+        "A Preparation scenario edit is still open. Cancel the edit and close Carnopy?",
+    ]
+    assert desktop.confirm_transient_edit_shutdown(True)
+    assert cancellations == ["scenario"]
+    assert close_requests == ["close"]
+
+
+def test_busy_shutdown_confirmation_is_bound_to_the_exact_worker_session(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    cancellations: list[str] = []
+    confirmations: list[str] = []
+    close_requests: list[str] = []
+    desktop.busyShutdownConfirmationRequested.connect(
+        lambda mode, _message: confirmations.append(mode)
+    )
+    desktop.closeWindowRequested.connect(lambda: close_requests.append("close"))
+    first = SimpleNamespace(owner="sweep", request_type="execute_sweep")
+    replacement = SimpleNamespace(
+        owner="preparation",
+        request_type="execute_preparation",
+    )
+    desktop.request_coordinator._active_session = first
+    monkeypatch.setattr(
+        desktop.sweep_workflow_controller,
+        "cancel",
+        lambda: cancellations.append("sweep") or True,
+    )
+    monkeypatch.setattr(
+        desktop.sweep_workflow_controller,
+        "get_cancellation_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        desktop.preparation_workflow_controller,
+        "cancel",
+        lambda: cancellations.append("preparation") or True,
+    )
+    monkeypatch.setattr(
+        desktop.preparation_workflow_controller,
+        "get_cancellation_available",
+        lambda: True,
+    )
+
+    assert not desktop.request_shutdown()
+    assert confirmations == ["cancel_sweep"]
+    desktop.request_coordinator._active_session = replacement
+    assert not desktop.confirm_busy_shutdown(True)
+    assert cancellations == []
+    assert "worker request changed" in desktop.get_workspace_error_message()
+
+    assert not desktop.request_shutdown()
+    assert confirmations == ["cancel_sweep", "cancel_preparation"]
+    assert desktop.confirm_busy_shutdown(True)
+    assert cancellations == ["preparation"]
+    desktop.request_coordinator._active_session = None
+    desktop._complete_busy_shutdown()
+
+    assert close_requests == ["close"]
+
+
+def test_pending_busy_shutdown_never_cancels_a_replacement_session(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    cancellations: list[str] = []
+    first = SimpleNamespace(owner="sweep", request_type="execute_sweep")
+    replacement = SimpleNamespace(owner="sweep", request_type="execute_sweep")
+    desktop.request_coordinator._active_session = first
+    monkeypatch.setattr(
+        desktop.sweep_workflow_controller,
+        "get_cancellation_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        desktop.sweep_workflow_controller,
+        "cancel",
+        lambda: cancellations.append("cancel") or True,
+    )
+
+    assert not desktop.request_shutdown()
+    assert desktop.confirm_busy_shutdown(True)
+    assert desktop._pending_busy_shutdown == "sweep_waiting"
+    desktop.request_coordinator._active_session = replacement
+    desktop._continue_pending_busy_shutdown()
+
+    assert cancellations == []
+    assert desktop._pending_busy_shutdown == ""
+    assert "Another worker request started" in desktop.get_workspace_error_message()
+    desktop.request_coordinator._active_session = None
+    assert desktop.shutdown()
+
+
+def test_protected_finalization_waits_without_offering_cancellation(
+    tmp_path: Path,
+    application: QCoreApplication,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    confirmations: list[str] = []
+    close_requests: list[str] = []
+    session = SimpleNamespace(
+        owner="preparation",
+        request_type="execute_preparation",
+        termination_protected=True,
+    )
+    desktop.request_coordinator._active_session = session
+    desktop.busyShutdownConfirmationRequested.connect(
+        lambda mode, _message: confirmations.append(mode)
+    )
+    desktop.closeWindowRequested.connect(lambda: close_requests.append("close"))
+
+    assert not desktop.request_shutdown()
+    assert confirmations == []
+    assert close_requests == []
+    assert desktop._pending_busy_shutdown == "protected_finalization"
+    assert "Finalizing safely" in desktop.get_workspace_error_message()
+
+    desktop.request_coordinator._active_session = None
+    desktop._complete_busy_shutdown()
+    assert close_requests == ["close"]
+
+
+def test_shutdown_sequences_worker_transient_edit_and_dirty_document(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    busy_confirmations: list[str] = []
+    transient_confirmations: list[str] = []
+    dirty_confirmations: list[str] = []
+    cancellations: list[str] = []
+    close_requests: list[str] = []
+    edit = QObject()
+    edit_active = {"value": True}
+    session = SimpleNamespace(owner="sweep", request_type="execute_sweep")
+    desktop.request_coordinator._active_session = session
+    desktop.busyShutdownConfirmationRequested.connect(
+        lambda mode, _message: busy_confirmations.append(mode)
+    )
+    desktop.transientEditShutdownConfirmationRequested.connect(transient_confirmations.append)
+    desktop.shutdownConfirmationRequested.connect(lambda: dirty_confirmations.append("dirty"))
+    desktop.closeWindowRequested.connect(lambda: close_requests.append("close"))
+    monkeypatch.setattr(
+        desktop.sweep_workflow_controller,
+        "get_cancellation_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        desktop.sweep_workflow_controller,
+        "cancel",
+        lambda: cancellations.append("worker") or True,
+    )
+    monkeypatch.setattr(
+        desktop,
+        "get_has_active_sweep_edit",
+        lambda: edit_active["value"],
+    )
+    monkeypatch.setattr(
+        desktop.configuration_controller.sweep_draft,
+        "get_active_comparison_draft",
+        lambda: edit if edit_active["value"] else None,
+    )
+
+    def cancel_edit() -> bool:
+        cancellations.append("edit")
+        edit_active["value"] = False
+        return True
+
+    monkeypatch.setattr(
+        desktop.configuration_controller.sweep_draft,
+        "cancel_comparison",
+        cancel_edit,
+    )
+    monkeypatch.setattr(
+        desktop.configuration_controller,
+        "needs_discard_confirmation",
+        lambda: True,
+    )
+
+    assert not desktop.request_shutdown()
+    assert busy_confirmations == ["cancel_sweep"]
+    assert desktop.confirm_busy_shutdown(True)
+    assert cancellations == ["worker"]
+
+    desktop.request_coordinator._active_session = None
+    desktop._complete_busy_shutdown()
+    assert len(transient_confirmations) == 1
+    assert dirty_confirmations == []
+    assert close_requests == []
+
+    assert desktop.confirm_transient_edit_shutdown(True)
+    assert cancellations == ["worker", "edit"]
+    assert dirty_confirmations == ["dirty"]
+    assert close_requests == []
+
+    assert desktop.confirm_shutdown(True)
+    assert close_requests == ["close"]
+    assert desktop.request_shutdown()
+
+
+def test_shutdown_confirmations_reject_changed_transient_and_document_state(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    first = QObject()
+    replacement = QObject()
+    active = {"draft": first}
+    cancellations: list[str] = []
+    monkeypatch.setattr(desktop, "get_has_session_plot_edit", lambda: True)
+    monkeypatch.setattr(
+        desktop.session_plot_controller,
+        "get_active_plot_draft",
+        lambda: active["draft"],
+    )
+    monkeypatch.setattr(
+        desktop.session_plot_controller,
+        "cancel_edit",
+        lambda: cancellations.append("cancel") or True,
+    )
+
+    assert not desktop.request_shutdown()
+    active["draft"] = replacement
+    assert not desktop.confirm_transient_edit_shutdown(True)
+    assert cancellations == []
+    assert "unfinished edits changed" in desktop.get_workspace_error_message()
+
+    monkeypatch.setattr(desktop, "get_has_session_plot_edit", lambda: False)
+    monkeypatch.setattr(
+        desktop.configuration_controller,
+        "needs_discard_confirmation",
+        lambda: True,
+    )
+    assert not desktop.request_shutdown()
+    desktop._configuration_state_changed()
+    assert not desktop.confirm_shutdown(True)
+    assert "configuration changed" in desktop.get_workspace_error_message()
+    assert not desktop.confirm_shutdown(True)
+
+    monkeypatch.setattr(
+        desktop.configuration_controller,
+        "needs_discard_confirmation",
+        lambda: False,
+    )
+    assert desktop.shutdown()
 
 
 def test_configuration_attention_facade_accepts_only_stable_sections(
@@ -351,11 +825,19 @@ def test_configuration_attention_facade_accepts_only_stable_sections(
     )
 
     assert desktop.request_configuration_attention("dataset", "dataset.properties", 2)
+    assert desktop.request_configuration_attention("sweep", "sweep.backend.reference_model", -1)
+    assert desktop.request_configuration_attention(
+        "preparation",
+        "preparation.scenario.active.name",
+        -1,
+    )
     assert desktop.request_configuration_attention("visualization", "plot.name", -1)
     assert not desktop.request_configuration_attention("workspace", "dataset.mode", -1)
     assert not desktop.request_configuration_attention("dataset", "plot.name", -1)
     assert attention == [
         ("dataset", "dataset.properties", 2),
+        ("sweep", "sweep.backend.reference_model", -1),
+        ("preparation", "preparation.scenario.active.name", -1),
         ("visualization", "plot.name", -1),
     ]
     assert desktop.shutdown()
@@ -398,9 +880,773 @@ def test_execution_facade_routes_qml_intent_to_the_authoritative_controller(
     assert desktop.shutdown()
 
 
+def test_workflow_facade_routes_sweep_and_preparation_control(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    calls: list[str] = []
+    monkeypatch.setattr(
+        desktop.sweep_workflow_controller,
+        "plan",
+        lambda: calls.append("plan") or True,
+    )
+    monkeypatch.setattr(
+        desktop.sweep_workflow_controller,
+        "execute",
+        lambda: calls.append("execute") or True,
+    )
+    monkeypatch.setattr(
+        desktop.sweep_workflow_controller,
+        "cancel",
+        lambda: calls.append("cancel") or True,
+    )
+    monkeypatch.setattr(
+        desktop.sweep_workflow_controller,
+        "force_stop",
+        lambda: calls.append("force_stop") or True,
+    )
+    monkeypatch.setattr(
+        desktop.preparation_workflow_controller,
+        "plan",
+        lambda: calls.append("preparation_plan") or True,
+    )
+    monkeypatch.setattr(
+        desktop.preparation_workflow_controller,
+        "execute",
+        lambda: calls.append("preparation_execute") or True,
+    )
+    monkeypatch.setattr(
+        desktop.preparation_workflow_controller,
+        "cancel",
+        lambda: calls.append("preparation_cancel") or True,
+    )
+    monkeypatch.setattr(
+        desktop.preparation_workflow_controller,
+        "force_stop",
+        lambda: calls.append("preparation_force_stop") or True,
+    )
+
+    assert desktop.request_workflow_plan("sweep")
+    assert desktop.request_workflow_execute("model_sweep")
+    assert desktop.request_workflow_cancel("sweep")
+    assert desktop.request_workflow_force_stop("model_sweep")
+    assert desktop.request_workflow_plan("preparation")
+    assert desktop.request_workflow_execute("preparation")
+    assert desktop.request_workflow_cancel("preparation")
+    assert desktop.request_workflow_force_stop("preparation")
+    assert not desktop.request_workflow_execute("unknown")
+    assert calls == [
+        "plan",
+        "execute",
+        "cancel",
+        "force_stop",
+        "preparation_plan",
+        "preparation_execute",
+        "preparation_cancel",
+        "preparation_force_stop",
+    ]
+    assert desktop.shutdown()
+
+
+def test_active_worker_blocks_direct_global_action_slots(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    calls: list[str] = []
+    for name in (
+        "new_dataset",
+        "new_sweep",
+        "new_preparation",
+        "import_dataset",
+        "import_configuration",
+        "request_save",
+        "request_save_as",
+        "request_validation",
+        "reload_source",
+        "clear_document",
+    ):
+        monkeypatch.setattr(
+            desktop.configuration_controller,
+            name,
+            lambda *_args, operation=name: calls.append(operation) or True,
+        )
+    monkeypatch.setattr(
+        desktop.execution_controller,
+        "validate",
+        lambda: calls.append("dataset_validate") or True,
+    )
+    monkeypatch.setattr(
+        desktop.execution_controller,
+        "generate",
+        lambda: calls.append("dataset_generate") or True,
+    )
+    monkeypatch.setattr(
+        desktop.sweep_workflow_controller,
+        "plan",
+        lambda: calls.append("sweep_plan") or True,
+    )
+    monkeypatch.setattr(
+        desktop.sweep_workflow_controller,
+        "execute",
+        lambda: calls.append("sweep_execute") or True,
+    )
+    desktop.request_coordinator._active_session = SimpleNamespace(
+        owner="sweep",
+        request_type="execute_sweep",
+    )
+
+    assert not desktop.request_new_dataset("property_table", True)
+    assert not desktop.request_new_sweep(True)
+    assert not desktop.request_new_preparation(True)
+    assert not desktop.request_import_dataset("dataset.yaml", True)
+    assert not desktop.request_import_configuration("sweep.yaml", True)
+    assert not desktop.request_save()
+    assert not desktop.request_save_as()
+    assert not desktop.request_validate_configuration()
+    assert not desktop.request_reload_source(True)
+    assert not desktop.request_close_configuration(True)
+    assert not desktop.request_execution_validation()
+    assert not desktop.request_dataset_generation()
+    assert not desktop.request_workflow_plan("sweep")
+    assert not desktop.request_workflow_execute("sweep")
+
+    assert calls == []
+    assert "active worker request" in desktop.get_workspace_error_message()
+    desktop.request_coordinator._active_session = None
+    assert desktop.shutdown()
+
+
+@pytest.mark.parametrize(
+    ("workflow", "draft_name", "section", "field"),
+    [
+        ("sweep", "sweep_draft", "sweep", "sweep.comparison.active.name"),
+        (
+            "preparation",
+            "preparation_draft",
+            "preparation",
+            "preparation.scenario.active.name",
+        ),
+    ],
+)
+def test_active_nested_editor_blocks_direct_plan_and_execute_slots(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    workflow: str,
+    draft_name: str,
+    section: str,
+    field: str,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    draft = getattr(desktop.configuration_controller, draft_name)
+    active_method = (
+        "get_has_active_comparison_edit" if workflow == "sweep" else "get_has_active_scenario_edit"
+    )
+    monkeypatch.setattr(draft, active_method, lambda: True)
+    monkeypatch.setattr(draft, "get_first_invalid_field", lambda: field)
+    monkeypatch.setattr(draft, "get_first_invalid_row", lambda: 2)
+    controller = desktop._workflow_controller(workflow)
+    assert controller is not None
+    calls: list[str] = []
+    monkeypatch.setattr(controller, "plan", lambda: calls.append("plan") or True)
+    monkeypatch.setattr(controller, "execute", lambda: calls.append("execute") or True)
+    attention: list[tuple[str, str, int]] = []
+    desktop.attentionRequested.connect(
+        lambda focus_section, focus_field, row: attention.append((focus_section, focus_field, row))
+    )
+
+    assert not desktop.request_workflow_plan(workflow)
+    assert not desktop.request_workflow_execute(workflow)
+
+    assert calls == []
+    assert attention == [(section, field, 2), (section, field, 2)]
+    monkeypatch.setattr(draft, active_method, lambda: False)
+    assert desktop.shutdown()
+
+
+def test_dataset_and_visualization_slots_follow_worker_edit_policy(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    controller = desktop.configuration_controller
+    monkeypatch.setattr(controller, "get_document_kind", lambda: "dataset")
+    monkeypatch.setattr(controller, "get_editor_available", lambda: True)
+    desktop.dataset_draft.mode_choices.replace(
+        DraftItem(value=value, display=value, canonical=value)
+        for value in ("property_table", "saturation_table")
+    )
+    monkeypatch.setattr(desktop.dataset_draft, "get_mode_name", lambda: "property_table")
+    calls: list[tuple[object, ...]] = []
+    monkeypatch.setattr(
+        desktop.dataset_draft,
+        "set_model_name",
+        lambda value: calls.append(("model", value)) or True,
+    )
+    monkeypatch.setattr(
+        desktop.dataset_draft,
+        "set_output_selected",
+        lambda value, selected: calls.append(("output", value, selected)) or True,
+    )
+    monkeypatch.setattr(
+        desktop.visualization_draft,
+        "set_enabled",
+        lambda enabled: calls.append(("visualization", enabled)) or True,
+    )
+
+    desktop.request_coordinator._active_session = SimpleNamespace(
+        owner="configuration",
+        request_type="validate_configuration",
+    )
+    desktop.request_dataset_model_change("pr")
+    desktop.request_dataset_output_selection("csv", False)
+    desktop.request_visualization_enabled(True)
+    assert not desktop.request_dataset_mode_change("saturation_table")
+    assert calls == []
+
+    desktop.request_coordinator._active_session = SimpleNamespace(
+        owner="execution",
+        request_type="generate_dataset",
+    )
+    desktop.request_dataset_model_change("pr")
+    desktop.request_dataset_output_selection("csv", False)
+    desktop.request_visualization_enabled(True)
+    assert desktop.request_dataset_mode_change("saturation_table")
+
+    assert calls == [
+        ("model", "pr"),
+        ("output", "csv", False),
+        ("visualization", True),
+    ]
+    desktop.cancel_dataset_decision()
+    desktop.request_coordinator._active_session = None
+    assert desktop.shutdown()
+
+
+def test_workflow_creation_and_generic_open_facade_use_global_configuration_lifecycle(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    calls: list[tuple[object, ...]] = []
+    monkeypatch.setattr(
+        desktop.configuration_controller,
+        "new_sweep",
+        lambda confirmed: calls.append(("new_sweep", confirmed)) or True,
+    )
+    monkeypatch.setattr(
+        desktop.configuration_controller,
+        "new_preparation",
+        lambda confirmed: calls.append(("new_preparation", confirmed)) or True,
+    )
+    monkeypatch.setattr(
+        desktop.preparation_workflow_controller,
+        "get_has_bound_source",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        desktop.configuration_controller,
+        "import_configuration",
+        lambda path, confirmed: calls.append(("open", path, confirmed)) or True,
+    )
+    source = tmp_path / "sweep.yaml"
+
+    assert desktop.request_new_sweep(True)
+    assert desktop.request_new_preparation(True)
+    assert desktop.request_import_configuration(QUrl.fromLocalFile(str(source)).toString(), True)
+    assert calls == [
+        ("new_sweep", True),
+        ("new_preparation", True),
+        ("open", str(source), True),
+    ]
+    assert desktop.shutdown()
+
+
+def test_preparation_creation_requires_an_explicit_bound_source_and_routes_to_inspect(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    controller = desktop.configuration_controller
+    controller.workspace = initialize_workspace(tmp_path / "workspace")
+    controller.capabilities = {}
+    assert controller.get_can_create()
+    failures: list[tuple[str, str]] = []
+    navigation: list[tuple[str, str]] = []
+    desktop.activityActionFailed.connect(lambda title, message: failures.append((title, message)))
+    desktop.navigationRequested.connect(lambda page, detail: navigation.append((page, detail)))
+
+    assert not desktop.request_new_preparation()
+    assert navigation == [("inspect", "preparation-source")]
+    assert failures == [
+        (
+            "New ML Preparation",
+            "Inspect an eligible Dataset or Model Sweep and choose Use for ML Preparation "
+            "before creating a Preparation configuration.",
+        )
+    ]
+    assert not controller.new_preparation()
+    assert navigation == [
+        ("inspect", "preparation-source"),
+        ("inspect", "preparation-source"),
+    ]
+    assert len(failures) == 2
+
+    monkeypatch.setattr(
+        desktop.preparation_workflow_controller,
+        "get_has_bound_source",
+        lambda: True,
+    )
+    assert desktop.request_new_preparation(True)
+    assert controller.get_document_kind() == "preparation"
+    assert desktop.shutdown()
+
+
+def test_sweep_editor_facade_enforces_document_and_worker_edit_guards(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    selections: list[tuple[str, bool]] = []
+    monkeypatch.setattr(
+        desktop.configuration_controller.sweep_draft,
+        "set_model_selected",
+        lambda model, selected: selections.append((model, selected)) or True,
+    )
+    monkeypatch.setattr(
+        desktop.configuration_controller,
+        "get_document_kind",
+        lambda: "dataset",
+    )
+    monkeypatch.setattr(desktop.configuration_controller, "get_can_edit", lambda: True)
+
+    desktop.request_sweep_model_selection("pr", True)
+    assert selections == []
+
+    monkeypatch.setattr(
+        desktop.configuration_controller,
+        "get_document_kind",
+        lambda: "model_sweep",
+    )
+    desktop.request_sweep_model_selection("pr", True)
+    assert selections == [("pr", True)]
+
+    monkeypatch.setattr(desktop.configuration_controller, "get_can_edit", lambda: False)
+    desktop.request_sweep_model_selection("srk", True)
+    assert selections == [("pr", True)]
+    assert "active worker request" in desktop.get_workspace_error_message()
+    assert desktop.shutdown()
+
+
+def test_preparation_editor_facade_routes_top_level_structured_intent(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    controller = desktop.configuration_controller
+    draft = controller.preparation_draft
+    calls: list[tuple[object, ...]] = []
+
+    def recorder(name: str) -> object:
+        def record(*values: object) -> bool:
+            calls.append((name, *values))
+            return True
+
+        return record
+
+    for method in (
+        "set_role_selected",
+        "set_categorical_selected",
+        "set_category_mode",
+        "set_explicit_categories",
+        "set_allow_partial_sweep",
+        "set_array_outputs_enabled",
+        "set_include_auxiliary",
+        "set_matrix_enabled",
+        "set_baseline_enabled",
+        "set_array_dtype",
+        "set_correlation_threshold",
+        "set_near_constant_spread",
+        "set_baseline_seed",
+        "set_ridge_alpha",
+        "set_histogram_iterations",
+        "set_array_format_selected",
+        "set_baseline_model_selected",
+    ):
+        monkeypatch.setattr(draft, method, recorder(method))
+    monkeypatch.setattr(controller, "get_document_kind", lambda: "preparation")
+    monkeypatch.setattr(controller, "get_can_edit", lambda: True)
+
+    desktop.request_preparation_role_selection("numeric", "pressure", True)
+    desktop.request_preparation_categorical_selection("phase", True)
+    desktop.request_preparation_category_mode("phase", "observed", True)
+    desktop.request_preparation_explicit_categories("phase", "gas, liquid")
+    desktop.request_preparation_boolean_field("allow_partial_sweep", True)
+    desktop.request_preparation_boolean_field("array_outputs", True)
+    desktop.request_preparation_boolean_field("include_auxiliary", True)
+    desktop.request_preparation_boolean_field("matrix_diagnostics", True)
+    desktop.request_preparation_boolean_field("baseline_diagnostics", True)
+    desktop.request_preparation_text_field("array_dtype", "float64")
+    desktop.request_preparation_text_field("correlation_threshold", "0.95")
+    desktop.request_preparation_text_field("near_constant_relative_spread", "1e-9")
+    desktop.request_preparation_text_field("baseline_random_seed", "42")
+    desktop.request_preparation_text_field("ridge_alpha", "1.0")
+    desktop.request_preparation_text_field("histogram_max_iterations", "100")
+    desktop.request_preparation_array_format_selection("npz", True)
+    desktop.request_preparation_baseline_model_selection("ridge", True)
+    desktop.request_preparation_boolean_field("unknown", True)
+    desktop.request_preparation_text_field("unknown", "ignored")
+
+    assert calls == [
+        ("set_role_selected", "numeric", "pressure", True),
+        ("set_categorical_selected", "phase", True),
+        ("set_category_mode", "phase", "observed", True),
+        ("set_explicit_categories", "phase", "gas, liquid"),
+        ("set_allow_partial_sweep", True),
+        ("set_array_outputs_enabled", True),
+        ("set_include_auxiliary", True),
+        ("set_matrix_enabled", True),
+        ("set_baseline_enabled", True),
+        ("set_array_dtype", "float64"),
+        ("set_correlation_threshold", "0.95"),
+        ("set_near_constant_spread", "1e-9"),
+        ("set_baseline_seed", "42"),
+        ("set_ridge_alpha", "1.0"),
+        ("set_histogram_iterations", "100"),
+        ("set_array_format_selected", "npz", True),
+        ("set_baseline_model_selected", "ridge", True),
+    ]
+    assert desktop.shutdown()
+
+
+def test_preparation_editor_facade_enforces_document_and_worker_edit_guards(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    controller = desktop.configuration_controller
+    selections: list[tuple[str, str, bool]] = []
+    monkeypatch.setattr(
+        controller.preparation_draft,
+        "set_role_selected",
+        lambda role, value, selected: selections.append((role, value, selected)) or True,
+    )
+    monkeypatch.setattr(controller, "get_document_kind", lambda: "dataset")
+    monkeypatch.setattr(controller, "get_can_edit", lambda: True)
+
+    desktop.request_preparation_role_selection("target", "specific_enthalpy", True)
+    assert selections == []
+
+    monkeypatch.setattr(controller, "get_document_kind", lambda: "preparation")
+    desktop.request_preparation_role_selection("target", "specific_enthalpy", True)
+    assert selections == [("target", "specific_enthalpy", True)]
+
+    monkeypatch.setattr(controller, "get_can_edit", lambda: False)
+    desktop.request_preparation_role_selection("target", "specific_entropy", True)
+    assert selections == [("target", "specific_enthalpy", True)]
+    assert "active worker request" in desktop.get_workspace_error_message()
+    assert desktop.shutdown()
+
+
+def test_preparation_scenario_facade_routes_only_the_owned_temporary_editor(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    controller = desktop.configuration_controller
+    preparation = controller.preparation_draft
+    active = ScenarioDraft(parent=preparation)
+    foreign = ScenarioDraft()
+    calls: list[tuple[object, ...]] = []
+
+    def recorder(name: str) -> object:
+        def record(*values: object) -> bool:
+            calls.append((name, *values))
+            return True
+
+        return record
+
+    for method in (
+        "begin_add_scenario",
+        "begin_edit_scenario",
+        "commit_scenario",
+        "cancel_scenario",
+        "remove_scenario",
+        "move_scenario",
+    ):
+        monkeypatch.setattr(preparation, method, recorder(method))
+    for method in (
+        "set_name",
+        "set_seed_text",
+        "set_field",
+        "set_remainder",
+        "apply_kind_change",
+        "set_partition",
+        "remove_partition",
+        "set_categorical_holdout",
+        "set_range_holdout",
+        "set_coordinate_holdout",
+        "remove_holdout",
+        "set_strata_categorical",
+        "set_numeric_bins",
+        "remove_numeric_bins",
+        "add_transformation",
+        "remove_transformation",
+        "move_transformation",
+    ):
+        monkeypatch.setattr(active, method, recorder(method))
+    monkeypatch.setattr(preparation, "get_active_scenario_draft", lambda: active)
+    monkeypatch.setattr(controller, "get_document_kind", lambda: "preparation")
+    monkeypatch.setattr(controller, "get_can_edit", lambda: True)
+
+    assert desktop.request_preparation_add_scenario()
+    assert desktop.request_preparation_edit_scenario(2)
+    assert desktop.request_preparation_commit_scenario()
+    assert desktop.request_preparation_cancel_scenario()
+    assert desktop.request_preparation_remove_scenario(3)
+    assert desktop.request_preparation_move_scenario(3, 1)
+    desktop.request_preparation_scenario_field_change(active, "name", "holdout")
+    desktop.request_preparation_scenario_field_change(active, "seed", "42")
+    desktop.request_preparation_scenario_field_change(active, "field", "pressure")
+    desktop.request_preparation_scenario_field_change(active, "remainder", "train")
+    desktop.request_preparation_scenario_field_change(active, "unknown", "ignored")
+    desktop.request_preparation_scenario_kind_change(active, "shuffle", True)
+    desktop.request_preparation_scenario_partition(active, "test", "0.2")
+    desktop.request_preparation_scenario_remove_partition(active, "validation")
+    desktop.request_preparation_scenario_categorical_holdout(active, "test", "gas")
+    desktop.request_preparation_scenario_range_holdout(active, "test", "1", "2")
+    desktop.request_preparation_scenario_coordinate_holdout(
+        active,
+        "test",
+        "pressure",
+        "1",
+        "2",
+    )
+    desktop.request_preparation_scenario_remove_holdout(active, "test")
+    desktop.request_preparation_scenario_strata(active, "fluid, phase")
+    desktop.request_preparation_scenario_numeric_bins(active, "temperature", "250, 300")
+    desktop.request_preparation_scenario_remove_numeric_bins(active, "temperature")
+    desktop.request_preparation_scenario_transformation_add(
+        active,
+        "pressure",
+        "log10, standard",
+    )
+    desktop.request_preparation_scenario_transformation_remove(active, 1)
+    desktop.request_preparation_scenario_transformation_move(active, 1, 0)
+
+    assert calls == [
+        ("begin_add_scenario",),
+        ("begin_edit_scenario", 2),
+        ("commit_scenario",),
+        ("cancel_scenario",),
+        ("remove_scenario", 3),
+        ("move_scenario", 3, 1),
+        ("set_name", "holdout"),
+        ("set_seed_text", "42"),
+        ("set_field", "pressure"),
+        ("set_remainder", "train"),
+        ("apply_kind_change", "shuffle", True),
+        ("set_partition", "test", "0.2"),
+        ("remove_partition", "validation"),
+        ("set_categorical_holdout", "test", "gas"),
+        ("set_range_holdout", "test", "1", "2"),
+        ("set_coordinate_holdout", "test", "pressure", "1", "2"),
+        ("remove_holdout", "test"),
+        ("set_strata_categorical", "fluid, phase"),
+        ("set_numeric_bins", "temperature", "250, 300"),
+        ("remove_numeric_bins", "temperature"),
+        ("add_transformation", "pressure", "log10, standard"),
+        ("remove_transformation", 1),
+        ("move_transformation", 1, 0),
+    ]
+
+    desktop.request_preparation_scenario_field_change(foreign, "name", "foreign")
+    assert calls[-1] == ("move_transformation", 1, 0)
+
+    monkeypatch.setattr(controller, "get_document_kind", lambda: "dataset")
+    assert not desktop.request_preparation_add_scenario()
+    desktop.request_preparation_scenario_field_change(active, "name", "wrong-kind")
+    assert calls[-1] == ("move_transformation", 1, 0)
+
+    monkeypatch.setattr(controller, "get_document_kind", lambda: "preparation")
+    monkeypatch.setattr(controller, "get_can_edit", lambda: False)
+    assert not desktop.request_preparation_add_scenario()
+    desktop.request_preparation_scenario_field_change(active, "name", "busy")
+    assert calls[-1] == ("move_transformation", 1, 0)
+    assert "active worker request" in desktop.get_workspace_error_message()
+    foreign.deleteLater()
+    assert desktop.shutdown()
+
+
+def test_workflow_result_handoff_inspects_exact_finalized_outputs_without_rebinding(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    sweep_output = tmp_path / "workspace" / "outputs" / "sweep-run"
+    preparation_output = tmp_path / "workspace" / "outputs" / "preparation-run"
+    inspected: list[str] = []
+    navigation: list[tuple[str, str]] = []
+    failures: list[tuple[str, str]] = []
+    binding_calls: list[str] = []
+    desktop.navigationRequested.connect(lambda page, detail: navigation.append((page, detail)))
+    desktop.activityActionFailed.connect(lambda title, message: failures.append((title, message)))
+    monkeypatch.setattr(
+        desktop.sweep_workflow_controller,
+        "get_result_output_directory",
+        lambda: str(sweep_output),
+    )
+    monkeypatch.setattr(
+        desktop.preparation_workflow_controller,
+        "get_result_output_directory",
+        lambda: str(preparation_output),
+    )
+    monkeypatch.setattr(
+        desktop.preparation_workflow_controller,
+        "bind_inspected_source",
+        lambda: binding_calls.append("bind") or True,
+    )
+    monkeypatch.setattr(
+        desktop.inspection_controller,
+        "inspect_source",
+        lambda value: inspected.append(str(value)) or True,
+    )
+    refreshed_sources: list[str] = []
+    monkeypatch.setattr(
+        desktop.inspection_controller,
+        "refresh_sources",
+        lambda: refreshed_sources.append("refresh"),
+    )
+
+    assert desktop.request_workflow_inspect_result("sweep")
+    assert desktop.request_workflow_inspect_result("preparation")
+    assert inspected == [str(sweep_output), str(preparation_output)]
+    assert navigation == [("inspect", ""), ("inspect", "")]
+    assert binding_calls == []
+    assert failures == []
+    desktop.preparation_workflow_controller.output_finalized.emit(preparation_output)
+    assert refreshed_sources == ["refresh"]
+
+    assert not desktop.request_workflow_inspect_result("unknown")
+    assert failures == [
+        (
+            "Inspect Result",
+            "Complete this workflow successfully before inspecting its finalized output.",
+        )
+    ]
+    assert desktop.shutdown()
+
+
+def test_preparation_source_facade_requires_confirmation_for_a_current_plan(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    controller = desktop.preparation_workflow_controller
+    calls: list[str] = []
+    confirmations: list[str] = []
+    desktop.preparationSourceClearConfirmationRequested.connect(
+        lambda: confirmations.append("clear")
+    )
+    monkeypatch.setattr(
+        controller,
+        "bind_inspected_source",
+        lambda: calls.append("bind") or True,
+    )
+    monkeypatch.setattr(controller, "get_has_bound_source", lambda: True)
+    monkeypatch.setattr(controller, "get_plan_current", lambda: True)
+    monkeypatch.setattr(
+        controller,
+        "clear_bound_source",
+        lambda: calls.append("clear") or True,
+    )
+
+    assert desktop.request_bind_inspected_preparation_source()
+    assert not desktop.request_clear_preparation_source()
+    assert confirmations == ["clear"]
+    assert calls == ["bind"]
+
+    assert desktop.request_clear_preparation_source(confirmed=True)
+    assert calls == ["bind", "clear"]
+
+    monkeypatch.setattr(controller, "get_plan_current", lambda: False)
+    assert desktop.request_clear_preparation_source()
+    assert calls == ["bind", "clear", "clear"]
+    assert confirmations == ["clear"]
+    assert desktop.shutdown()
+
+
+def test_bound_preparation_profile_is_the_only_profile_applied_to_the_draft(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    source = tmp_path / "workspace" / "outputs" / "dataset-run"
+    profile = {"source_kind": "dataset_run", "inspection_revision": "a" * 64}
+    applied: list[object] = []
+    monkeypatch.setattr(
+        desktop.preparation_workflow_controller,
+        "bound_source_snapshot",
+        lambda: (source, "a" * 64, {"source_path": str(source)}, profile),
+    )
+    monkeypatch.setattr(
+        desktop.configuration_controller.preparation_draft,
+        "apply_source_profile",
+        applied.append,
+    )
+
+    desktop._preparation_source_binding_changed()
+    assert applied == [profile]
+
+    monkeypatch.setattr(
+        desktop.preparation_workflow_controller,
+        "bound_source_snapshot",
+        lambda: None,
+    )
+    desktop._preparation_source_binding_changed()
+    assert applied == [profile, None]
+    assert desktop.shutdown()
+
+
+@pytest.mark.parametrize(
+    "controller_name",
+    [
+        "execution_controller",
+        "sweep_workflow_controller",
+        "preparation_workflow_controller",
+    ],
+)
 def test_execution_record_changes_refresh_the_shared_activity_projection(
     tmp_path: Path,
     application: QCoreApplication,
+    controller_name: str,
 ) -> None:
     del application
     desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
@@ -415,7 +1661,7 @@ def test_execution_record_changes_refresh_the_shared_activity_projection(
         config_sha256="a" * 64,
     )
 
-    desktop.execution_controller.activity_record_changed.emit()
+    getattr(desktop, controller_name).activity_record_changed.emit()
 
     assert desktop.activity_controller.records_model.get_count() == 1
     assert desktop.activity_controller.records_model.rows()[0]["state"] == "interrupted"
@@ -523,7 +1769,7 @@ def test_save_as_facade_converts_qml_file_urls_at_the_composition_boundary(
     destination = tmp_path / "workspace" / "configs" / "dataset.yaml"
     observed: list[str] = []
     monkeypatch.setattr(
-        desktop.dataset_config_controller,
+        desktop.configuration_controller,
         "save_path_selected",
         lambda path: observed.append(path) or True,
     )
@@ -542,7 +1788,7 @@ def test_desktop_workspace_facade_validates_create_name_and_binds_configuration_
     desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
     activated: list[object] = []
     monkeypatch.setattr(
-        desktop.dataset_config_controller,
+        desktop.configuration_controller,
         "set_workspace",
         activated.append,
     )
@@ -573,7 +1819,7 @@ def test_desktop_workspace_facade_requires_initialization_confirmation(
 ) -> None:
     del application
     desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
-    monkeypatch.setattr(desktop.dataset_config_controller, "set_workspace", lambda _value: None)
+    monkeypatch.setattr(desktop.configuration_controller, "set_workspace", lambda _value: None)
     target = tmp_path / "existing"
     target.mkdir()
 
@@ -596,9 +1842,9 @@ def test_desktop_workspace_facade_rechecks_dirty_confirmation_before_commit(
 ) -> None:
     del application
     desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
-    monkeypatch.setattr(desktop.dataset_config_controller, "set_workspace", lambda _value: None)
+    monkeypatch.setattr(desktop.configuration_controller, "set_workspace", lambda _value: None)
     monkeypatch.setattr(
-        desktop.dataset_config_controller,
+        desktop.configuration_controller,
         "needs_discard_confirmation",
         lambda: True,
     )
@@ -677,7 +1923,10 @@ def test_active_plot_edit_blocks_all_composition_lifecycle_paths(
     )
     for name in (
         "new_dataset",
+        "new_sweep",
+        "new_preparation",
         "import_dataset",
+        "import_configuration",
         "request_save",
         "request_save_as",
         "request_validation",
@@ -686,13 +1935,16 @@ def test_active_plot_edit_blocks_all_composition_lifecycle_paths(
         "apply_coordinate_change",
     ):
         monkeypatch.setattr(
-            desktop.dataset_config_controller,
+            desktop.configuration_controller,
             name,
             lambda *_args, operation=name: calls.append(operation) or True,
         )
 
     assert not desktop.request_new_dataset("property_table")
+    assert not desktop.request_new_sweep()
+    assert not desktop.request_new_preparation()
     assert not desktop.request_import_dataset("input.yaml")
+    assert not desktop.request_import_configuration("input.yaml")
     assert not desktop.request_save()
     assert not desktop.request_save_as()
     assert not desktop.request_validate_configuration()
@@ -704,12 +1956,82 @@ def test_active_plot_edit_blocks_all_composition_lifecycle_paths(
     assert not desktop.request_visualization_edit_plot(0)
     assert not desktop.request_visualization_remove_plot(0)
     assert not desktop.request_visualization_move_plot(0, 1)
-    assert not desktop.dataset_config_controller.clear_document(discard_confirmed=True)
+    assert not desktop.configuration_controller.clear_document(discard_confirmed=True)
     assert not desktop.shutdown()
 
     assert calls == []
     assert attention
     assert all(item == ("visualization", "visualization.plots", -1) for item in attention)
+
+
+def test_active_preparation_edit_blocks_workspace_and_configuration_lifecycle(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del application
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    preparation = desktop.configuration_controller.preparation_draft
+    calls: list[str] = []
+    attention: list[tuple[str, str, int]] = []
+    desktop.attentionRequested.connect(
+        lambda section, field, row: attention.append((section, field, row))
+    )
+    monkeypatch.setattr(preparation, "get_has_active_scenario_edit", lambda: True)
+    monkeypatch.setattr(
+        preparation,
+        "get_first_invalid_field",
+        lambda: "preparation.scenario.active.name",
+    )
+    monkeypatch.setattr(preparation, "get_first_invalid_row", lambda: -1)
+    for name in (
+        "new_dataset",
+        "new_sweep",
+        "new_preparation",
+        "import_dataset",
+        "import_configuration",
+        "request_save",
+        "request_save_as",
+        "request_validation",
+        "reload_source",
+    ):
+        monkeypatch.setattr(
+            desktop.configuration_controller,
+            name,
+            lambda *_args, operation=name: calls.append(operation) or True,
+        )
+    preflight_calls: list[str] = []
+    monkeypatch.setattr(
+        desktop.workspace_controller,
+        "prepare_create",
+        lambda _path: preflight_calls.append("workspace") or True,
+    )
+
+    assert desktop.get_has_active_preparation_edit()
+    assert desktop.get_has_any_transient_edit()
+    assert not desktop.get_can_change_workspace()
+    assert not desktop.prepare_create_workspace_path(str(tmp_path / "workspace"))
+    assert not desktop.request_new_dataset("property_table")
+    assert not desktop.request_new_sweep()
+    assert not desktop.request_new_preparation()
+    assert not desktop.request_import_dataset("input.yaml")
+    assert not desktop.request_import_configuration("input.yaml")
+    assert not desktop.request_save()
+    assert not desktop.request_save_as()
+    assert not desktop.request_validate_configuration()
+    assert not desktop.request_reload_source()
+    assert not desktop.request_close_configuration()
+    assert not desktop.shutdown()
+
+    assert calls == []
+    assert preflight_calls == []
+    assert attention
+    assert all(
+        item == ("preparation", "preparation.scenario.active.name", -1) for item in attention
+    )
+    assert "Preparation scenario" in desktop.get_workspace_error_message()
+    monkeypatch.setattr(preparation, "get_has_active_scenario_edit", lambda: False)
+    assert desktop.shutdown()
 
 
 def test_session_plot_edit_guards_replacement_but_not_configuration_save(
@@ -737,7 +2059,7 @@ def test_session_plot_edit_guards_replacement_but_not_configuration_save(
     )
     save_calls: list[str] = []
     monkeypatch.setattr(
-        desktop.dataset_config_controller,
+        desktop.configuration_controller,
         "request_save",
         lambda *_args: save_calls.append("save") or True,
     )
@@ -759,9 +2081,16 @@ def test_session_plot_edit_guards_replacement_but_not_configuration_save(
 def test_visualization_facade_accepts_only_the_owned_active_plot_and_mappings(
     tmp_path: Path,
     application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     del application
     desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    monkeypatch.setattr(
+        desktop.configuration_controller,
+        "get_document_kind",
+        lambda: "dataset",
+    )
+    monkeypatch.setattr(desktop.configuration_controller, "get_can_edit", lambda: True)
     draft = desktop.visualization_draft
     draft.apply_capabilities(
         {
@@ -817,6 +2146,18 @@ def test_visualization_facade_accepts_only_the_owned_active_plot_and_mappings(
 
     assert active.get_name() == "density"
     assert active.filters.raw_rows() == (("temperature", "300"),)
+
+    monkeypatch.setattr(draft, "get_active_plot_draft", lambda: None)
+    monkeypatch.setattr(
+        desktop.session_plot_controller,
+        "get_active_plot_draft",
+        lambda: active,
+    )
+    monkeypatch.setattr(desktop.session_plot_controller, "get_is_rendering", lambda: True)
+    desktop.request_plot_field_change(active, "name", "rendering-mutation")
+    assert active.get_name() == "density"
+    assert "active plot worker" in desktop.get_workspace_error_message()
+
     assert desktop.request_visualization_cancel_plot()
     assert desktop.shutdown()
 
@@ -828,6 +2169,12 @@ def test_dataset_replacement_decisions_are_owned_by_desktop_facade(
 ) -> None:
     del application
     desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    monkeypatch.setattr(
+        desktop.configuration_controller,
+        "get_document_kind",
+        lambda: "dataset",
+    )
+    monkeypatch.setattr(desktop.configuration_controller, "get_can_edit", lambda: True)
     desktop.dataset_draft.mode_choices.replace(
         DraftItem(value=value, display=value, canonical=value)
         for value in ("property_table", "saturation_table")
@@ -840,12 +2187,12 @@ def test_dataset_replacement_decisions_are_owned_by_desktop_facade(
     monkeypatch.setattr(desktop.dataset_draft, "get_coordinate_name", lambda: "temperature")
     applied: list[tuple[str, str]] = []
     monkeypatch.setattr(
-        desktop.dataset_config_controller,
+        desktop.configuration_controller,
         "apply_mode_change",
         lambda value: applied.append(("mode", value)) or True,
     )
     monkeypatch.setattr(
-        desktop.dataset_config_controller,
+        desktop.configuration_controller,
         "apply_coordinate_change",
         lambda value: applied.append(("coordinate", value)) or True,
     )

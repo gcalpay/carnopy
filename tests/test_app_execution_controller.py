@@ -17,8 +17,8 @@ from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QApplication
 
 from carnopy.app.client import TransportOutcome, WorkerClient
-from carnopy.app.config_controller import DatasetConfigController
-from carnopy.app.config_document import ConfigDocumentError, SavedConfigSnapshot
+from carnopy.app.config_controller import ConfigurationController
+from carnopy.app.config_document import ConfigDocumentError, DocumentType, SavedConfigSnapshot
 from carnopy.app.execution_controller import DatasetExecutionController
 from carnopy.app.jobs import JobStore
 from carnopy.app.protocol import EventType, RequestType, WorkerEvent
@@ -123,7 +123,12 @@ class StubConfigController(QObject):
             workspace_owned=True,
         )
 
-    def execution_snapshot(self) -> SavedConfigSnapshot:
+    def execution_snapshot(
+        self,
+        *,
+        expected_document_type: DocumentType = "dataset",
+    ) -> SavedConfigSnapshot:
+        assert expected_document_type == "dataset"
         if self.snapshot_issue is not None:
             raise ConfigDocumentError(self.snapshot_issue)
         return self.snapshot
@@ -153,16 +158,17 @@ def controller_for(
     content = b"schema_version: 2\n"
     config_path.write_bytes(content)
     snapshot = SavedConfigSnapshot(
-        config_path.resolve(),
-        content,
-        hashlib.sha256(content).hexdigest(),
+        path=config_path.resolve(),
+        yaml_bytes=content,
+        sha256=hashlib.sha256(content).hexdigest(),
+        document_type="dataset",
     )
     config = StubConfigController(snapshot)
     transport = StubTransport()
     coordinator = DesktopRequestCoordinator(cast(WorkerClient, transport))
     controller = DatasetExecutionController(
         coordinator,
-        cast(DatasetConfigController, config),
+        cast(ConfigurationController, config),
     )
     controller.set_workspace(workspace)
     return controller, config, coordinator, transport, workspace

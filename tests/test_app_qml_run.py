@@ -85,7 +85,7 @@ def _wait_until(
 
 def _save_saturation_configuration(runtime: QmlApplicationRuntime) -> Path:
     desktop = runtime.controller
-    config = desktop.dataset_config_controller
+    config = desktop.configuration_controller
     workspace = config.workspace
     assert workspace is not None
     assert desktop.request_new_dataset("saturation_table")
@@ -237,7 +237,7 @@ def test_run_validation_uses_the_facade_and_persists_activity(
     assert inspector_state is not None
     assert inspector_state.property("text") == "Succeeded"
 
-    workspace = desktop.dataset_config_controller.workspace
+    workspace = desktop.configuration_controller.workspace
     assert workspace is not None
     [record] = JobStore(workspace.private_directory).load()
     assert record.data is not None

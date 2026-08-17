@@ -50,6 +50,65 @@ auxiliary export is explicitly enabled. The manifest records the original
 column, vocabulary, code order, missing-value code, dtype, and output-array
 name.
 
+## Desktop exposure checkpoint
+
+GUI-2 Stage 4 established worker-authoritative, revision-bound Preparation
+planning and execution without adding a visible editor. Stage 5 is complete:
+
+- Inspect derives typed Preparation eligibility and capability projections
+  from verified dataset-run or model-sweep metadata;
+- the Preparation workflow explicitly binds a copied inspection path,
+  revision, descriptor, and profile, so ordinary inspection of another
+  artifact cannot silently change scientific execution context;
+- source context remains outside portable Preparation YAML and source changes
+  never rewrite selected configuration;
+- Python-owned drafts expose the complete current features, categoricals,
+  targets, auxiliary fields, source policy, outputs, matrix settings, baseline
+  settings, all eight scenario kinds, and ordered transformations;
+- planning and execution consume an exact saved Preparation snapshot plus the
+  explicit binding, and finalized results retain current, stale, or unrelated
+  identity independently of page lifetime; and
+- the packaged Preparation page and scenario editor are enabled through normal
+  navigation, guarded Workspace creation, global document commands, source
+  actions, and typed workflow context state; and
+- finalized `data/quality_flags.parquet` is available through the same
+  containment-checked, hash-verified, revision-bound, and bounded table-preview
+  path as other Preparation tables, while corruption remains a reported quality
+  issue rather than hiding the main bundle; and
+- a Qt-independent audit projection validates and deterministically flattens
+  finalized scenario, partition, duplicate-state, structured-grid, matrix,
+  correlation, singular-value, and baseline evidence into typed row contracts,
+  with explicit missing-value state and no inferred leakage claims when verified
+  scenario-detail evidence is absent; and
+- the worker supplies those scenario details only after bundle containment,
+  recorded-hash, exact-byte, name, kind, and partition checks, while their file
+  identities contribute to the inspection revision; the inspection controller
+  validates the full projection before publishing its focused typed models and
+  clears them when inspection becomes stale; and
+- a reusable packaged audit component presents those exact models in bounded,
+  contextual, responsive quality/scenario, matrix, and baseline sections and is
+  directly tested with populated and unavailable evidence; and
+- Inspect exposes that component only for a successfully accepted Preparation
+  bundle, keeps exact audit-artifact issues beside accepted evidence, preserves
+  explicit legacy-unavailable state, and hides an obsolete selected audit tab
+  when the inspected source changes; and
+- operation-specific response contexts, direct-slot action guards, and
+  identity-bound multi-step shutdown now protect the complete desktop
+  lifecycle, while shared Plan, Execute, Cancel, Force Stop, and Inspect Result
+  actions cross a queued root facade instead of mutating workflow projections
+  inside their originating QML click handler; and
+- the exact packaged QML and Python inventories include the complete
+  Preparation surface, while both installed app-only launchers instantiate,
+  bind, and responsively resize that page without runtime warnings.
+
+This is desktop exposure of the implemented preparation contract, not new
+preparation science. The complete locked local gate passed with both 1,073-test
+suites and final distribution verification. Remote verification and native
+functional acceptance also passed. Broader onboarding and workflow
+discoverability remain a post-Stage-5 UX follow-up rather than preparation
+science or an unfinished data contract. The accepted implementation record is
+indexed in [`docs/archive/GUI2_STAGE5.md`](docs/archive/GUI2_STAGE5.md).
+
 ## Reviewed future direction — Optional PyTorch dataset export
 
 The product sequence now prioritizes desktop workflow depth and then source

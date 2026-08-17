@@ -66,10 +66,14 @@ def test_qml_runtime_is_public_and_resources_live_in_the_app_package() -> None:
         "qml/Carnopy/pages/ActivityPage.qml",
         "qml/Carnopy/pages/DatasetPage.qml",
         "qml/Carnopy/pages/InspectPage.qml",
+        "qml/Carnopy/pages/ModelSweepPage.qml",
+        "qml/Carnopy/pages/PreparationPage.qml",
         "qml/Carnopy/pages/RunPage.qml",
         "qml/Carnopy/pages/VisualizationPage.qml",
         "qml/Carnopy/pages/YamlPreviewPage.qml",
         "qml/Carnopy/components/BlockingBanner.qml",
+        "qml/Carnopy/components/ComparisonPlotEditor.qml",
+        "qml/Carnopy/components/PreparationScenarioEditor.qml",
         "qml/Carnopy/components/ActivityContextInspector.qml",
         "qml/Carnopy/components/InspectionContextInspector.qml",
         "qml/Carnopy/components/LineNumberedTextArea.qml",
@@ -78,6 +82,8 @@ def test_qml_runtime_is_public_and_resources_live_in_the_app_package() -> None:
         "qml/Carnopy/components/PlotEditor.qml",
         "qml/Carnopy/components/VerifiedPlotView.qml",
         "qml/Carnopy/components/RunContextInspector.qml",
+        "qml/Carnopy/components/WorkflowContextInspector.qml",
+        "qml/Carnopy/components/WorkflowRunPanel.qml",
         "qml/Carnopy/qmldir",
         "resources/third-party-resources.json",
         "resources/branding/carnopy-mark.png",
@@ -154,6 +160,9 @@ def test_alpha_metadata_uses_modern_license_and_release_urls() -> None:
         "requires": ["hatchling>=1.27.0"],
         "build-backend": "hatchling.build",
     }
+    hatch_targets = pyproject["tool"]["hatch"]["build"]["targets"]
+    assert hatch_targets["wheel"]["core-metadata-version"] == "2.4"
+    assert hatch_targets["sdist"]["core-metadata-version"] == "2.4"
     project = pyproject["project"]
     assert project["requires-python"] == ">=3.11"
     assert project["description"] == (
@@ -263,9 +272,12 @@ def test_public_roadmap_separates_current_contracts_from_future_direction() -> N
     assert "Detailed source and model candidates are maintainer planning" in normalized_readme
     assert "it is neither implemented nor the current product priority" in normalized_readme
     assert "PRODUCT_SCOPE.md" not in readme
-    assert "| 5 | Approved next |" in gui_plan
+    assert "| 5 | Complete |" in gui_plan
     assert "| 4 | Add controlled sweep and preparation worker operations | Complete" in desktop
-    assert "| 5 | Add structured sweep and preparation QML workflows | Approved next" in desktop
+    assert (
+        "| 5 | Add structured sweep and preparation QML workflows | Complete; automated, "
+        "remote, and native functional acceptance passed" in desktop
+    )
 
 
 def test_readme_documents_published_and_source_release_boundaries() -> None:

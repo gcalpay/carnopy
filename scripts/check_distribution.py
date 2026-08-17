@@ -12,6 +12,7 @@ from pathlib import Path, PurePosixPath
 from typing import Protocol
 
 PROJECT_NAME = "carnopy"
+CORE_METADATA_VERSION = "2.4"
 PROJECT_SUMMARY = (
     "Reproducible thermophysical datasets from scientific backends with visualization, "
     "provenance, and leakage-aware preparation for physics-informed machine-learning "
@@ -48,6 +49,9 @@ QML_SHELL_APP_FILES = {
     "qml/Carnopy/components/ChoiceList.qml",
     "qml/Carnopy/components/SearchableChoiceList.qml",
     "qml/Carnopy/components/CommandBar.qml",
+    "qml/Carnopy/components/ComparisonPlotEditor.qml",
+    "qml/Carnopy/components/PreparationAuditView.qml",
+    "qml/Carnopy/components/PreparationScenarioEditor.qml",
     "qml/Carnopy/components/ContextInspector.qml",
     "qml/Carnopy/components/ActivityContextInspector.qml",
     "qml/Carnopy/components/InspectionContextInspector.qml",
@@ -65,12 +69,16 @@ QML_SHELL_APP_FILES = {
     "qml/Carnopy/components/StatusBadge.qml",
     "qml/Carnopy/components/ToastHost.qml",
     "qml/Carnopy/components/ValidationIssue.qml",
+    "qml/Carnopy/components/WorkflowContextInspector.qml",
+    "qml/Carnopy/components/WorkflowRunPanel.qml",
     "qml/Carnopy/components/WorkspaceOperationDialog.qml",
     "qml/Carnopy/pages/EmptyStatePage.qml",
     "qml/Carnopy/pages/ActivityPage.qml",
     "qml/Carnopy/pages/DatasetPage.qml",
     "qml/Carnopy/pages/HelpPage.qml",
     "qml/Carnopy/pages/InspectPage.qml",
+    "qml/Carnopy/pages/ModelSweepPage.qml",
+    "qml/Carnopy/pages/PreparationPage.qml",
     "qml/Carnopy/pages/RunPage.qml",
     "qml/Carnopy/pages/SettingsPage.qml",
     "qml/Carnopy/pages/WorkspacePage.qml",
@@ -99,6 +107,18 @@ QML_SHELL_APP_FILES = {
     "resources/icons/search.svg",
     "resources/icons/settings.svg",
     "resources/icons/sun.svg",
+}
+STAGE5_APP_FILES = {
+    "comparison_plot_draft.py",
+    "preparation_audit.py",
+    "preparation_audit_models.py",
+    "preparation_draft.py",
+    "scenario_draft.py",
+    "sweep_draft.py",
+    "workflow_controller.py",
+    "workflow_models.py",
+    "workflow_planning.py",
+    "workflow_worker.py",
 }
 WHEEL_REQUIRED = {
     "carnopy/__init__.py",
@@ -306,7 +326,9 @@ SDIST_REQUIRED = {
     "uv.lock",
 }
 WHEEL_REQUIRED.update(f"carnopy/app/{path}" for path in QML_SHELL_APP_FILES)
+WHEEL_REQUIRED.update(f"carnopy/app/{path}" for path in STAGE5_APP_FILES)
 SDIST_REQUIRED.update(f"src/carnopy/app/{path}" for path in QML_SHELL_APP_FILES)
+SDIST_REQUIRED.update(f"src/carnopy/app/{path}" for path in STAGE5_APP_FILES)
 SDIST_MARKDOWN = {
     "AGENTS.md",
     "DESKTOP_ARCHITECTURE.md",
@@ -481,6 +503,10 @@ def parse_metadata(content: bytes) -> Message:
 
 
 def validate_metadata(metadata: Message, expected_version: str, *, artifact: str) -> None:
+    if metadata.get("Metadata-Version") != CORE_METADATA_VERSION:
+        raise ValueError(
+            f"{artifact} metadata does not declare Metadata-Version: {CORE_METADATA_VERSION}"
+        )
     if metadata.get("Name", "").casefold() != PROJECT_NAME:
         raise ValueError(f"{artifact} metadata Name is not {PROJECT_NAME!r}")
     if metadata.get("Version") != expected_version:

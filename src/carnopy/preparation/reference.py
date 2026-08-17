@@ -13,16 +13,24 @@ def build_reference_state_summary(
     resolved: ResolvedPreparation,
 ) -> dict[str, Any]:
     selected = _selected_reference_dependent_fields(resolved)
-    contexts = [_context_for_table(table) for table in source_data.tables]
+    capability = assess_reference_context(source_data)
     summary: dict[str, Any] = {
         "selected_reference_dependent_fields": selected,
         "requires_context_compatibility": bool(selected),
-        "contexts": contexts,
+        "contexts": capability["contexts"],
         "compatible": True,
     }
     if not selected:
         return summary
+    if not capability["compatible"]:
+        raise ConfigError(str(capability["reason"]))
+    summary["compatible_context"] = capability["compatible_context"]
+    return summary
 
+
+def assess_reference_context(source_data: LoadedPreparationSource) -> dict[str, Any]:
+    """Describe whether reference-dependent fields share one source context."""
+    contexts = [_context_for_table(table) for table in source_data.tables]
     missing = [
         context["artifact"]
         for context in contexts
@@ -31,10 +39,16 @@ def build_reference_state_summary(
         or context["backend_model"] is None
     ]
     if missing:
-        raise ConfigError(
-            "reference-dependent preparation fields require source reference-state "
-            "metadata; missing context for: " + ", ".join(missing)
-        )
+        return {
+            "compatible": False,
+            "compatible_context": None,
+            "contexts": contexts,
+            "reason_code": "missing_reference_context",
+            "reason": (
+                "reference-dependent preparation fields require source reference-state "
+                "metadata; missing context for: " + ", ".join(missing)
+            ),
+        }
     compatibility_keys = {
         (
             context["reference_state_policy"],
@@ -44,19 +58,32 @@ def build_reference_state_summary(
         for context in contexts
     }
     if len(compatibility_keys) != 1:
-        raise ConfigError(
-            "reference-dependent preparation fields require one compatible "
-            "reference-state context across selected source rows "
-            "(reference_state_policy, backend, backend_model); found: "
-            + ", ".join(" / ".join(str(part) for part in key) for key in sorted(compatibility_keys))
+        found = ", ".join(
+            " / ".join(str(part) for part in key) for key in sorted(compatibility_keys)
         )
+        return {
+            "compatible": False,
+            "compatible_context": None,
+            "contexts": contexts,
+            "reason_code": "incompatible_reference_context",
+            "reason": (
+                "reference-dependent preparation fields require one compatible "
+                "reference-state context across selected source rows "
+                "(reference_state_policy, backend, backend_model); found: " + found
+            ),
+        }
     policy, backend, backend_model = next(iter(compatibility_keys))
-    summary["compatible_context"] = {
-        "reference_state_policy": policy,
-        "backend": backend,
-        "backend_model": backend_model,
+    return {
+        "compatible": True,
+        "compatible_context": {
+            "reference_state_policy": policy,
+            "backend": backend,
+            "backend_model": backend_model,
+        },
+        "contexts": contexts,
+        "reason_code": "",
+        "reason": "",
     }
-    return summary
 
 
 def _selected_reference_dependent_fields(resolved: ResolvedPreparation) -> list[str]:

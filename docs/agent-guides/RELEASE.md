@@ -16,6 +16,13 @@ requires = ["hatchling>=1.27.0"]
 build-backend = "hatchling.build"
 ```
 
+The wheel and sdist targets intentionally emit Core Metadata 2.4. It is the
+lowest version containing every metadata field Carnopy currently declares and
+is supported by the stable Twine release checker. Do not remove or raise this
+target merely because a newer Hatchling defaults to a newer metadata envelope.
+Raise it only when Carnopy adopts a field that requires a newer specification
+and the complete locked release toolchain accepts both archive types.
+
 Matplotlib remains optional through `viz`; SafeTensors remains optional through
 `ml`; scikit-learn remains optional through `analysis`; PySide6 Essentials and
 Matplotlib remain optional through `app`; `all`

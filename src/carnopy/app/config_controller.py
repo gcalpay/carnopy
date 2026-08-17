@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
@@ -10,7 +11,8 @@ from PySide6.QtCore import Property, QObject, Signal
 from carnopy.app.client import WorkerClient
 from carnopy.app.config_document import (
     ConfigDocumentError,
-    DatasetConfigDocument,
+    ConfigurationDocument,
+    DocumentType,
     ExternalModificationError,
     SavedConfigSnapshot,
     document_from_worker_payload,
@@ -21,25 +23,37 @@ from carnopy.app.config_document import (
     write_new_config,
 )
 from carnopy.app.dataset_draft import DatasetDraft
+from carnopy.app.preparation_draft import PreparationDraft
 from carnopy.app.protocol import RequestType
 from carnopy.app.request_coordinator import (
     DesktopRequestCoordinator,
     RequestOutcome,
     RequestSession,
 )
+from carnopy.app.sweep_draft import SweepDraft
 from carnopy.app.visualization_draft import VisualizationDraft
 from carnopy.app.workspace import Workspace
 from carnopy.templates import template_text
 
 
-class DatasetConfigController(QObject):
-    """Own the complete desktop dataset-configuration workflow."""
+@dataclass(frozen=True)
+class _ConfigurationRequestContext:
+    action: str
+    workspace_root: Path | None
+    document_generation: int
+    document_type: DocumentType | None
+    document_sha256: str
+    requested_path: Path | None
+
+
+class ConfigurationController(QObject):
+    """Own one exact desktop configuration document and its file lifecycle."""
 
     state_changed = Signal()
     status_message_changed = Signal()
     draft_changed = Signal(bool)
     document_state_changed = Signal()
-    document_opened = Signal()
+    configuration_document_opened = Signal(str)
     warning_requested = Signal(str, str)
     mode_change_requested = Signal(str)
     save_path_requested = Signal(str)
@@ -58,6 +72,9 @@ class DatasetConfigController(QObject):
         dataset_draft: DatasetDraft | None = None,
         visualization_draft: VisualizationDraft | None = None,
         parent: QObject | None = None,
+        *,
+        sweep_draft: SweepDraft | None = None,
+        preparation_draft: PreparationDraft | None = None,
     ) -> None:
         super().__init__(parent)
         self._owns_coordinator = coordinator is None
@@ -67,11 +84,15 @@ class DatasetConfigController(QObject):
         self.coordinator = coordinator
         self.dataset_draft = dataset_draft or DatasetDraft(self)
         self.visualization_draft = visualization_draft or VisualizationDraft(self)
+        self.sweep_draft = sweep_draft or SweepDraft(self)
+        self.preparation_draft = preparation_draft or PreparationDraft(self)
         self.workspace: Workspace | None = None
-        self.document: DatasetConfigDocument | None = None
+        self.document: ConfigurationDocument | None = None
         self.capabilities: dict[str, Any] | None = None
         self._capability_cache: dict[str, dict[str, Any]] = {}
         self._session: RequestSession | None = None
+        self._request_context: _ConfigurationRequestContext | None = None
+        self._document_generation = 0
         self._pending_action: str | None = None
         self._pending_path: Path | None = None
         self._pending_content: bytes | None = None
@@ -85,16 +106,26 @@ class DatasetConfigController(QObject):
         self._validation_attempted = False
         self._validation_content: bytes | None = None
         self._validation_sha256: str | None = None
-        self._file_display = "No dataset configuration is open."
-        self._status_message = "Open a workspace to create or import a dataset configuration."
+        self._file_display = "No configuration is open."
+        self._status_message = "Open a workspace to create or import a configuration."
         self._lifecycle_guard: Callable[[str], bool] | None = None
 
         self.dataset_draft.changed.connect(self._refresh_document)
         self.visualization_draft.changed.connect(self._refresh_document)
+        self.sweep_draft.changed.connect(self._refresh_document)
+        self.sweep_draft.validity_changed.connect(self._sweep_validity_changed)
+        self.preparation_draft.changed.connect(self._refresh_document)
+        self.preparation_draft.validity_changed.connect(self._preparation_validity_changed)
         self.dataset_draft.mode_change_requested.connect(self.mode_change_requested)
         self.dataset_draft.message.connect(self._set_status)
         self.visualization_draft.message.connect(self._set_status)
         self.visualization_draft.active_plot_draft_changed.connect(self._active_plot_edit_changed)
+        self.sweep_draft.active_comparison_draft_changed.connect(self._active_nested_edit_changed)
+        self.preparation_draft.active_scenario_draft_changed.connect(
+            self._active_nested_edit_changed
+        )
+        self.sweep_draft.message.connect(self._set_status)
+        self.preparation_draft.message.connect(self._set_status)
         self.coordinator.busy_changed.connect(self._worker_busy_changed)
 
     def set_lifecycle_guard(self, guard: Callable[[str], bool]) -> None:
@@ -112,6 +143,18 @@ class DatasetConfigController(QObject):
 
     hasDocument = Property(bool, get_has_document, notify=state_changed)
 
+    def get_document_kind(self) -> str:
+        document = self.document
+        return "none" if document is None else document.document_type
+
+    documentKind = Property(str, get_document_kind, notify=state_changed)
+
+    def get_reformat_required(self) -> bool:
+        document = self.document
+        return document is not None and document.imported
+
+    reformatRequired = Property(bool, get_reformat_required, notify=state_changed)
+
     def get_locally_valid(self) -> bool:
         return self._locally_valid
 
@@ -119,7 +162,15 @@ class DatasetConfigController(QObject):
 
     def get_dirty(self) -> bool:
         document = self.document
-        return document is not None and (
+        if document is None:
+            return False
+        if document.document_type == "model_sweep":
+            return document.needs_save or self.sweep_draft.get_dirty()
+        if document.document_type == "preparation":
+            return document.needs_save or self.preparation_draft.get_dirty()
+        if document.document_type != "dataset":
+            return document.needs_save
+        return (
             document.needs_save
             or self.dataset_draft.get_dirty()
             or self.visualization_draft.get_dirty()
@@ -141,7 +192,7 @@ class DatasetConfigController(QObject):
         return (
             self.document is not None
             and self._locally_valid
-            and not self.visualization_draft.get_has_active_plot_edit()
+            and not self._has_active_nested_edit()
             and self._pending_action is None
             and not self.coordinator.is_busy
         )
@@ -176,7 +227,17 @@ class DatasetConfigController(QObject):
     )
 
     def get_blocking_section(self) -> str:
-        if self.document is None or self._locally_valid:
+        if self.document is None:
+            return "none"
+        if self.document.document_type == "model_sweep" and (
+            not self._locally_valid or self.sweep_draft.get_has_active_comparison_edit()
+        ):
+            return "sweep"
+        if self.document.document_type == "preparation" and (
+            not self._locally_valid or self.preparation_draft.get_has_active_scenario_edit()
+        ):
+            return "preparation"
+        if self._locally_valid:
             return "none"
         if not self.dataset_draft.get_locally_valid():
             return "dataset"
@@ -188,6 +249,10 @@ class DatasetConfigController(QObject):
 
     def get_blocking_field(self) -> str:
         section = self.get_blocking_section()
+        if section == "sweep":
+            return self.sweep_draft.get_first_invalid_field()
+        if section == "preparation":
+            return self.preparation_draft.get_first_invalid_field()
         if section == "dataset":
             return self.dataset_draft.get_first_invalid_field()
         if section == "visualization":
@@ -198,6 +263,10 @@ class DatasetConfigController(QObject):
 
     def get_blocking_row(self) -> int:
         section = self.get_blocking_section()
+        if section == "sweep":
+            return self.sweep_draft.get_first_invalid_row()
+        if section == "preparation":
+            return self.preparation_draft.get_first_invalid_row()
         if section == "dataset":
             return self.dataset_draft.get_first_invalid_row()
         if section == "visualization":
@@ -208,6 +277,12 @@ class DatasetConfigController(QObject):
 
     def get_blocking_issue(self) -> str:
         section = self.get_blocking_section()
+        if section == "sweep":
+            return self.sweep_draft.get_issue()
+        if section == "preparation":
+            if self.preparation_draft.get_has_active_scenario_edit():
+                return self.preparation_draft.get_transient_edit_issue()
+            return self.preparation_draft.get_issue()
         if section == "dataset":
             return self.dataset_draft.get_issue()
         if section == "visualization":
@@ -243,7 +318,13 @@ class DatasetConfigController(QObject):
 
     def get_default_save_path(self) -> str:
         workspace = self.workspace
-        return "" if workspace is None else str(workspace.configs / "dataset.yaml")
+        if workspace is None:
+            return ""
+        filename = {
+            "model_sweep": "model-sweep.yaml",
+            "preparation": "preparation.yaml",
+        }.get(self.get_document_kind(), "dataset.yaml")
+        return str(workspace.configs / filename)
 
     defaultSavePath = Property(str, get_default_save_path, notify=state_changed)
 
@@ -251,7 +332,7 @@ class DatasetConfigController(QObject):
         return (
             self.get_editor_available()
             and not self.coordinator.is_busy
-            and not self.visualization_draft.get_has_active_plot_edit()
+            and not self._has_active_nested_edit()
         )
 
     canCreate = Property(bool, get_can_create, notify=state_changed)
@@ -260,15 +341,18 @@ class DatasetConfigController(QObject):
         return (
             self.workspace is not None
             and not self.coordinator.is_busy
-            and not self.visualization_draft.get_has_active_plot_edit()
+            and not self._has_active_nested_edit()
         )
 
     canImport = Property(bool, get_can_import, notify=state_changed)
 
     def get_can_edit(self) -> bool:
-        return self.get_editor_available() and (
-            not self.coordinator.is_busy or self.coordinator.active_owner != "configuration"
-        )
+        if not self.get_editor_available():
+            return False
+        session = getattr(self.coordinator, "active_session", None)
+        if session is not None and session.owner in {"sweep", "preparation"}:
+            return bool(session.request_type == f"execute_{session.owner}")
+        return not self.coordinator.is_busy or self.coordinator.active_owner != "configuration"
 
     canEdit = Property(bool, get_can_edit, notify=state_changed)
 
@@ -278,7 +362,7 @@ class DatasetConfigController(QObject):
             and self._locally_valid
             and self._pending_action is None
             and not self.coordinator.is_busy
-            and not self.visualization_draft.get_has_active_plot_edit()
+            and not self._has_active_nested_edit()
         )
 
     canSave = Property(bool, get_can_save, notify=state_changed)
@@ -297,8 +381,8 @@ class DatasetConfigController(QObject):
         self._begin_worker_validation("validate", content)
         self._set_status("Validating the current exact YAML…")
         return self._start_worker(
-            "validate_dataset_config",
-            {"yaml_text": content.decode("utf-8"), "source_name": source_name},
+            _validation_request_type(document.document_type),
+            _validation_payload(document.document_type, content, source_name),
         )
 
     def get_dataset_draft(self) -> QObject:
@@ -311,10 +395,22 @@ class DatasetConfigController(QObject):
 
     visualizationDraft = Property(QObject, get_visualization_draft, constant=True)
 
+    def get_sweep_draft(self) -> QObject:
+        return self.sweep_draft
+
+    sweepDraft = Property(QObject, get_sweep_draft, constant=True)
+
+    def get_preparation_draft(self) -> QObject:
+        return self.preparation_draft
+
+    preparationDraft = Property(QObject, get_preparation_draft, constant=True)
+
     def set_workspace(self, value: object) -> None:
         workspace = value if isinstance(value, Workspace) else None
         changed = self.workspace != workspace
-        if changed and not self._lifecycle_allowed("workspace replacement"):
+        if changed and (
+            self._has_active_workflow_edit() or not self._lifecycle_allowed("workspace replacement")
+        ):
             return
         self.workspace = workspace
         if changed:
@@ -339,12 +435,13 @@ class DatasetConfigController(QObject):
     def new_dataset(self, mode: str, discard_confirmed: bool = False) -> bool:
         if not self._lifecycle_allowed("New Dataset"):
             return False
-        if self.workspace is None or self.capabilities is None:
+        capabilities = self.capabilities
+        if self.workspace is None or capabilities is None or self._has_active_workflow_edit():
             return False
         if self.needs_discard_confirmation() and not discard_confirmed:
             self._set_status("Confirm discarding the current configuration before replacing it.")
             return False
-        modes = self.capabilities.get("modes")
+        modes = capabilities.get("modes")
         if not isinstance(modes, list) or mode not in modes:
             self._set_status(f"Unsupported dataset mode: {mode}")
             return False
@@ -352,10 +449,32 @@ class DatasetConfigController(QObject):
         self._set_status("New configuration. Save it under the workspace configs folder.")
         return True
 
+    def new_sweep(self, discard_confirmed: bool = False) -> bool:
+        if not self._lifecycle_allowed("New Model Sweep") or not self.get_can_create():
+            return False
+        if self.needs_discard_confirmation() and not discard_confirmed:
+            self._set_status("Confirm discarding the current configuration before replacing it.")
+            return False
+        self.open_document(new_document(_template_payload("model_sweep")))
+        self._set_status("New model sweep. Save it under the workspace configs folder.")
+        return True
+
+    def new_preparation(self, discard_confirmed: bool = False) -> bool:
+        """Create the portable Preparation document after composition guards pass."""
+
+        if not self._lifecycle_allowed("New ML Preparation") or not self.get_can_create():
+            return False
+        if self.needs_discard_confirmation() and not discard_confirmed:
+            self._set_status("Confirm discarding the current configuration before replacing it.")
+            return False
+        self.open_document(new_document(_template_payload("preparation")))
+        self._set_status("New ML Preparation. Save it under the workspace configs folder.")
+        return True
+
     def import_dataset(self, path: str, discard_confirmed: bool = False) -> bool:
         if not self._lifecycle_allowed("Import"):
             return False
-        if self.workspace is None:
+        if self.workspace is None or self._has_active_workflow_edit():
             return False
         if self.needs_discard_confirmation() and not discard_confirmed:
             self._set_status("Confirm discarding the current configuration before replacing it.")
@@ -371,11 +490,37 @@ class DatasetConfigController(QObject):
             {"config_path": str(self._pending_path)},
         )
 
+    def import_configuration(self, path: str, discard_confirmed: bool = False) -> bool:
+        """Open any current public configuration by its explicit discriminator."""
+
+        if not self._lifecycle_allowed("Open Configuration"):
+            return False
+        if not self.get_can_import():
+            return False
+        if self.needs_discard_confirmation() and not discard_confirmed:
+            self._set_status("Confirm discarding the current configuration before replacing it.")
+            return False
+        candidate = path.strip()
+        if not candidate:
+            return False
+        self._pending_action = "import"
+        self._pending_path = Path(candidate).expanduser().resolve()
+        self._set_status("Validating imported configuration…")
+        return self._start_worker(
+            "load_configuration",
+            {"config_path": str(self._pending_path)},
+        )
+
     def request_save(self, allow_reformat: bool = False) -> bool:
         if not self._lifecycle_allowed("Save"):
             return False
         document = self.document
-        if document is None or not self._locally_valid or self.coordinator.is_busy:
+        if (
+            document is None
+            or not self._locally_valid
+            or self.coordinator.is_busy
+            or self._has_active_workflow_edit()
+        ):
             return False
         if document.source_path is None or not document.workspace_owned:
             return self._request_save_as(allow_reformat=allow_reformat)
@@ -393,7 +538,12 @@ class DatasetConfigController(QObject):
     def request_save_as(self, allow_reformat: bool = False) -> bool:
         if not self._lifecycle_allowed("Save As"):
             return False
-        if self.document is None or not self._locally_valid or self.coordinator.is_busy:
+        if (
+            self.document is None
+            or not self._locally_valid
+            or self.coordinator.is_busy
+            or self._has_active_workflow_edit()
+        ):
             return False
         return self._request_save_as(allow_reformat=allow_reformat)
 
@@ -406,6 +556,8 @@ class DatasetConfigController(QObject):
     def save_path_selected(self, path: str) -> bool:
         if not self._lifecycle_allowed("Save As"):
             self._awaiting_save_path = False
+            return False
+        if self._has_active_workflow_edit():
             return False
         if not self._awaiting_save_path:
             self._set_status("Save As is not awaiting a destination.")
@@ -428,7 +580,12 @@ class DatasetConfigController(QObject):
         if not self._lifecycle_allowed("Reload"):
             return False
         document = self.document
-        if document is None or document.source_path is None or self.coordinator.is_busy:
+        if (
+            document is None
+            or document.source_path is None
+            or self.coordinator.is_busy
+            or self._has_active_workflow_edit()
+        ):
             return False
         if self.needs_discard_confirmation() and not discard_confirmed:
             self._set_status("Confirm discarding local changes before reloading the source.")
@@ -436,7 +593,7 @@ class DatasetConfigController(QObject):
         self._pending_action = "reload"
         self._set_status("Reloading configuration changed outside Carnopy…")
         return self._start_worker(
-            "load_dataset_config",
+            _load_request_type(document.document_type),
             {"config_path": str(document.source_path)},
         )
 
@@ -444,7 +601,7 @@ class DatasetConfigController(QObject):
         if not self._lifecycle_allowed("dataset mode change"):
             return False
         document = self.document
-        if document is None:
+        if document is None or document.document_type != "dataset":
             return False
         self._syncing_document = True
         changed = False
@@ -465,48 +622,82 @@ class DatasetConfigController(QObject):
     def apply_coordinate_change(self, selected: str) -> bool:
         if not self._lifecycle_allowed("dataset coordinate change"):
             return False
-        if self.document is None:
+        if self.document is None or self.document.document_type != "dataset":
             return False
         return self.dataset_draft.set_coordinate(selected)
 
-    def open_document(self, document: DatasetConfigDocument) -> bool:
-        if not self._lifecycle_allowed("document replacement"):
+    def open_document(self, document: ConfigurationDocument) -> bool:
+        if self._has_active_workflow_edit() or not self._lifecycle_allowed("document replacement"):
             return False
+        self._document_generation += 1
         self.document = document
         self._reset_worker_validation("not_run")
         self._syncing_document = True
         try:
             payload = document.payload
-            self.dataset_draft.load_payload(payload)
-            self.visualization_draft.set_dataset_context(payload)
-            self.visualization_draft.load_visualization(payload.get("visualization"))
+            if document.document_type == "dataset":
+                self.dataset_draft.load_payload(payload)
+                self.visualization_draft.set_dataset_context(payload)
+                self.visualization_draft.load_visualization(payload.get("visualization"))
+                self.sweep_draft.clear()
+                self.preparation_draft.clear()
+            elif document.document_type == "model_sweep":
+                self.dataset_draft.clear()
+                self.visualization_draft.clear()
+                self.sweep_draft.load_payload(payload)
+                self.preparation_draft.clear()
+            else:
+                self.dataset_draft.clear()
+                self.visualization_draft.clear()
+                self.sweep_draft.clear()
+                self.preparation_draft.load_payload(payload)
         finally:
             self._syncing_document = False
+        label = document.document_type.replace("_", " ")
         self._file_display = (
             str(document.source_path)
             if document.source_path is not None
-            else "Unsaved dataset configuration"
+            else f"Unsaved {label} configuration"
         )
         self._refresh_document()
-        self.document_opened.emit()
+        self.configuration_document_opened.emit(document.document_type)
         return True
 
     def clear_document(self, discard_confirmed: bool = False) -> bool:
-        if not self._lifecycle_allowed("Close Configuration"):
+        if self._has_active_workflow_edit() or not self._lifecycle_allowed("Close Configuration"):
             return False
         if self.needs_discard_confirmation() and not discard_confirmed:
             self._set_status("Confirm discarding the current configuration before closing it.")
             return False
         self._clear_document()
-        self._set_status("Create a new dataset configuration or import a valid YAML file.")
+        self._set_status("Create a new configuration or open a valid YAML file.")
         return True
 
-    def execution_snapshot(self) -> SavedConfigSnapshot:
+    def execution_snapshot(
+        self,
+        *,
+        expected_document_type: DocumentType = "dataset",
+    ) -> SavedConfigSnapshot:
         if self.workspace is None or self.document is None:
-            raise ConfigDocumentError("open and save a dataset configuration before execution")
-        if not self._locally_valid or not (
-            self.dataset_draft.get_locally_valid() and self.visualization_draft.get_locally_valid()
-        ):
+            raise ConfigDocumentError(
+                f"open and save a {expected_document_type} configuration before execution"
+            )
+        if self.document.document_type != expected_document_type:
+            raise ConfigDocumentError(
+                f"the open configuration is {self.document.document_type}, not "
+                f"{expected_document_type}"
+            )
+        drafts_valid = (
+            self.sweep_draft.get_locally_valid()
+            if expected_document_type == "model_sweep"
+            else self.preparation_draft.get_locally_valid()
+            if expected_document_type == "preparation"
+            else (
+                self.dataset_draft.get_locally_valid()
+                and self.visualization_draft.get_locally_valid()
+            )
+        )
+        if not self._locally_valid or not drafts_valid or self._has_active_workflow_edit():
             raise ConfigDocumentError("complete the configuration form before execution")
         return self.document.execution_snapshot(configs_root=self.workspace.configs)
 
@@ -539,8 +730,8 @@ class DatasetConfigController(QObject):
         self._pending_content = content
         self._set_status("Validating exact YAML before Save…")
         self._start_worker(
-            "validate_dataset_config",
-            {"yaml_text": content.decode("utf-8"), "source_name": str(path)},
+            _validation_request_type(document.document_type),
+            _validation_payload(document.document_type, content, str(path)),
         )
 
     def _start_worker(
@@ -549,6 +740,7 @@ class DatasetConfigController(QObject):
         payload: dict[str, object],
     ) -> bool:
         try:
+            context = self._capture_request_context(request_type, payload)
             session = self.coordinator.start_request(
                 "configuration",
                 request_type,
@@ -569,6 +761,7 @@ class DatasetConfigController(QObject):
             self.state_changed.emit()
             return False
         self._session = session
+        self._request_context = context
         session.completed.connect(self._worker_completed)
         self.state_changed.emit()
         return True
@@ -578,14 +771,24 @@ class DatasetConfigController(QObject):
         session = self._session
         if session is None or outcome.request_id != session.request_id:
             return
+        context = self._request_context
         self._session = None
+        self._request_context = None
+        if context is None or not self._response_context_is_current(context):
+            self._discard_obsolete_response(context)
+            return
         result = outcome.result_payload
         if result is not None:
-            self._worker_succeeded(result)
+            self._worker_succeeded(result, context=context)
             return
         self._worker_failed(outcome.failure_payload or {})
 
-    def _worker_succeeded(self, payload: object) -> None:
+    def _worker_succeeded(
+        self,
+        payload: object,
+        *,
+        context: _ConfigurationRequestContext,
+    ) -> None:
         result = cast(dict[str, Any], payload)
         action = self._pending_action
         if action is None:
@@ -598,7 +801,11 @@ class DatasetConfigController(QObject):
                 self._capability_cache[model] = result
             self._apply_capabilities(result)
         elif action in {"import", "reload"}:
-            self._finish_import(result, operation=action)
+            self._finish_import(
+                result,
+                operation=action,
+                requested_path=context.requested_path,
+            )
         elif action == "validate":
             self._clear_validation_request()
             if validation_current:
@@ -665,33 +872,56 @@ class DatasetConfigController(QObject):
         self._update_worker_validation(validation_revision_changed=True)
         self.state_changed.emit()
 
+    def _active_nested_edit_changed(self) -> None:
+        self._update_worker_validation(validation_revision_changed=True)
+        self.state_changed.emit()
+
+    def _sweep_validity_changed(self) -> None:
+        if not self._syncing_document:
+            self.state_changed.emit()
+
+    def _preparation_validity_changed(self) -> None:
+        if not self._syncing_document:
+            self.state_changed.emit()
+
     def _apply_capabilities(self, payload: dict[str, Any]) -> None:
         self.capabilities = payload
         self.dataset_draft.apply_capabilities(payload)
         self.visualization_draft.apply_capabilities(payload)
+        self.sweep_draft.apply_capabilities(payload)
+        self.preparation_draft.apply_capabilities(payload)
         if self.document is not None:
             self._refresh_document()
         else:
-            self._set_status("Create a new dataset configuration or import a valid YAML file.")
+            self._set_status("Create a new configuration or open a valid YAML file.")
         self.state_changed.emit()
 
     def _clear_document(self) -> None:
+        self._document_generation += 1
         self.document = None
         self._syncing_document = True
         try:
             self.dataset_draft.clear()
             self.visualization_draft.clear()
+            self.sweep_draft.clear()
+            self.preparation_draft.clear()
         finally:
             self._syncing_document = False
         self._locally_valid = False
         self._yaml_preview = ""
         self._reset_worker_validation("unavailable")
-        self._file_display = "No dataset configuration is open."
+        self._file_display = "No configuration is open."
         self._awaiting_save_path = False
         self._clear_pending()
         self._emit_document_state()
 
-    def _finish_import(self, payload: dict[str, Any], *, operation: str) -> None:
+    def _finish_import(
+        self,
+        payload: dict[str, Any],
+        *,
+        operation: str,
+        requested_path: Path | None,
+    ) -> None:
         workspace = self.workspace
         if workspace is None:
             return
@@ -700,6 +930,11 @@ class DatasetConfigController(QObject):
         except ConfigDocumentError as exc:
             self._set_status(str(exc))
             self._emit_operation_failed(operation, _failure_title(operation), str(exc), [])
+            return
+        if requested_path is None or document.source_path != requested_path:
+            message = "worker configuration result does not match its requested source"
+            self._set_status(message)
+            self._emit_operation_failed(operation, _failure_title(operation), message, [])
             return
         if not self.open_document(document):
             return
@@ -759,8 +994,13 @@ class DatasetConfigController(QObject):
             )
             return
         document.mark_saved(destination, content)
-        self.dataset_draft.mark_baseline()
-        self.visualization_draft.mark_baseline()
+        if document.document_type == "model_sweep":
+            self.sweep_draft.mark_baseline()
+        elif document.document_type == "preparation":
+            self.preparation_draft.mark_baseline()
+        elif document.document_type == "dataset":
+            self.dataset_draft.mark_baseline()
+            self.visualization_draft.mark_baseline()
         self._file_display = str(destination)
         self._refresh_document(validation_revision_changed=False)
         self._set_status(f"Saved valid configuration: {destination}")
@@ -791,22 +1031,31 @@ class DatasetConfigController(QObject):
             self._emit_document_state()
             return
         try:
-            payload = self.dataset_draft.merge_into(document.payload)
-            dataset_context = self.dataset_draft.dataset_payload()
-            self.visualization_draft.set_dataset_context(dataset_context)
-            if not self.visualization_draft.get_locally_valid():
-                raise ValueError(self.visualization_draft.get_issue())
-            visualization = self.visualization_draft.visualization_payload()
-            if visualization is None:
-                payload.pop("visualization", None)
-            else:
-                payload["visualization"] = visualization
+            if document.document_type == "model_sweep":
+                if not self.sweep_draft.get_locally_valid():
+                    raise ValueError(self.sweep_draft.get_issue())
+                document.set_payload(self.sweep_draft.payload())
+            elif document.document_type == "preparation":
+                if not self.preparation_draft.get_locally_valid():
+                    raise ValueError(self.preparation_draft.get_issue())
+                document.set_payload(self.preparation_draft.payload())
+            elif document.document_type == "dataset":
+                payload = self.dataset_draft.merge_into(document.payload)
+                dataset_context = self.dataset_draft.dataset_payload()
+                self.visualization_draft.set_dataset_context(dataset_context)
+                if not self.visualization_draft.get_locally_valid():
+                    raise ValueError(self.visualization_draft.get_issue())
+                visualization = self.visualization_draft.visualization_payload()
+                if visualization is None:
+                    payload.pop("visualization", None)
+                else:
+                    payload["visualization"] = visualization
+                document.set_payload(payload)
         except ValueError as exc:
             self._locally_valid = False
             self._yaml_preview = ""
             self._set_status(str(exc))
         else:
-            document.set_payload(payload)
             self._locally_valid = True
             self._yaml_preview = document.yaml_text
             self._set_status("Ready to save. Full validation runs before writing.")
@@ -826,6 +1075,73 @@ class DatasetConfigController(QObject):
         if not keep_paths:
             self._pending_path = None
             self._pending_content = None
+
+    def _capture_request_context(
+        self,
+        request_type: RequestType,
+        payload: dict[str, object],
+    ) -> _ConfigurationRequestContext:
+        document = self.document
+        requested = payload.get("config_path")
+        requested_path = (
+            Path(requested).expanduser().resolve() if isinstance(requested, str) else None
+        )
+        content = self._validation_content
+        return _ConfigurationRequestContext(
+            action=self._pending_action or request_type,
+            workspace_root=None if self.workspace is None else self.workspace.root,
+            document_generation=self._document_generation,
+            document_type=None if document is None else document.document_type,
+            document_sha256="" if content is None else sha256_bytes(content),
+            requested_path=requested_path,
+        )
+
+    def _response_context_is_current(self, context: _ConfigurationRequestContext) -> bool:
+        workspace_root = None if self.workspace is None else self.workspace.root
+        if workspace_root != context.workspace_root:
+            return False
+        if context.action == "capabilities":
+            return True
+        if self._document_generation != context.document_generation:
+            return False
+        if context.action == "import":
+            return self._pending_path == context.requested_path
+        document = self.document
+        if document is None or document.document_type != context.document_type:
+            return False
+        if context.action == "reload":
+            return (
+                document.source_path == context.requested_path
+                and context.requested_path is not None
+            )
+        if context.action in {"validate", "save_new", "save_replace"}:
+            content = self._validation_content
+            return (
+                content is not None
+                and context.document_sha256 == sha256_bytes(content)
+                and context.document_sha256 == self._validation_sha256
+            )
+        return False
+
+    def _discard_obsolete_response(
+        self,
+        context: _ConfigurationRequestContext | None,
+    ) -> None:
+        action = None if context is None else context.action
+        validation_action = action in {"validate", "save_new", "save_replace"}
+        self._clear_pending()
+        if validation_action:
+            was_running = self._worker_validation_state == "running"
+            self._clear_validation_request()
+            if action in {"save_new", "save_replace"}:
+                self._cancel_stale_save(replace=action == "save_replace")
+            elif was_running:
+                self._set_worker_validation(
+                    "stale",
+                    "The configuration context changed while worker validation was running.",
+                    [],
+                )
+        self.state_changed.emit()
 
     def _begin_worker_validation(self, action: str, content: bytes) -> None:
         self._pending_action = action
@@ -853,7 +1169,7 @@ class DatasetConfigController(QObject):
             or content is None
             or digest is None
             or not self._locally_valid
-            or self.visualization_draft.get_has_active_plot_edit()
+            or self._has_active_nested_edit()
         ):
             return False
         current = document.yaml_bytes
@@ -863,10 +1179,10 @@ class DatasetConfigController(QObject):
         if self.document is None:
             self._set_worker_validation("unavailable", "", [])
             return
-        active_edit = self.visualization_draft.get_has_active_plot_edit()
+        active_edit = self._has_active_nested_edit()
         if not self._locally_valid or active_edit:
             issue = (
-                "Commit or cancel the active plot edit before validation."
+                "Commit or cancel the active nested edit before validation."
                 if active_edit
                 else self.get_blocking_issue()
             )
@@ -929,6 +1245,17 @@ class DatasetConfigController(QObject):
     def _lifecycle_allowed(self, operation: str) -> bool:
         return self._lifecycle_guard is None or self._lifecycle_guard(operation)
 
+    def _has_active_nested_edit(self) -> bool:
+        return (
+            self.visualization_draft.get_has_active_plot_edit() or self._has_active_workflow_edit()
+        )
+
+    def _has_active_workflow_edit(self) -> bool:
+        return (
+            self.sweep_draft.get_has_active_comparison_edit()
+            or self.preparation_draft.get_has_active_scenario_edit()
+        )
+
 
 def _template_payload(mode: str) -> dict[str, Any]:
     value = yaml.safe_load(template_text(cast(Any, mode)))
@@ -942,7 +1269,9 @@ def _operation_name(action: str) -> str:
         "save_new": "save_as",
         "save_replace": "save",
         "load_dataset_config": "import",
+        "load_configuration": "import",
         "validate_dataset_config": "save",
+        "validate_configuration": "save",
         "describe_capabilities": "capabilities",
     }.get(action, action)
 
@@ -957,6 +1286,28 @@ def _failure_title(action: str) -> str:
         "save": "Validation Failed",
         "save_as": "Validation Failed",
     }.get(operation, "Operation Failed")
+
+
+def _load_request_type(document_type: DocumentType) -> RequestType:
+    return "load_dataset_config" if document_type == "dataset" else "load_configuration"
+
+
+def _validation_request_type(document_type: DocumentType) -> RequestType:
+    return "validate_dataset_config" if document_type == "dataset" else "validate_configuration"
+
+
+def _validation_payload(
+    document_type: DocumentType,
+    content: bytes,
+    source_name: str,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "yaml_text": content.decode("utf-8"),
+        "source_name": source_name,
+    }
+    if document_type != "dataset":
+        payload["expected_document_type"] = document_type
+    return payload
 
 
 def _structured_issues(value: object) -> list[dict[str, str]]:

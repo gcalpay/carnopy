@@ -412,7 +412,7 @@ def test_historical_visualization_stays_open_without_a_configuration(
     desktop = runtime.controller
     root = runtime.engine.rootObjects()[0]
     assert isinstance(root, QQuickWindow)
-    assert not desktop.dataset_config_controller.get_has_document()
+    assert not desktop.configuration_controller.get_has_document()
     source = desktop.workspace_controller.workspace.outputs / "historical.parquet"
     source.write_bytes(b"source")
     desktop.session_plot_controller._inspection_changed(_session_plot_context(source))

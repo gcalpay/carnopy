@@ -139,6 +139,17 @@ def test_distribution_path_filters_and_source_version() -> None:
     ]
 
 
+def test_distribution_checker_rejects_unsupported_core_metadata_version() -> None:
+    metadata = check_distribution.parse_metadata(b"Metadata-Version: 2.5\n")
+
+    with pytest.raises(ValueError, match=r"does not declare Metadata-Version: 2\.4"):
+        check_distribution.validate_metadata(
+            metadata,
+            FIXTURE_VERSION,
+            artifact="wheel",
+        )
+
+
 def test_distribution_resource_manifest_rejects_changed_bytes() -> None:
     resource_root = ROOT / "src" / "carnopy" / "app" / "resources"
     manifest_bytes = (resource_root / "third-party-resources.json").read_bytes()
@@ -331,6 +342,26 @@ def test_distribution_checker_requires_model_sweep_artifacts() -> None:
         check_distribution.WHEEL_REQUIRED
     )
     assert {f"src/carnopy/app/{path}" for path in check_distribution.QML_SHELL_APP_FILES}.issubset(
+        check_distribution.SDIST_REQUIRED
+    )
+
+
+def test_distribution_checker_requires_every_stage5_application_module() -> None:
+    expected = {
+        "comparison_plot_draft.py",
+        "preparation_audit.py",
+        "preparation_audit_models.py",
+        "preparation_draft.py",
+        "scenario_draft.py",
+        "sweep_draft.py",
+        "workflow_controller.py",
+        "workflow_models.py",
+        "workflow_planning.py",
+        "workflow_worker.py",
+    }
+    assert expected == check_distribution.STAGE5_APP_FILES
+    assert {f"carnopy/app/{path}" for path in expected}.issubset(check_distribution.WHEEL_REQUIRED)
+    assert {f"src/carnopy/app/{path}" for path in expected}.issubset(
         check_distribution.SDIST_REQUIRED
     )
 

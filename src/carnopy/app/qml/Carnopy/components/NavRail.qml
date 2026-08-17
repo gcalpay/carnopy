@@ -15,6 +15,8 @@ Control {
     property bool inspectAvailable: false
     property bool activityAvailable: false
     property bool runAvailable: false
+    property bool sweepsAvailable: false
+    property bool preparationAvailable: false
     property bool visualizationAvailable: false
     property bool yamlAvailable: false
     readonly property alias collapseControl: railCollapseButton
@@ -103,15 +105,15 @@ Control {
             pageKey: "sweeps"
             title: qsTr("Model Sweeps")
             iconName: "git-compare-arrows"
-            available: false
-            unavailableReason: qsTr("Model-sweep workflow migration follows the core GUI-2 stages.")
+            available: true
+            unavailableReason: qsTr("Open a workspace before using Model Sweeps.")
         }
         ListElement {
             pageKey: "preparation"
             title: qsTr("ML Preparation")
             iconName: "flask-conical"
-            available: false
-            unavailableReason: qsTr("ML preparation remains outside the active GUI-2 stage.")
+            available: true
+            unavailableReason: qsTr("Open a workspace before using ML Preparation.")
         }
         ListElement {
             pageKey: "three-d"
@@ -208,7 +210,11 @@ Control {
                                                              && (pageKey !== "inspect"
                                                                  || root.inspectAvailable) && (
                                                                  pageKey !== "activity"
-                                                                 || root.activityAvailable)
+                                                                 || root.activityAvailable) && (
+                                                                 pageKey !== "sweeps"
+                                                                 || root.sweepsAvailable) && (
+                                                                 pageKey !== "preparation"
+                                                                 || root.preparationAvailable)
 
                 Accessible.description: effectivelyAvailable ? "" : unavailableReason
                 Accessible.name: title

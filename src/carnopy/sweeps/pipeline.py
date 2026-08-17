@@ -136,6 +136,7 @@ def _run_model_sweep(
                     values_path=comparison.values_path,
                     deltas_path=comparison.deltas_path,
                     output_directory=layout.staging_directory / "comparison_plots",
+                    finalized_output_directory=layout.final_directory / "comparison_plots",
                     sweep_identity=_sweep_identity(
                         sweep_id=sweep_id,
                         sweep_run_id=sweep_run_id,

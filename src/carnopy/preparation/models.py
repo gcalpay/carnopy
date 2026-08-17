@@ -521,6 +521,14 @@ def load_preparation_config_bytes(
         raise ConfigError(f"invalid YAML in {config_path}: {exc}") from exc
     if not isinstance(payload, dict):
         raise ConfigError("preparation configuration root must be a YAML mapping")
+    return _load_preparation_config_payload(config_path, raw_bytes, payload)
+
+
+def _load_preparation_config_payload(
+    config_path: Path,
+    raw_bytes: bytes,
+    payload: dict[str, Any],
+) -> LoadedPreparationConfig:
     try:
         model = PreparationConfig.model_validate(payload)
     except ValidationError as exc:

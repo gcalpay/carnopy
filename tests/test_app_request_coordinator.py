@@ -191,6 +191,23 @@ def test_coordinator_routes_events_only_to_the_owner_and_preserves_envelope(
     assert not session.force_stop()
 
 
+def test_configuration_owner_admits_only_its_generic_requests(
+    application: QCoreApplication,
+) -> None:
+    del application
+    transport = StubTransport()
+    coordinator = coordinator_for(transport)
+
+    for request_type in ("load_configuration", "validate_configuration"):
+        session = coordinator.start_request("configuration", request_type, {})
+        assert session.request_type == request_type
+        assert transport.started[-1][1] == request_type
+        transport.finish(payload={})
+
+    with pytest.raises(ValueError, match="not owned by 'sweep'"):
+        coordinator.start_request("sweep", "load_configuration", {})
+
+
 def test_reservation_is_nonbusy_blocks_reentry_and_preserves_uuid(
     application: QCoreApplication,
 ) -> None:

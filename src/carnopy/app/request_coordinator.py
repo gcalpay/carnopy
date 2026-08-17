@@ -23,7 +23,13 @@ CancellationMode = Literal["none", "cooperative", "force_only"]
 
 _OWNER_REQUESTS: dict[RequestOwner, frozenset[RequestType]] = {
     "configuration": frozenset(
-        {"describe_capabilities", "load_dataset_config", "validate_dataset_config"}
+        {
+            "describe_capabilities",
+            "load_configuration",
+            "validate_configuration",
+            "load_dataset_config",
+            "validate_dataset_config",
+        }
     ),
     "execution": frozenset({"validate_config", "generate_dataset"}),
     "inspection": frozenset({"inspect_source", "preview_table"}),
@@ -184,6 +190,10 @@ class RequestSession(QObject):
             and not self._terminal_seen
             and not self._termination_protected
         )
+
+    @property
+    def termination_protected(self) -> bool:
+        return self._termination_protected
 
     @property
     def outcome(self) -> RequestOutcome | None:

@@ -79,7 +79,7 @@ implementation.
 | 2 | Complete | Added the packaged QML shell and Dataset/YAML/Save workflows |
 | 3 | Complete | Reached parity, migrated both launchers, retired Widgets, and qualified `0.1.0a4` |
 | 4 | Complete | Added controlled sweep and preparation worker operations for the existing public contracts |
-| 5 | Approved next | Add structured sweep and preparation QML workflows |
+| 5 | Complete | Added accepted structured Sweep and Preparation workflows plus typed audit inspection |
 | 6 | Pending | Build exact emitted-value 3D scenes |
 | 7 | Pending | Add native interactive 3D to QML |
 | 8 | Pending | Qualify native 3D packaging, platforms, and a later release |
@@ -154,7 +154,7 @@ At the `0.1.0a4` checkpoint, Stage 4 was the approved next implementation
 stage. It began the accepted workflow-depth milestone by exposing the existing
 sweep and preparation contracts through controlled worker operations without
 changing their public schemas or output layouts. Stage 4 has since completed;
-Stage 5 now adds the corresponding structured QML workflows. Their numbers,
+Stage 5 has added the corresponding structured QML workflows. Their numbers,
 dependencies, and reviewed technical content remain unchanged by this
 reprioritization.
 
@@ -192,24 +192,54 @@ The separate WSLg launch-hardening follow-up remains desktop maintenance. Its
 native XCB/WSLg acceptance passed on 2026-08-09 with a real six-row generation,
 configured plot, verified inspection, clean workspace reopen, and a fixed
 workspace-scoped smoke lifecycle; exhaustive verification now collects 837
-tests. Stage 5 is now the approved next stage.
+tests. Stage 5 is complete; its accepted record is indexed in
+[`docs/archive/GUI2_STAGE5.md`](docs/archive/GUI2_STAGE5.md).
 
 ## Stage 5: sweep and preparation QML workflows
 
-The sweep workflow covers models, reference-model settings, comparison
-options, comparison plots, validation, execution, cancellation, and inspection
-handoff.
+Stage 5 is complete. Its accepted implementation record, exact commit range,
+PR reference, verification evidence, native acceptance, and limitations are
+indexed in
+[`docs/archive/GUI2_STAGE5.md`](docs/archive/GUI2_STAGE5.md). Durable ownership
+is recorded in [`DESKTOP_ARCHITECTURE.md`](DESKTOP_ARCHITECTURE.md).
 
-The preparation workflow covers immutable dataset or sweep sources, numeric
-and categorical features, targets, auxiliary and derived fields, current
-scenarios and partitions, transformations, canonical Parquet, optional NPY,
-NPZ, and SafeTensors outputs, matrix diagnostics, and optional baseline
-diagnostics.
+The accepted desktop surface provides:
 
-Inspection presents manifests, quality flags, exclusions, provenance, leakage
-audits, partition summaries, correlations, singular values, rank, conditioning,
-and baseline metrics. Missing optional dependencies disable only the affected
-feature and provide exact installation guidance.
+- one global exact-file Dataset, Model Sweep, or Preparation document with
+  deterministic preview, worker-validated Save, external-change protection,
+  and typed saved snapshots;
+- complete structured Model Sweep and Preparation drafts, including temporary
+  comparison and scenario editors that cannot leak into saved or planned work;
+- explicit immutable Preparation source binding copied from verified
+  inspection, while portable Preparation YAML remains source-independent;
+- revision-bound Plan and Execute workflows with cancellation, protected
+  finalization, Activity persistence, durable result identity, and exact
+  Inspect handoff;
+- typed Preparation quality, scenario, matrix, correlation, singular-value,
+  and baseline audit inspection; and
+- responsive packaged QML surfaces qualified under both installed public
+  launchers.
+
+One composition-owned coordinator still admits one short-lived worker request
+globally. Configuration, inspection, preview, plan, and execution responses are
+adopted only when their request and operation-specific semantic contexts remain
+current. QML remains presentation; Python controllers recheck every
+consequential action, own temporary-edit and shutdown sequencing, and retain
+scientific state independently of page lifetime.
+
+No public YAML schema, CLI command, Python API, scientific algorithm, manifest,
+result model, artifact layout, provenance contract, or optional-dependency
+boundary changed. The complete local gate passed on 2026-08-16 with both
+1,073-test suites, isolated distributions, installed launchers, and exact
+inventories. PR #28's Python, desktop, distribution, dependency, audit, CodeQL,
+and cross-platform installed-QML checks passed after synchronization with
+`main`. The maintainer accepted native functional behavior on 2026-08-17 on
+Ubuntu 24.04 under WSL2/WSLg.
+
+The workflows remain scientifically dense. Broader onboarding, progressive
+disclosure, action hierarchy, and discoverability are explicitly deferred to a
+focused post-Stage-5 UX follow-up; this does not reopen the accepted scientific,
+file-integrity, worker, or lifecycle boundaries.
 
 ## Stage 6: exact scientific 3D scenes
 

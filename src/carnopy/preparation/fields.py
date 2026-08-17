@@ -69,6 +69,15 @@ class ResolvedPreparation:
     semantic_mapping: dict[str, dict[str, Any]]
 
 
+@dataclass(frozen=True)
+class PreparationFieldCapabilities:
+    """Source fields that the existing preparation resolver can consume."""
+
+    numeric: tuple[ResolvedField, ...]
+    categorical: tuple[ResolvedField, ...]
+    auxiliary: tuple[ResolvedField, ...]
+
+
 def resolve_preparation_fields(
     config: PreparationConfig,
     tables: tuple[SourceTable, ...],
@@ -114,6 +123,44 @@ def resolve_preparation_fields(
         categorical_feature_fields=categorical,
         derived_features=config.features.derived,
         semantic_mapping=mapping,
+    )
+
+
+def preparation_field_capabilities(
+    tables: tuple[SourceTable, ...],
+) -> PreparationFieldCapabilities:
+    """Project available fields without weakening the configuration resolver."""
+    if not tables:
+        raise ConfigError("preparation source contains no source tables")
+
+    numeric = tuple(
+        resolved
+        for name in (*COORDINATE_FIELDS, *PROPERTY_REGISTRY)
+        if (resolved := _optional_numeric(name, tables)) is not None
+    )
+    categorical = tuple(
+        resolved
+        for name in ("phase", "fluid")
+        if (resolved := _optional_categorical(name, tables)) is not None
+    )
+    auxiliary_names = tuple(
+        dict.fromkeys(
+            (
+                *(field.semantic_name for field in numeric),
+                *CATEGORICAL_FIELDS,
+                *sorted(AUXILIARY_SOURCE_FIELDS),
+            )
+        )
+    )
+    auxiliary = tuple(
+        resolved
+        for name in auxiliary_names
+        if (resolved := _optional_auxiliary(name, tables)) is not None
+    )
+    return PreparationFieldCapabilities(
+        numeric=numeric,
+        categorical=categorical,
+        auxiliary=auxiliary,
     )
 
 
@@ -269,6 +316,36 @@ def _resolve_auxiliary(field: str, tables: tuple[SourceTable, ...]) -> ResolvedF
                 )
         return ResolvedField(field, field, None, "auxiliary", "auxiliary")
     raise ConfigError(f"unknown or unavailable auxiliary preparation field: {field}")
+
+
+def _optional_numeric(
+    field: str,
+    tables: tuple[SourceTable, ...],
+) -> ResolvedField | None:
+    try:
+        return _resolve_numeric(field, tables)
+    except ConfigError:
+        return None
+
+
+def _optional_categorical(
+    field: str,
+    tables: tuple[SourceTable, ...],
+) -> ResolvedField | None:
+    try:
+        return _resolve_categorical(field, tables)
+    except ConfigError:
+        return None
+
+
+def _optional_auxiliary(
+    field: str,
+    tables: tuple[SourceTable, ...],
+) -> ResolvedField | None:
+    try:
+        return _resolve_auxiliary(field, tables)
+    except ConfigError:
+        return None
 
 
 def _from_column(

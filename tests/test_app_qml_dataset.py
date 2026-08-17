@@ -134,7 +134,7 @@ def test_new_mode_card_opens_real_dataset_page_bound_to_authoritative_draft(
     names = _visual_object_names(root)
     assert "samplerEditor-temperature" in names
     assert "samplerEditor-pressure" in names
-    assert desktop.dataset_config_controller.get_has_document()
+    assert desktop.configuration_controller.get_has_document()
     assert desktop.dataset_draft.get_locally_valid()
     assert runtime.warning_capture.runtime_warnings == ()
 
@@ -191,7 +191,7 @@ def test_dataset_local_mutations_flow_through_existing_models(
     assert "Cyclopentane" in draft.selected_fluid_values()
     assert draft.output_selected("csv") is False
     assert pressure.get_unit() == "kPa"
-    assert desktop.dataset_config_controller.get_locally_valid()
+    assert desktop.configuration_controller.get_locally_valid()
     assert runtime.warning_capture.runtime_warnings == ()
 
 
@@ -563,8 +563,8 @@ def test_worker_authoritative_import_opens_dataset_page(
     _process_events()
 
     assert desktop.dataset_draft.get_mode_name() == "saturation_table"
-    assert desktop.dataset_config_controller.document is not None
-    assert desktop.dataset_config_controller.document.imported
+    assert desktop.configuration_controller.document is not None
+    assert desktop.configuration_controller.document.imported
     assert root.property("currentPage") == "dataset"
     assert runtime.warning_capture.runtime_warnings == ()
 
@@ -602,8 +602,9 @@ def test_qml_uses_child_drafts_only_for_local_edits() -> None:
 
     assert "datasetDraft.applyModeChange" not in dataset_source
     assert "datasetDraft.setCoordinate" not in dataset_source
-    assert "datasetConfigController.newDataset" not in workspace_source
-    assert "datasetConfigController.importDataset" not in workspace_source
+    assert "configurationController.newDataset" not in workspace_source
+    assert "configurationController.newSweep" not in workspace_source
+    assert "configurationController.importDataset" not in workspace_source
     assert "datasetDraft.addFluid" not in dataset_source
     assert "datasetDraft.addProperty" not in dataset_source
     assert "datasetDraft.removeFluid" not in dataset_source
@@ -613,7 +614,8 @@ def test_qml_uses_child_drafts_only_for_local_edits() -> None:
     assert "signal modeChangeRequested" in dataset_source
     assert "signal coordinateChangeRequested" in dataset_source
     assert "signal newDatasetRequested" in workspace_source
-    assert "signal importDatasetRequested" in workspace_source
+    assert "signal newSweepRequested" in workspace_source
+    assert "signal importConfigurationRequested" in workspace_source
     assert "unitChangeRequested" in sampler_source
     assert re.search(r"\bdraft\.unit\s*=(?!=)", sampler_source) is None
     assert re.search(r"\bdraft\.kind\s*=(?!=)", sampler_source) is None

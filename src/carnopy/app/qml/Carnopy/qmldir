@@ -8,6 +8,9 @@ AppIcon 1.0 components/AppIcon.qml
 BlockingBanner 1.0 components/BlockingBanner.qml
 Card 1.0 components/Card.qml
 CommandBar 1.0 components/CommandBar.qml
+ComparisonPlotEditor 1.0 components/ComparisonPlotEditor.qml
+PreparationAuditView 1.0 components/PreparationAuditView.qml
+PreparationScenarioEditor 1.0 components/PreparationScenarioEditor.qml
 ContextInspector 1.0 components/ContextInspector.qml
 RunContextInspector 1.0 components/RunContextInspector.qml
 InspectionContextInspector 1.0 components/InspectionContextInspector.qml
@@ -28,6 +31,8 @@ ChoiceList 1.0 components/ChoiceList.qml
 SearchableChoiceList 1.0 components/SearchableChoiceList.qml
 SamplerEditor 1.0 components/SamplerEditor.qml
 ValidationIssue 1.0 components/ValidationIssue.qml
+WorkflowContextInspector 1.0 components/WorkflowContextInspector.qml
+WorkflowRunPanel 1.0 components/WorkflowRunPanel.qml
 EmptyStatePage 1.0 pages/EmptyStatePage.qml
 HelpPage 1.0 pages/HelpPage.qml
 SettingsPage 1.0 pages/SettingsPage.qml
@@ -38,3 +43,5 @@ YamlPreviewPage 1.0 pages/YamlPreviewPage.qml
 RunPage 1.0 pages/RunPage.qml
 InspectPage 1.0 pages/InspectPage.qml
 ActivityPage 1.0 pages/ActivityPage.qml
+ModelSweepPage 1.0 pages/ModelSweepPage.qml
+PreparationPage 1.0 pages/PreparationPage.qml

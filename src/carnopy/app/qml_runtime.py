@@ -488,7 +488,124 @@ class QmlApplicationRuntime:
             ("workspaceCommitRequested", self.controller.request_commit_workspace_operation),
             ("workspaceCancelRequested", self.controller.request_cancel_workspace_operation),
             ("datasetNewRequested", self.controller.request_new_dataset),
-            ("datasetImportRequested", self.controller.request_import_dataset),
+            ("sweepNewRequested", self.controller.request_new_sweep),
+            ("preparationNewRequested", self.controller.request_new_preparation),
+            (
+                "preparationArrayFormatSelectionRequested",
+                self.controller.request_preparation_array_format_selection,
+            ),
+            (
+                "preparationBaselineModelSelectionRequested",
+                self.controller.request_preparation_baseline_model_selection,
+            ),
+            (
+                "preparationBooleanFieldRequested",
+                self.controller.request_preparation_boolean_field,
+            ),
+            (
+                "preparationCategoricalSelectionRequested",
+                self.controller.request_preparation_categorical_selection,
+            ),
+            (
+                "preparationCategoryModeRequested",
+                self.controller.request_preparation_category_mode,
+            ),
+            (
+                "preparationExplicitCategoriesRequested",
+                self.controller.request_preparation_explicit_categories,
+            ),
+            (
+                "preparationRoleSelectionRequested",
+                self.controller.request_preparation_role_selection,
+            ),
+            (
+                "preparationScenarioAddRequested",
+                self.controller.request_preparation_add_scenario,
+            ),
+            (
+                "preparationScenarioEditRequested",
+                self.controller.request_preparation_edit_scenario,
+            ),
+            (
+                "preparationScenarioCommitRequested",
+                self.controller.request_preparation_commit_scenario,
+            ),
+            (
+                "preparationScenarioCancelRequested",
+                self.controller.request_preparation_cancel_scenario,
+            ),
+            (
+                "preparationScenarioRemoveRequested",
+                self.controller.request_preparation_remove_scenario,
+            ),
+            (
+                "preparationScenarioMoveRequested",
+                self.controller.request_preparation_move_scenario,
+            ),
+            (
+                "preparationScenarioFieldChangeRequested",
+                self.controller.request_preparation_scenario_field_change,
+            ),
+            (
+                "preparationScenarioKindChangeRequested",
+                self.controller.request_preparation_scenario_kind_change,
+            ),
+            (
+                "preparationScenarioPartitionRequested",
+                self.controller.request_preparation_scenario_partition,
+            ),
+            (
+                "preparationScenarioRemovePartitionRequested",
+                self.controller.request_preparation_scenario_remove_partition,
+            ),
+            (
+                "preparationScenarioCategoricalHoldoutRequested",
+                self.controller.request_preparation_scenario_categorical_holdout,
+            ),
+            (
+                "preparationScenarioRangeHoldoutRequested",
+                self.controller.request_preparation_scenario_range_holdout,
+            ),
+            (
+                "preparationScenarioCoordinateHoldoutRequested",
+                self.controller.request_preparation_scenario_coordinate_holdout,
+            ),
+            (
+                "preparationScenarioRemoveHoldoutRequested",
+                self.controller.request_preparation_scenario_remove_holdout,
+            ),
+            (
+                "preparationScenarioStrataRequested",
+                self.controller.request_preparation_scenario_strata,
+            ),
+            (
+                "preparationScenarioNumericBinsRequested",
+                self.controller.request_preparation_scenario_numeric_bins,
+            ),
+            (
+                "preparationScenarioRemoveNumericBinsRequested",
+                self.controller.request_preparation_scenario_remove_numeric_bins,
+            ),
+            (
+                "preparationScenarioTransformationAddRequested",
+                self.controller.request_preparation_scenario_transformation_add,
+            ),
+            (
+                "preparationScenarioTransformationRemoveRequested",
+                self.controller.request_preparation_scenario_transformation_remove,
+            ),
+            (
+                "preparationScenarioTransformationMoveRequested",
+                self.controller.request_preparation_scenario_transformation_move,
+            ),
+            (
+                "preparationTextFieldRequested",
+                self.controller.request_preparation_text_field,
+            ),
+            (
+                "configurationImportRequested",
+                self.controller.request_import_configuration,
+            ),
             ("datasetSaveRequested", self.controller.request_save),
             ("datasetSaveAsRequested", self.controller.request_save_as),
             (
@@ -549,9 +666,25 @@ class QmlApplicationRuntime:
             ("runForceStopRequested", self.controller.request_execution_force_stop),
             ("runInspectRunRequested", self.controller.request_execution_inspect_run),
             ("runViewPlotsRequested", self.controller.request_execution_view_plots),
+            ("workflowPlanRequested", self.controller.request_workflow_plan),
+            ("workflowExecuteRequested", self.controller.request_workflow_execute),
+            ("workflowCancelRequested", self.controller.request_workflow_cancel),
+            ("workflowForceStopRequested", self.controller.request_workflow_force_stop),
+            (
+                "workflowInspectResultRequested",
+                self.controller.request_workflow_inspect_result,
+            ),
             ("inspectionInspectRequested", self.controller.request_inspect_source),
             ("inspectionExploreRequested", self.controller.request_inspection_explore),
             ("inspectionRefreshRequested", self.controller.request_refresh_inspection),
+            (
+                "preparationSourceBindRequested",
+                self.controller.request_bind_inspected_preparation_source,
+            ),
+            (
+                "preparationSourceClearRequested",
+                self.controller.request_clear_preparation_source,
+            ),
             (
                 "inspectionSourcesRefreshRequested",
                 self.controller.request_refresh_inspection_sources,
@@ -953,7 +1086,7 @@ def _exercise_installed_qml_smoke(runtime: QmlApplicationRuntime) -> None:
     if len(roots) != 1:
         raise QmlStartupError("installed QML smoke lost its root object")
     root = roots[0]
-    if root.property("configController") is not runtime.controller.dataset_config_controller:
+    if root.property("configController") is not runtime.controller.configuration_controller:
         raise QmlStartupError("installed QML smoke did not bind the configuration controller")
     if not root.setProperty("width", 1024) or not root.setProperty("height", 768):
         raise QmlStartupError("installed QML smoke could not resize the workbench")
@@ -965,8 +1098,44 @@ def _exercise_installed_qml_smoke(runtime: QmlApplicationRuntime) -> None:
         raise QmlStartupError("installed QML smoke did not apply responsive controller state")
     if root.findChild(QObject, "yamlPreviewPage") is None:
         raise QmlStartupError("installed QML smoke did not instantiate the YAML page")
-    if runtime.controller.dataset_config_controller.get_yaml_available():
+    if runtime.controller.configuration_controller.get_yaml_available():
         raise QmlStartupError("installed QML smoke unexpectedly exposed YAML without a document")
+
+    workflow_pages = (
+        (
+            "sweeps",
+            "modelSweepPage",
+            "sweepWorkflowRunPanel",
+            runtime.controller.sweep_workflow_controller,
+        ),
+        (
+            "preparation",
+            "preparationPage",
+            "preparationWorkflowRunPanel",
+            runtime.controller.preparation_workflow_controller,
+        ),
+    )
+    for page_key, page_name, panel_name, workflow_controller in workflow_pages:
+        if not root.setProperty("width", 1440) or not root.setProperty("height", 1000):
+            raise QmlStartupError(f"installed QML smoke could not resize {page_key} wide")
+        if not root.setProperty("currentPage", page_key):
+            raise QmlStartupError(f"installed QML smoke could not select {page_key}")
+        runtime.application.processEvents()
+        page = root.findChild(QObject, page_name)
+        if page is None or root.findChild(QObject, panel_name) is None:
+            raise QmlStartupError(f"installed QML smoke did not instantiate {page_key}")
+        if page.property("configController") is not runtime.controller.configuration_controller:
+            raise QmlStartupError(f"installed QML smoke misbound {page_key} configuration state")
+        if page.property("workflowController") is not workflow_controller:
+            raise QmlStartupError(f"installed QML smoke misbound {page_key} workflow state")
+        if root.property("shellMode") != "wide" or page.property("expectedColumns") < 2:
+            raise QmlStartupError(f"installed QML smoke did not lay out {page_key} wide")
+
+        if not root.setProperty("width", 640) or not root.setProperty("height", 900):
+            raise QmlStartupError(f"installed QML smoke could not resize {page_key} narrow")
+        runtime.application.processEvents()
+        if root.property("shellMode") != "narrow" or page.property("expectedColumns") != 1:
+            raise QmlStartupError(f"installed QML smoke did not stack {page_key} narrow")
     if runtime.warning_capture.runtime_warnings:
         details = "\n".join(runtime.warning_capture.runtime_warnings)
         raise QmlStartupError(f"installed QML smoke emitted runtime warnings:\n{details}")

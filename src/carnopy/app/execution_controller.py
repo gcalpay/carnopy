@@ -5,7 +5,7 @@ from typing import Any, cast
 
 from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
 
-from carnopy.app.config_controller import DatasetConfigController
+from carnopy.app.config_controller import ConfigurationController
 from carnopy.app.config_document import (
     ConfigDocumentError,
     SavedConfigSnapshot,
@@ -34,7 +34,7 @@ class DatasetExecutionController(QObject):
     def __init__(
         self,
         coordinator: DesktopRequestCoordinator,
-        config_controller: DatasetConfigController,
+        config_controller: ConfigurationController,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
@@ -342,7 +342,7 @@ class DatasetExecutionController(QObject):
     @Slot(name="refreshConfiguration")
     def refresh_configuration(self) -> None:
         try:
-            snapshot = self.config_controller.execution_snapshot()
+            snapshot = self.config_controller.execution_snapshot(expected_document_type="dataset")
         except ConfigDocumentError as exc:
             self.snapshot = None
             self._snapshot_issue = str(exc)
