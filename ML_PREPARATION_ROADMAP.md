@@ -53,8 +53,7 @@ name.
 ## Desktop exposure checkpoint
 
 GUI-2 Stage 4 established worker-authoritative, revision-bound Preparation
-planning and execution without adding a visible editor. Stage 5 is now
-implemented through Unit 23B plus its focused native workflow-action repair:
+planning and execution without adding a visible editor. Stage 5 is complete:
 
 - Inspect derives typed Preparation eligibility and capability projections
   from verified dataset-run or model-sweep metadata;
@@ -104,8 +103,11 @@ implemented through Unit 23B plus its focused native workflow-action repair:
 
 This is desktop exposure of the implemented preparation contract, not new
 preparation science. The complete locked local gate passed with both 1,073-test
-suites and final distribution verification. Final native acceptance and the
-Stage 5 completion record remain.
+suites and final distribution verification. Remote verification and native
+functional acceptance also passed. Broader onboarding and workflow
+discoverability remain a post-Stage-5 UX follow-up rather than preparation
+science or an unfinished data contract. The accepted implementation record is
+indexed in [`docs/archive/GUI2_STAGE5.md`](docs/archive/GUI2_STAGE5.md).
 
 ## Reviewed future direction — Optional PyTorch dataset export
 

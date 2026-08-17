@@ -79,7 +79,7 @@ implementation.
 | 2 | Complete | Added the packaged QML shell and Dataset/YAML/Save workflows |
 | 3 | Complete | Reached parity, migrated both launchers, retired Widgets, and qualified `0.1.0a4` |
 | 4 | Complete | Added controlled sweep and preparation worker operations for the existing public contracts |
-| 5 | In progress | Structured Sweep, Preparation, and typed audit inspection are enabled; the complete local gate passed, while final native acceptance and the completion record remain |
+| 5 | Complete | Added accepted structured Sweep and Preparation workflows plus typed audit inspection |
 | 6 | Pending | Build exact emitted-value 3D scenes |
 | 7 | Pending | Add native interactive 3D to QML |
 | 8 | Pending | Qualify native 3D packaging, platforms, and a later release |
@@ -154,7 +154,7 @@ At the `0.1.0a4` checkpoint, Stage 4 was the approved next implementation
 stage. It began the accepted workflow-depth milestone by exposing the existing
 sweep and preparation contracts through controlled worker operations without
 changing their public schemas or output layouts. Stage 4 has since completed;
-Stage 5 now adds the corresponding structured QML workflows. Their numbers,
+Stage 5 has added the corresponding structured QML workflows. Their numbers,
 dependencies, and reviewed technical content remain unchanged by this
 reprioritization.
 
@@ -192,271 +192,54 @@ The separate WSLg launch-hardening follow-up remains desktop maintenance. Its
 native XCB/WSLg acceptance passed on 2026-08-09 with a real six-row generation,
 configured plot, verified inspection, clean workspace reopen, and a fixed
 workspace-scoped smoke lifecycle; exhaustive verification now collects 837
-tests. Stage 5 is now in progress on its dedicated feature branch.
+tests. Stage 5 is complete; its accepted record is indexed in
+[`docs/archive/GUI2_STAGE5.md`](docs/archive/GUI2_STAGE5.md).
 
 ## Stage 5: sweep and preparation QML workflows
 
-The sweep workflow covers models, reference-model settings, comparison
-options, comparison plots, validation, execution, cancellation, and inspection
-handoff.
+Stage 5 is complete. Its accepted implementation record, exact commit range,
+PR reference, verification evidence, native acceptance, and limitations are
+indexed in
+[`docs/archive/GUI2_STAGE5.md`](docs/archive/GUI2_STAGE5.md). Durable ownership
+is recorded in [`DESKTOP_ARCHITECTURE.md`](DESKTOP_ARCHITECTURE.md).
 
-The preparation workflow covers immutable dataset or sweep sources, numeric
-and categorical features, targets, auxiliary and derived fields, current
-scenarios and partitions, transformations, canonical Parquet, optional NPY,
-NPZ, and SafeTensors outputs, matrix diagnostics, and optional baseline
-diagnostics.
+The accepted desktop surface provides:
 
-Inspection presents manifests, quality flags, exclusions, provenance, leakage
-audits, partition summaries, correlations, singular values, rank, conditioning,
-and baseline metrics. Missing optional dependencies disable only the affected
-feature and provide exact installation guidance.
+- one global exact-file Dataset, Model Sweep, or Preparation document with
+  deterministic preview, worker-validated Save, external-change protection,
+  and typed saved snapshots;
+- complete structured Model Sweep and Preparation drafts, including temporary
+  comparison and scenario editors that cannot leak into saved or planned work;
+- explicit immutable Preparation source binding copied from verified
+  inspection, while portable Preparation YAML remains source-independent;
+- revision-bound Plan and Execute workflows with cancellation, protected
+  finalization, Activity persistence, durable result identity, and exact
+  Inspect handoff;
+- typed Preparation quality, scenario, matrix, correlation, singular-value,
+  and baseline audit inspection; and
+- responsive packaged QML surfaces qualified under both installed public
+  launchers.
 
-### Implementation checkpoint: Units 1–23B and focused native repair
-
-Stage 5 is in progress on `feat/gui2-stage5`. The implemented checkpoint keeps
-one globally active configuration document while extending its exact-byte,
-dirty-state, reformat, external-change, atomic-Save, exclusive-Save-As, and
-saved-snapshot contracts across Dataset, Model Sweep, and Preparation YAML.
-`ConfigurationController` owns only that shared document lifecycle and the
-three focused drafts; workflow planning, execution, Activity, results,
-inspection, and Preparation source context remain in their existing focused
-controllers. Generic worker loading dispatches directly from the required
-`document_type` discriminator rather than parser order.
-
-The structured Model Sweep workflow is enabled in the normal QML shell. It
-supports the complete current sweep schema, comparison-plot snapshots and
-temporary editing, typed plan and result projections, revision-bound planning,
-controlled execution, cancellation, protected finalization, persistent
-finalized-result identity, and exact Inspect handoff.
-
-Preparation is implemented through the Unit 19B visible-shell checkpoint:
-
-- inspection derives a private typed preparation profile from verified source
-  metadata and established preparation field-resolution logic;
-- `PreparationWorkflowController` owns an explicit immutable copy of the
-  selected inspection snapshot, so later browsing in Inspect cannot silently
-  change the effective preparation source;
-- the complete current role, categorical, output, quality, baseline, and
-  eight-scenario schema is represented by Python-owned drafts;
-- temporary scenario edits survive navigation and cannot leak into Save,
-  validation, planning, execution, document replacement, workspace
-  replacement, or shutdown;
-- preparation planning, execution, cancellation, protected finalization,
-  Activity, result relation, and exact Inspect handoff consume the global
-  saved document plus the explicit source binding; and
-- the packaged `PreparationPage` and scenario editor are available through
-  normal navigation, the Workspace source prerequisite, the global command
-  lifecycle, and the workflow context inspector.
-
-Unit 19A adds the Python-owned New Preparation lifecycle. The configuration
-controller composes the packaged Preparation template through the global
-document lifecycle, while the desktop composition requires an explicit bound
-source before creation. A missing binding produces an exact prerequisite and
-routes to Inspect; direct internal configuration calls cannot bypass that
-composition guard. No new QML surface is enabled by 19A.
-
-Unit 19B enables the normal Preparation surface without adding another state
-owner. Workspace creation routes an unbound user to Inspect, dirty replacement
-uses the global discard decision, Preparation documents open directly in the
-structured page, and navigation, command status, focus routing, context state,
-and source-change actions bind the existing authoritative controllers. Focused
-QML coverage also holds optional ML and analysis controls unavailable under an
-app-only capability projection while keeping the page usable.
-
-Unit 20A begins finalized audit exposure without adding presentation state.
-Current Preparation `quality_flags` are now an integrity-verified table in the
-worker inspection catalog and therefore contribute to the exact inspection
-revision and reuse the established 500-row worker blocks and 100-row local
-pages. An invalid optional flags artifact remains omitted from table control and
-is reported through the existing Preparation quality error instead of making
-the main bundle uninspectable.
-
-Unit 20B adds the Qt-independent `PreparationAuditProjection` and its exact
-role contracts. It validates and deterministically flattens finalized quality,
-scenario and partition, duplicate-state, structured-grid, matrix, correlation,
-singular-value, and baseline evidence into detached typed rows. Missing numeric
-evidence has explicit availability state, mismatched worker evidence is
-rejected, and absent scenario-detail evidence never produces inferred leakage
-claims. A versioned private scenario-detail input is defined for the verified
-`scenario.json` evidence that Unit 20C will supply; no controller or QML wiring
-is part of Unit 20B.
-
-Unit 20C completes the private worker/controller integration. Current scenario
-audit artifacts are resolved within the finalized bundle, checked against their
-recorded hashes, read as exact bytes, and required to match the manifest's
-scenario name, kind, and partition counts before their leakage evidence enters
-the private worker payload. Their file identities contribute to the inspection
-revision. Legacy bundles without recorded scenario audit artifacts remain
-inspectable but expose no leakage evidence. A focused `PreparationAuditModel`
-owns the exact section list models, while `InspectionController` validates the
-complete projection before accepting the response, rejects audit data attached
-to another source kind, and clears audit state when inspection becomes stale.
-
-Unit 21A adds the reusable packaged `PreparationAuditView` without yet changing
-normal Inspect navigation. The component consumes only the focused typed audit
-object, groups quality/scenario, matrix, and baseline evidence into explicit
-sections, uses bounded reusable list delegates for potentially large evidence,
-and distinguishes unavailable evidence from an available section with no
-findings. It retains scenario, partition, fit, target, model, and source-group
-context in visible summaries, stacks its cards at narrow widths, and is directly
-instantiated with populated and unavailable projections under the QML warning
-capture. This deliberately leaves placement in the Inspect workflow to the
-separate Unit 21B integration boundary.
-
-Unit 21B integrates that component as a fifth Inspect tab only while a
-Preparation bundle has been successfully accepted. Dataset and Model Sweep
-inspections retain their existing four tabs. Current bundles present the typed
-quality/scenario, matrix, and baseline evidence plus exact artifact-level audit
-issues; legacy bundles retain an explicit unavailable state rather than losing
-the audit surface or fabricating evidence. Starting another inspection, a
-failed or stale inspection, or accepting a non-Preparation source hides the tab
-and returns a selected audit tab to Summary. The page remains responsive at
-narrow widths, and QML continues to consume only the controller's typed models.
-
-The native inspection checkpoint after Unit 21B found and repaired two
-presentation-path defects before lifecycle hardening continued. Text-only
-`AppButton` instances marked compact now retain visible labels instead of
-rendering as empty squares; the Preparation source card exposes visible bind,
-clear, and continuation actions, while the empty Preparation page can create a
-bound-source document without a Workspace detour. Scenario Add, Edit, Commit,
-Cancel, list mutation, and nested-editor model changes now cross the existing
-queued root-signal boundary, preventing a Loader/model rebind inside its own
-native click handler. Continued native inspection exposed the same synchronous
-rebind defect when Matrix diagnostics revealed its settings. Source actions,
-roles, categorical settings, source policy, outputs, matrix diagnostics, and
-baseline diagnostics now all cross that queued boundary as well. Focused QML
-interaction coverage invokes the visible Scenario and Matrix controls rather
-than substituting direct Python calls. Native reinspection confirmed that the
-source, Scenario, Matrix, and Baseline controls no longer crash. It also found
-that populated quality fields lost their placeholder-only descriptions and the
-shorter Outputs card was vertically centered as Quality diagnostics expanded.
-The five settings now retain persistent visible labels and both cards remain
-top-aligned. Native visual reinspection confirmed that the labels remain
-visible and the Outputs and Quality diagnostics headings remain aligned while
-both diagnostic sections are toggled. The Unit 21B presentation checkpoint is
-therefore accepted.
-
-Unit 22A hardens terminal-response adoption without adding another request or
-identity framework. Configuration requests now retain the workspace,
-document-replacement generation, document kind, exact validation bytes, and
-requested source relevant to that operation. Inspection requests retain the
-workspace, source, revision, table, worker-block offset, and local-page offset.
-Workflow requests retain the workspace, requested configuration path, exact
-active saved snapshot, and immutable execution plan/source context. A matching
-request UUID remains necessary, but a terminal success or failure is adopted
-only while this operation-specific semantic context is still current. This
-prevents late validation, Save, load, inspection, preview, plan, or execution
-responses from replacing newer state after direct or otherwise forbidden
-context mutation. Worker load results must also return the exact requested
-source, and preview payloads must identify the requested worker block.
-
-These guards preserve intentional semantics: ordinary edits made during an
-execution do not change its captured snapshot, and navigation or identical
-semantic state does not invalidate a response. Focused controller tests cover
-obsolete successes and failures, identical-byte document replacement,
-no-write stale Save, source mismatches, preview-block mismatches, and workspace
-replacement. Cross-controller action enforcement and shutdown/transition
-hardening were deliberately left to separate Units 22B and 22C.
-
-Unit 22B completes the cross-controller action-enforcement half of that
-boundary. Every QML-callable global configuration lifecycle or worker-start
-slot rechecks both transient-editor state and global request idleness in
-`DesktopController`; disabled controls are presentation only. Direct Plan and
-Execute calls focus the active comparison or scenario editor instead of
-reaching a workflow controller. Dataset and configured-Visualization edit
-slots now use the same document-kind and operation-aware `canEdit` policy that
-already guarded Sweep and Preparation fields. Configuration validation, load,
-Save, and planning lock their owning editor, while Dataset, Sweep, or
-Preparation execution continues to allow ordinary draft edits beside its
-immutable active snapshot. Session-plot field and mapping slots likewise reject
-changes while their render worker owns the submitted request. Cancellation and
-Force Stop remain available only through their established active-operation
-controllers.
-
-Focused facade regressions call the Python slots directly, bypassing QML
-enablement. They cover every global lifecycle and worker-start family, both
-nested-editor kinds, Dataset and Visualization editing under configuration
-work and execution, owned-object checks, and session rendering. That checkpoint
-left multi-step shutdown and the remaining cross-workflow transition matrix to
-Unit 22C.
-
-Unit 22C completes that shutdown and transition boundary. Busy-close consent is
-bound to the exact worker session that produced the dialog, and a delayed
-confirmation cannot cancel a replacement request even when its workflow and
-operation names are identical. Pending cooperative cancellation likewise
-retains the accepted session identity. Protected finalization is wait-only and
-continues closing only after the worker releases the coordinator. Sweep and
-Preparation cancellation dialogs now say Cancel rather than Force stop; only
-the session-render path uses force-stop wording.
-
-Transient-edit consent is bound to the exact configured plot, session plot,
-Sweep comparison, and Preparation scenario identities shown to the user.
-Dirty-document consent is bound to the same configuration object and
-configuration-state revision. Changed state rejects the old confirmation
-instead of discarding a replacement edit or newer document state. After a
-worker finishes, the controller advances explicitly through transient-edit
-Cancel and then dirty-document discard; it emits the final window-close request
-only after every remaining guard passes. Focused transition tests cover stale
-busy, transient, and dirty confirmations, same-operation worker replacement,
-protected finalization, the complete worker-to-edit-to-dirty sequence, and the
-truthful QML policy labels. Existing focused configuration and workflow tests
-continue to cover exact-byte plan restoration, explicit Preparation rebinding,
-immutable execution snapshots, stale/unrelated persistent results, cancellation,
-and protected finalization.
-
-The focused native checkpoint after Unit 22C found that the shared Sweep and
-Preparation run panel still invoked Plan, Execute, Cancel, Force Stop, and
-Inspect Result directly from its originating QML input handler. Planning emits
-workflow state and replaces blocker projections immediately, so the direct
-call could re-enter and destroy panel delegates while their Plan click was
-still unwinding. Both workflow pages now forward all five actions through the
-same root-level queued facade used by the accepted Preparation controls. An
-enabled-button regression for each workflow verifies that a Plan click emits
-its request synchronously but cannot start the worker until Qt processes the
-queued connection. This is a presentation-boundary repair; planning,
-execution, worker authority, and scientific contracts are unchanged.
-
-Unit 23A qualifies the packaged Stage 5 application surface without claiming
-the complete Stage 5 gate. The mandatory runtime inventory now exactly matches
-all 47 files under the QML package, and the wheel/sdist checker explicitly
-requires every Stage 5 draft, workflow, planning, worker, and audit module.
-Both installed public launchers instantiate the Sweep and Preparation pages,
-verify their authoritative controller bindings, exercise wide and narrow
-responsive layouts, and require a warning-free app-only QML runtime. A
-rehearsal isolated wheel and sdist passed Twine, exact distribution inventory,
-app-only installation compatibility, and both installed launcher smokes.
-
-The build targets deliberately emit Core Metadata 2.4, the lowest version that
-contains every metadata field Carnopy declares. This avoids an incidental
-Hatchling default to 2.5 that stable Twine 6.2.0 cannot yet validate; it changes
-neither packaged contents nor dependencies, and the distribution checker now
-enforces the intentional version for both archive types.
-
-Unit 23B passed the complete locked local gate on 2026-08-16 at `3bc44a6`
-without requiring implementation remediation. The direct suite and the
-preflight-owned repeat each passed 1,073 tests. Lock consistency, Ruff, the
-224-file formatting check, strict mypy across 139 source files, preflight,
-compatibility across 70 installed packages, isolated wheel/sdist construction,
-Twine, and exact distribution inspection also passed. Rehearsal artifacts stay
-ignored under `prerelease/gui2-stage5-unit23b-local-gate/`.
+One composition-owned coordinator still admits one short-lived worker request
+globally. Configuration, inspection, preview, plan, and execution responses are
+adopted only when their request and operation-specific semantic contexts remain
+current. QML remains presentation; Python controllers recheck every
+consequential action, own temporary-edit and shutdown sequencing, and retain
+scientific state independently of page lifetime.
 
 No public YAML schema, CLI command, Python API, scientific algorithm, manifest,
-result model, artifact layout, provenance contract, or dependency boundary has
-changed. Focused tests accompany each completed implementation unit. Final
-native acceptance and Unit 24's completion record remain pending.
+result model, artifact layout, provenance contract, or optional-dependency
+boundary changed. The complete local gate passed on 2026-08-16 with both
+1,073-test suites, isolated distributions, installed launchers, and exact
+inventories. PR #28's Python, desktop, distribution, dependency, audit, CodeQL,
+and cross-platform installed-QML checks passed after synchronization with
+`main`. The maintainer accepted native functional behavior on 2026-08-17 on
+Ubuntu 24.04 under WSL2/WSLg.
 
-The remaining implementation order after Unit 23B is:
-
-1. Perform final native acceptance against the qualified installed application.
-2. Unit 24 records completion only after that manual acceptance passes.
-
-The Unit 21B audit-presentation checkpoint and its focused native repair cycle
-are complete. The focused Unit 22C inspection found and repaired the shared
-workflow-action re-entrancy boundary described above. Sweep and Preparation
-Plan interactions have focused enabled-button coverage, and Preparation Plan
-was reinspected natively after the repair. Sweep Plan and the final installed
-application must now be inspected; acceptance must not be deferred until the
-documentation-only completion unit.
+The workflows remain scientifically dense. Broader onboarding, progressive
+disclosure, action hierarchy, and discoverability are explicitly deferred to a
+focused post-Stage-5 UX follow-up; this does not reopen the accepted scientific,
+file-integrity, worker, or lifecycle boundaries.
 
 ## Stage 6: exact scientific 3D scenes
 

@@ -187,11 +187,13 @@ The current source application keeps one active Dataset, Model Sweep, or
 Preparation configuration with one Save, Reload, Close, dirty-state, and YAML
 Preview lifecycle. Generic Open dispatches from the YAML `document_type`.
 Preparation source profiling, explicit source binding, complete structured
-drafts, planning, execution, and its packaged editor are implemented on the
-Stage 5 branch and enabled in the normal shell. Inspect now exposes the typed
-Preparation audit view for accepted Preparation bundles. Lifecycle hardening
-and packaged QML qualification are complete, and the complete local gate has
-passed. Final native acceptance remains unfinished.
+drafts, planning, execution, and its packaged editor are implemented and
+enabled in the normal shell. Inspect exposes the typed Preparation audit view
+for accepted Preparation bundles. Lifecycle hardening, packaged QML
+qualification, the complete local gate, remote verification, and native
+functional acceptance have passed. The workflows remain scientifically dense;
+broader onboarding and discoverability refinement are planned as focused UX
+follow-up work.
 
 Scientific generation, inspection, and Matplotlib rendering run in short-lived
 workers. The QML process does not import CoolProp, NumPy, pandas, PyArrow, or
@@ -458,13 +460,11 @@ thermophysical engines and data sources
 The accepted direction is workflow depth now, source breadth next, and advanced
 model breadth later. GUI-2 Stage 4 brought the existing model-sweep and
 preparation workflows into the desktop's controlled nonvisual worker boundary.
-Stage 5 is in progress: the complete structured Model Sweep and Preparation
-editors and typed Preparation audit inspection are enabled. Lifecycle
-hardening and packaged QML qualification are complete, and the complete local
-gate has passed. Final native acceptance remains. After that
-milestone, Carnopy
-will establish a validated import/source contract and one evidence-driven
-source expansion.
+Stage 5 completed the structured Model Sweep and Preparation editors, typed
+Preparation audit inspection, lifecycle hardening, packaged QML qualification,
+and native functional acceptance. Carnopy's next product-planning direction is
+a validated import/source contract followed by one evidence-driven source
+expansion.
 
 Detailed source and model candidates are maintainer planning rather than public
 support promises. Optional PyTorch export, exact 3D, and automation remain
@@ -501,10 +501,10 @@ the accepted QML parity application. Its complete local and remote release
 gates, native acceptance, [PyPI publication](https://pypi.org/project/carnopy/0.1.0a4/),
 [GitHub prerelease](https://github.com/gcalpay/carnopy/releases/tag/v0.1.0a4),
 and [version-specific Zenodo archive](https://doi.org/10.5281/zenodo.21709965)
-are complete. GUI-2 Stage 4 is implemented on the current development branch
-without changing the published `0.1.0a4` artifacts. Stage 5 is in progress on
-its dedicated feature branch; its structured Sweep and Preparation
-desktop implementation does not change the published `0.1.0a4` artifacts.
+are complete. GUI-2 Stages 4 and 5 are implemented in current source without
+changing the published `0.1.0a4` artifacts. Stage 5's structured Sweep and
+Preparation desktop workflows therefore remain source-only until a later
+release is separately planned and qualified.
 
 ## License
 

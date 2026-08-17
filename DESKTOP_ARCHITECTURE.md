@@ -1159,7 +1159,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 2 | Package the Precision Grid QML Workspace, Dataset, Visualization, and YAML/Save workflows | Complete; automated, remote, and native acceptance passed |
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete |
 | 4 | Add controlled sweep and preparation worker operations | Complete |
-| 5 | Add structured sweep and preparation QML workflows | In progress through Unit 23B; complete local gate passed, final native acceptance pending |
+| 5 | Add structured sweep and preparation QML workflows | Complete; automated, remote, and native functional acceptance passed |
 | 6 | Build exact emitted-value 3D scene contracts | Pending |
 | 7 | Integrate native interactive 3D into QML | Pending |
 | 8 | Complete native-3D platform, distribution, documentation, and later-release qualification | Pending |
@@ -1230,7 +1230,7 @@ six-row generation, configured plot, verified inspection, clean workspace
 reopen, and workspace-scoped installed smoke. Its lifecycle regression raised
 the exhaustively verified suite to 837 tests.
 
-Stage 5 is implemented through Unit 23B on `feat/gui2-stage5`. The former
+Stage 5 is complete on `feat/gui2-stage5`. The former
 Dataset-only document and controller now provide one global exact-file
 lifecycle for all three public configuration types. The complete structured
 Sweep workflow is enabled in QML. Preparation source profiling, explicit
@@ -1292,8 +1292,20 @@ without a remediation diff. Both the direct and preflight-owned suites passed
 1,073 tests. Lock consistency, Ruff, formatting across 224 files, strict mypy
 across 139 source files, preflight, compatibility across 70 installed packages,
 isolated wheel/sdist construction, Twine, and exact distribution verification
-also passed. Final native workflow acceptance and the completion record remain;
-this automated evidence does not substitute for them.
+also passed. After synchronization with `main`, PR #28 passed its Python,
+desktop, installed-QML, distribution, dependency, audit, and CodeQL checks.
+
+The maintainer completed native functional acceptance on 2026-08-17 on Ubuntu
+24.04 under WSL2/WSLg. The review covered the global document lifecycle,
+structured Sweep and Preparation editing, explicit Preparation source binding,
+scenario and diagnostic controls, Plan and Execute, persistent result review,
+and Preparation audit inspection. Functional completion is accepted while
+broader onboarding, progressive disclosure, action hierarchy, and workflow
+discoverability remain a focused post-Stage-5 UX follow-up. Cross-platform
+installed startup remains smoke coverage; broad native qualification is still
+reserved for Stage 8. The concise completion evidence and exact implementation
+references are indexed in
+[`docs/archive/GUI2_STAGE5.md`](docs/archive/GUI2_STAGE5.md).
 
 ## Known current limitations
 
