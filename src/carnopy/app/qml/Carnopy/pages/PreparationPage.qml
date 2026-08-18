@@ -786,7 +786,11 @@ Item {
             Loader {
                 id: activeScenarioLoader
 
+                readonly property PreparationScenarioEditor loadedEditor:
+                item as PreparationScenarioEditor
+
                 Layout.fillWidth: true
+                Layout.preferredHeight: loadedEditor === null ? 0 : loadedEditor.implicitHeight
                 active: root.preparationDraft.activeScenarioDraft !== null
                 objectName: "preparationActiveScenarioEditor"
                 sourceComponent: Component {
