@@ -785,6 +785,35 @@ def test_preparation_page_restores_one_python_owned_scenario_editor(
     assert runtime.warning_capture.runtime_warnings == ()
 
 
+def test_preparation_page_releases_closed_scenario_editor_layout(
+    runtime: QmlApplicationRuntime,
+    preparation_page: QQuickItem,
+) -> None:
+    desktop = runtime.controller
+    loader = _item(preparation_page, "preparationActiveScenarioEditor")
+    output_grid = _item(preparation_page, "preparationOutputQualityGrid")
+
+    for width, height in ((1920, 1000), (1600, 800), (1366, 768)):
+        preparation_page.setWidth(width)
+        preparation_page.setHeight(height)
+        _process_events()
+        initial_output_y = output_grid.mapToItem(preparation_page, QPointF(0, 0)).y()
+
+        assert desktop.request_preparation_add_scenario()
+        _process_events()
+        open_output_y = output_grid.mapToItem(preparation_page, QPointF(0, 0)).y()
+        assert open_output_y > initial_output_y
+
+        assert desktop.request_preparation_cancel_scenario()
+        _process_events()
+        closed_output_y = output_grid.mapToItem(preparation_page, QPointF(0, 0)).y()
+        assert loader.property("active") is False
+        assert loader.height() == pytest.approx(0, abs=1)
+        assert closed_output_y < open_output_y
+
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
 def test_preparation_page_focus_and_responsive_state_remain_warning_free(
     runtime: QmlApplicationRuntime,
     preparation_page: QQuickItem,
