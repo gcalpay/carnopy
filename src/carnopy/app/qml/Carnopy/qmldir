@@ -33,6 +33,8 @@ SamplerEditor 1.0 components/SamplerEditor.qml
 ValidationIssue 1.0 components/ValidationIssue.qml
 WorkflowContextInspector 1.0 components/WorkflowContextInspector.qml
 WorkflowRunPanel 1.0 components/WorkflowRunPanel.qml
+WindowResizeHandles 1.0 components/WindowResizeHandles.qml
+WindowTitleBar 1.0 components/WindowTitleBar.qml
 EmptyStatePage 1.0 pages/EmptyStatePage.qml
 HelpPage 1.0 pages/HelpPage.qml
 SettingsPage 1.0 pages/SettingsPage.qml

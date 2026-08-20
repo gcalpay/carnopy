@@ -14,6 +14,10 @@ from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QApplication
 
 from carnopy.app.qml_settings import (
+    CUSTOM_TITLE_BAR_HEIGHT,
+    DEFAULT_WINDOW_HEIGHT,
+    DEFAULT_WINDOW_WIDTH,
+    DEFAULT_WORKBENCH_HEIGHT,
     INSPECTOR_COLLAPSED_KEY,
     MAXIMIZED_KEY,
     NORMAL_GEOMETRY_KEY,
@@ -87,6 +91,7 @@ def test_obsolete_window_state_resets_once_without_losing_other_preferences(
     settings.setValue(NORMAL_GEOMETRY_KEY, QRect(2500, 900, 1800, 1200))
     settings.setValue(NORMAL_SCREEN_KEY, "removed-screen")
     settings.setValue(MAXIMIZED_KEY, True)
+    settings.setValue(WINDOW_STATE_VERSION_KEY, WINDOW_STATE_VERSION - 1)
 
     controller = QmlSettingsController(settings)
 
@@ -286,7 +291,13 @@ def test_geometry_clamping_uses_logical_screen_bounds() -> None:
         600,
     )
     assert clamp_window_geometry(QRect(0, 0, 5000, 3000), (first, second)) == second
-    assert clamp_window_geometry(QRect(), (first, second)) == QRect(240, 90, 1440, 900)
+    assert CUSTOM_TITLE_BAR_HEIGHT == DEFAULT_WINDOW_HEIGHT - DEFAULT_WORKBENCH_HEIGHT
+    assert clamp_window_geometry(QRect(), (first, second)) == QRect(
+        (first.width() - DEFAULT_WINDOW_WIDTH) // 2,
+        (first.height() - DEFAULT_WINDOW_HEIGHT) // 2,
+        DEFAULT_WINDOW_WIDTH,
+        DEFAULT_WINDOW_HEIGHT,
+    )
 
 
 def test_remembered_geometry_is_clamped_and_restored(

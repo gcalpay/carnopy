@@ -31,6 +31,9 @@ The source tree has one desktop presentation implementation:
   QML parity and public-launcher migration;
 - the QML frontend uses the authoritative QtCore controllers and private worker
   boundary;
+- the root QML window uses a packaged custom outer frame whose title controls,
+  non-interactive drag region, active-state presentation, and system-resize
+  edges replace only the native decoration above the unchanged workbench;
 - the QML application currently implements the responsive shell, Workspace,
   Dataset, Model Sweep, Visualization, YAML Preview, Run, Inspect, Activity,
   Settings, and Help surfaces, including one global worker-validated
@@ -826,6 +829,16 @@ portable centering and modality contract.
 Window close is routed through the composition-owned active-edit, worker-busy,
 and dirty-document guards before runtime teardown.
 
+The packaged `WindowTitleBar` and `WindowResizeHandles` components own only
+outer-window presentation and pointer interaction. Title dragging and every
+resize edge or corner delegate to Qt's system move and resize APIs so the
+platform compositor or window manager retains monitor, DPI, and supported snap
+behavior. Minimize and maximize/restore use the normal `QWindow` state APIs.
+The close control requests the ordinary native window close; the installed
+event filter still defers it through the same composition-owned shutdown guard.
+Interactive title controls are outside the drag region, and resize handles are
+disabled while maximized.
+
 The shared Sweep and Preparation workflow panel follows this boundary for
 Plan, Execute, Cancel, Force Stop, and Inspect Result. Those actions may change
 operation properties and replace blocker/result projections immediately, so a
@@ -960,7 +973,7 @@ Window restoration regressed twice when responsibility was split between QML
 and Python. A QML completion handler made the window visible or maximized on
 Qt's default screen, after which a delayed Python callback moved the already
 mapped native window to the remembered monitor. On WSLg/XCB this could create
-an off-screen decorated frame, a compositor-visible cross-screen remap, and an
+an off-screen outer frame, a compositor-visible cross-screen remap, and an
 apparently frozen input surface. Starting another launcher while the first was
 still alive compounded the symptom because both software-rendered shells
 overlapped and wrote the same settings.
@@ -972,13 +985,15 @@ The permanent invariants are:
   root remains hidden.
 - The hidden window is assigned and fitted to the selected logical screen
   before it is exposed to the compositor. A windowed launch receives at most
-  one later decorated-frame fit before geometry tracking is enabled.
+  one later outer-frame fit before geometry tracking is enabled.
 - One per-user runtime lock rejects a concurrent QML launcher. Diagnostics must
   close every process they start; before diagnosing a frozen event loop, check
   for overlapping launcher and worker processes.
-- QML placement state is versioned. A restoration-contract change must migrate
-  or discard only `qml/window/*` placement keys; it must retain appearance,
-  layout, recent-workspace, and unrelated settings.
+- QML placement state is versioned. Version 3 discards the prior placement
+  rectangle, screen, and maximized flag once because the client rectangle now
+  includes the 40-logical-pixel custom title bar; appearance, accessibility,
+  layout, recent-workspace, and unrelated settings remain intact. A later
+  restoration-contract change must retain that same isolation.
 - QML preserves the stable application identity and `recent_workspaces` used
   before frontend retirement. Obsolete Widgets `window_geometry` and current
   `qml/window/*` remain separate; no scientific draft or YAML state is stored
@@ -988,12 +1003,13 @@ The permanent invariants are:
   single-instance rejection, settings isolation, and a clean replacement
   launch after the lock is released.
 - A windowed close resolves the monitor from the largest intersection with the
-  decorated frame rather than trusting a stale `QWindow.screen()` association.
+  outer frame rather than trusting a stale `QWindow.screen()` association.
   A maximized close resolves it from the persisted normal geometry because
   WSLg can report the maximized frame on a different logical screen. The stored
   maximized flag then reopens the hidden window maximized on that monitor.
-- With no valid placement state, the normal 1440 by 900 window is centered on
-  the operating system's primary logical screen.
+- With no valid placement state, the normal 1440 by 940 custom frame is
+  centered on the operating system's primary logical screen. Its 40-pixel
+  title bar leaves the established 1440 by 900 workbench area unchanged.
 
 ### Responsive shell and settings
 
@@ -1014,8 +1030,8 @@ Workbench pages are instantiated lazily on first visit and then retained until
 runtime teardown. Navigation changes page visibility rather than destroying a
 page whose virtualized delegates may still be incubating; this also preserves
 local view position and focus state without duplicating controller ownership.
-Window restoration clamps the full decorated frame to an available screen and
-prefers the monitor on which the window was last closed. The runtime assigns
+Window restoration clamps the full custom outer frame to an available screen
+and prefers the monitor on which the window was last closed. The runtime assigns
 and fits the still-hidden native window to that monitor before showing or
 maximizing it, avoiding a compositor-visible cross-screen remap on a restored
 launch. A versioned migration discards placement state written by the retired
@@ -1117,6 +1133,10 @@ Desktop verification is layered:
 | distribution checker | Exact wheel/sdist module, QML, font, icon, license, and provenance inventories |
 | manual native acceptance | File dialogs, monitor/DPI behavior, themes, keyboard use, and perceived interaction |
 | native qualification workflow | Explicit Qt Quick/VTK bridge qualification, not a routine PR requirement |
+
+`WindowTitleBar.qml` and `WindowResizeHandles.qml` are registered module types
+and mandatory packaged-QML inventory entries. Installed and distribution
+checks therefore reject an archive that omits either part of the custom frame.
 
 Cross-platform QML startup and focused interactions in Stage 2 are smoke
 coverage, not full Windows or macOS qualification. Full platform, packaging,

@@ -141,6 +141,7 @@ ApplicationWindow {
     signal transientEditShutdownConfirmed(bool discardConfirmed)
 
     readonly property bool runtimeReady: true
+    readonly property int titleBarHeight: 40
     readonly property string shellMode: width >= 1280 ? "wide" : (width >= 800 ? "compact" :
                                                                                  "narrow")
 
@@ -490,8 +491,9 @@ ApplicationWindow {
     }
 
     color: Theme.canvas
-    height: 900
-    minimumHeight: 600
+    flags: Qt.Window | Qt.FramelessWindowHint
+    height: 940
+    minimumHeight: 640
     minimumWidth: 680
     objectName: "carnopyQmlRoot"
     palette.alternateBase: Theme.surfaceMuted
@@ -574,8 +576,24 @@ ApplicationWindow {
         onTriggered: root.applyInspectorToggle()
     }
 
+    WindowTitleBar {
+        id: windowTitleBar
+
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        height: root.titleBarHeight
+        objectName: "customWindowTitleBar"
+        targetWindow: root
+        z: 2
+    }
+
     RowLayout {
-        anchors.fill: parent
+        anchors.bottom: parent.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: windowTitleBar.bottom
+        objectName: "workbenchShell"
         spacing: 0
 
         NavRail {
@@ -1021,11 +1039,12 @@ ApplicationWindow {
         id: navigationDrawer
 
         edge: Qt.LeftEdge
-        height: root.height
+        height: root.height - root.titleBarHeight
         modal: true
         objectName: "navigationDrawer"
         onClosed: root.restoreNavigationFocus()
         width: Math.min(300, root.width * 0.88)
+        y: root.titleBarHeight
 
         contentItem: NavRail {
             allowCollapse: false
@@ -1049,11 +1068,12 @@ ApplicationWindow {
         id: inspectorDrawer
 
         edge: Qt.RightEdge
-        height: root.height
+        height: root.height - root.titleBarHeight
         modal: root.shellMode === "narrow"
         objectName: "inspectorDrawer"
         onClosed: root.restoreInspectorFocus()
         width: Math.min(328, root.width * 0.9)
+        y: root.titleBarHeight
 
         contentItem: ContextInspector {
             activityController: root.activityController
@@ -1720,5 +1740,12 @@ ApplicationWindow {
     Shortcut {
         onActivated: root.routeTo("help")
         sequences: [StandardKey.HelpContents]
+    }
+
+    WindowResizeHandles {
+        anchors.fill: parent
+        objectName: "windowResizeHandles"
+        targetWindow: root
+        z: 1000
     }
 }

@@ -57,6 +57,8 @@ MANDATORY_QML_FILES = (
     "qml/Carnopy/components/WorkflowContextInspector.qml",
     "qml/Carnopy/components/WorkflowRunPanel.qml",
     "qml/Carnopy/components/WorkspaceOperationDialog.qml",
+    "qml/Carnopy/components/WindowResizeHandles.qml",
+    "qml/Carnopy/components/WindowTitleBar.qml",
     "qml/Carnopy/pages/EmptyStatePage.qml",
     "qml/Carnopy/pages/DatasetPage.qml",
     "qml/Carnopy/pages/HelpPage.qml",

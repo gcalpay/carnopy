@@ -13,12 +13,14 @@ NORMAL_GEOMETRY_KEY = "qml/window/normal_geometry"
 NORMAL_SCREEN_KEY = "qml/window/normal_screen"
 MAXIMIZED_KEY = "qml/window/maximized"
 WINDOW_STATE_VERSION_KEY = "qml/window/state_version"
-WINDOW_STATE_VERSION = 2
+WINDOW_STATE_VERSION = 3
 
 THEME_MODES = ("system", "light", "warm", "dark")
 DEFAULT_THEME_MODE = "dark"
 DEFAULT_WINDOW_WIDTH = 1440
-DEFAULT_WINDOW_HEIGHT = 900
+CUSTOM_TITLE_BAR_HEIGHT = 40
+DEFAULT_WORKBENCH_HEIGHT = 900
+DEFAULT_WINDOW_HEIGHT = DEFAULT_WORKBENCH_HEIGHT + CUSTOM_TITLE_BAR_HEIGHT
 
 
 def _bool_setting(settings: QSettings, key: str, default: bool) -> bool:
