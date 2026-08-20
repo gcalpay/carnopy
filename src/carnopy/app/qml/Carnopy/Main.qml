@@ -11,6 +11,7 @@ ApplicationWindow {
     id: root
 
     required property var desktopController
+    required property bool emulateWindowMaximize
     required property var qmlSettings
     required property string startupWorkspace
 
@@ -139,6 +140,7 @@ ApplicationWindow {
     signal shutdownConfirmed(bool discardConfirmed)
     signal busyShutdownConfirmed(bool confirmed)
     signal transientEditShutdownConfirmed(bool discardConfirmed)
+    signal windowMaximizeRestoreRequested
 
     readonly property bool runtimeReady: true
     readonly property int titleBarHeight: 40
@@ -183,6 +185,7 @@ ApplicationWindow {
     readonly property string effectiveTheme: qmlSettings.effectiveTheme
     readonly property int motionDuration: Theme.durationStandard
     property string currentPage: "workspace"
+    property bool emulatedMaximized: false
     property bool geometryTrackingReady: false
     property var inspectorFocusReturnTarget: null
     property var navigationFocusReturnTarget: null
@@ -478,7 +481,7 @@ ApplicationWindow {
     }
 
     function rememberGeometrySoon() {
-        if (geometryTrackingReady && visibility === Window.Windowed)
+        if (geometryTrackingReady && visibility === Window.Windowed && !emulatedMaximized)
             geometryTimer.restart();
     }
 
@@ -532,6 +535,7 @@ ApplicationWindow {
     Connections {
         function onLayoutReset() {
             const geometry = root.qmlSettings.normalGeometry;
+            root.emulatedMaximized = false;
             root.visibility = Window.Windowed;
             root.x = geometry.x;
             root.y = geometry.y;
@@ -544,6 +548,10 @@ ApplicationWindow {
     }
 
     onHeightChanged: rememberGeometrySoon()
+    onEmulatedMaximizedChanged: {
+        if (emulatedMaximized)
+        geometryTimer.stop();
+    }
     onWidthChanged: rememberGeometrySoon()
     onXChanged: rememberGeometrySoon()
     onYChanged: rememberGeometrySoon()
@@ -583,8 +591,11 @@ ApplicationWindow {
         anchors.right: parent.right
         anchors.top: parent.top
         height: root.titleBarHeight
+        emulateMaximize: root.emulateWindowMaximize
+        emulatedMaximized: root.emulatedMaximized
         objectName: "customWindowTitleBar"
         targetWindow: root
+        onMaximizeRestoreRequested: root.windowMaximizeRestoreRequested()
         z: 2
     }
 
@@ -1744,6 +1755,7 @@ ApplicationWindow {
 
     WindowResizeHandles {
         anchors.fill: parent
+        emulatedMaximized: root.emulatedMaximized
         objectName: "windowResizeHandles"
         targetWindow: root
         z: 1000

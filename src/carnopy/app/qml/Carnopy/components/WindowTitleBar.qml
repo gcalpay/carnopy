@@ -9,16 +9,36 @@ import Carnopy
 Item {
     id: root
 
+    required property bool emulateMaximize
+    required property bool emulatedMaximized
     required property Window targetWindow
     property string applicationTitle: qsTr("Carnopy")
-    readonly property bool maximized: targetWindow.visibility === Window.Maximized
+    readonly property bool maximized: emulatedMaximized || targetWindow.visibility
+                                      === Window.Maximized
     readonly property bool windowActive: targetWindow.active
 
+    signal maximizeRestoreRequested
+
     function toggleMaximized() {
+        if (emulateMaximize) {
+            maximizeRestoreRequested();
+            return;
+        }
         if (maximized)
             targetWindow.showNormal();
         else
             targetWindow.showMaximized();
+    }
+
+    function beginSystemMove() {
+        // A maximized window must be restored before an interactive move.
+        // The WSLg/XCB fallback delegates that restore to the runtime so it
+        // never enters WSLg's broken borderless maximized state.
+        if (maximized) {
+            toggleMaximized();
+            return;
+        }
+        targetWindow.startSystemMove();
     }
 
     implicitHeight: 40
@@ -70,7 +90,7 @@ Item {
                 target: null
                 onActiveChanged: {
                     if (active)
-                    root.targetWindow.startSystemMove();
+                    root.beginSystemMove();
                 }
             }
 

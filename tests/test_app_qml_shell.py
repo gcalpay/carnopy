@@ -226,6 +226,7 @@ def test_custom_window_frame_preserves_the_existing_workbench_area(
         encoding="utf-8"
     )
     assert "startSystemMove()" in source
+    assert "function beginSystemMove()" in source
     assert "tapCount === 2" in source
     for excluded in ("brandingSource", "breadcrumb", "pageTitle", "StatusBadge"):
         assert excluded not in source
@@ -277,6 +278,23 @@ def test_title_bar_double_click_toggles_maximized_state(
     _mouse_double_click(root, drag_area)
     assert root.visibility() == QQuickWindow.Visibility.Maximized
     _mouse_double_click(root, drag_area)
+    assert root.visibility() == QQuickWindow.Visibility.Windowed
+
+
+def test_title_bar_drag_restores_before_starting_a_system_move(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    title_bar = root.findChild(QQuickItem, "customWindowTitleBar")
+    assert title_bar is not None
+
+    root.showMaximized()
+    _process_events()
+    assert root.visibility() == QQuickWindow.Visibility.Maximized
+
+    assert QMetaObject.invokeMethod(title_bar, "beginSystemMove")
+    _process_events()
     assert root.visibility() == QQuickWindow.Visibility.Windowed
 
 

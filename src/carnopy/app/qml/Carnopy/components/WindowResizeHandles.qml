@@ -8,7 +8,9 @@ Item {
     id: root
 
     required property Window targetWindow
-    readonly property bool resizeEnabled: targetWindow.visibility === Window.Windowed
+    property bool emulatedMaximized: false
+    readonly property bool resizeEnabled: !emulatedMaximized && targetWindow.visibility
+                                          === Window.Windowed
     readonly property bool windowActive: targetWindow.active
     property int cornerExtent: 12
     property int edgeThickness: 6
@@ -126,7 +128,7 @@ Item {
         required property Window targetWindow
 
         acceptedButtons: Qt.LeftButton
-        enabled: targetWindow.visibility === Window.Windowed
+        enabled: !root.emulatedMaximized && targetWindow.visibility === Window.Windowed
         hoverEnabled: true
         onPressed: mouse => {
             if (!targetWindow.startSystemResize(resizeEdges))

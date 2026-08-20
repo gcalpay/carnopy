@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
 import signal
+import subprocess
 import sys
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from contextlib import suppress
 from pathlib import Path
 from types import FrameType
@@ -115,6 +117,88 @@ QML_PALETTE_COLORS: dict[str, dict[str, str]] = {
         "highlighted_text": "#ffffff",
     },
 }
+
+
+def _uses_wslg_xcb_windowed_maximize(
+    platform_name: str,
+    environment: Mapping[str, str] | None = None,
+) -> bool:
+    """Avoid WSLg's broken native maximize path for borderless X11 windows."""
+
+    selected = os.environ if environment is None else environment
+    return bool(
+        platform_name == "xcb"
+        and (selected.get("WSL_INTEROP") or selected.get("WSL_DISTRO_NAME"))
+        and selected.get("WSL2_GUI_APPS_ENABLED") == "1"
+        and selected.get("DISPLAY")
+        and selected.get("WAYLAND_DISPLAY")
+    )
+
+
+def _wslg_host_screen_geometries() -> tuple[tuple[QRect, QRect], ...]:
+    """Read Windows monitor and work-area rectangles for WSLg's X11 bridge."""
+
+    command = (
+        "Add-Type -AssemblyName System.Windows.Forms; "
+        "$items = @([System.Windows.Forms.Screen]::AllScreens | ForEach-Object { "
+        "[PSCustomObject]@{ bx = $_.Bounds.X; by = $_.Bounds.Y; "
+        "bw = $_.Bounds.Width; bh = $_.Bounds.Height; "
+        "wx = $_.WorkingArea.X; wy = $_.WorkingArea.Y; "
+        "ww = $_.WorkingArea.Width; wh = $_.WorkingArea.Height } }); "
+        "ConvertTo-Json -InputObject $items -Compress"
+    )
+    try:
+        completed = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
+            capture_output=True,
+            check=False,
+            encoding="utf-8-sig",
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        LOGGER.warning("could not query WSLg host work areas: %s", exc)
+        return ()
+    if completed.returncode != 0:
+        LOGGER.warning(
+            "could not query WSLg host work areas: %s",
+            completed.stderr.strip() or f"PowerShell exited {completed.returncode}",
+        )
+        return ()
+    try:
+        decoded = json.loads(completed.stdout)
+        records = decoded if isinstance(decoded, list) else [decoded]
+        geometries: list[tuple[QRect, QRect]] = []
+        for record in records:
+            if not isinstance(record, dict):
+                raise TypeError("monitor record is not an object")
+            bounds = QRect(
+                int(record["bx"]),
+                int(record["by"]),
+                int(record["bw"]),
+                int(record["bh"]),
+            )
+            work_area = QRect(
+                int(record["wx"]),
+                int(record["wy"]),
+                int(record["ww"]),
+                int(record["wh"]),
+            )
+            if not bounds.isValid() or not work_area.isValid() or not bounds.contains(work_area):
+                raise ValueError("monitor work area is outside its bounds")
+            geometries.append((bounds, work_area))
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        LOGGER.warning("could not parse WSLg host work areas: %s", exc)
+        return ()
+    return tuple(geometries)
+
+
+def _available_geometry_for_screen(
+    screen: QScreen,
+    host_geometries: tuple[tuple[QRect, QRect], ...] = (),
+) -> QRect:
+    geometry = screen.geometry()
+    matched = next((work for bounds, work in host_geometries if bounds == geometry), None)
+    return QRect(matched if matched is not None else screen.availableGeometry())
 
 
 class QmlStartupError(RuntimeError):
@@ -354,6 +438,10 @@ class QmlApplicationRuntime:
         self._previous_application_palette = QPalette(application.palette())
         self._palette_applied = False
         self.controller.qml_settings.effectiveThemeChanged.connect(self._apply_application_palette)
+        self._emulate_window_maximize = _uses_wslg_xcb_windowed_maximize(application.platformName())
+        self._wslg_host_geometries = (
+            _wslg_host_screen_geometries() if self._emulate_window_maximize else ()
+        )
         # Apply the selected palette before the QML engine can cache fallback-control
         # colors. Otherwise the first native/fallback dialog may retain the platform
         # highlight until a later theme change refreshes it.
@@ -398,13 +486,20 @@ class QmlApplicationRuntime:
     def _begin_geometry_restoration(self, window: QWindow) -> None:
         """Place a hidden window before exposing it to the native compositor."""
 
-        _fit_window_to_available_screen(
+        screen = _fit_window_to_available_screen(
             window,
             self.controller.qml_settings.get_normal_screen_name(),
         )
+        requested_maximized = self.controller.qml_settings.get_maximized()
+        if self._emulate_window_maximize and requested_maximized and screen is not None:
+            emulated_maximized = True
+            window.setProperty("emulatedMaximized", True)
+            window.setGeometry(_available_geometry_for_screen(screen, self._wslg_host_geometries))
+        else:
+            emulated_maximized = False
         visibility = (
             QWindow.Visibility.Maximized
-            if self.controller.qml_settings.get_maximized()
+            if requested_maximized and not emulated_maximized
             else QWindow.Visibility.Windowed
         )
         window.setVisibility(visibility)
@@ -414,6 +509,7 @@ class QmlApplicationRuntime:
         if (
             self.application.platformName() == "offscreen"
             or visibility == QWindow.Visibility.Maximized
+            or emulated_maximized
         ):
             window.setProperty("geometryTrackingReady", True)
         else:
@@ -452,6 +548,7 @@ class QmlApplicationRuntime:
         self.engine.setInitialProperties(
             {
                 "desktopController": self.controller,
+                "emulateWindowMaximize": self._emulate_window_maximize,
                 "qmlSettings": self.controller.qml_settings,
                 "startupWorkspace": (
                     "" if self.initial_workspace is None else str(self.initial_workspace)
@@ -824,6 +921,7 @@ class QmlApplicationRuntime:
                 "normalGeometryRememberRequested",
                 self.controller.qml_settings.rememberNormalGeometry,
             ),
+            ("windowMaximizeRestoreRequested", self._toggle_windowed_maximize),
             ("settingsLayoutResetRequested", self.controller.qml_settings.resetLayout),
             ("shutdownConfirmed", self.controller.confirm_shutdown),
             ("busyShutdownConfirmed", self.controller.confirm_busy_shutdown),
@@ -837,6 +935,38 @@ class QmlApplicationRuntime:
             if signal is None:
                 raise QmlStartupError(f"QML root does not expose {signal_name}")
             signal.connect(callback, Qt.ConnectionType.QueuedConnection)
+
+    def _toggle_windowed_maximize(self) -> None:
+        """Emulate maximize only on WSLg/XCB's broken borderless-window path."""
+
+        if not self._emulate_window_maximize or self._closed or self._closing:
+            return
+        roots = self.engine.rootObjects()
+        window = next((root for root in roots if isinstance(root, QWindow)), None)
+        if window is None:
+            return
+        settings = self.controller.qml_settings
+        if bool(window.property("emulatedMaximized")):
+            window.setProperty("emulatedMaximized", False)
+            window.setGeometry(settings.get_normal_geometry())
+            _fit_window_to_available_screen(window, settings.get_normal_screen_name())
+        else:
+            screen = _fit_window_to_available_screen(window)
+            if screen is None:
+                return
+            geometry = window.geometry()
+            settings.rememberNormalGeometry(
+                geometry.x(),
+                geometry.y(),
+                geometry.width(),
+                geometry.height(),
+            )
+            settings.remember_normal_screen(screen.name())
+            window.setProperty("emulatedMaximized", True)
+            window.setGeometry(_available_geometry_for_screen(screen, self._wslg_host_geometries))
+        if self.application.platformName() != "offscreen":
+            window.raise_()
+        window.requestActivate()
 
     def request_close(self) -> None:
         """Schedule one composition-guarded close outside the native event callback."""
@@ -873,7 +1003,8 @@ class QmlApplicationRuntime:
             else ()
         )
         fallback = "" if window.screen() is None else window.screen().name()
-        maximized = window.visibility() == QWindow.Visibility.Maximized
+        emulated_maximized = bool(window.property("emulatedMaximized"))
+        maximized = window.visibility() == QWindow.Visibility.Maximized or emulated_maximized
         settings.remember_normal_screen(
             screen_name_for_window_state(
                 window.frameGeometry(),
@@ -884,7 +1015,7 @@ class QmlApplicationRuntime:
             )
         )
         settings.set_maximized(maximized)
-        if window.visibility() == QWindow.Visibility.Windowed:
+        if window.visibility() == QWindow.Visibility.Windowed and not emulated_maximized:
             geometry = window.geometry()
             settings.rememberNormalGeometry(
                 geometry.x(),

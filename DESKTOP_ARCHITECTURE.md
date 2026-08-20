@@ -833,11 +833,24 @@ The packaged `WindowTitleBar` and `WindowResizeHandles` components own only
 outer-window presentation and pointer interaction. Title dragging and every
 resize edge or corner delegate to Qt's system move and resize APIs so the
 platform compositor or window manager retains monitor, DPI, and supported snap
-behavior. Minimize and maximize/restore use the normal `QWindow` state APIs.
+behavior. Minimize and maximize/restore normally use the `QWindow` state APIs.
 The close control requests the ordinary native window close; the installed
 event filter still defers it through the same composition-owned shutdown guard.
 Interactive title controls are outside the drag region, and resize handles are
 disabled while maximized.
+
+WSLg's X11 bridge has an upstream borderless-maximize defect that can produce
+the wrong work-area bounds and offset input. On that detected WSLg/XCB path
+only, the runtime keeps the frameless window in Qt's windowed state and fits its
+client geometry to the matching Windows host work area, falling back to Qt's
+available geometry if that host query is unavailable. QML exposes that state as
+emulated maximization, suppresses resize handles and normal-geometry tracking,
+and sends maximize/restore requests back to the runtime. The same persisted
+maximized flag is retained, while native Windows, Wayland, ordinary X11/XCB,
+and macOS continue through native `QWindow` states. A title-bar drag restores
+before any system-move request; a subsequent windowed drag resumes the normal
+compositor-owned move. Maximization respects a desktop taskbar or panel rather
+than entering exclusive fullscreen.
 
 The shared Sweep and Preparation workflow panel follows this boundary for
 Plan, Execute, Cancel, Force Stop, and Inspect Result. Those actions may change
@@ -1006,7 +1019,11 @@ The permanent invariants are:
   outer frame rather than trusting a stale `QWindow.screen()` association.
   A maximized close resolves it from the persisted normal geometry because
   WSLg can report the maximized frame on a different logical screen. The stored
-  maximized flag then reopens the hidden window maximized on that monitor.
+  maximized flag then reopens the hidden window maximized on that monitor. The
+  WSLg/XCB borderless-window workaround reopens with equivalent windowed
+  Windows-host work-area placement instead of entering WSLg's broken native
+  maximized state; Qt's available geometry is the safe fallback if the host
+  work-area query is unavailable.
 - With no valid placement state, the normal 1440 by 940 custom frame is
   centered on the operating system's primary logical screen. Its 40-pixel
   title bar leaves the established 1440 by 900 workbench area unchanged.
