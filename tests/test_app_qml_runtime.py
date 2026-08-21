@@ -16,6 +16,7 @@ from PySide6.QtCore import (
     QCoreApplication,
     QEventLoop,
     QMargins,
+    QMetaObject,
     QObject,
     QPoint,
     QRect,
@@ -43,6 +44,8 @@ from carnopy.app.qml_runtime import (
     QmlWarningCapture,
     _acquire_instance_lock,
     _configure_quick_style,
+    _uses_wslg_xcb_windowed_maximize,
+    _wslg_host_screen_geometries,
     create_qml_runtime,
     fitted_window_frame,
     screen_name_for_frame,
@@ -63,6 +66,40 @@ def application() -> QApplication:
     existing = QApplication.instance()
     application = existing if isinstance(existing, QApplication) else QApplication([])
     return application
+
+
+def test_windowed_maximize_fallback_is_limited_to_wslg_xcb() -> None:
+    environment = {
+        "DISPLAY": ":0",
+        "WAYLAND_DISPLAY": "wayland-0",
+        "WSL_DISTRO_NAME": "Ubuntu",
+        "WSL2_GUI_APPS_ENABLED": "1",
+    }
+
+    assert _uses_wslg_xcb_windowed_maximize("xcb", environment)
+    assert not _uses_wslg_xcb_windowed_maximize("wayland", environment)
+    assert not _uses_wslg_xcb_windowed_maximize(
+        "xcb",
+        {**environment, "WSL2_GUI_APPS_ENABLED": "0"},
+    )
+    assert not _uses_wslg_xcb_windowed_maximize(
+        "xcb",
+        {key: value for key, value in environment.items() if key != "WAYLAND_DISPLAY"},
+    )
+
+
+def test_wslg_host_work_areas_are_parsed_as_monitor_rectangles(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    completed = subprocess.CompletedProcess(
+        args=[],
+        returncode=0,
+        stdout=('[{"bx":0,"by":0,"bw":1920,"bh":1080,"wx":0,"wy":0,"ww":1920,"wh":1040}]'),
+        stderr="",
+    )
+    monkeypatch.setattr(qml_runtime_module.subprocess, "run", lambda *args, **kwargs: completed)
+
+    assert _wslg_host_screen_geometries() == ((QRect(0, 0, 1920, 1080), QRect(0, 0, 1920, 1040)),)
 
 
 def test_packaged_resource_manifest_matches_every_installed_byte() -> None:
@@ -282,6 +319,83 @@ def test_maximized_window_is_placed_while_hidden_before_being_shown(
     assert observed_visibility == [QWindow.Visibility.Hidden]
     assert root.property("visibility") == QWindow.Visibility.Maximized
     assert root.property("geometryTrackingReady") is True
+    assert runtime.close()
+
+
+def test_wslg_xcb_reopens_and_toggles_maximized_state_without_native_maximize(
+    application: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = QSettings(str(tmp_path / "wslg-maximized.ini"), QSettings.Format.IniFormat)
+    settings.setValue(WINDOW_STATE_VERSION_KEY, WINDOW_STATE_VERSION)
+    settings.setValue("qml/window/maximized", True)
+    settings.setValue("qml/window/normal_geometry", QRect(50, 60, 700, 650))
+    monkeypatch.setattr(
+        qml_runtime_module,
+        "_uses_wslg_xcb_windowed_maximize",
+        lambda _platform_name: True,
+    )
+    test_screen = application.primaryScreen()
+    assert test_screen is not None
+    screen_geometry = test_screen.geometry()
+    host_work_area = QRect(screen_geometry)
+    host_work_area.setHeight(max(1, host_work_area.height() - 40))
+    monkeypatch.setattr(
+        qml_runtime_module,
+        "_wslg_host_screen_geometries",
+        lambda: ((screen_geometry, host_work_area),),
+    )
+
+    runtime = create_qml_runtime(settings=settings, application_arguments=[])
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QWindow)
+    screen = root.screen()
+    assert screen is not None
+    normal_geometry = runtime.controller.qml_settings.get_normal_geometry()
+    maximize = root.findChild(QObject, "windowMaximizeRestoreButton")
+    title_bar = root.findChild(QObject, "customWindowTitleBar")
+    resize_handles = root.findChild(QObject, "windowResizeHandles")
+    assert maximize is not None
+    assert title_bar is not None
+    assert resize_handles is not None
+
+    assert root.property("emulateWindowMaximize") is True
+    assert root.property("emulatedMaximized") is True
+    assert root.visibility() == QWindow.Visibility.Windowed
+    assert root.geometry() == host_work_area
+    assert maximize.property("text") == "Restore"
+    assert resize_handles.property("resizeEnabled") is False
+
+    assert QMetaObject.invokeMethod(maximize, "click")
+    application.processEvents()
+    application.processEvents()
+    assert root.property("emulatedMaximized") is False
+    assert root.visibility() == QWindow.Visibility.Windowed
+    assert root.geometry() == normal_geometry
+    assert maximize.property("text") == "Maximize"
+    assert resize_handles.property("resizeEnabled") is True
+
+    assert QMetaObject.invokeMethod(maximize, "click")
+    application.processEvents()
+    application.processEvents()
+    assert root.property("emulatedMaximized") is True
+    assert root.geometry() == host_work_area
+    assert QMetaObject.invokeMethod(title_bar, "beginSystemMove")
+    application.processEvents()
+    application.processEvents()
+    assert root.property("emulatedMaximized") is False
+    assert root.geometry() == normal_geometry
+
+    assert QMetaObject.invokeMethod(maximize, "click")
+    application.processEvents()
+    application.processEvents()
+    root.close()
+    application.processEvents()
+    application.processEvents()
+    settings.sync()
+    assert settings.value("qml/window/maximized", False, bool)
+    assert runtime.controller.qml_settings.get_normal_geometry() == normal_geometry
     assert runtime.close()
 
 
@@ -684,4 +798,4 @@ def test_qml_sources_pass_non_writing_qt_tooling() -> None:
         timeout=30,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
-    assert completed.stdout == "QML checks passed for 46 file(s).\n"
+    assert completed.stdout == "QML checks passed for 48 file(s).\n"

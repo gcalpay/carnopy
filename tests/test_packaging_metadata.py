@@ -84,6 +84,8 @@ def test_qml_runtime_is_public_and_resources_live_in_the_app_package() -> None:
         "qml/Carnopy/components/RunContextInspector.qml",
         "qml/Carnopy/components/WorkflowContextInspector.qml",
         "qml/Carnopy/components/WorkflowRunPanel.qml",
+        "qml/Carnopy/components/WindowResizeHandles.qml",
+        "qml/Carnopy/components/WindowTitleBar.qml",
         "qml/Carnopy/qmldir",
         "resources/third-party-resources.json",
         "resources/branding/carnopy-mark.png",

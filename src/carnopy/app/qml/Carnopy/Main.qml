@@ -11,6 +11,7 @@ ApplicationWindow {
     id: root
 
     required property var desktopController
+    required property bool emulateWindowMaximize
     required property var qmlSettings
     required property string startupWorkspace
 
@@ -139,8 +140,10 @@ ApplicationWindow {
     signal shutdownConfirmed(bool discardConfirmed)
     signal busyShutdownConfirmed(bool confirmed)
     signal transientEditShutdownConfirmed(bool discardConfirmed)
+    signal windowMaximizeRestoreRequested
 
     readonly property bool runtimeReady: true
+    readonly property int titleBarHeight: 40
     readonly property string shellMode: width >= 1280 ? "wide" : (width >= 800 ? "compact" :
                                                                                  "narrow")
 
@@ -182,6 +185,7 @@ ApplicationWindow {
     readonly property string effectiveTheme: qmlSettings.effectiveTheme
     readonly property int motionDuration: Theme.durationStandard
     property string currentPage: "workspace"
+    property bool emulatedMaximized: false
     property bool geometryTrackingReady: false
     property var inspectorFocusReturnTarget: null
     property var navigationFocusReturnTarget: null
@@ -477,7 +481,7 @@ ApplicationWindow {
     }
 
     function rememberGeometrySoon() {
-        if (geometryTrackingReady && visibility === Window.Windowed)
+        if (geometryTrackingReady && visibility === Window.Windowed && !emulatedMaximized)
             geometryTimer.restart();
     }
 
@@ -490,8 +494,9 @@ ApplicationWindow {
     }
 
     color: Theme.canvas
-    height: 900
-    minimumHeight: 600
+    flags: Qt.Window | Qt.FramelessWindowHint
+    height: 940
+    minimumHeight: 640
     minimumWidth: 680
     objectName: "carnopyQmlRoot"
     palette.alternateBase: Theme.surfaceMuted
@@ -530,6 +535,7 @@ ApplicationWindow {
     Connections {
         function onLayoutReset() {
             const geometry = root.qmlSettings.normalGeometry;
+            root.emulatedMaximized = false;
             root.visibility = Window.Windowed;
             root.x = geometry.x;
             root.y = geometry.y;
@@ -542,6 +548,10 @@ ApplicationWindow {
     }
 
     onHeightChanged: rememberGeometrySoon()
+    onEmulatedMaximizedChanged: {
+        if (emulatedMaximized)
+        geometryTimer.stop();
+    }
     onWidthChanged: rememberGeometrySoon()
     onXChanged: rememberGeometrySoon()
     onYChanged: rememberGeometrySoon()
@@ -574,8 +584,27 @@ ApplicationWindow {
         onTriggered: root.applyInspectorToggle()
     }
 
+    WindowTitleBar {
+        id: windowTitleBar
+
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        height: root.titleBarHeight
+        emulateMaximize: root.emulateWindowMaximize
+        emulatedMaximized: root.emulatedMaximized
+        objectName: "customWindowTitleBar"
+        targetWindow: root
+        onMaximizeRestoreRequested: root.windowMaximizeRestoreRequested()
+        z: 2
+    }
+
     RowLayout {
-        anchors.fill: parent
+        anchors.bottom: parent.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: windowTitleBar.bottom
+        objectName: "workbenchShell"
         spacing: 0
 
         NavRail {
@@ -1021,11 +1050,12 @@ ApplicationWindow {
         id: navigationDrawer
 
         edge: Qt.LeftEdge
-        height: root.height
+        height: root.height - root.titleBarHeight
         modal: true
         objectName: "navigationDrawer"
         onClosed: root.restoreNavigationFocus()
         width: Math.min(300, root.width * 0.88)
+        y: root.titleBarHeight
 
         contentItem: NavRail {
             allowCollapse: false
@@ -1049,11 +1079,12 @@ ApplicationWindow {
         id: inspectorDrawer
 
         edge: Qt.RightEdge
-        height: root.height
+        height: root.height - root.titleBarHeight
         modal: root.shellMode === "narrow"
         objectName: "inspectorDrawer"
         onClosed: root.restoreInspectorFocus()
         width: Math.min(328, root.width * 0.9)
+        y: root.titleBarHeight
 
         contentItem: ContextInspector {
             activityController: root.activityController
@@ -1720,5 +1751,13 @@ ApplicationWindow {
     Shortcut {
         onActivated: root.routeTo("help")
         sequences: [StandardKey.HelpContents]
+    }
+
+    WindowResizeHandles {
+        anchors.fill: parent
+        emulatedMaximized: root.emulatedMaximized
+        objectName: "windowResizeHandles"
+        targetWindow: root
+        z: 1000
     }
 }

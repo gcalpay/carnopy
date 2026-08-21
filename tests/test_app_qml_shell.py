@@ -29,6 +29,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from carnopy.app.qml_runtime import QmlApplicationRuntime, create_qml_runtime
+from carnopy.app.qml_settings import CUSTOM_TITLE_BAR_HEIGHT, DEFAULT_WORKBENCH_HEIGHT
 from carnopy.app.workspace import initialize_workspace
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -117,6 +118,16 @@ def _mouse_click(root: QQuickWindow, item: QQuickItem) -> None:
     _process_events()
 
 
+def _mouse_double_click(root: QQuickWindow, item: QQuickItem) -> None:
+    center = item.mapToScene(QPointF(item.width() / 2, item.height() / 2))
+    QTest.mouseDClick(
+        root,
+        Qt.MouseButton.LeftButton,
+        pos=QPoint(round(center.x()), round(center.y())),
+    )
+    _process_events()
+
+
 def _wait_for_idle(runtime: QmlApplicationRuntime) -> None:
     if not runtime.controller.request_coordinator.is_busy:
         _process_events()
@@ -170,6 +181,194 @@ def test_shell_uses_exact_navigation_order_and_enables_only_integrated_workflows
     assert 'pageKey !== "preparation"' in nav_source
     assert "root.preparationAvailable" in nav_source
     assert root.property("hasFake3dViewport") is False
+
+
+def test_custom_window_frame_preserves_the_existing_workbench_area(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    _set_size(root, 1440, 940)
+
+    title_bar = root.findChild(QQuickItem, "customWindowTitleBar")
+    drag_area = root.findChild(QQuickItem, "windowTitleDragArea")
+    shell = root.findChild(QQuickItem, "workbenchShell")
+    minimize = root.findChild(QQuickItem, "windowMinimizeButton")
+    maximize = root.findChild(QQuickItem, "windowMaximizeRestoreButton")
+    close = root.findChild(QQuickItem, "windowCloseButton")
+    assert title_bar is not None
+    assert drag_area is not None
+    assert shell is not None
+    assert minimize is not None
+    assert maximize is not None
+    assert close is not None
+
+    assert root.flags() & Qt.WindowType.FramelessWindowHint
+    assert root.property("titleBarHeight") == CUSTOM_TITLE_BAR_HEIGHT
+    assert root.property("minimumHeight") - root.property("titleBarHeight") == 600
+    assert title_bar.height() == root.property("titleBarHeight")
+    assert shell.mapToScene(QPointF(0, 0)).y() == title_bar.height()
+    assert shell.height() == DEFAULT_WORKBENCH_HEIGHT
+    assert shell.width() == root.width()
+    assert (
+        drag_area.mapToScene(QPointF(drag_area.width(), 0)).x()
+        <= minimize.mapToScene(QPointF(0, 0)).x()
+    )
+
+    assert minimize.property("text") == "Minimize"
+    assert maximize.property("text") == "Maximize"
+    assert close.property("text") == "Close"
+    assert minimize.property("activeFocusOnTab") is True
+    assert maximize.property("activeFocusOnTab") is True
+    assert close.property("activeFocusOnTab") is True
+
+    source = (ROOT / "src/carnopy/app/qml/Carnopy/components/WindowTitleBar.qml").read_text(
+        encoding="utf-8"
+    )
+    assert "startSystemMove()" in source
+    assert "function beginSystemMove()" in source
+    assert "tapCount === 2" in source
+    for excluded in ("brandingSource", "breadcrumb", "pageTitle", "StatusBadge"):
+        assert excluded not in source
+    assert runtime.warning_capture.runtime_warnings == ()
+
+
+def test_window_controls_use_native_state_and_guarded_close(
+    runtime: QmlApplicationRuntime,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    maximize = _visible_item(root, "windowMaximizeRestoreButton")
+    minimize = _visible_item(root, "windowMinimizeButton")
+    close = _visible_item(root, "windowCloseButton")
+    normal_geometry = root.geometry()
+
+    _activate(maximize)
+    assert root.visibility() == QQuickWindow.Visibility.Maximized
+    assert maximize.property("text") == "Restore"
+    _activate(maximize)
+    assert root.visibility() == QQuickWindow.Visibility.Windowed
+    assert maximize.property("text") == "Maximize"
+    assert root.geometry() == normal_geometry
+
+    _activate(minimize)
+    assert root.visibility() == QQuickWindow.Visibility.Minimized
+    root.showNormal()
+    _process_events()
+
+    close_requests: list[str] = []
+    monkeypatch.setattr(
+        runtime.controller,
+        "request_shutdown",
+        lambda: close_requests.append("guarded") or False,
+    )
+    _activate(close)
+    assert close_requests == ["guarded"]
+    assert root.isVisible()
+
+
+def test_title_bar_double_click_toggles_maximized_state(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    drag_area = _visible_item(root, "windowTitleDragArea")
+
+    _mouse_double_click(root, drag_area)
+    assert root.visibility() == QQuickWindow.Visibility.Maximized
+    _mouse_double_click(root, drag_area)
+    assert root.visibility() == QQuickWindow.Visibility.Windowed
+
+
+def test_title_bar_drag_restores_before_starting_a_system_move(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    title_bar = root.findChild(QQuickItem, "customWindowTitleBar")
+    assert title_bar is not None
+
+    root.showMaximized()
+    _process_events()
+    assert root.visibility() == QQuickWindow.Visibility.Maximized
+
+    assert QMetaObject.invokeMethod(title_bar, "beginSystemMove")
+    _process_events()
+    assert root.visibility() == QQuickWindow.Visibility.Windowed
+
+
+def test_window_resize_handles_cover_every_edge_and_corner_with_system_cursors(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    assert isinstance(root, QQuickWindow)
+    resize_area = root.findChild(QQuickItem, "windowResizeHandles")
+    assert resize_area is not None
+    assert resize_area.property("resizeEnabled") is True
+
+    cases = {
+        "windowResizeLeft": (Qt.Edge.LeftEdge, Qt.CursorShape.SizeHorCursor),
+        "windowResizeRight": (Qt.Edge.RightEdge, Qt.CursorShape.SizeHorCursor),
+        "windowResizeTop": (Qt.Edge.TopEdge, Qt.CursorShape.SizeVerCursor),
+        "windowResizeBottom": (Qt.Edge.BottomEdge, Qt.CursorShape.SizeVerCursor),
+        "windowResizeTopLeft": (
+            Qt.Edge.LeftEdge | Qt.Edge.TopEdge,
+            Qt.CursorShape.SizeFDiagCursor,
+        ),
+        "windowResizeTopRight": (
+            Qt.Edge.RightEdge | Qt.Edge.TopEdge,
+            Qt.CursorShape.SizeBDiagCursor,
+        ),
+        "windowResizeBottomLeft": (
+            Qt.Edge.LeftEdge | Qt.Edge.BottomEdge,
+            Qt.CursorShape.SizeBDiagCursor,
+        ),
+        "windowResizeBottomRight": (
+            Qt.Edge.RightEdge | Qt.Edge.BottomEdge,
+            Qt.CursorShape.SizeFDiagCursor,
+        ),
+    }
+    for object_name, (edges, cursor) in cases.items():
+        handle = root.findChild(QQuickItem, object_name)
+        assert handle is not None
+        assert handle.isEnabled()
+        assert int(handle.property("resizeEdges")) == edges.value
+        assert handle.property("cursorShape") == cursor
+
+    source = (ROOT / "src/carnopy/app/qml/Carnopy/components/WindowResizeHandles.qml").read_text(
+        encoding="utf-8"
+    )
+    assert "startSystemResize(resizeEdges)" in source
+
+    root.showMaximized()
+    _process_events()
+    assert resize_area.property("resizeEnabled") is False
+    assert all(not root.findChild(QQuickItem, name).isEnabled() for name in cases)
+    root.showNormal()
+    _process_events()
+    assert resize_area.property("resizeEnabled") is True
+
+
+def test_custom_title_bar_follows_live_theme_changes(
+    runtime: QmlApplicationRuntime,
+) -> None:
+    root = runtime.engine.rootObjects()[0]
+    background = root.findChild(QQuickItem, "windowTitleBarBackground")
+    assert background is not None
+    settings = runtime.controller.qml_settings
+    settings.set_reduced_motion(True)
+
+    settings.set_theme_mode("dark")
+    _process_events()
+    assert background.property("color") in (QColor("#141715"), QColor("#191d1a"))
+    settings.set_theme_mode("warm")
+    _process_events()
+    assert background.property("color") in (QColor("#f6d994"), QColor("#f0cc7f"))
+    settings.set_theme_mode("light")
+    _process_events()
+    assert background.property("color") in (QColor("#ffffff"), QColor("#f8faf9"))
+    assert runtime.warning_capture.runtime_warnings == ()
 
 
 def test_shell_breakpoints_adapt_rail_inspector_and_card_columns_without_mutating_preferences(
