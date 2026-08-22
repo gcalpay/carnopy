@@ -182,28 +182,13 @@ Item {
                 Layout.fillWidth: true
                 spacing: Theme.spacingMedium
 
-                ColumnLayout {
+                Label {
                     Layout.fillWidth: true
-                    spacing: 3
-
-                    Label {
-                        Layout.fillWidth: true
-                        color: Theme.text
-                        font.family: Theme.sansFamily
-                        font.pixelSize: 23
-                        font.weight: Font.DemiBold
-                        text: qsTr("Dataset configuration")
-                    }
-
-                    Label {
-                        Layout.fillWidth: true
-                        color: Theme.textMuted
-                        font.family: Theme.sansFamily
-                        font.pixelSize: 12
-                        text: qsTr(
-                                  "Define reproducible thermophysical sampling and emitted columns.")
-                        wrapMode: Text.Wrap
-                    }
+                    color: Theme.text
+                    font.family: Theme.sansFamily
+                    font.pixelSize: 23
+                    font.weight: Font.DemiBold
+                    text: qsTr("Dataset configuration")
                 }
 
                 StatusBadge {

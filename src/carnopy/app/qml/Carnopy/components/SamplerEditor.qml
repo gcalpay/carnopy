@@ -355,21 +355,16 @@ Card {
     }
 
     Label {
-        Accessible.name: root.draft.kind === "linspace" ? root.draft.axis + qsTr(
-                                                              " derived spacing and interval count") :
-                                                          root.draft.axis + qsTr(
-                                                              " derived interval and point count")
+        Accessible.name: root.draft.axis + qsTr(" derived spacing and interval count")
         Layout.fillWidth: true
         color: Theme.success
         font.family: Theme.monoFamily
         font.pixelSize: 11
         objectName: "samplerDerived-" + String(root.draft.axis)
-        text: root.draft.kind === "linspace" ? qsTr("Spacing %1 %2 · %3 intervals").arg(
-                                                   root.draft.spacingText).arg(root.draft.unit).arg(
-                                                   root.draft.intervalCount) : qsTr(
-                                                   "%1 intervals · %2 sampled points").arg(
-                                                   root.draft.intervalCount).arg(
-                                                   root.draft.sampleCount)
+        text: qsTr("Spacing %1 %2 · %3 intervals").arg(root.draft.kind === "linspace"
+                                                       ? root.draft.spacingText :
+                                                         stepField.text).arg(root.draft.unit).arg(
+                  root.draft.intervalCount)
         visible: root.draft.valid && (root.draft.kind === "linspace" || root.draft.kind
                                       === "stepspace")
         wrapMode: Text.Wrap
