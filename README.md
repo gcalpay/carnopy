@@ -1,8 +1,9 @@
 # Carnopy
 
-[![PyPI](https://img.shields.io/pypi/v/carnopy.svg)](https://pypi.org/project/carnopy/)
+[![PyPI](https://img.shields.io/pypi/v/carnopy.svg?include_prereleases=true)](https://pypi.org/project/carnopy/)
 [![Python](https://img.shields.io/pypi/pyversions/carnopy.svg)](https://pypi.org/project/carnopy/)
 [![Verify](https://github.com/gcalpay/carnopy/actions/workflows/ci.yml/badge.svg)](https://github.com/gcalpay/carnopy/actions/workflows/ci.yml)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22053741.svg)](https://doi.org/10.5281/zenodo.22053741)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Reproducible thermophysical data pipelines integrating property models, simulation backends and validated reference data, with inspection, visualization, provenance and leakage aware preparation for physics-informed machine learning workflows.
@@ -482,8 +483,8 @@ qualification work. See the
 [v0.1.0a5 release notes](https://github.com/gcalpay/carnopy/blob/main/docs/releases/v0.1.0a5.md)
 for a concise summary.
 
-The version-specific `0.1.0a5` DOI will be recorded after Zenodo archives the
-final GitHub release.
+The version-specific archive is available from Zenodo under
+[DOI 10.5281/zenodo.22053741](https://doi.org/10.5281/zenodo.22053741).
 
 ## License
 

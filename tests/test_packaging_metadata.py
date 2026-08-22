@@ -216,7 +216,7 @@ def test_alpha_metadata_uses_modern_license_and_release_urls() -> None:
     assert "License :: OSI Approved :: MIT License" not in project["classifiers"]
 
 
-def test_citation_metadata_matches_the_package_release_candidate() -> None:
+def test_citation_metadata_matches_the_published_package_release() -> None:
     root = Path(__file__).resolve().parents[1]
     citation = yaml.safe_load((root / "CITATION.cff").read_text(encoding="utf-8"))
     pyproject = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
@@ -226,9 +226,9 @@ def test_citation_metadata_matches_the_package_release_candidate() -> None:
     assert citation["license"] == "MIT"
     assert citation["repository-code"] == "https://github.com/gcalpay/carnopy"
     assert citation["abstract"] == pyproject["project"]["description"]
-    assert "doi" not in citation
-    assert "date-released" not in citation
-    assert "10.xxxx" not in json.dumps(citation)
+    assert citation["doi"] == "10.5281/zenodo.22053741"
+    assert str(citation["date-released"]) == "2026-08-22"
+    assert "10.xxxx" not in json.dumps(citation, default=str)
 
 
 def test_public_and_community_markdown_have_intentional_distribution_boundaries() -> None:
@@ -296,6 +296,8 @@ def test_readme_documents_published_and_source_release_boundaries() -> None:
         assert f"| `{extra}` |" in text
     assert "Exact union of all public extras" in text
     assert "The current alpha release is `0.1.0a5`" in text
+    assert "pypi/v/carnopy.svg?include_prereleases=true" in text
+    assert "https://doi.org/10.5281/zenodo.22053741" in text
     assert "10.5281/zenodo.21709965" not in text
     assert "docs/assets/carnopy-dataset-workbench-dark.png" in text
     assert "docs/assets/carnopy-mlprep-dark.png" in text
