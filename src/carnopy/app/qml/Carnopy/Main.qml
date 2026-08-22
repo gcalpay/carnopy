@@ -84,6 +84,7 @@ ApplicationWindow {
     signal runForceStopRequested
     signal runGenerateRequested
     signal runInspectRunRequested
+    signal runCreatePlotRequested
     signal runValidateRequested
     signal runViewPlotsRequested
     signal inspectionExploreRequested
@@ -1389,15 +1390,17 @@ ApplicationWindow {
         id: runPage
 
         RunPage {
-            configuredPlotsAvailable: executionController !== null && executionController.operation
-                                      === "generate" && executionController.state === "succeeded"
+            configuredPlotsAvailable: executionController !== null
                                       && executionController.resultRequestId.length > 0
+                                      && executionController.resultVisualizationStatus.length > 0
             executionController: root.executionController
             expectedColumns: root.shellMode === "narrow" ? 1 : root.cardColumnCount
-            inspectRunAvailable: configuredPlotsAvailable
+            inspectRunAvailable: executionController !== null && executionController.operation
+                                 === "generate" && executionController.state === "succeeded"
                                  && executionController.resultOutputDirectory.length > 0
             objectName: "runPage"
             onCancelRequested: root.runCancelRequested()
+            onCreatePlotRequested: root.runCreatePlotRequested()
             onForceStopRequested: root.runForceStopRequested()
             onGenerateRequested: root.runGenerateRequested()
             onInspectRunRequested: root.runInspectRunRequested()

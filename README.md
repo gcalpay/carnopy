@@ -159,7 +159,8 @@ carnopy-gui
 Its workflow is:
 
 ```text
-Workspace → Dataset → YAML Preview → Run → Inspect → Visualization
+Workspace → Dataset → Save → Run → Create plot / Inspect → Visualization
+                    └→ optional YAML Preview
           → Model Sweeps → Plan/Execute → Inspect
           → ML Preparation → Plan/Execute → Inspect
           → Activity and Recovery
@@ -175,11 +176,14 @@ Workspace → Dataset → YAML Preview → Run → Inspect → Visualization
   controlled Plan, Execute, cancellation, result, and Inspect lifecycle.
 - **YAML Preview** shows the deterministic complete document. Save and Save As
   validate those exact bytes in a worker before writing.
-- **Run** validates and generates an exact clean saved snapshot.
+- **Run** validates and generates an exact clean saved snapshot, then can open
+  a compatible editable plot request for that exact finalized output.
 - **Inspect** presents provenance, diagnostics, logical arrays, bounded
   order-preserving table pages, and finalized Preparation audit evidence.
-- **Visualization** verifies recorded configured-plot evidence and supports
-  explicit session rendering from inspected columns.
+- **Visualization** separates automated plots for future Generate operations
+  from explicit session rendering over already generated, inspected columns.
+  A new session plot starts with compatible editable fields and never renders
+  until **Render plot** is pressed.
 - **Activity and Recovery** projects private request records and removes only
   explicitly selected, rescanned staging artifacts.
 
@@ -365,6 +369,11 @@ Configured visualization belongs in an optional top-level `visualization:`
 section and runs only after the immutable dataset is finalized. Images are
 written outside the dataset run with a `.plot.json` provenance sidecar and a
 `visualization-report.json`. Supported formats are PNG, SVG, and PDF.
+
+In the desktop workbench, **Create plot from this run** inspects the exact
+finalized output and opens an editable session-only request. This does not
+change the saved YAML or affect the generated dataset. Automated YAML plots
+remain available separately and render only during a later Generate.
 
 ## Model sweeps and ML preparation
 

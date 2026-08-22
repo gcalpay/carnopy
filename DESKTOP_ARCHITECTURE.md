@@ -449,9 +449,10 @@ unchanged. PDF is revalidated immediately before an explicit external open.
 
 A completed generation remains selectable when it has no configured
 visualization report. That state is explicit evidence absence, not an inferred
-failure or a directory-scan fallback. The controller exposes the record's exact
-output directory so the composition facade can offer **Explore this run**;
-inspection must succeed before QML enters the inspected-data plot workflow.
+failure or a directory-scan fallback. Run and the configured-result empty state
+offer **Create plot from this run** for the record's exact output directory;
+inspection must succeed and the shared coordinator must be idle before the
+composition facade opens a session edit in the inspected-data plot workflow.
 
 Image-plus-sidecar export is a no-overwrite pair operation. It revalidates the
 source evidence, stages both destination files in their final directory,
@@ -471,12 +472,16 @@ shutdown, but do not block unrelated Dataset edits or Save. Native close and
 SIGINT surface an explicit **Cancel edit and close** decision instead of
 silently ignoring shutdown; accepting it cancels only temporary plot-edit
 state and then re-enters the ordinary dirty and busy shutdown guards.
-Creating a new session edit does not silently select a scientifically valid
-plot request: the user must choose the plot kind and its required fields.
-The controller does explicitly seed the edit with every fluid recorded by the
-inspected source. Those selections are visible and removable, and a session
-render requires at least one remaining fluid; an empty override is never used
-as a hidden synonym for all fluids.
+Creating a new session edit uses `PlotDraft`'s existing inspected-source
+compatibility projection to select a deterministic editable starting request:
+the first compatible kind, its required emitted property or axes, PNG, and the
+stable `session-plot` name. No draft is opened when that request cannot be
+constructed. The controller also seeds the edit with every
+fluid recorded by the inspected source. All defaults remain visible and
+editable, and no worker starts until the user explicitly selects **Render
+plot**. Fluid selections are removable, and a session render requires at least
+one remaining fluid; an empty override is never used as a hidden synonym for
+all fluids.
 Plot-kind help identifies axis, property, series, and color roles, and verified
 worker advisories such as a crowded curve family remain visible with the
 committed result.
@@ -888,9 +893,12 @@ Generate, Cancel, and Force Stop. It projects the authoritative execution
 controller's exact saved snapshot, progress, terminal result, activity
 persistence, and saved-baseline relation without parsing worker envelopes.
 Successful generation stays on Run. **Inspect Run** submits its exact recorded
-output directory through the inspection controller. **View Plots** selects its
-exact generation request in configured results, including the explicit empty
-state when no configured report exists. Neither action renders automatically.
+output directory through the inspection controller. **Create plot from this
+run** submits that same exact output, waits for authoritative inspection and
+coordinator release, then opens the compatible session editor. **Review
+generated figures** is shown only when the result records a configured
+visualization status and selects the exact generation request in configured
+results. None of these actions renders automatically.
 
 The enabled QML Model Sweep page edits the complete current sweep schema
 through `SweepDraft` and the one temporary `ComparisonPlotDraft`. A shared
