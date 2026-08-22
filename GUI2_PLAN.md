@@ -12,16 +12,18 @@ finished application.
 
 ## Release and frontend baseline
 
-- `0.1.0a4` is the published baseline and contains the accepted Stage 3 QML
-  parity application.
+- `0.1.0a5` is the current release candidate. It contains the accepted Stage 5
+  structured Model Sweep and ML Preparation workflows, the custom desktop
+  frame, and direct post-generation session plotting.
+- `0.1.0a4` is the historical Stage 3 QML-parity release.
 - `0.1.0a3` is the historical GUI-1 release and contains the retired Widgets
   presentation.
 - `carnopy-gui` is canonical. `carnopy-app` launches the same QML application
-  as a compatibility alias for `0.1.0a4`.
+  as the compatibility alias introduced for `0.1.0a4`.
 - The obsolete Widgets presentation is deleted. Carnopy does not ship a
   frontend selector or two normal desktop applications.
-- `0.1.0a4` is a bounded post-Stage-3 release. It does not wait for sweep and
-  preparation QML workflows or native 3D.
+- `0.1.0a5` remains bounded before native 3D; Stages 6–8 are not part of this
+  release.
 - The `app` extra is the cross-platform QML application. A future optional
   `3d` extra may add the native VTK bridge to that application; it is not a
   second GUI.

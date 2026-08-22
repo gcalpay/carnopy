@@ -20,7 +20,7 @@ from carnopy.app.field_ids import (
     PREPARATION_SOURCE_POLICY,
     PREPARATION_TARGETS,
 )
-from carnopy.app.scenario_draft import ScenarioDraft
+from carnopy.app.scenario_draft import PARTITIONS, ScenarioDraft
 from carnopy.app.workflow_models import WorkflowListModel
 
 DERIVED_FEATURES = (
@@ -1436,8 +1436,14 @@ def _scenario_summary(value: Mapping[str, object]) -> str:
     if kind == "unsplit":
         details.append("All partition")
     elif isinstance(partitions, Mapping):
+        ordered_partitions = sorted(
+            partitions.items(),
+            key=lambda item: (
+                PARTITIONS.index(str(item[0])) if str(item[0]) in PARTITIONS else len(PARTITIONS)
+            ),
+        )
         details.extend(
-            f"{_display(str(name))} {_percentage(ratio)}" for name, ratio in partitions.items()
+            f"{_display(str(name))} {_percentage(ratio)}" for name, ratio in ordered_partitions
         )
     holdouts = value.get("holdouts")
     if isinstance(holdouts, Mapping) and holdouts:

@@ -282,7 +282,7 @@ def test_committed_scenarios_round_trip_with_concise_ordered_summaries() -> None
             "name": "random",
             "kind": "shuffle",
             "seed": 42,
-            "partitions": {"train": 0.8, "test": 0.2},
+            "partitions": {"test": 0.15, "train": 0.7, "validation": 0.15},
         },
         {
             "name": "fluid-test",
@@ -301,7 +301,7 @@ def test_committed_scenarios_round_trip_with_concise_ordered_summaries() -> None
         {
             "name": "random",
             "kind": "shuffle",
-            "summary": "Shuffle · Train 80% · Test 20% · Seed 42",
+            "summary": ("Shuffle · Train 70% · Validation 15% · Test 15% · Seed 42"),
         },
         {
             "name": "fluid-test",

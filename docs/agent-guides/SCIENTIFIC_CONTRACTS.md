@@ -53,10 +53,11 @@ Milestone 1 supports:
 - configured post-generation visualization;
 - model-sweep bundles comparing emitted values from multiple CoolProp models.
 
-The `0.1.0a3` release line established a Linux-first PySide6 Widgets frontend
-for the existing dataset workflow. Current `0.1.0a4` source has migrated
-those accepted workflows into one QML application and removed the duplicate
-Widgets presentation. The desktop application remains a presentation frontend,
+The `0.1.0a3` release established a Linux-first PySide6 Widgets frontend, and
+`0.1.0a4` migrated the accepted workflows into one QML application while
+removing the duplicate Widgets presentation. Current `0.1.0a5` source also
+exposes structured Model Sweep and ML Preparation workflows plus direct
+post-generation session plotting. The desktop remains a presentation frontend,
 not a new scientific execution layer. Its permanent boundary includes the
 private worker protocol, workspace lifecycle, worker-validated configuration,
 saved-config execution, private activity and guarded staging recovery,
@@ -82,9 +83,12 @@ Outside the current implemented contract:
 - web/API services or databases;
 - ThermoML, OCR, RAG, or literature mining.
 
-The product-scope document distinguishes planned, research, and external work.
-Do not interpret those classifications as implementation authority or broaden
-this contract without maintainer approval.
+[`THERMOPHYSICAL_ROADMAP.md`](../../THERMOPHYSICAL_ROADMAP.md) records public
+source, mixture, model, backend, cycle, and visualization candidates.
+[`ML_PREPARATION_ROADMAP.md`](../../ML_PREPARATION_ROADMAP.md) records current
+Preparation behavior and future interoperability and evaluation directions.
+Roadmap classifications are not implementation authority. Do not broaden this
+contract without a separately approved stage and maintainer acceptance.
 
 ## Public interfaces
 

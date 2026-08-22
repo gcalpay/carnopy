@@ -497,11 +497,23 @@ def test_sampler_qml_distinguishes_points_intervals_and_spacing(
     _process_events()
 
     temperature = runtime.controller.dataset_draft.sampler("temperature")
+    pressure = runtime.controller.dataset_draft.sampler("pressure")
     assert temperature is not None
+    assert pressure is not None
     derived = _visual_item(root, "samplerDerived-temperature")
+    pressure_derived = _visual_item(root, "samplerDerived-pressure")
 
     assert derived.property("visible") is True
     assert derived.property("text") == "Spacing 1 degC · 100 intervals"
+
+    pressure.set_kind("stepspace")
+    pressure.set_text("start", "100000")
+    pressure.set_text("stop", "500000")
+    pressure.set_text("step", "1000")
+    _process_events()
+    assert pressure.text("step") == "1000"
+    assert pressure.get_interval_count() == 400
+    assert pressure_derived.property("text") == "Spacing 1000 Pa · 400 intervals"
 
     temperature.set_text("num", "100")
     _process_events()
@@ -510,7 +522,7 @@ def test_sampler_qml_distinguishes_points_intervals_and_spacing(
     temperature.set_kind("stepspace")
     temperature.set_text("step", "1")
     _process_events()
-    assert derived.property("text") == "100 intervals · 101 sampled points"
+    assert derived.property("text") == "Spacing 1 degC · 100 intervals"
     assert runtime.warning_capture.runtime_warnings == ()
 
 

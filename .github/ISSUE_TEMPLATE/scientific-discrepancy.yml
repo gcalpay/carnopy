@@ -14,7 +14,7 @@ body:
     id: versions
     attributes:
       label: Carnopy and CoolProp versions
-      placeholder: "Carnopy 0.1.0a3; CoolProp 8.0.0"
+      placeholder: "Carnopy 0.1.0a5; CoolProp 8.0.0"
     validations:
       required: true
   - type: input

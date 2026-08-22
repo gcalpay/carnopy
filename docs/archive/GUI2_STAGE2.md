@@ -27,10 +27,9 @@ regression:
 git show e3550b244d2ac05d0a33cb37875c98c0cb49c7c5:GUI2_PLAN.md
 ```
 
-The approved visual reference remains tracked at
-[`docs/assets/gui2-stage2-dataset-dark.png`](../assets/gui2-stage2-dataset-dark.png)
-with SHA-256
-`d6b0ed719218be659ad5d2b940f1f11eab61802d641b4896dee9b96084ad8d48`.
+The historical Stage 2 capture was superseded after QML parity and is no longer
+retained in the active screenshot inventory. The current accepted Dataset
+capture is [`docs/assets/carnopy-dataset-workbench-dark.png`](../assets/carnopy-dataset-workbench-dark.png).
 
 This archive is deliberately not part of the mandatory startup-reading route.
 Completed-stage implementation detail must not consume every active Stage 3
