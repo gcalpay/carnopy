@@ -227,6 +227,7 @@ SDIST_REQUIRED = {
     "LICENSE",
     "ML_PREPARATION_ROADMAP.md",
     "README.md",
+    "THERMOPHYSICAL_ROADMAP.md",
     "configs/model_sweep_example.yaml",
     "configs/property_table_example.yaml",
     "configs/saturation_table_example.yaml",
@@ -340,6 +341,7 @@ SDIST_MARKDOWN = {
     "docs/agent-guides/SCIENTIFIC_CONTRACTS.md",
     "ML_PREPARATION_ROADMAP.md",
     "README.md",
+    "THERMOPHYSICAL_ROADMAP.md",
 }
 FORBIDDEN_ANYWHERE = {
     ".mypy_cache",

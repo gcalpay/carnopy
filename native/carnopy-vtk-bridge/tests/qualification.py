@@ -15,7 +15,7 @@ from pathlib import Path
 from types import ModuleType
 
 NAME = "carnopy-vtk-bridge"
-VERSION = "0.1.0a4"
+VERSION = "0.1.0a5"
 PACKAGE = "carnopy_vtk_bridge"
 UNSET_ENVIRONMENT_VARIABLES = (
     "CMAKE_ARGS",

@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "carnopy-vtk-bridge"
-version = "0.1.0a4"
+version = "0.1.0a5"
 description = "Private native QML and VTK qualification bridge for Carnopy"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"

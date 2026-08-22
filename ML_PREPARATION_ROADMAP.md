@@ -109,7 +109,7 @@ discoverability remain a post-Stage-5 UX follow-up rather than preparation
 science or an unfinished data contract. The accepted implementation record is
 indexed in [`docs/archive/GUI2_STAGE5.md`](docs/archive/GUI2_STAGE5.md).
 
-## Reviewed future direction — Optional PyTorch dataset export
+## Reviewed future direction: Optional PyTorch dataset export
 
 The product sequence now prioritizes desktop workflow depth and then source
 breadth. This bounded PyTorch consumption format remains reviewed but planned
@@ -136,6 +136,87 @@ The implementation stage must qualify the optional dependency across Carnopy's
 supported Python and platform matrix before changing packaging or public
 templates. It must not narrow the supported base-install matrix merely to add
 this derived format.
+
+## Framework interoperability boundary
+
+Carnopy should make prepared thermophysical data easy to consume without
+becoming a training framework or accumulating unrelated runtime dependencies.
+Future interoperability should use three explicit levels:
+
+1. framework-neutral files and manifests owned by Carnopy;
+2. small, optional, version-qualified consumption adapters; and
+3. external training and orchestration systems that remain outside Carnopy.
+
+The current and candidate technologies fall into these categories:
+
+| Technology | Roadmap classification | Rationale |
+| --- | --- | --- |
+| SafeTensors | Implemented derived export | Framework-neutral tensor storage with deterministic manifest evidence; Parquet remains canonical. |
+| PyTorch | Reviewed optional adapter candidate | A plain `.pt` tensor dictionary, or a documented Dataset/DataLoader consumer adapter, may reduce integration effort without moving training into Carnopy. |
+| DeepXDE | External physics-informed consumer | A candidate example integration for PINNs and scientific ML over prepared bundles, not a Carnopy dependency or execution engine. |
+| NVIDIA PhysicsNeMo | External physics-informed consumer | A candidate consumer for PINNs and neural operators when exact coordinates, fields, constraints, and provenance can be mapped explicitly. |
+| XGBoost | Optional external tabular benchmark | Useful for nonlinear regression baselines or downstream studies only when a concrete comparison need justifies an adapter. |
+| LightGBM | Optional external tabular benchmark | Potentially useful for large prepared tables, but not added merely to increase estimator count. |
+| CatBoost | Optional external tabular benchmark | Potentially useful when categorical fluid or model identities remain native categorical features; the current one-hot representation is not a drop-in CatBoost contract. |
+| DeepSpeed | External distributed-training infrastructure | Training optimization, checkpointing, and distributed execution remain consumer responsibilities. |
+| Ray | External orchestration and tuning infrastructure | A future adapter requires a concrete distributed or hyperparameter-search workflow; Ray is not part of preparation itself. |
+| Helion | Out of scope for Carnopy core | A GPU kernel language sits below Carnopy's data and provenance abstraction. |
+| vLLM | Out of scope for thermophysical ML Preparation | LLM inference and serving do not address Carnopy's tabular scientific-data contract. |
+
+These classifications prevent name-driven dependency growth. An adapter must
+solve a demonstrated workflow, preserve the exact Preparation bundle identity,
+and pass dependency, platform, serialization, security, and maintenance review.
+
+Flatten operations are tensor reshaping or neural-network layer choices, not
+thermophysical feature transformations. Cross-entropy is a classification loss
+and is relevant only to an explicit future classification target such as phase
+or validity class. It is not an appropriate default for continuous property
+regression. More relevant external regression measures include mean absolute
+error, root mean squared error, Huber loss, carefully defined relative error,
+maximum error, and physics-consistency residuals. Carnopy may define how
+imported evaluation evidence is interpreted, but it does not own the training
+loop or loss optimization.
+
+## Imported prediction results and ML visualization
+
+A useful ML workflow requires more than writing arrays. A future reviewed
+result-import contract should let Carnopy inspect and compare outputs from an
+external trainer without loading executable model objects. Every imported
+result must bind to:
+
+- the exact Preparation bundle and manifest identity;
+- scenario and partition identities;
+- source dataset or sweep identity;
+- feature, target, unit, row, and transformation definitions;
+- external framework, model, training-run, and artifact identities;
+- prediction and uncertainty column semantics;
+- declared metrics and aggregation domains; and
+- immutable imported bytes with hashes and provenance.
+
+Imported results must reject or clearly quarantine incompatible row identities,
+partitions, targets, units, inverse transformations, and stale source bindings.
+Carnopy should not deserialize arbitrary checkpoints, execute user models, or
+infer missing training metadata.
+
+Candidate result views include:
+
+- predicted-versus-reference parity plots;
+- residual distributions and quantile summaries;
+- error by fluid, phase, backend model, temperature, pressure, composition, and
+  validity domain;
+- train, validation, test, and holdout comparisons;
+- learning and validation curves when supplied by the external trainer;
+- uncertainty calibration and coverage plots; and
+- side-by-side model comparisons over the exact same accepted rows.
+
+The result-import and visualization contract should work across PyTorch,
+DeepXDE, PhysicsNeMo, scikit-learn, XGBoost, LightGBM, CatBoost, and other
+external consumers without making any one framework the scientific authority.
+
+Framework-ready future exports should preserve coordinates, properties, units,
+composition, domain masks, phase labels, available derivatives, physical
+constraints, and complete provenance. They must not fabricate derivative or
+constraint fields merely because a consumer framework can accept them.
 
 ## Durable preparation rules
 
@@ -309,6 +390,25 @@ not part of the preparation roadmap.
 - scikit-learn, [Preprocessing
   reference](https://scikit-learn.org/stable/api/sklearn.preprocessing.html),
   for the semantics and tradeoffs of common transformations.
+- scikit-learn, [Model evaluation](https://scikit-learn.org/stable/modules/model_evaluation.html)
+  and [learning curves](https://scikit-learn.org/stable/modules/learning_curve.html).
+- PyTorch, [`torch.flatten`](https://docs.pytorch.org/docs/stable/generated/torch.flatten.html)
+  and [`CrossEntropyLoss`](https://docs.pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html),
+  for their actual tensor and classification semantics.
+- [DeepXDE](https://github.com/lululxvi/deepxde) and
+  [NVIDIA PhysicsNeMo](https://docs.nvidia.com/deeplearning/physicsnemo/physicsnemo-core/),
+  as candidate external physics-informed consumers.
+- [XGBoost](https://xgboost.readthedocs.io/en/stable/index.html),
+  [LightGBM](https://lightgbm.readthedocs.io/en/stable/), and
+  [CatBoost](https://catboost.ai/docs/en/), as candidate external tabular
+  consumers.
+- [DeepSpeed](https://deepspeed.readthedocs.io/en/stable/index.html),
+  [Ray Tune](https://docs.ray.io/en/latest/tune/tutorials/tune-lifecycle.html),
+  [Helion](https://pytorch.org/blog/helion/), and
+  [vLLM](https://docs.vllm.ai/en/stable/index.html), for the boundaries between
+  data preparation, external orchestration, kernel generation, and LLM serving.
+- Hugging Face, [SafeTensors](https://huggingface.co/docs/safetensors/index), for
+  the implemented framework-neutral tensor format.
 - Brunton, Proctor, and Kutz, [Discovering governing equations from data by
   sparse identification of nonlinear dynamical
   systems](https://doi.org/10.1073/pnas.1517384113), *PNAS* 113 (2016),

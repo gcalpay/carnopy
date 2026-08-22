@@ -68,9 +68,9 @@ reading.
 | Work being performed | Required guidance |
 | --- | --- |
 | Any implementation, test, documentation, or commit handoff | [Development and contribution workflow](docs/agent-guides/DEVELOPMENT.md) |
-| Product identity, boundaries, future scope, or roadmap priority | Maintainer-local `PRODUCT_SCOPE.md` and `.agents/private/PRODUCT_STRATEGY.md` when present, plus the public [README Future Scope](README.md#future-scope) |
+| Product identity, boundaries, future scope, or roadmap priority | Maintainer-local `PRODUCT_SCOPE.md` and `.agents/private/PRODUCT_STRATEGY.md` when present, plus the public [README Future Scope](README.md#future-scope), [thermophysical roadmap](THERMOPHYSICAL_ROADMAP.md), and [ML preparation roadmap](ML_PREPARATION_ROADMAP.md) |
 | Delegating work or changing project-agent definitions | [Codex delegation policy](docs/agent-guides/DELEGATION.md) and the applicable files under `.codex/agents/` |
-| Scientific behavior, configuration, sampling, CLI/API, rows, provenance, preparation, visualization, or core architecture | [Public scientific and application contracts](docs/agent-guides/SCIENTIFIC_CONTRACTS.md) |
+| Scientific behavior, configuration, sampling, CLI/API, rows, provenance, preparation, visualization, or core architecture | [Public scientific and application contracts](docs/agent-guides/SCIENTIFIC_CONTRACTS.md), plus the [thermophysical roadmap](THERMOPHYSICAL_ROADMAP.md) when planning future sources, mixtures, models, backends, cycles, or scientific visualization |
 | Desktop controllers, QML, Widgets, worker boundaries, packaging of desktop resources, native 3D, or frontend retirement | [Desktop architecture](DESKTOP_ARCHITECTURE.md) and, while GUI-2 is active, [GUI-2 plan](GUI2_PLAN.md) |
 | Preparation workflows, diagnostics, feature engineering, or research directions | [Public scientific and application contracts](docs/agent-guides/SCIENTIFIC_CONTRACTS.md) and [ML preparation roadmap](ML_PREPARATION_ROADMAP.md) |
 | Packaging metadata, dependency extras, distribution contents, CI publishing, tags, or releases | [Packaging and release safeguards](docs/agent-guides/RELEASE.md) and [Development and contribution workflow](docs/agent-guides/DEVELOPMENT.md) |
@@ -85,10 +85,12 @@ blending them.
 
 Carnopy is an open and auditable thermophysical-data workbench. Current
 behavior and exclusions live in the tracked scientific contracts. The public
-direction is summarized in the [README Future Scope](README.md#future-scope);
-maintainer-local product files may order future work when present. Planned
-directions are not implemented capabilities or authority to broaden a public
-contract without maintainer approval.
+direction is summarized in the [README Future Scope](README.md#future-scope),
+[thermophysical roadmap](THERMOPHYSICAL_ROADMAP.md), and
+[ML preparation roadmap](ML_PREPARATION_ROADMAP.md); maintainer-local product
+files may order future work when present. Planned directions are not
+implemented capabilities or authority to broaden a public contract without
+maintainer approval.
 
 ## Always-on safeguards
 

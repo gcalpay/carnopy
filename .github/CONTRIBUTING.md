@@ -83,11 +83,12 @@ Run the current source-checkout desktop application with:
 uv run --locked carnopy-gui
 ```
 
-Version `0.1.0a3` contains the historical Linux-first Widgets GUI. The current
-`0.1.0a4` source has completed tested QML parity, both public desktop
-commands launch the same QML application, and the duplicate Widgets
-presentation is removed. `carnopy-gui` is the canonical command;
-`carnopy-app` remains a compatibility alias for `0.1.0a4`.
+Version `0.1.0a3` contains the historical Linux-first Widgets GUI, and
+`0.1.0a4` completed the migration to one tested QML application. Current
+`0.1.0a5` source adds the structured Model Sweep and ML Preparation workflows,
+the custom frame, and direct post-generation plotting. `carnopy-gui` is the
+canonical command; `carnopy-app` remains the compatibility alias introduced
+for `0.1.0a4`.
 
 Worker-backed inspection and preview changes must use stable table IDs rather
 than GUI-supplied artifact paths. Cover traversal, symlink, integrity-token,

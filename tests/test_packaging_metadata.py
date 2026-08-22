@@ -36,6 +36,7 @@ def test_desktop_extra_and_launcher_are_declared() -> None:
     root = Path(__file__).resolve().parents[1]
     pyproject: dict[str, Any] = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
     readme = (root / "README.md").read_text(encoding="utf-8")
+    normalized_readme = " ".join(readme.split())
 
     assert pyproject["project"]["optional-dependencies"]["app"] == [
         "PySide6-Essentials>=6.11.1,<6.12",
@@ -47,8 +48,8 @@ def test_desktop_extra_and_launcher_are_declared() -> None:
     )
     assert pyproject["project"]["scripts"]["carnopy-app"] == "carnopy.app.qml_launcher:main_app"
     assert pyproject["project"]["scripts"]["carnopy-gui"] == "carnopy.app.qml_launcher:main_gui"
-    assert "PySide6 Essentials 6.11.1 or later within the 6.11 release line" in readme
-    assert "native bridge remains qualified against exactly Qt 6.11.1" in readme
+    assert "PySide6 Essentials 6.11.1 or later within the 6.11 release line" in normalized_readme
+    assert "native bridge remains qualified against exactly Qt 6.11.1" in normalized_readme
 
 
 def test_qml_runtime_is_public_and_resources_live_in_the_app_package() -> None:
@@ -215,7 +216,7 @@ def test_alpha_metadata_uses_modern_license_and_release_urls() -> None:
     assert "License :: OSI Approved :: MIT License" not in project["classifiers"]
 
 
-def test_citation_metadata_matches_the_package_and_published_release() -> None:
+def test_citation_metadata_matches_the_package_release_candidate() -> None:
     root = Path(__file__).resolve().parents[1]
     citation = yaml.safe_load((root / "CITATION.cff").read_text(encoding="utf-8"))
     pyproject = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
@@ -225,8 +226,8 @@ def test_citation_metadata_matches_the_package_and_published_release() -> None:
     assert citation["license"] == "MIT"
     assert citation["repository-code"] == "https://github.com/gcalpay/carnopy"
     assert citation["abstract"] == pyproject["project"]["description"]
-    assert citation["doi"] == "10.5281/zenodo.21709965"
-    assert str(citation["date-released"]) == "2026-07-30"
+    assert "doi" not in citation
+    assert "date-released" not in citation
     assert "10.xxxx" not in json.dumps(citation)
 
 
@@ -236,6 +237,7 @@ def test_public_and_community_markdown_have_intentional_distribution_boundaries(
     assert (root / "AGENTS.md").is_file()
     assert (root / "DESKTOP_ARCHITECTURE.md").is_file()
     assert (root / "ML_PREPARATION_ROADMAP.md").is_file()
+    assert (root / "THERMOPHYSICAL_ROADMAP.md").is_file()
     agent_guides = root / "docs" / "agent-guides"
     assert {path.name for path in agent_guides.glob("*.md")} == {
         "DELEGATION.md",
@@ -255,6 +257,7 @@ def test_public_and_community_markdown_have_intentional_distribution_boundaries(
     assert "/CITATION.cff" in sdist_includes
     assert "/DESKTOP_ARCHITECTURE.md" in sdist_includes
     assert "/ML_PREPARATION_ROADMAP.md" in sdist_includes
+    assert "/THERMOPHYSICAL_ROADMAP.md" in sdist_includes
     assert "/PRODUCT_SCOPE.md" not in sdist_includes
     assert "/docs/agent-guides" in sdist_includes
     assert not any(path.startswith("/.github") for path in sdist_includes)
@@ -268,11 +271,12 @@ def test_public_roadmap_separates_current_contracts_from_future_direction() -> N
     gui_plan = (root / "GUI2_PLAN.md").read_text(encoding="utf-8")
     desktop = (root / "DESKTOP_ARCHITECTURE.md").read_text(encoding="utf-8")
 
-    assert "workflow depth now, source breadth next, and advanced model breadth later" in (
+    assert "These are current release boundaries, not the intended limit" in normalized_readme
+    assert "thermophysical and simulation roadmap" in normalized_readme
+    assert "six connected capabilities" in normalized_readme
+    assert "Roadmap entries are research and planning candidates, not support promises" in (
         normalized_readme
     )
-    assert "Detailed source and model candidates are maintainer planning" in normalized_readme
-    assert "it is neither implemented nor the current product priority" in normalized_readme
     assert "PRODUCT_SCOPE.md" not in readme
     assert "| 5 | Complete |" in gui_plan
     assert "| 4 | Add controlled sweep and preparation worker operations | Complete" in desktop
@@ -285,25 +289,29 @@ def test_public_roadmap_separates_current_contracts_from_future_direction() -> N
 def test_readme_documents_published_and_source_release_boundaries() -> None:
     root = Path(__file__).resolve().parents[1]
     text = (root / "README.md").read_text(encoding="utf-8")
-    assert 'uv tool install "carnopy[app]==0.1.0a4"' in text
-    assert 'python -m pip install "carnopy==0.1.0a4"' in text
-    assert 'python -m pip install "carnopy[app]==0.1.0a4"' not in text
+    assert 'uv tool install "carnopy[app]==0.1.0a5"' in text
+    assert 'python -m pip install "carnopy==0.1.0a5"' in text
+    assert 'python -m pip install "carnopy[app]==0.1.0a5"' not in text
     for extra in ("app", "viz", "ml", "analysis", "all"):
         assert f"| `{extra}` |" in text
     assert "Exact union of all public extras" in text
-    assert "The latest published alpha is `0.1.0a4`" in text
-    assert "https://doi.org/10.5281/zenodo.21709965" in text
+    assert "The current alpha release is `0.1.0a5`" in text
+    assert "10.5281/zenodo.21709965" not in text
+    assert "docs/assets/carnopy-dataset-workbench-dark.png" in text
+    assert "docs/assets/carnopy-mlprep-dark.png" in text
     assert "kind: property_heatmap" in text
     assert "`carnopy-gui` is the canonical" in text
-    assert "`carnopy-app` launches the same\nQML application" in text
+    assert "`carnopy-app` is a\ncompatibility alias" in text
     assert "0.1.0a2" not in text
     assert "After `0.1.0a3` is published" not in text
     assert "not yet published" not in text
     assert "next-release" not in text
-    assert "uv sync --locked --extra app --group dev" in text
+    assert "uv sync --locked --extra app --no-dev" in text
+    assert "uv sync --locked --extra all --group dev --group release" in text
     assert "uv run --locked carnopy-gui" in text
     assert "0.1.0a3.dev0" not in text
     assert "0.1.0a4.dev0" not in text
+    assert "0.1.0a5.dev0" not in text
     assert "pending publisher" not in text.casefold()
     assert "Typing: typed" not in text
 
@@ -329,8 +337,8 @@ def test_github_community_files_cover_public_reporting_paths() -> None:
     scientific = (issue_templates / "scientific-discrepancy.yml").read_text(encoding="utf-8")
     bug_report = (issue_templates / "bug-report.yml").read_text(encoding="utf-8")
     assert "0.1.0a3.dev0" not in bug_report
-    assert 'placeholder: "carnopy 0.1.0a3 or carnopy-app 0.1.0a3' in bug_report
-    assert 'placeholder: "Carnopy 0.1.0a3; CoolProp 8.0.0"' in scientific
+    assert 'placeholder: "carnopy 0.1.0a5 or carnopy-gui 0.1.0a5' in bug_report
+    assert 'placeholder: "Carnopy 0.1.0a5; CoolProp 8.0.0"' in scientific
     assert "private vulnerability" in security.casefold()
     assert "gc@carnopy.org" in security
     assert "Contributor Covenant, version 2.1" in conduct

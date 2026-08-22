@@ -127,6 +127,7 @@ include = [
   "/LICENSE",
   "/ML_PREPARATION_ROADMAP.md",
   "/README.md",
+  "/THERMOPHYSICAL_ROADMAP.md",
   "/configs",
   "/pyproject.toml",
   "/scripts",

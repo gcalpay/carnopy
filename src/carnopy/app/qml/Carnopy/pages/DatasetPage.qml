@@ -246,7 +246,7 @@ Item {
                         valueRole: "value"
 
                         ToolTip.text: qsTr(
-                                          "CoolProp is the only scientific backend supported in Carnopy 0.1.0a4.")
+                                          "CoolProp is the only scientific backend supported in Carnopy 0.1.0a5.")
                         ToolTip.visible: hovered
                     }
 

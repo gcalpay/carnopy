@@ -48,7 +48,7 @@ Item {
                     color: Theme.textMuted
                     font.family: Theme.sansFamily
                     font.pixelSize: 13
-                    text: qsTr("Workflow boundaries, keyboard access, and validation authority.")
+                    text: qsTr("Core workflows, validation authority, and keyboard access.")
                     wrapMode: Text.Wrap
                 }
             }
@@ -60,14 +60,35 @@ Item {
                 Card {
                     Layout.fillWidth: true
                     subtitle: qsTr(
-                                  "Use Ctrl+B to toggle the wide rail, Ctrl+I for the inspector, Ctrl+, for Settings, F1 for Help, and Escape to dismiss transient drawers.")
-                    title: qsTr("Keyboard")
+                                  "Create or open a workspace, create a Dataset configuration, Save it, then use Run to Generate the exact saved snapshot.")
+                    title: qsTr("Generate a dataset")
                 }
 
                 Card {
                     Layout.fillWidth: true
                     subtitle: qsTr(
-                                  "Local draft checks provide immediate guidance. Worker validation remains authoritative before any configuration is written.")
+                                  "After Generate succeeds, Create plot from this run inspects the exact output and opens a compatible editable request. Rendering starts only when Render plot is pressed.")
+                    title: qsTr("Plot generated data")
+                }
+
+                Card {
+                    Layout.fillWidth: true
+                    subtitle: qsTr(
+                                  "Automate future plots stores plot definitions in YAML. Changes apply only to a later Generate and never add figures to an existing run.")
+                    title: qsTr("Automate future plots")
+                }
+
+                Card {
+                    Layout.fillWidth: true
+                    subtitle: qsTr(
+                                  "Inspect an eligible finalized source, choose Use for ML Preparation, then continue to configure, Save, Plan, Execute, and inspect the immutable result.")
+                    title: qsTr("Prepare data for ML")
+                }
+
+                Card {
+                    Layout.fillWidth: true
+                    subtitle: qsTr(
+                                  "Local draft checks provide immediate guidance. Fresh worker validation remains authoritative before Save, Generate, Plan, Execute, inspection, or rendering at their established boundaries.")
                     title: qsTr("Validation")
                 }
 
@@ -81,22 +102,15 @@ Item {
                 Card {
                     Layout.fillWidth: true
                     subtitle: qsTr(
-                                  "Carnopy operates on local workspaces. The QML shell does not add a web service, cloud database, or telemetry path.")
+                                  "Carnopy operates on local workspaces. The desktop adds no web service, cloud database, or telemetry path.")
                     title: qsTr("Local data")
                 }
 
                 Card {
                     Layout.fillWidth: true
                     subtitle: qsTr(
-                                  "Stage 2 provides bounded QML startup and interaction smoke coverage. Full Windows, macOS, Linux, packaging, and release qualification remains a Stage 8 gate.")
-                    title: qsTr("Qualification status")
-                }
-
-                Card {
-                    Layout.fillWidth: true
-                    subtitle: qsTr(
-                                  "Unavailable navigation entries name their planned stage and remain outside keyboard focus until their authoritative controllers are bound.")
-                    title: qsTr("Migration status")
+                                  "Use Ctrl+B to toggle the wide rail, Ctrl+I for the inspector, Ctrl+, for Settings, F1 for Help, and Escape to dismiss transient drawers.")
+                    title: qsTr("Keyboard")
                 }
             }
         }

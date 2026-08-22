@@ -18,7 +18,7 @@ from carnopy._version import __version__
 ROOT = Path(__file__).resolve().parents[1]
 BRIDGE_ROOT = ROOT / "native" / "carnopy-vtk-bridge"
 FIXTURE_VERSION = "1.2.3"
-GUI2_RELEASE_VERSION = "0.1.0a4"
+GUI2_RELEASE_VERSION = "0.1.0a5"
 
 
 def load_script(name: str) -> ModuleType:
@@ -265,6 +265,7 @@ def test_distribution_checker_requires_model_sweep_artifacts() -> None:
     assert {
         "DESKTOP_ARCHITECTURE.md",
         "ML_PREPARATION_ROADMAP.md",
+        "THERMOPHYSICAL_ROADMAP.md",
         "configs/model_sweep_example.yaml",
         "scripts/check_qml.py",
         "src/carnopy/_execution.py",

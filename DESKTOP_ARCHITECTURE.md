@@ -69,14 +69,13 @@ The source tree has one desktop presentation implementation:
 - the QML Activity page, guarded end-to-end cross-page/close parity, public
   launcher migration, and Widgets retirement are implemented.
 
-The release version is `0.1.0a4`. Both public launchers select the
-tested QML parity application; Carnopy does not ship two normal desktop
-applications or a frontend selector. The resulting QML application is the
-planned `0.1.0a4` alpha checkpoint. Later sweep, preparation, and native-3D
-stages are not prerequisites for that release. Stage 3 implementation, remote
-CI, the complete local gate, and native acceptance passed on 2026-07-30. Its
-accepted screenshot and historical implementation index are tracked under
-`docs/`, and this document records the accepted Stage 3 architecture.
+The release-candidate version is `0.1.0a5`. Both public launchers select the
+same QML application; Carnopy does not ship two normal desktop applications or
+a frontend selector. This release includes the accepted structured Model Sweep
+and ML Preparation workflows, the custom desktop frame, and direct
+post-generation session-plot handoff. Native-3D Stages 6–8 remain outside its
+scope. The historical `0.1.0a4` Stage 3 checkpoint and later Stage 4/5
+acceptance records remain indexed under `docs/`.
 
 ## Authority map
 
@@ -90,6 +89,7 @@ Use the narrowest applicable authority:
 | `GUI2_PLAN.md` | Temporary GUI-2 scope, sequencing, decisions, and acceptance status |
 | `DESKTOP_ARCHITECTURE.md` | Durable implemented desktop structure and evolution |
 | `README.md` | Public product summary plus user-facing installation and workflow guidance |
+| `THERMOPHYSICAL_ROADMAP.md` and `ML_PREPARATION_ROADMAP.md` | Public future scientific and interoperability candidates; not implementation authority |
 
 When these disagree, do not silently blend them. Repository source and tests
 establish current behavior, while `AGENTS.md`, its task-routed authoritative
@@ -519,6 +519,16 @@ Hollow valid-sample markers are presentation-only and are omitted above 10,000
 samples per fluid facet so their outlines cannot obscure the color mesh;
 invalid emitted states retain explicit cross markers and remain counted in the
 sidecar.
+
+Future source, mixture, property-backend, and cycle adapters described in
+`THERMOPHYSICAL_ROADMAP.md` remain worker-owned scientific integrations. QML may
+present typed capability, result, and failure projections but must not call
+those engines or infer their support. In particular, a cycle path requires a
+new typed result containing ordered topology and process states; the current
+emitted-state p-v and T-s series cannot be promoted into cycle paths by
+presentation logic. A future imported ML-result workflow follows the same
+boundary: Python validates exact Preparation, partition, row, target, unit, and
+artifact identities before QML can visualize predictions or errors.
 
 ### `WorkerClient`
 
