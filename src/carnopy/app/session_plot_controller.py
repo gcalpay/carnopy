@@ -242,8 +242,6 @@ class SessionPlotController(QObject):
     @Slot(str, result=bool, name="beginEdit")
     def begin_edit(self, output_format: str = "png") -> bool:
         initial = copy.deepcopy(self._committed_request)
-        if initial is None:
-            initial = {"name": "session-plot", "kind": ""}
         return self._begin_edit(initial, output_format)
 
     def begin_edit_from_request(self, request: Mapping[str, object]) -> bool:
@@ -253,14 +251,12 @@ class SessionPlotController(QObject):
         output_format = str(initial.get("format", "png"))
         return self._begin_edit(initial, output_format)
 
-    def _begin_edit(self, initial: dict[str, Any], output_format: str) -> bool:
+    def _begin_edit(self, initial: dict[str, Any] | None, output_format: str) -> bool:
         context = self._context
         if context is None or self._active_draft is not None or self.coordinator.is_busy:
             return False
-        if "fluids" not in initial:
-            fluids = context.get("fluids")
-            if isinstance(fluids, (list, tuple)):
-                initial["fluids"] = [str(value) for value in fluids]
+        is_default = initial is None
+        select_source_fluids = initial is None or "fluids" not in initial
         draft = PlotDraft(
             context,
             context,
@@ -269,7 +265,23 @@ class SessionPlotController(QObject):
             allow_format=True,
             require_explicit_fluids=True,
         )
+        if is_default:
+            draft.set_name("session-plot")
+        if select_source_fluids:
+            fluids = context.get("fluids")
+            if isinstance(fluids, (list, tuple)):
+                draft.set_fluids(str(value) for value in fluids)
         draft.set_output_format(output_format)
+        if is_default and not draft.get_locally_valid():
+            self._state = "failed"
+            self._phase = ""
+            self._issue_category = "compatibility"
+            self._issue_code = "no_compatible_plot"
+            self._issue = draft.get_issue() or "No compatible plot is available for this dataset."
+            self._issues = []
+            draft.deleteLater()
+            self.state_changed.emit()
+            return False
         self._active_draft = draft
         draft.changed.connect(self.state_changed)
         draft.validity_changed.connect(self.state_changed)

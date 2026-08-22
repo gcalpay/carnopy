@@ -1673,11 +1673,11 @@ def test_activity_cross_page_actions_use_exact_selected_record_identity(
     application: QCoreApplication,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    del application
     desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
     source = str((tmp_path / "workspace" / "outputs" / "run-id").resolve())
     inspected: list[str] = []
     selected: list[str] = []
+    opened_formats: list[str] = []
     navigation: list[tuple[str, str]] = []
     desktop.navigationRequested.connect(lambda page, detail: navigation.append((page, detail)))
     monkeypatch.setattr(
@@ -1737,17 +1737,28 @@ def test_activity_cross_page_actions_use_exact_selected_record_identity(
         "get_selected_output_directory",
         lambda: source,
     )
+    monkeypatch.setattr(desktop.session_plot_controller, "get_source_path", lambda: source)
+    monkeypatch.setattr(
+        desktop.session_plot_controller,
+        "begin_edit",
+        lambda output_format: opened_formats.append(output_format) or True,
+    )
 
     assert desktop.request_activity_inspect_run()
     assert desktop.request_activity_view_plots()
     assert desktop.request_execution_inspect_run()
     assert desktop.request_execution_view_plots()
     assert desktop.request_inspection_explore()
+    assert desktop.request_execution_create_plot()
+    desktop.inspection_controller.inspection_loaded.emit(Path(source))
+    application.processEvents()
     assert desktop.request_configured_plot_explore_run()
     desktop.inspection_controller.inspection_loaded.emit(Path(source))
+    application.processEvents()
 
-    assert inspected == [source, source, source]
+    assert inspected == [source, source, source, source]
     assert selected == ["request-id", "request-id"]
+    assert opened_formats == ["png", "png"]
     assert navigation == [
         ("inspect", ""),
         ("visualization", "configured"),
@@ -1755,7 +1766,43 @@ def test_activity_cross_page_actions_use_exact_selected_record_identity(
         ("visualization", "configured"),
         ("visualization", "explore"),
         ("visualization", "explore"),
+        ("visualization", "explore"),
     ]
+    assert desktop.shutdown()
+
+
+def test_create_plot_handoff_ignores_stale_completion_and_reports_failure(
+    tmp_path: Path,
+    application: QCoreApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    desktop = DesktopController(settings=settings_for(tmp_path / "settings.ini"))
+    source = (tmp_path / "workspace" / "outputs" / "run-id").resolve()
+    other = (tmp_path / "workspace" / "outputs" / "other-run").resolve()
+    navigation: list[tuple[str, str]] = []
+    failures: list[tuple[str, str]] = []
+    desktop.navigationRequested.connect(lambda page, detail: navigation.append((page, detail)))
+    desktop.activityActionFailed.connect(lambda action, message: failures.append((action, message)))
+    monkeypatch.setattr(desktop.execution_controller, "get_operation", lambda: "generate")
+    monkeypatch.setattr(desktop.execution_controller, "get_state", lambda: "succeeded")
+    monkeypatch.setattr(
+        desktop.execution_controller,
+        "get_result_output_directory",
+        lambda: str(source),
+    )
+    monkeypatch.setattr(desktop.inspection_controller, "inspect_source", lambda _source: True)
+
+    assert desktop.request_execution_create_plot()
+    desktop.inspection_controller.inspection_loaded.emit(other)
+    application.processEvents()
+    assert navigation == []
+    assert not desktop.session_plot_controller.get_has_active_edit()
+
+    desktop.inspection_controller.inspection_failed.emit(source, "inspection failed")
+    application.processEvents()
+    assert navigation == []
+    assert failures == [("Create plot from this run", "inspection failed")]
+    assert desktop._pending_explore_source is None
     assert desktop.shutdown()
 
 

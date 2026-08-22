@@ -90,7 +90,7 @@ Item {
             id: configuredTab
 
             objectName: "configuredPlotsTab"
-            text: qsTr("Configured for generation")
+            text: qsTr("Automate future plots")
 
             contentItem: Label {
                 color: configuredTab.checked ? Theme.success : Theme.textMuted
@@ -119,7 +119,7 @@ Item {
             id: exploreTab
 
             objectName: "exploreInspectedDataTab"
-            text: qsTr("Explore current data")
+            text: qsTr("Plot generated data")
 
             contentItem: Label {
                 color: exploreTab.checked ? Theme.success : Theme.textMuted
@@ -204,7 +204,7 @@ Item {
                 font.family: Theme.sansFamily
                 font.pixelSize: 22
                 font.weight: Font.DemiBold
-                text: qsTr("Configured generation plots")
+                text: qsTr("Automate plots on future runs")
             }
 
             Label {
@@ -213,7 +213,7 @@ Item {
                 font.family: Theme.sansFamily
                 font.pixelSize: 12
                 text: qsTr(
-                          "Define reproducible plots in YAML. They render during the next Generate; editing or opening this page never renders anything.")
+                          "Define reproducible plots in YAML for later runs. They render only during the next Generate; existing runs are unaffected, and editing or opening this page never renders anything.")
                 wrapMode: Text.Wrap
             }
 
@@ -712,7 +712,7 @@ Item {
                             enabled: root.configuredResultsController.canExploreRun
                             objectName: "configuredExploreRunButton"
                             onClicked: root.configuredExploreRunRequested()
-                            text: qsTr("Explore this run")
+                            text: qsTr("Create plot from this run")
                             tone: "primary"
                             visible: root.configuredResultsController.selectedRecordId.length > 0
                                      && !root.configuredResultsController.canExport
@@ -796,7 +796,7 @@ Item {
                 font.family: Theme.sansFamily
                 font.pixelSize: 22
                 font.weight: Font.DemiBold
-                text: qsTr("Explore current data")
+                text: qsTr("Plot generated data")
             }
 
             Label {
@@ -805,7 +805,7 @@ Item {
                 font.family: Theme.sansFamily
                 font.pixelSize: 12
                 text: qsTr(
-                          "Create an ad-hoc, session-only view of the currently inspected dataset. Choose the plot kind and fields explicitly. This never changes the saved YAML, and opening the page never renders.")
+                          "Create an ad-hoc, session-only plot from the currently inspected dataset. Carnopy starts with a compatible editable request; review or change it, then render explicitly. This never changes the saved YAML.")
                 wrapMode: Text.Wrap
             }
 
@@ -847,7 +847,7 @@ Item {
                                                                       newSessionFormat.currentText))
                         text: root.sessionPlotController.hasResult ? qsTr(
                                                                          "Edit current session plot") :
-                                                                     qsTr("New plot from inspected data")
+                                                                     qsTr("Create plot from inspected data")
                         tone: "primary"
                     }
                 }

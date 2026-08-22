@@ -328,6 +328,9 @@ def test_visualization_tabs_do_not_render_and_session_edit_is_explicit(
     assert not desktop.request_coordinator.is_busy
 
     explore_tab = _item(root, "exploreInspectedDataTab")
+    configured_tab = _item(root, "configuredPlotsTab")
+    assert explore_tab.property("text") == "Plot generated data"
+    assert configured_tab.property("text") == "Automate future plots"
     _click(root, explore_tab)
     assert not desktop.request_coordinator.is_busy
     assert not desktop.session_plot_controller.get_has_active_edit()
@@ -338,8 +341,12 @@ def test_visualization_tabs_do_not_render_and_session_edit_is_explicit(
     assert desktop.session_plot_controller.get_has_active_edit()
     active_draft = desktop.session_plot_controller.get_active_plot_draft()
     assert active_draft is not None
-    assert active_draft.property("kind") == ""
-    assert not desktop.session_plot_controller.get_can_render()
+    assert active_draft.property("name") == "session-plot"
+    assert active_draft.property("kind") == "property_curves"
+    assert active_draft.property("propertyName") == "mass_density"
+    assert active_draft.property("xField") == "temperature"
+    assert active_draft.property("outputFormat") == "png"
+    assert desktop.session_plot_controller.get_can_render()
     assert not desktop.request_coordinator.is_busy
     assert root.findChild(QObject, "sessionPlotEditor") is not None
 

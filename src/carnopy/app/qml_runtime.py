@@ -762,6 +762,7 @@ class QmlApplicationRuntime:
             ("runCancelRequested", self.controller.request_execution_cancel),
             ("runForceStopRequested", self.controller.request_execution_force_stop),
             ("runInspectRunRequested", self.controller.request_execution_inspect_run),
+            ("runCreatePlotRequested", self.controller.request_execution_create_plot),
             ("runViewPlotsRequested", self.controller.request_execution_view_plots),
             ("workflowPlanRequested", self.controller.request_workflow_plan),
             ("workflowExecuteRequested", self.controller.request_workflow_execute),

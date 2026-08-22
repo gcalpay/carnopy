@@ -274,35 +274,37 @@ def test_run_generation_stays_on_page_and_retains_saved_baseline_identity(
     assert output_directory.is_dir()
     assert execution.get_result_matches_current_saved_baseline()
     inspect_run = _visible_item(root, "runInspectButton")
-    view_plots = _visible_item(root, "runViewPlotsButton")
+    create_plot = _visible_item(root, "runCreatePlotButton")
+    view_plots = root.findChild(QQuickItem, "runViewPlotsButton")
+    assert view_plots is not None
     assert inspect_run.isEnabled()
-    assert view_plots.isEnabled()
+    assert create_plot.isEnabled()
+    assert not view_plots.isVisible()
 
-    assert QMetaObject.invokeMethod(view_plots, "click")
-    _process_events()
-    assert root.property("currentPage") == "visualization"
-    configured = desktop.configured_plot_results_controller
-    assert configured.get_selected_record_id() == execution.get_result_request_id()
-    assert configured.get_state() == "incomplete"
-    assert not desktop.request_coordinator.is_busy
-
-    explore_run = _visible_item(root, "configuredExploreRunButton")
-    assert explore_run.isEnabled()
-    assert QMetaObject.invokeMethod(explore_run, "click")
-    tabs = root.findChild(QObject, "visualizationViewTabs")
-    assert tabs is not None
+    assert QMetaObject.invokeMethod(create_plot, "click")
     _wait_until(
         runtime,
         lambda: (
             root.property("currentPage") == "visualization"
-            and tabs.property("currentIndex") == 1
             and desktop.inspection_controller.get_state() == "ready"
             and desktop.inspection_controller.get_preview_state() == "ready"
+            and desktop.session_plot_controller.get_has_active_edit()
             and not desktop.request_coordinator.is_busy
         ),
     )
+    tabs = root.findChild(QObject, "visualizationViewTabs")
+    assert tabs is not None
+    assert tabs.property("currentIndex") == 1
     assert desktop.inspection_controller.get_source_path() == str(output_directory)
     assert desktop.session_plot_controller.get_source_path() == str(output_directory)
+    draft = desktop.session_plot_controller.get_active_plot_draft()
+    assert draft is not None
+    assert draft.property("name") == "session-plot"
+    assert draft.property("kind") == "property_curves"
+    assert draft.property("outputFormat") == "png"
+    assert draft.property("locallyValid")
+    assert not desktop.session_plot_controller.get_has_result()
+    assert desktop.session_plot_controller.cancel_edit()
 
     assert root.setProperty("currentPage", "run")
     _process_events()

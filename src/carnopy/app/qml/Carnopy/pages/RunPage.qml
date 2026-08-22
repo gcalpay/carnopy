@@ -28,6 +28,7 @@ Item {
     signal cancelRequested
     signal forceStopRequested
     signal inspectRunRequested
+    signal createPlotRequested
     signal viewPlotsRequested
 
     function abbreviatedHash(value) {
@@ -368,25 +369,37 @@ Item {
 
                         AppButton {
                             Accessible.description: root.inspectRunAvailable ? qsTr(
+                                                                                   "Inspect this exact generated output and open an editable plot request") :
+                                                                               qsTr("Available after a successful generation with a recorded output directory")
+                            Layout.fillWidth: true
+                            enabled: root.inspectRunAvailable
+                            objectName: "runCreatePlotButton"
+                            onClicked: root.createPlotRequested()
+                            text: qsTr("Create plot from this run")
+                            tone: "primary"
+                        }
+
+                        AppButton {
+                            Accessible.description: root.inspectRunAvailable ? qsTr(
                                                                                    "Inspect this exact generated output") :
                                                                                qsTr("Available after a successful generation with a recorded output directory")
                             Layout.fillWidth: true
                             enabled: root.inspectRunAvailable
                             objectName: "runInspectButton"
                             onClicked: root.inspectRunRequested()
-                            text: qsTr("Inspect Run")
+                            text: qsTr("Inspect data")
                         }
+                    }
 
-                        AppButton {
-                            Accessible.description: root.configuredPlotsAvailable ? qsTr(
-                                                                                        "Open configured plots for this exact generation request") :
-                                                                                    qsTr("Available after a successful generation with a persisted request identity")
-                            Layout.fillWidth: true
-                            enabled: root.configuredPlotsAvailable
-                            objectName: "runViewPlotsButton"
-                            onClicked: root.viewPlotsRequested()
-                            text: qsTr("View Plots")
-                        }
+                    AppButton {
+                        Accessible.description: qsTr(
+                                                    "Review configured plot outcomes recorded for this exact generation request")
+                        Layout.fillWidth: true
+                        enabled: root.configuredPlotsAvailable
+                        objectName: "runViewPlotsButton"
+                        onClicked: root.viewPlotsRequested()
+                        text: qsTr("Review generated figures")
+                        visible: root.generationSucceeded && root.configuredPlotsAvailable
                     }
                 }
             }

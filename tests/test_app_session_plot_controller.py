@@ -125,13 +125,13 @@ def application() -> QApplication:
     yield app
 
 
-def _context(source: Path) -> dict[str, object]:
+def _context(source: Path, *, mode: str = "property_table") -> dict[str, object]:
     return {
         "source": str(source),
         "source_kind": "dataset",
         "revision": "a" * 64,
         "plot_context": {
-            "mode": "property_table",
+            "mode": mode,
             "fluids": ["Propane"],
             "properties": ["mass_density"],
             "visualization": {
@@ -140,8 +140,8 @@ def _context(source: Path) -> dict[str, object]:
                 "scales": ["linear", "log"],
                 "kind_contracts": {
                     "property_curves": {
-                        "required": ["property", "x", "format"],
-                        "applicable": ["property", "x", "format"],
+                        "required": ["property"],
+                        "applicable": ["property", "x", "fluids", "format"],
                     },
                     "xy": {
                         "required": ["x", "y", "format"],
@@ -240,6 +240,60 @@ def test_configured_request_opens_as_session_edit_without_rendering(
     assert stub.started is None
 
 
+@pytest.mark.parametrize(
+    ("mode", "expected_x"),
+    [
+        ("property_table", "temperature"),
+        ("saturation_table", ""),
+        ("vapor_mass_fraction_table", ""),
+    ],
+)
+def test_new_session_edit_uses_valid_compatible_defaults_without_rendering(
+    tmp_path: Path,
+    application: QApplication,
+    mode: str,
+    expected_x: str,
+) -> None:
+    del application
+    controller, stub, source = _controller(tmp_path)
+    controller._inspection_changed(_context(source, mode=mode))
+
+    assert controller.begin_edit("png")
+    draft = controller.get_active_plot_draft()
+    assert isinstance(draft, PlotDraft)
+    assert draft.get_name() == "session-plot"
+    assert draft.get_kind() == "property_curves"
+    assert draft.get_property_name() == "mass_density"
+    assert draft.get_x_field() == expected_x
+    assert draft.selected_fluid_values() == ("Propane",)
+    assert draft.get_output_format() == "png"
+    assert draft.get_locally_valid()
+    assert controller.get_can_render()
+    assert stub.started is None
+
+
+def test_new_session_edit_rejects_context_without_a_compatible_plot(
+    tmp_path: Path,
+    application: QApplication,
+) -> None:
+    del application
+    controller, stub, source = _controller(tmp_path)
+    context = _context(source)
+    plot_context = context["plot_context"]
+    assert isinstance(plot_context, dict)
+    visualization = plot_context["visualization"]
+    assert isinstance(visualization, dict)
+    visualization["plot_kinds"] = []
+    controller._inspection_changed(context)
+
+    assert not controller.begin_edit("png")
+    assert not controller.get_has_active_edit()
+    assert controller.get_state() == "failed"
+    assert controller.get_issue_code() == "no_compatible_plot"
+    assert "unavailable for this dataset" in controller.get_issue()
+    assert stub.started is None
+
+
 def test_session_edit_explicitly_selects_all_source_fluids(
     tmp_path: Path,
     application: QApplication,
@@ -279,8 +333,6 @@ def test_session_plot_success_commits_result_and_destroys_edit(
     del application
     controller, stub, source = _controller(tmp_path)
     assert controller.begin_edit("png")
-    assert not controller.get_can_render()
-    _select_property_curve(controller)
     assert controller.get_can_render()
     assert controller.render()
     request = PlotRequest(

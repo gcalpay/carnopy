@@ -182,6 +182,8 @@ class DesktopController(QObject):
         self._workspace_request_timer.timeout.connect(self._run_queued_workspace_request)
         self._shutdown = False
         self._pending_explore_source: Path | None = None
+        self._pending_explore_begin_edit = False
+        self._pending_explore_action = "Explore this run"
 
     def get_workspace_controller(self) -> QObject:
         return self.workspace_controller
@@ -692,6 +694,23 @@ class DesktopController(QObject):
             return False
         return self._view_configured_generation(self.execution_controller.get_result_request_id())
 
+    @Slot(result=bool, name="requestExecutionCreatePlot")
+    def request_execution_create_plot(self) -> bool:
+        if (
+            self.execution_controller.get_operation() != "generate"
+            or self.execution_controller.get_state() != "succeeded"
+        ):
+            self.activityActionFailed.emit(
+                "Create plot from this run",
+                "Generate a dataset successfully before creating a plot from its output.",
+            )
+            return False
+        return self._inspect_for_exploration(
+            self.execution_controller.get_result_output_directory(),
+            begin_edit=True,
+            action="Create plot from this run",
+        )
+
     @Slot(result=bool, name="requestInspectionExplore")
     def request_inspection_explore(self) -> bool:
         if not self.inspection_controller.get_can_explore_plots():
@@ -713,7 +732,11 @@ class DesktopController(QObject):
                 "Select a successful generated run with a recorded output directory.",
             )
             return False
-        return self._inspect_for_exploration(controller.get_selected_output_directory())
+        return self._inspect_for_exploration(
+            controller.get_selected_output_directory(),
+            begin_edit=True,
+            action="Create plot from this run",
+        )
 
     @Slot(result=bool, name="requestActivityInspectRun")
     def request_activity_inspect_run(self) -> bool:
@@ -1986,7 +2009,7 @@ class DesktopController(QObject):
         return self._continue_guarded_shutdown()
 
     def _workspace_activated(self, value: object) -> None:
-        self._pending_explore_source = None
+        self._clear_pending_explore()
         self.configuration_controller.set_workspace(value)
         self.execution_controller.set_workspace(value if isinstance(value, Workspace) else None)
         self.session_plot_controller.set_workspace(value if isinstance(value, Workspace) else None)
@@ -2303,16 +2326,34 @@ class DesktopController(QObject):
         self.navigationRequested.emit("visualization", "configured")
         return True
 
-    def _inspect_for_exploration(self, source: str) -> bool:
-        if self._pending_explore_source is not None or not source:
+    def _inspect_for_exploration(
+        self,
+        source: str,
+        *,
+        begin_edit: bool = False,
+        action: str = "Explore this run",
+    ) -> bool:
+        if self._pending_explore_source is not None:
+            self.activityActionFailed.emit(
+                action,
+                "Another dataset is already being prepared for plotting.",
+            )
+            return False
+        if not source:
+            self.activityActionFailed.emit(
+                action,
+                "The selected generation has no recorded output directory.",
+            )
             return False
         resolved = Path(source).expanduser().resolve()
         self._pending_explore_source = resolved
+        self._pending_explore_begin_edit = begin_edit
+        self._pending_explore_action = action
         if self.inspection_controller.inspect_source(str(resolved)):
             return True
-        self._pending_explore_source = None
+        self._clear_pending_explore()
         self.activityActionFailed.emit(
-            "Explore this run",
+            action,
             self.inspection_controller.get_issue()
             or "The selected run could not be submitted for inspection.",
         )
@@ -2322,15 +2363,52 @@ class DesktopController(QObject):
         pending = self._pending_explore_source
         if pending is None or not isinstance(value, Path) or value.resolve() != pending:
             return
-        self._pending_explore_source = None
+        QTimer.singleShot(0, self._complete_pending_explore)
+
+    def _complete_pending_explore(self) -> None:
+        pending = self._pending_explore_source
+        if pending is None:
+            return
+        action = self._pending_explore_action
+        begin_edit = self._pending_explore_begin_edit
+        if self.request_coordinator.is_busy:
+            self._clear_pending_explore()
+            self.activityActionFailed.emit(
+                action,
+                "The inspected dataset could not be opened while another operation is active.",
+            )
+            return
+        inspected_source = self.session_plot_controller.get_source_path()
+        if not inspected_source or Path(inspected_source).resolve() != pending:
+            self._clear_pending_explore()
+            self.activityActionFailed.emit(
+                action,
+                "The completed inspection no longer matches the selected generated output.",
+            )
+            return
+        if begin_edit and not self.session_plot_controller.begin_edit("png"):
+            message = (
+                self.session_plot_controller.get_issue()
+                or "A compatible plot editor could not be opened for this dataset."
+            )
+            self._clear_pending_explore()
+            self.activityActionFailed.emit(action, message)
+            return
+        self._clear_pending_explore()
         self.navigationRequested.emit("visualization", "explore")
 
     def _pending_explore_inspection_failed(self, value: object, message: str) -> None:
         pending = self._pending_explore_source
         if pending is None or not isinstance(value, Path) or value.resolve() != pending:
             return
+        action = self._pending_explore_action
+        self._clear_pending_explore()
+        self.activityActionFailed.emit(action, message)
+
+    def _clear_pending_explore(self) -> None:
         self._pending_explore_source = None
-        self.activityActionFailed.emit("Explore this run", message)
+        self._pending_explore_begin_edit = False
+        self._pending_explore_action = "Explore this run"
 
     def _queue_workspace_request(
         self,
