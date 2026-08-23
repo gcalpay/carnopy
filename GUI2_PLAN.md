@@ -12,7 +12,7 @@ finished application.
 
 ## Release and frontend baseline
 
-- `0.1.0a5` is the current release candidate. It contains the accepted Stage 5
+- `0.1.0a5` is the current published alpha release. It contains the accepted Stage 5
   structured Model Sweep and ML Preparation workflows, the custom desktop
   frame, and direct post-generation session plotting.
 - `0.1.0a4` is the historical Stage 3 QML-parity release.

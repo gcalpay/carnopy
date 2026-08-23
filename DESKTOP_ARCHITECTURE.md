@@ -69,7 +69,7 @@ The source tree has one desktop presentation implementation:
 - the QML Activity page, guarded end-to-end cross-page/close parity, public
   launcher migration, and Widgets retirement are implemented.
 
-The release-candidate version is `0.1.0a5`. Both public launchers select the
+The current published alpha release is `0.1.0a5`. Both public launchers select the
 same QML application; Carnopy does not ship two normal desktop applications or
 a frontend selector. This release includes the accepted structured Model Sweep
 and ML Preparation workflows, the custom desktop frame, and direct
@@ -1285,7 +1285,7 @@ six-row generation, configured plot, verified inspection, clean workspace
 reopen, and workspace-scoped installed smoke. Its lifecycle regression raised
 the exhaustively verified suite to 837 tests.
 
-Stage 5 is complete on `feat/gui2-stage5`. The former
+Stage 5 is complete in the current source. The former
 Dataset-only document and controller now provide one global exact-file
 lifecycle for all three public configuration types. The complete structured
 Sweep workflow is enabled in QML. Preparation source profiling, explicit
