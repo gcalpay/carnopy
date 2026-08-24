@@ -82,7 +82,7 @@ implementation.
 | 3 | Complete | Reached parity, migrated both launchers, retired Widgets, and qualified `0.1.0a4` |
 | 4 | Complete | Added controlled sweep and preparation worker operations for the existing public contracts |
 | 5 | Complete | Added accepted structured Sweep and Preparation workflows plus typed audit inspection |
-| 6 | In progress (Units 1–2) | Build exact emitted-value 3D scenes |
+| 6 | In progress (Units 1–3) | Build exact emitted-value 3D scenes |
 | 7 | Pending | Add native interactive 3D to QML |
 | 8 | Pending | Qualify native 3D packaging, platforms, and a later release |
 
@@ -245,17 +245,32 @@ file-integrity, worker, or lifecycle boundaries.
 
 ## Stage 6: exact scientific 3D scenes
 
-Worker-prepared scenes support dataset runs and prepared main or scenario
-tables.
+Stage 6 source profiling supports verified dataset runs, model-sweep child
+datasets, and prepared main or scenario-partition tables.
 
-Stage 6 remains incomplete. Units 1–2 now establish the lightweight contracts
-and hostile-input boundary only: immutable source/profile/request models,
-canonical request identities and limits, parent-created workspace-session
-leases, the canonical `scene.json` plus little-endian `scene.bin` contract, and
-strict adoption and abandoned-lease verification. Profiling, geometry,
-production writing, worker operations, controllers, pick resolution, and
-integrated acceptance remain Units 3–8. No visible QML or native renderer is
-enabled by this foundation.
+Stage 6 remains incomplete. Units 1–3 now establish the lightweight contracts,
+hostile-input boundary, and authoritative source profiles: immutable
+source/profile/request models, canonical request identities and limits,
+parent-created workspace-session leases, the canonical `scene.json` plus
+little-endian `scene.bin` contract, strict adoption and abandoned-lease
+verification, immutable scene bindings copied from Inspect, and the private
+`profile_scene` worker operation. Geometry, production writing, scene
+controllers, pick resolution, and integrated acceptance remain Units 4–8. No
+visible QML or native renderer is enabled by this foundation.
+
+Inspect offers scene bindings only for complete run directories, sweep child
+datasets, prepared main tables, and prepared scenario partitions. Standalone
+CSV/Parquet files, sweep comparison values or deltas, support tables, and
+insufficiently evidenced schemas are rejected as scene sources. Profiling
+revalidates exact file identities and recorded hashes, classifies semantic
+fields and units, computes source-valid finite/missing/range/domain evidence,
+and chooses deterministic topology-first defaults. Dataset topology preserves
+the recorded materialized SI level order. Prepared rows are joined one-to-one
+with provenance and diagnostics by `prepared_row_id`; exclusions are validated
+as the disjoint excluded source-row set, and scenario rows and metadata must
+agree with the prepared main table. Prepared bundles preserve exact source
+coordinates but not original ordered sampler levels, so their topology is
+explicitly unavailable rather than inferred.
 
 - Points represent finite emitted rows.
 - Wireframe edges connect exact adjacent coordinate levels only within

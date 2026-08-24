@@ -329,6 +329,9 @@ workflow. It owns:
   projections;
 - a private preparation-eligibility descriptor and typed source profile for an
   explicitly inspected immutable dataset run or model-sweep bundle;
+- immutable renderer-neutral scene bindings for supported run datasets,
+  model-sweep child datasets, prepared main tables, and prepared scenario
+  partitions, copied only from the accepted inspection revision;
 - dataset row totals together with the worker-reported column count, without
   opening the table again in the GUI process;
 - three independent dataset failure aggregates for layer, code, and property;
@@ -355,9 +358,10 @@ External file and folder actions are explicitly secondary and begin in the
 active workspace's `outputs/` directory; they can still select an authorized
 source outside the workspace.
 
-`carnopy.app.source_inspection` and `carnopy.app.table_preview` are permanent
-worker-only modules. They may import pandas, PyArrow, visualization inspection,
-and data-reading implementations inside worker request handling.
+`carnopy.app.source_inspection`, `carnopy.app.scene_profiles` and its
+dataset/prepared profile adapters, and `carnopy.app.table_preview` are
+permanent worker-only modules. They may import pandas, PyArrow, visualization
+inspection, and data-reading implementations inside worker request handling.
 `InspectionController`, `inspection_models`, `table_model`, and QML views
 import none of those modules and never open table or array bytes. They consume
 only JSON-compatible worker payloads. The first bounded
@@ -1215,7 +1219,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete |
 | 4 | Add controlled sweep and preparation worker operations | Complete |
 | 5 | Add structured sweep and preparation QML workflows | Complete; automated, remote, and native functional acceptance passed |
-| 6 | Build exact emitted-value 3D scene contracts | In progress; Units 1–2 implemented |
+| 6 | Build exact emitted-value 3D scene contracts | In progress; Units 1–3 implemented |
 | 7 | Integrate native interactive 3D into QML | Pending |
 | 8 | Complete native-3D platform, distribution, documentation, and later-release qualification | Pending |
 
@@ -1238,9 +1242,29 @@ whole-file and per-buffer hashes. Manifest block ranges partition all points,
 edges, and ordered quads; connectivity must remain within both global bounds
 and its declared block. Startup cleanup removes only a fully recognized lease
 whose session lock can be acquired, and preserves malformed, replaced,
-symlinked, unrecognized, or apparently live candidates. Production profiling,
-geometry, serialization, worker/controller integration, and picking are not
-implemented yet.
+symlinked, unrecognized, or apparently live candidates.
+
+Unit 3 adds authoritative worker-side profiling without adding a visible page.
+Inspect returns deeply immutable scene bindings only for run datasets,
+model-sweep child datasets, prepared main tables, and prepared scenario
+partitions. Standalone tables, sweep comparisons, and Preparation support
+tables remain inspectable but cannot be bound for a scene. The private
+`profile_scene` request reconstructs and compares the accepted binding,
+verifies recorded schemas, hashes, file identities, joins, and scenario
+evidence, then returns semantic field classifications, exact units or
+transformed-unit state, source-valid finite/missing/range/domain counts, filter
+and coordinate eligibility, deterministic defaults, and topology evidence.
+
+Run and sweep-child profiles preserve the original ordered materialized SI
+sampler levels from dataset metadata. Prepared main and partition rows join
+one-to-one with provenance and diagnostics by `prepared_row_id`; exclusions
+are checked as a disjoint source-row set because excluded rows correctly have
+no prepared-row identity. Scenario partitions must remain exact subsets of the
+main table, with transformations and aggregate metadata matching the verified
+scenario artifacts. Prepared provenance retains exact source coordinates but
+does not retain original ordered sampler levels, so adjacency is reported as
+unavailable rather than guessed. Geometry, production serialization, scene
+controller integration, and picking are not implemented yet.
 
 Stage 2 has also established definition-first sampler canonicalization, exact
 anchor-based GUI unit changes, Qt 6.11.1 as the QML baseline, packaged QML

@@ -10,6 +10,13 @@ from pathlib import Path
 from typing import Any, cast
 
 from carnopy.app.plot_context import build_plot_context
+from carnopy.app.scene_contracts import (
+    SceneBoundControl,
+    SceneBoundTable,
+    SceneContractError,
+    SceneFileIdentity,
+    SceneSourceBinding,
+)
 from carnopy.domain.failures import ConfigError
 from carnopy.domain.properties import PROPERTY_REGISTRY
 from carnopy.inspection import PreparationInspection, SweepInspection, inspect_source
@@ -78,6 +85,8 @@ class ResolvedInspection:
     preparation_source_descriptor: dict[str, Any] | None = None
     preparation_profile: dict[str, Any] | None = None
     preparation_audit: dict[str, Any] | None = None
+    scene_bindings: tuple[SceneSourceBinding, ...] = ()
+    scene_ineligible_reasons: dict[str, str] | None = None
 
     def public_payload(self) -> dict[str, Any]:
         return {
@@ -93,6 +102,8 @@ class ResolvedInspection:
             "preparation_source_descriptor": self.preparation_source_descriptor,
             "preparation_profile": self.preparation_profile,
             "preparation_audit": self.preparation_audit,
+            "scene_bindings": [binding.model_dump(mode="json") for binding in self.scene_bindings],
+            "scene_ineligible_reasons": copy.deepcopy(self.scene_ineligible_reasons or {}),
         }
 
 
@@ -144,6 +155,7 @@ def inspect_for_app(source: str | Path) -> ResolvedInspection:
             summary,
         )
     )
+    scene_bindings, scene_ineligible_reasons = _scene_bindings(requested, catalog)
     return ResolvedInspection(
         source=requested,
         source_kind=kind,
@@ -157,6 +169,8 @@ def inspect_for_app(source: str | Path) -> ResolvedInspection:
         preparation_source_descriptor=preparation_descriptor,
         preparation_profile=preparation_profile,
         preparation_audit=preparation_audit,
+        scene_bindings=scene_bindings,
+        scene_ineligible_reasons=scene_ineligible_reasons,
     )
 
 
@@ -172,6 +186,40 @@ def resolve_table(
         if table.table_id == table_id:
             return table
     raise VisualizationError(f"inspection source does not contain table ID {table_id!r}")
+
+
+def revalidate_scene_binding(binding: SceneSourceBinding) -> SceneSourceBinding:
+    """Rebuild and compare one immutable scene binding copied from Inspect."""
+
+    source = Path(binding.source_path)
+    try:
+        catalog = _resolve_catalog(source)
+    except (OSError, VisualizationError) as exc:
+        raise SceneContractError(
+            "scene_source_changed",
+            "scene source changed after inspection",
+        ) from exc
+    if catalog.revision != binding.inspection_revision:
+        raise SceneContractError(
+            "scene_source_changed",
+            "scene source changed after inspection; refresh Inspect before profiling",
+        )
+    candidates, reasons = _scene_bindings(source, catalog)
+    for candidate in candidates:
+        if candidate.selected_table_id != binding.selected_table_id:
+            continue
+        if candidate != binding:
+            raise SceneContractError(
+                "scene_source_changed",
+                "scene source identity no longer matches the descriptor copied from Inspect",
+            )
+        return candidate
+    reason = reasons.get(binding.selected_table_id, "table is not a supported scene source")
+    raise SceneContractError(
+        "unsupported_scene_source",
+        reason,
+        details={"table_id": binding.selected_table_id},
+    )
 
 
 def revalidate_preparation_inspection(
@@ -247,6 +295,97 @@ def _resolve_catalog(source: Path) -> ResolvedCatalog:
         (table,),
         (),
         controls,
+    )
+
+
+def _scene_bindings(
+    source: Path,
+    catalog: ResolvedCatalog,
+) -> tuple[tuple[SceneSourceBinding, ...], dict[str, str]]:
+    bindings: list[SceneSourceBinding] = []
+    reasons: dict[str, str] = {}
+    tables = {table.table_id: table for table in catalog.tables}
+    for table in catalog.tables:
+        dependency_ids: tuple[str, ...]
+        if catalog.source_kind == "dataset":
+            if not source.is_dir():
+                reasons[table.table_id] = (
+                    "standalone CSV and Parquet files are not supported scene sources"
+                )
+                continue
+            dependency_ids = (table.table_id,)
+        elif catalog.source_kind == "model_sweep":
+            if not re.fullmatch(r"model\.[a-z0-9_-]+\.dataset", table.table_id):
+                reasons[table.table_id] = (
+                    "model-sweep comparison values and deltas are not supported scene sources"
+                )
+                continue
+            dependency_ids = (table.table_id,)
+        else:
+            if table.table_id == "table":
+                dependency_ids = ("table", "provenance", "diagnostics", "exclusions")
+            elif re.fullmatch(
+                r"scenario\.[A-Za-z0-9][A-Za-z0-9_-]*\.(?:all|train|validation|test)",
+                table.table_id,
+            ):
+                dependency_ids = (
+                    table.table_id,
+                    "table",
+                    "provenance",
+                    "diagnostics",
+                    "exclusions",
+                )
+            else:
+                reasons[table.table_id] = (
+                    "only the prepared main table and scenario partitions are supported "
+                    "scene sources"
+                )
+                continue
+        missing = [table_id for table_id in dependency_ids if table_id not in tables]
+        if missing:
+            reasons[table.table_id] = (
+                "scene source is missing required prepared artifacts: " + ", ".join(missing)
+            )
+            continue
+        bindings.append(
+            SceneSourceBinding(
+                source_path=str(source.resolve(strict=True)),
+                source_kind=cast(Any, catalog.source_kind),
+                inspection_revision=catalog.revision,
+                selected_table_id=table.table_id,
+                tables=tuple(_scene_bound_table(tables[table_id]) for table_id in dependency_ids),
+                controls=tuple(
+                    SceneBoundControl(
+                        name=name,
+                        artifact=SceneFileIdentity.model_validate(descriptor),
+                    )
+                    for name, descriptor in catalog.controls.items()
+                ),
+            )
+        )
+    return tuple(bindings), reasons
+
+
+def _scene_bound_table(table: ResolvedTable) -> SceneBoundTable:
+    descriptor = table.private_descriptor()
+    metadata = descriptor.get("metadata")
+    return SceneBoundTable(
+        table_id=table.table_id,
+        label=table.label,
+        source_format=cast(Any, table.source_format),
+        artifact=SceneFileIdentity.model_validate(
+            {
+                "path": descriptor["path"],
+                "sha256": descriptor["sha256"],
+                "device": descriptor["device"],
+                "inode": descriptor["inode"],
+                "size": descriptor["size"],
+                "modified_ns": descriptor["modified_ns"],
+            }
+        ),
+        metadata=(
+            SceneFileIdentity.model_validate(metadata) if isinstance(metadata, dict) else None
+        ),
     )
 
 

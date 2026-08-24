@@ -21,6 +21,7 @@ from carnopy.app.request_coordinator import (
     RequestOutcome,
     RequestSession,
 )
+from carnopy.app.scene_contracts import SceneSourceBinding
 from carnopy.app.table_model import LOCAL_PAGE_SIZE, PreviewTableModel
 from carnopy.app.workspace import Workspace
 
@@ -70,6 +71,7 @@ class InspectionController(QObject):
         self._preparation_ineligible_reason = ""
         self._preparation_source_descriptor: dict[str, Any] | None = None
         self._preparation_profile: dict[str, Any] | None = None
+        self._scene_bindings: dict[str, SceneSourceBinding] = {}
         self._integrity_status = ""
         self._integrity_label = ""
         self._issue = ""
@@ -380,6 +382,18 @@ class InspectionController(QObject):
         if not self.get_preparation_profile_current() or self._preparation_profile is None:
             return None
         return copy.deepcopy(self._preparation_profile)
+
+    def scene_source_snapshot(
+        self,
+        table_id: str | None = None,
+    ) -> SceneSourceBinding | None:
+        """Return an immutable deep copy of the current Inspect-accepted binding."""
+
+        if self._state != "ready":
+            return None
+        selected = self._selected_table_id if table_id is None else table_id
+        binding = self._scene_bindings.get(selected)
+        return None if binding is None else binding.model_copy(deep=True)
 
     def get_integrity_status(self) -> str:
         return self._integrity_status
@@ -838,6 +852,8 @@ class InspectionController(QObject):
         ineligible_reason = payload.get("preparation_ineligible_reason", "")
         preparation_descriptor = payload.get("preparation_source_descriptor")
         preparation_profile = payload.get("preparation_profile")
+        raw_scene_bindings = payload.get("scene_bindings", [])
+        scene_ineligible_reasons = payload.get("scene_ineligible_reasons", {})
         if (
             source_kind not in {"dataset", "model_sweep", "preparation"}
             or not isinstance(revision, str)
@@ -852,6 +868,12 @@ class InspectionController(QObject):
             or (preparation_eligible and not isinstance(preparation_profile, dict))
             or (not preparation_eligible and preparation_descriptor is not None)
             or (not preparation_eligible and preparation_profile is not None)
+            or not isinstance(raw_scene_bindings, list)
+            or not isinstance(scene_ineligible_reasons, dict)
+            or any(
+                not isinstance(key, str) or not isinstance(value, str)
+                for key, value in scene_ineligible_reasons.items()
+            )
         ):
             self._accept_failure(
                 "inspection",
@@ -869,6 +891,35 @@ class InspectionController(QObject):
             )
             return
         if self._source != requested_source:
+            return
+        table_values = payload.get("tables")
+        table_ids = (
+            {
+                item["id"]
+                for item in table_values
+                if isinstance(item, dict) and isinstance(item.get("id"), str)
+            }
+            if isinstance(table_values, list)
+            else set()
+        )
+        accepted_scene_bindings: dict[str, SceneSourceBinding] = {}
+        try:
+            for raw_binding in raw_scene_bindings:
+                binding = SceneSourceBinding.model_validate(raw_binding)
+                if (
+                    binding.source_path != str(inspected_source)
+                    or binding.source_kind != source_kind
+                    or binding.inspection_revision != revision
+                    or binding.selected_table_id not in table_ids
+                    or binding.selected_table_id in accepted_scene_bindings
+                ):
+                    raise ValueError("scene binding identity disagrees with Inspect")
+                accepted_scene_bindings[binding.selected_table_id] = binding
+        except (TypeError, ValueError) as exc:
+            self._accept_failure(
+                "inspection",
+                {"message": f"worker scene source binding is inconsistent: {exc}"},
+            )
             return
         self._requested_inspection_source = None
         normalized_profile: dict[str, Any] | None = None
@@ -926,6 +977,7 @@ class InspectionController(QObject):
             else None
         )
         self._preparation_profile = normalized_profile
+        self._scene_bindings = accepted_scene_bindings
         self._plot_context = (
             copy.deepcopy(payload.get("plot_context"))
             if isinstance(payload.get("plot_context"), dict)
@@ -1010,6 +1062,7 @@ class InspectionController(QObject):
         self._preparation_ineligible_reason = ""
         self._preparation_source_descriptor = None
         self._preparation_profile = None
+        self._scene_bindings = {}
         self._requested_inspection_source = None
         self._plot_context = None
         self._reset_projection()
@@ -1024,6 +1077,7 @@ class InspectionController(QObject):
         self._preview_state = "stale"
         self._issue = message
         self._payload = None
+        self._scene_bindings = {}
         self._plot_context = None
         self.table_model.clear()
         self.preparation_quality_errors_model.clear()
@@ -1046,6 +1100,7 @@ class InspectionController(QObject):
         self._preparation_ineligible_reason = ""
         self._preparation_source_descriptor = None
         self._preparation_profile = None
+        self._scene_bindings = {}
         self._integrity_status = ""
         self._integrity_label = ""
         self._issue = ""

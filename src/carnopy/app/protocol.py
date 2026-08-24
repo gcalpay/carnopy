@@ -16,6 +16,7 @@ RequestType = Literal[
     "validate_config",
     "generate_dataset",
     "inspect_source",
+    "profile_scene",
     "preview_table",
     "render_plot",
     "load_sweep_config",
