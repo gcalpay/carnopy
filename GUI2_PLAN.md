@@ -82,7 +82,7 @@ implementation.
 | 3 | Complete | Reached parity, migrated both launchers, retired Widgets, and qualified `0.1.0a4` |
 | 4 | Complete | Added controlled sweep and preparation worker operations for the existing public contracts |
 | 5 | Complete | Added accepted structured Sweep and Preparation workflows plus typed audit inspection |
-| 6 | In progress (Units 1–3) | Build exact emitted-value 3D scenes |
+| 6 | In progress (Units 1–3; 4A next) | Build exact emitted-value 3D scenes |
 | 7 | Pending | Add native interactive 3D to QML |
 | 8 | Pending | Qualify native 3D packaging, platforms, and a later release |
 
@@ -289,6 +289,114 @@ explicitly unavailable rather than inferred.
 
 The bounded, hashed scene representation must be reconstructible by the GUI
 and bridge without scientific imports in QML.
+
+### Stage 6 delivery checkpoints
+
+The accepted Stage 6 contract retains eight top-level units. Units 1–3 are
+complete; Units 4–8 are divided into smaller dependency-ordered checkpoints so
+that one review does not combine source projection, topology, serialization,
+controller lifecycle, and picking. These checkpoints do not broaden Stage 6 or
+change its final acceptance boundary.
+
+A checkpoint should normally contain one scientific or lifecycle concept,
+about 300–700 production lines, no more than about 1,200 changed lines in
+total, and a focused regression for each distinct contract. These are soft
+review ceilings, not correctness targets: split earlier when responsibilities
+separate cleanly, and exceed them only when dividing the invariant would make
+the implementation less auditable. The verification requirements in
+`docs/agent-guides/DEVELOPMENT.md` remain authoritative.
+
+Completed top-level units:
+
+- **Unit 1 — contracts, limits, and canonical requests:** immutable source,
+  field, filter, topology, request, identity, capability, limit, and error
+  contracts with exact normalization and deterministic hashing.
+- **Unit 2 — private lease, binary contract, and verifier:** parent-created
+  workspace-session leases, canonical manifest and little-endian binary
+  contracts, strict hostile-input verification, and liveness-safe abandoned
+  lease cleanup.
+- **Unit 3 — source adapters and scene profiling:** verified dataset-run,
+  sweep-child, prepared-main, and prepared-partition adapters; exact prepared
+  joins; authoritative field and topology profiles; deterministic defaults;
+  immutable Inspect bindings; and the private `profile_scene` worker request.
+
+Remaining checkpoints:
+
+- **4A — retained-point projection and exact filters:** revalidate a profiled
+  request, apply exact case-sensitive categorical and finite inclusive numeric
+  filters, and retain only source-valid rows with finite selected X, Y, Z, and
+  optional scalar values. Produce renderer-neutral point records and exact
+  retained/excluded reason counts without connectivity.
+- **4B — blocks and topology evidence:** partition retained points by every
+  required artifact, run, fluid, model, phase, saturation-endpoint, scenario,
+  and partition context. Preserve verified materialized topology-level order,
+  identify dimensions, gaps, missing intermediate levels, and duplicate
+  topology locations, and report explicit zero-dimensional or unsupported
+  higher-dimensional outcomes without emitting primitives.
+- **4C — exact one-dimensional edges:** connect only immediately adjacent
+  verified levels inside one unambiguous block, preserve filtered or invalid
+  intermediate levels as gaps, and omit and count exact zero-length edges.
+  Prove that no edge crosses a block or ambiguous duplicate.
+- **4D — exact two-dimensional cells:** emit adjacent grid edges and one
+  ordered quad per complete cell as `[i,j]`, `[i+1,j]`, `[i+1,j+1]`,
+  `[i,j+1]`. Omit and count missing-corner, repeated-vertex, exactly
+  zero-length, and exactly collinear primitives without triangles,
+  tessellation, tolerance, interpolation, or repair.
+- **4E — capabilities and geometry limits:** compute representation
+  capabilities only when every retained block has a valid primitive and no
+  blocking ambiguity. Enforce the accepted point, edge, quad, and projected
+  bundle-size limits before serialization, and integrate the complete exact
+  geometry fixture matrix.
+- **5A — deterministic binary layout and encoding:** plan the accepted float64,
+  uint64, and uint32 buffers, absolute aligned offsets, deterministic zero
+  padding, block ranges, and hashes without writing a completed lease.
+- **5B — canonical manifest and production writer:** serialize binary buffers
+  and the canonical manifest deterministically, record exact request, source,
+  field, topology, block, gap, degeneracy, capability, and content identities,
+  and prove writer/verifier round trips, byte stability, and tamper rejection.
+- **5C — `build_scene` worker and adoption:** add projected or chunked reads,
+  progress and cooperative-cancellation checkpoints, final source
+  revalidation, exclusive creation, manifest-last completion, and parent
+  adoption only after complete verification. Failure must retain the previous
+  verified scene.
+- **6A — `SceneDraft` and copied binding:** add the QtCore-only editable draft,
+  explicit immutable binding copied from Inspect, topology-first defaults, and
+  explicit Profile and Build/Update commands. Editing, navigation, and
+  inspection changes must not start a scene build.
+- **6B — `SceneController` state and replacement:** own submitted-draft
+  locking, global request participation, progress and cancellation,
+  settings-stale and source-stale transitions, verified replacement, and
+  retention of the previous scene after failed or cancelled updates.
+- **6C — desktop lifecycle integration:** compose the controller without a
+  visible 3D page, enforce one global worker, clean leases during replacement,
+  workspace changes, startup, and shutdown, and preserve safe force-stop and
+  busy-shutdown behavior without Activity or Recovery records.
+- **7A — direct and sweep exact picks:** revalidate the scene-level source
+  descriptor and revision, then match original row position with stable
+  `case_id` for dataset runs and sweep children. Return the exact source row or
+  reject changed, missing, duplicated, reordered, or substituted identities.
+- **7B — prepared picks and stale integration:** resolve `prepared_row_id`
+  against prepared main or partition tables and return its exact row plus
+  verified provenance, diagnostics, and scenario or partition context. Any
+  failed source revalidation marks the controller source-stale and returns no
+  misleading detail.
+- **8A — integrated hostile and lifecycle acceptance:** exercise unsupported
+  manifest and header versions, magic and endianness errors, every buffer
+  alignment, overlap, order, range, type, shape, length, count, and connectivity
+  violation, including globally valid cross-block edges and quads. Use real
+  subprocesses to prove live-lock preservation and conservative cleanup of
+  abandoned, malformed, replaced, symlinked, unrecognized, and apparently live
+  leases.
+- **8B — complete gate and documentation:** run the locked repository,
+  preflight, distribution-inventory, and installed-launcher gates; archive the
+  accepted Stage 6 contract; synchronize durable scientific and desktop
+  architecture; and mark Stage 6 complete only after maintainer acceptance.
+
+Stage 6 still excludes visible QML 3D, VTK reconstruction, cameras,
+authoritative image export, dependency changes, public API, CLI, YAML, or
+artifact-schema changes, version bumps, tags, and releases. Stage 7 owns the
+interactive renderer and presentation; Stage 8 owns native packaging and
+release qualification.
 
 ## Stage 7: native interactive 3D
 
