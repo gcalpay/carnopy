@@ -82,7 +82,7 @@ implementation.
 | 3 | Complete | Reached parity, migrated both launchers, retired Widgets, and qualified `0.1.0a4` |
 | 4 | Complete | Added controlled sweep and preparation worker operations for the existing public contracts |
 | 5 | Complete | Added accepted structured Sweep and Preparation workflows plus typed audit inspection |
-| 6 | Pending | Build exact emitted-value 3D scenes |
+| 6 | In progress (Units 1–2) | Build exact emitted-value 3D scenes |
 | 7 | Pending | Add native interactive 3D to QML |
 | 8 | Pending | Qualify native 3D packaging, platforms, and a later release |
 
@@ -248,16 +248,26 @@ file-integrity, worker, or lifecycle boundaries.
 Worker-prepared scenes support dataset runs and prepared main or scenario
 tables.
 
+Stage 6 remains incomplete. Units 1–2 now establish the lightweight contracts
+and hostile-input boundary only: immutable source/profile/request models,
+canonical request identities and limits, parent-created workspace-session
+leases, the canonical `scene.json` plus little-endian `scene.bin` contract, and
+strict adoption and abandoned-lease verification. Profiling, geometry,
+production writing, worker operations, controllers, pick resolution, and
+integrated acceptance remain Units 3–8. No visible QML or native renderer is
+enabled by this foundation.
+
 - Points represent finite emitted rows.
 - Wireframe edges connect exact adjacent coordinate levels only within
   compatible fluid, model, phase, and partition contexts.
-- Surfaces require two independent coordinates, explicit structured-grid
-  evidence, and one unambiguous row per coordinate pair.
+- Surfaces require exactly two verified source-sampling dimensions, explicit
+  structured-grid evidence, and one unambiguous row per coordinate pair.
 - A surface cell exists only when all corners exist and share a compatible
   context.
 - Missing and invalid rows remain gaps.
-- Ambiguous duplicates, incompatible contexts, non-positive logarithmic
-  domains, and unsupported shapes fail clearly.
+- Ambiguous duplicates, incompatible contexts, and unsupported topology block
+  affected connectivity explicitly. Non-positive retained scalar values make
+  logarithmic presentation unavailable without invalidating exact raw points.
 - Picking maps exactly to source-row identity and provenance.
 - No backend call, interpolation, smoothing, extrapolation, resampling, or
   silent repair is permitted.

@@ -1215,9 +1215,32 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete |
 | 4 | Add controlled sweep and preparation worker operations | Complete |
 | 5 | Add structured sweep and preparation QML workflows | Complete; automated, remote, and native functional acceptance passed |
-| 6 | Build exact emitted-value 3D scene contracts | Pending |
+| 6 | Build exact emitted-value 3D scene contracts | In progress; Units 1–2 implemented |
 | 7 | Integrate native interactive 3D into QML | Pending |
 | 8 | Complete native-3D platform, distribution, documentation, and later-release qualification | Pending |
+
+The implemented Stage 6 foundation is intentionally nonvisual. Immutable,
+renderer-neutral contracts normalize copied source bindings, field profiles,
+exact filters, topology evidence, block contexts, capabilities, requests, and
+hard scene limits without importing scientific or rendering libraries. Scene
+request identity includes the source revision, selected axes, optional scalar,
+and exact filters, while presentation representation and scale remain local
+future Stage 7 state.
+
+Private scene storage now uses parent-created UUID leases beneath
+`.carnopy-gui/scene-leases`, owned for the workspace session by a QtCore
+`QLockFile`. A canonical `lease.json` binds the directory device and inode. A
+complete scene is adoptable only when canonical `scene.json` and `scene.bin`
+both pass the lightweight verifier. The binary begins with the exact 16-byte
+`<8sHHI` header (`CARN3D`, header/schema version 1, little-endian marker), uses
+absolute 8-byte-aligned non-overlapping buffers with zero padding, and binds
+whole-file and per-buffer hashes. Manifest block ranges partition all points,
+edges, and ordered quads; connectivity must remain within both global bounds
+and its declared block. Startup cleanup removes only a fully recognized lease
+whose session lock can be acquired, and preserves malformed, replaced,
+symlinked, unrecognized, or apparently live candidates. Production profiling,
+geometry, serialization, worker/controller integration, and picking are not
+implemented yet.
 
 Stage 2 has also established definition-first sampler canonicalization, exact
 anchor-based GUI unit changes, Qt 6.11.1 as the QML baseline, packaged QML
