@@ -107,7 +107,14 @@ def test_core_and_desktop_dependencies_are_isolated() -> None:
         assert "uv run --locked --extra app --no-default-groups --group type" in app_job
         assert "uv run --locked --extra app --no-default-groups --group test" in app_job
         assert "mypy src/carnopy/app" in app_job
-        assert "tests/test_app_*.py" in app_job
+        if name == "ci.yml":
+            assert "timeout-minutes: 25" in app_job
+            assert app_job.count("timeout --signal=TERM --kill-after=30s 10m") == 2
+            assert app_job.count("-o faulthandler_timeout=120") == 2
+            assert "tests/test_app_[a-p]*.py" in app_job
+            assert "tests/test_app_[q-z]*.py" in app_job
+        else:
+            assert "tests/test_app_*.py" in app_job
         assert "sudo apt-get install --yes --no-install-recommends libegl1" in app_job
         assert "QT_QPA_PLATFORM: offscreen" in text
         assert "--with-app" in text
