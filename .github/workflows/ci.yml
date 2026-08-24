@@ -98,7 +98,9 @@ jobs:
   app:
     name: Desktop app (Python 3.12)
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     env:
+      PYTHONUNBUFFERED: "1"
       QT_QPA_PLATFORM: offscreen
     steps:
       - name: Check out source
@@ -136,10 +138,18 @@ jobs:
         run: >-
           uv run --locked --extra app --no-default-groups --group type
           mypy src/carnopy/app
-      - name: Run desktop tests
+      - name: Run desktop tests (A-P)
         run: >-
+          timeout --signal=TERM --kill-after=30s 10m
           uv run --locked --extra app --no-default-groups --group test pytest
-          tests/test_app_*.py
+          -vv -o faulthandler_timeout=120
+          tests/test_app_[a-p]*.py
+      - name: Run desktop tests (Q-Z)
+        run: >-
+          timeout --signal=TERM --kill-after=30s 10m
+          uv run --locked --extra app --no-default-groups --group test pytest
+          -vv -o faulthandler_timeout=120
+          tests/test_app_[q-z]*.py
       - name: Check environment dependencies
         run: uv pip check --python .venv/bin/python
 
