@@ -1219,7 +1219,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete |
 | 4 | Add controlled sweep and preparation worker operations | Complete |
 | 5 | Add structured sweep and preparation QML workflows | Complete; automated, remote, and native functional acceptance passed |
-| 6 | Build exact emitted-value 3D scene contracts | In progress; Units 1–3 and checkpoints 4A–4D implemented |
+| 6 | Build exact emitted-value 3D scene contracts | In progress; Units 1–3 and checkpoints 4A–4E implemented |
 | 7 | Integrate native interactive 3D into QML | Pending |
 | 8 | Complete native-3D platform, distribution, documentation, and later-release qualification | Pending |
 
@@ -1316,8 +1316,27 @@ omitted and counted deterministically, while zero-length adjacent edges retain
 their separate count. The collinearity predicate treats each finite binary64
 coordinate as its exact dyadic rational value and applies no epsilon, including
 for subnormal-area cells. Context or duplicate-topology blockers still emit no
-primitive. Capabilities, hard geometry limits, serialization, controller
-integration, and visible QML remain later checkpoints.
+primitive. At the 4D boundary, capabilities and hard geometry limits were
+still deliberately absent; serialization, controller integration, and visible
+QML remain later checkpoints.
+
+Checkpoint 4E composes those exact primitives into one bounded,
+pre-serialization scene assembly. Points remain globally available, while
+wireframe and surface capabilities use an all-retained-block rule: every block
+must contain at least one valid edge or ordered quad respectively, and each
+unavailable, incomplete, missing-context, duplicate, or unsupported topology
+block contributes an explicit deterministic blocker. One valid block can
+therefore never hide an incompatible block. Exact retained binary64 ranges and
+positive-domain availability are recorded separately for X, Y, Z, and the
+optional scalar without changing raw values.
+
+The assembly projects the fixed header and complete typed binary-buffer size
+together with canonical future-manifest facts, then applies the accepted
+250,000-point, 499,999-edge, 249,999-quad, and 64 MiB projected-bundle limits
+before serialization. The later writer remains responsible for enforcing the
+exact completed manifest-plus-binary size. Checkpoint 4E still adds no writer,
+lease adoption, worker request, controller, visible QML, renderer, or triangle
+tessellation.
 
 Stage 2 has also established definition-first sampler canonicalization, exact
 anchor-based GUI unit changes, Qt 6.11.1 as the QML baseline, packaged QML

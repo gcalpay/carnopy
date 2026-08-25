@@ -82,7 +82,7 @@ implementation.
 | 3 | Complete | Reached parity, migrated both launchers, retired Widgets, and qualified `0.1.0a4` |
 | 4 | Complete | Added controlled sweep and preparation worker operations for the existing public contracts |
 | 5 | Complete | Added accepted structured Sweep and Preparation workflows plus typed audit inspection |
-| 6 | In progress (Units 1–3; checkpoints 4A–4D complete) | Build exact emitted-value 3D scenes |
+| 6 | In progress (Units 1–3; checkpoints 4A–4E complete) | Build exact emitted-value 3D scenes |
 | 7 | Pending | Add native interactive 3D to QML |
 | 8 | Pending | Qualify native 3D packaging, platforms, and a later release |
 
@@ -248,7 +248,7 @@ file-integrity, worker, or lifecycle boundaries.
 Stage 6 source profiling supports verified dataset runs, model-sweep child
 datasets, and prepared main or scenario-partition tables.
 
-Stage 6 remains incomplete. Units 1–3 and checkpoints 4A–4D now establish the
+Stage 6 remains incomplete. Units 1–3 and checkpoints 4A–4E now establish the
 lightweight contracts, hostile-input boundary, authoritative source profiles,
 exact retained-point projection, context-partitioned topology evidence, and
 exact one- and two-dimensional primitives: immutable source/profile/request
@@ -256,9 +256,9 @@ models, canonical request identities and limits, parent-created
 workspace-session leases, the canonical `scene.json` plus little-endian
 `scene.bin` contract, strict adoption and abandoned-lease verification,
 immutable scene bindings copied from Inspect, and the private `profile_scene`
-worker operation. Capabilities, geometry limits, production writing, scene
-controllers, pick resolution, and integrated acceptance remain later
-checkpoints. No visible QML or native renderer is enabled by this foundation.
+worker operation. Production writing, scene controllers, pick resolution, and
+integrated acceptance remain later checkpoints. No visible QML or native
+renderer is enabled by this foundation.
 
 Inspect offers scene bindings only for complete run directories, sweep child
 datasets, prepared main tables, and prepared scenario partitions. Standalone
@@ -314,6 +314,25 @@ over the exact binary64 values as dyadic rationals, so even a nonzero
 subnormal-area cell remains valid. No triangle, tessellation, tolerance,
 interpolation, or planarity rule is introduced.
 
+Checkpoint 4E composes the exact point, topology, edge, and cell results into
+one bounded pre-serialization assembly. Points remain available for every
+retained block. Wireframe or surface is available only when every retained
+block has at least one valid edge or ordered quad respectively and none has
+unavailable, incomplete, missing-context, duplicate, or unsupported topology.
+Every affected block contributes one deterministic capability blocker rather
+than allowing a valid block to hide an invalid one. The assembly also records
+the exact retained binary64 range and positive-domain status for X, Y, Z, and
+the optional scalar.
+
+The exact binary-buffer byte count and a canonical projection of the future
+manifest facts form the pre-serialization bundle-size projection. Point, edge,
+quad, and projected bundle-size limits are checked before any writer exists;
+the later production writer must still measure and enforce the exact completed
+manifest-plus-binary size. Focused fixtures cover zero-, one-, and
+two-dimensional sources, mixed valid and blocking contexts, prepared topology
+unavailability, unsupported dimensions, degeneracy, log domains, stable size
+projection, and every accepted hard limit.
+
 - Points represent finite emitted rows.
 - Wireframe edges connect exact adjacent coordinate levels only within
   compatible fluid, model, phase, and partition contexts.
@@ -323,8 +342,9 @@ interpolation, or planarity rule is introduced.
   context.
 - Missing and invalid rows remain gaps.
 - Ambiguous duplicates, incompatible contexts, and unsupported topology block
-  affected connectivity explicitly. Non-positive retained scalar values make
-  logarithmic presentation unavailable without invalidating exact raw points.
+  affected connectivity explicitly. Non-positive retained coordinate or
+  scalar values make logarithmic presentation unavailable for that selected
+  field without invalidating exact raw points.
 - Picking maps exactly to source-row identity and provenance.
 - No backend call, interpolation, smoothing, extrapolation, resampling, or
   silent repair is permitted.
@@ -335,7 +355,7 @@ and bridge without scientific imports in QML.
 ### Stage 6 delivery checkpoints
 
 The accepted Stage 6 contract retains eight top-level units. Units 1–3 and
-checkpoints 4A–4D are complete; the remaining work is divided into smaller
+checkpoints 4A–4E are complete; the remaining work is divided into smaller
 dependency-ordered checkpoints so
 that one review does not combine source projection, topology, serialization,
 controller lifecycle, and picking. These checkpoints do not broaden Stage 6 or
@@ -382,14 +402,14 @@ Completed units and checkpoints:
   `[i,j+1]`. Omit and count missing-corner, repeated-vertex, exactly
   zero-length, and exactly collinear primitives without triangles,
   tessellation, tolerance, interpolation, or repair.
+- **4E — capabilities and geometry limits:** apply deterministic global
+  all-block availability to points, wireframe, and surfaces; record exact
+  retained ranges and logarithmic-domain availability; project binary and
+  manifest-fact storage; and reject point, edge, quad, or projected bundle
+  limits before serialization.
 
 Remaining checkpoints:
 
-- **4E — capabilities and geometry limits:** compute representation
-  capabilities only when every retained block has a valid primitive and no
-  blocking ambiguity. Enforce the accepted point, edge, quad, and projected
-  bundle-size limits before serialization, and integrate the complete exact
-  geometry fixture matrix.
 - **5A — deterministic binary layout and encoding:** plan the accepted float64,
   uint64, and uint32 buffers, absolute aligned offsets, deterministic zero
   padding, block ranges, and hashes without writing a completed lease.
