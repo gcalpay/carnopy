@@ -9,6 +9,7 @@ from uuid import uuid4
 import pandas as pd
 import pytest
 
+from carnopy.api import generate_dataset, prepare_dataset
 from carnopy.app.scene_contracts import SceneContractError
 from carnopy.app.scene_profiles import profile_scene
 from carnopy.app.source_inspection import inspect_for_app
@@ -352,6 +353,103 @@ def test_dataset_profile_preserves_exact_topology_and_deterministic_defaults(
     assert fields["specific_enthalpy"].source_valid_count == 3
     assert fields["specific_enthalpy"].finite_count == 3
     assert fields["phase"].distinct_values == ("gas", "liquid")
+
+
+@pytest.mark.parametrize(
+    ("config_fixture", "mode", "expected_axes", "expected_levels"),
+    [
+        (
+            "property_config_path",
+            "property_table",
+            ("temperature", "pressure"),
+            ((300.0,), (100_000.0, 500_000.0)),
+        ),
+        (
+            "saturation_config_path",
+            "saturation_table",
+            ("temperature",),
+            ((250.0,),),
+        ),
+        (
+            "vapor_config_path",
+            "vapor_mass_fraction_table",
+            ("temperature", "vapor_mass_fraction"),
+            ((250.0,), (0.0, 0.5, 1.0)),
+        ),
+    ],
+)
+def test_production_dataset_artifacts_profile_every_supported_mode(
+    request: pytest.FixtureRequest,
+    tmp_path: Path,
+    config_fixture: str,
+    mode: str,
+    expected_axes: tuple[str, ...],
+    expected_levels: tuple[tuple[float, ...], ...],
+) -> None:
+    config_path = request.getfixturevalue(config_fixture)
+    assert isinstance(config_path, Path)
+    run = generate_dataset(config_path, output_root=tmp_path / mode)
+
+    inspected = inspect_for_app(run.output_directory)
+    assert len(inspected.scene_bindings) == 1
+    profile = profile_scene(inspected.scene_bindings[0])
+
+    assert profile.binding.source_kind == "dataset"
+    assert profile.binding.selected_table().source_format == "parquet"
+    assert profile.binding.inspection_revision == inspected.revision
+    assert profile.topology.status == "exact"
+    assert tuple(axis.field_id for axis in profile.topology.axes) == expected_axes
+    assert tuple(axis.levels for axis in profile.topology.axes) == expected_levels
+
+
+def test_production_preparation_artifacts_profile_main_and_scenario(
+    property_config_path: Path,
+    tmp_path: Path,
+) -> None:
+    run = generate_dataset(property_config_path, output_root=tmp_path / "runs")
+    preparation_config = tmp_path / "preparation.yaml"
+    preparation_config.write_text(
+        """schema_version: 1
+document_type: preparation
+features:
+  numeric: [temperature, pressure, mass_density]
+  derived: [specific_volume]
+categorical_features: []
+targets: [specific_enthalpy]
+scenarios:
+  - name: baseline
+    kind: unsplit
+    transformations:
+      - field: pressure
+        methods: [log10]
+outputs:
+  formats: [parquet]
+""",
+        encoding="utf-8",
+    )
+    prepared = prepare_dataset(
+        run.output_directory,
+        config=preparation_config,
+        output_root=tmp_path / "prepared",
+    )
+
+    inspected = inspect_for_app(prepared.output_directory)
+    bindings = {binding.selected_table_id: binding for binding in inspected.scene_bindings}
+    assert set(bindings) == {"table", "scenario.baseline.all"}
+
+    main = profile_scene(bindings["table"])
+    scenario = profile_scene(bindings["scenario.baseline.all"])
+
+    assert main.topology.status == "unavailable"
+    assert scenario.topology.status == "unavailable"
+    main_fields = {field.field_id: field for field in main.fields}
+    assert main_fields["specific_volume"].classification == "derived_feature"
+    scenario_fields = {field.field_id: field for field in scenario.fields}
+    transformed = scenario_fields["pressure__log10"]
+    assert transformed.classification == "recorded_transform"
+    assert transformed.unit_status == "transformed"
+    assert scenario_fields["scenario"].distinct_values == ("baseline",)
+    assert scenario_fields["partition"].distinct_values == ("all",)
 
 
 def test_current_dataset_csv_artifact_profiles_without_numeric_coercion(tmp_path: Path) -> None:

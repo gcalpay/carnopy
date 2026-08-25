@@ -330,9 +330,10 @@ def _prepared_fields(
     for semantic_name, raw_details in mapping.items():
         if not isinstance(semantic_name, str) or not isinstance(raw_details, dict):
             _unsupported("preparation semantic field mapping is malformed")
-        column = raw_details.get("column")
-        if not isinstance(column, str):
+        source_column = raw_details.get("column")
+        if not isinstance(source_column, str):
             _unsupported(f"prepared field {semantic_name!r} has no source column")
+        column = semantic_name
         if column not in selected_columns:
             continue
         classification = roles.get(semantic_name)
