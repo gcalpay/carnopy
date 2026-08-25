@@ -7,6 +7,8 @@ from typing import Any
 import pandas as pd
 
 from carnopy.app.scene_contracts import (
+    SceneBlockContext,
+    SceneBoundTable,
     SceneSourceBinding,
     SceneTopologyAxis,
     SceneTopologyEvidence,
@@ -17,10 +19,13 @@ from carnopy.app.scene_profiles import (
     _SOURCE_CONTEXTS,
     Checkpoint,
     LoadedSceneProfileSource,
+    SceneBlockContextKey,
     SceneFieldData,
     _categorical_field,
+    _context_text,
     _exact_int,
     _finite_float,
+    _intern_block_context,
     _label,
     _numeric_field,
     _read_json_identity,
@@ -144,15 +149,62 @@ def load_dataset_source(
         *(name for name in _COORDINATES if name not in topology_ids),
         *properties,
     )
+    row_contexts = _dataset_row_contexts(binding, selected, frame)
     return LoadedSceneProfileSource(
         binding=binding,
         source_row_count=len(frame),
         source_valid=source_valid,
         stable_id_field="case_id",
         stable_ids=stable_ids,
+        row_contexts=row_contexts,
         fields=tuple(fields),
         topology=topology,
         default_priority=tuple(priority),
+    )
+
+
+def _dataset_row_contexts(
+    binding: SceneSourceBinding,
+    selected: SceneBoundTable,
+    frame: pd.DataFrame,
+) -> tuple[SceneBlockContext, ...]:
+    try:
+        source_artifact = (
+            Path(selected.artifact.path).relative_to(Path(binding.source_path)).as_posix()
+        )
+    except ValueError:
+        _unsupported("dataset artifact is outside its bound source root")
+    saturation_values = (
+        frame["saturation_endpoint"].tolist()
+        if "saturation_endpoint" in frame.columns
+        else [None] * len(frame)
+    )
+    cache: dict[SceneBlockContextKey, SceneBlockContext] = {}
+    return tuple(
+        _intern_block_context(
+            cache,
+            source_artifact=source_artifact,
+            source_run_id=_context_text(run_id, "dataset run context", required=True),
+            fluid=_context_text(fluid, "dataset fluid context", required=True),
+            backend_model=_context_text(
+                backend_model,
+                "dataset backend-model context",
+                required=True,
+            ),
+            phase=_context_text(phase, "dataset phase context"),
+            saturation_endpoint=_context_text(
+                saturation_endpoint,
+                "dataset saturation-endpoint context",
+            ),
+        )
+        for run_id, fluid, backend_model, phase, saturation_endpoint in zip(
+            frame["run_id"].tolist(),
+            frame["fluid"].tolist(),
+            frame["backend_model"].tolist(),
+            frame["phase"].tolist(),
+            saturation_values,
+            strict=True,
+        )
     )
 
 

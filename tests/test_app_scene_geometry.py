@@ -109,6 +109,15 @@ def test_point_projection_applies_exact_filters_and_accounts_for_every_row(
     assert projection.excluded_row_count == 4
     assert [point.row_position for point in projection.points] == [0, 5]
     assert [point.stable_id for point in projection.points] == [0, 5]
+    assert [
+        (row.row_position, row.stable_id, row.code, row.field_id)
+        for row in projection.excluded_rows
+    ] == [
+        (1, 1, "filtered", "phase"),
+        (2, 2, "source_invalid", None),
+        (3, 3, "missing_selected_value", "specific_enthalpy"),
+        (4, 4, "nonfinite_selected_value", "mass_density"),
+    ]
     assert projection.points[0].coordinates[:2] == (300.0, 100_000.0)
     assert projection.points[1].coordinates[:2] == (310.0, 300_000.0)
     assert all(math.isfinite(value) for point in projection.points for value in point.coordinates)

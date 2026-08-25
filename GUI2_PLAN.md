@@ -82,7 +82,7 @@ implementation.
 | 3 | Complete | Reached parity, migrated both launchers, retired Widgets, and qualified `0.1.0a4` |
 | 4 | Complete | Added controlled sweep and preparation worker operations for the existing public contracts |
 | 5 | Complete | Added accepted structured Sweep and Preparation workflows plus typed audit inspection |
-| 6 | In progress (Units 1–3; 4A next) | Build exact emitted-value 3D scenes |
+| 6 | In progress (Units 1–3; checkpoints 4A–4B complete) | Build exact emitted-value 3D scenes |
 | 7 | Pending | Add native interactive 3D to QML |
 | 8 | Pending | Qualify native 3D packaging, platforms, and a later release |
 
@@ -248,14 +248,14 @@ file-integrity, worker, or lifecycle boundaries.
 Stage 6 source profiling supports verified dataset runs, model-sweep child
 datasets, and prepared main or scenario-partition tables.
 
-Stage 6 remains incomplete. Units 1–3 and checkpoint 4A now establish the
+Stage 6 remains incomplete. Units 1–3 and checkpoints 4A–4B now establish the
 lightweight contracts, hostile-input boundary, authoritative source profiles,
-and exact retained-point projection: immutable
+exact retained-point projection, and context-partitioned topology evidence: immutable
 source/profile/request models, canonical request identities and limits,
 parent-created workspace-session leases, the canonical `scene.json` plus
 little-endian `scene.bin` contract, strict adoption and abandoned-lease
 verification, immutable scene bindings copied from Inspect, and the private
-`profile_scene` worker operation. Block and topology analysis, connectivity,
+`profile_scene` worker operation. Primitive generation, capabilities,
 production writing, scene controllers, pick resolution, and integrated
 acceptance remain later checkpoints. No visible QML or native renderer is
 enabled by this foundation.
@@ -283,6 +283,16 @@ deterministic reason in this order: source invalid, first failed canonically
 ordered filter, then the first missing or nonfinite selected field in
 X/Y/Z/scalar order. The result contains no blocks or connectivity.
 
+Checkpoint 4B preserves that exact row-level exclusion evidence and partitions
+retained and excluded rows by source artifact, run, fluid, model, phase,
+saturation endpoint, scenario, and partition. Within each retained block it
+maps source coordinates to their exact indices in the verified original
+materialized level order, records excluded-row locations and absent
+intermediate levels, keeps duplicate-location points distinct, and reports
+zero-dimensional, unavailable, missing-context, ambiguous-duplicate, and
+unsupported higher-dimensional outcomes explicitly. It emits no edges, quads,
+triangles, or inferred samples.
+
 - Points represent finite emitted rows.
 - Wireframe edges connect exact adjacent coordinate levels only within
   compatible fluid, model, phase, and partition contexts.
@@ -304,7 +314,7 @@ and bridge without scientific imports in QML.
 ### Stage 6 delivery checkpoints
 
 The accepted Stage 6 contract retains eight top-level units. Units 1–3 and
-checkpoint 4A are complete; the remaining work is divided into smaller
+checkpoints 4A–4B are complete; the remaining work is divided into smaller
 dependency-ordered checkpoints so
 that one review does not combine source projection, topology, serialization,
 controller lifecycle, and picking. These checkpoints do not broaden Stage 6 or
@@ -336,15 +346,15 @@ Completed units and checkpoints:
   filtering, finite selected-value projection, stable source-row identities,
   and deterministic one-reason-per-row exclusion accounting without blocks or
   connectivity.
-
-Remaining checkpoints:
-
 - **4B — blocks and topology evidence:** partition retained points by every
   required artifact, run, fluid, model, phase, saturation-endpoint, scenario,
   and partition context. Preserve verified materialized topology-level order,
   identify dimensions, gaps, missing intermediate levels, and duplicate
   topology locations, and report explicit zero-dimensional or unsupported
   higher-dimensional outcomes without emitting primitives.
+
+Remaining checkpoints:
+
 - **4C — exact one-dimensional edges:** connect only immediately adjacent
   verified levels inside one unambiguous block, preserve filtered or invalid
   intermediate levels as gaps, and omit and count exact zero-length edges.

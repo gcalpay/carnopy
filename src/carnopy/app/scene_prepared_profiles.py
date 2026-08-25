@@ -7,6 +7,7 @@ from typing import Any, cast
 import pandas as pd
 
 from carnopy.app.scene_contracts import (
+    SceneBlockContext,
     SceneFieldClassification,
     SceneSourceBinding,
     SceneTopologyEvidence,
@@ -16,10 +17,13 @@ from carnopy.app.scene_profiles import (
     _PREPARED_SOURCE_CONTEXTS,
     Checkpoint,
     LoadedSceneProfileSource,
+    SceneBlockContextKey,
     SceneFieldData,
     _categorical_field,
+    _context_text,
     _exact_int,
     _field_from_dtype,
+    _intern_block_context,
     _label,
     _numeric_field,
     _parse_scenario_table_id,
@@ -114,6 +118,7 @@ def load_prepared_source(
         scenario_metadata=scenario_metadata,
         scenario_context=scenario_context,
     )
+    row_contexts = _prepared_row_contexts(joined, scenario_context=scenario_context)
     topology = SceneTopologyEvidence(
         status="unavailable",
         reason_code="source_sampling_levels_not_recorded",
@@ -128,9 +133,48 @@ def load_prepared_source(
         source_valid=source_valid.reset_index(drop=True),
         stable_id_field="prepared_row_id",
         stable_ids=tuple(ids),
+        row_contexts=row_contexts,
         fields=fields,
         topology=topology,
         default_priority=priority,
+    )
+
+
+def _prepared_row_contexts(
+    joined: pd.DataFrame,
+    *,
+    scenario_context: tuple[str, str] | None,
+) -> tuple[SceneBlockContext, ...]:
+    scenario = None if scenario_context is None else scenario_context[0]
+    partition = None if scenario_context is None else scenario_context[1]
+    cache: dict[SceneBlockContextKey, SceneBlockContext] = {}
+    return tuple(
+        _intern_block_context(
+            cache,
+            source_artifact=_context_text(
+                row.source_artifact,
+                "prepared source-artifact context",
+                required=True,
+            ),
+            source_run_id=_context_text(
+                row.source_run_id,
+                "prepared source-run context",
+                required=True,
+            ),
+            fluid=_context_text(row.source_fluid, "prepared fluid context"),
+            backend_model=_context_text(
+                row.backend_model,
+                "prepared backend-model context",
+            ),
+            phase=_context_text(row.source_phase, "prepared phase context"),
+            saturation_endpoint=_context_text(
+                row.source_saturation_endpoint,
+                "prepared saturation-endpoint context",
+            ),
+            scenario=scenario,
+            partition=partition,
+        )
+        for row in joined.itertuples(index=False)
     )
 
 

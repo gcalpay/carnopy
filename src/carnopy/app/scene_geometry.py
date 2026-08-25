@@ -58,6 +58,28 @@ class RetainedScenePoint:
 
 
 @dataclass(frozen=True)
+class SceneRowExclusion:
+    """One source row omitted from point projection for exactly one reason."""
+
+    row_position: int
+    stable_id: int
+    code: SceneGapCode
+    field_id: str | None
+
+    def __post_init__(self) -> None:
+        if self.row_position < 0:
+            raise ValueError("scene exclusion row position must be non-negative")
+        if self.stable_id < 0 or self.stable_id > _UINT64_MAX:
+            raise ValueError("scene exclusion stable ID must fit unsigned 64-bit storage")
+        if self.code not in _PROJECTION_GAP_CODES:
+            raise ValueError("scene row exclusion code is not a point-projection reason")
+        if self.code == "source_invalid" and self.field_id is not None:
+            raise ValueError("source-invalid row exclusions must not identify a field")
+        if self.code != "source_invalid" and not self.field_id:
+            raise ValueError("field-specific row exclusions require a field ID")
+
+
+@dataclass(frozen=True)
 class ScenePointProjection:
     """Exact retained points and one deterministic exclusion reason per source row."""
 
@@ -65,6 +87,7 @@ class ScenePointProjection:
     request: SceneRequest
     stable_id_field: StableIdField
     points: tuple[RetainedScenePoint, ...]
+    excluded_rows: tuple[SceneRowExclusion, ...]
     exclusions: tuple[SceneGapSummary, ...]
 
     def __post_init__(self) -> None:
@@ -76,12 +99,26 @@ class ScenePointProjection:
         stable_ids = [point.stable_id for point in self.points]
         if positions != sorted(positions):
             raise ValueError("scene projection points are not in source-row order")
+        excluded_positions = [row.row_position for row in self.excluded_rows]
+        excluded_stable_ids = [row.stable_id for row in self.excluded_rows]
+        if excluded_positions != sorted(excluded_positions):
+            raise ValueError("scene exclusions are not in source-row order")
         if len(set(positions)) != len(positions):
             raise ValueError("scene projection repeats a source row position")
         if len(set(stable_ids)) != len(stable_ids):
             raise ValueError("scene projection repeats a stable source ID")
+        if len(set(excluded_positions)) != len(excluded_positions):
+            raise ValueError("scene projection repeats an excluded source row position")
+        if len(set(excluded_stable_ids)) != len(excluded_stable_ids):
+            raise ValueError("scene projection repeats an excluded stable source ID")
         if any(position >= self.profile.source_row_count for position in positions):
             raise ValueError("scene projection contains an out-of-range source row position")
+        if any(position >= self.profile.source_row_count for position in excluded_positions):
+            raise ValueError("scene exclusion contains an out-of-range source row position")
+        if sorted([*positions, *excluded_positions]) != list(range(self.profile.source_row_count)):
+            raise ValueError("scene projection row evidence does not partition source rows")
+        if len(set([*stable_ids, *excluded_stable_ids])) != self.profile.source_row_count:
+            raise ValueError("scene projection stable IDs do not partition source rows")
         if any(
             gap.block_index is not None or gap.code not in _PROJECTION_GAP_CODES
             for gap in self.exclusions
@@ -89,6 +126,8 @@ class ScenePointProjection:
             raise ValueError("point projection contains a non-projection gap summary")
         if tuple(self.exclusions) != canonical_gap_summaries(self.exclusions):
             raise ValueError("scene point exclusions are not canonically ordered")
+        if self.exclusions != _summarize_excluded_rows(self.excluded_rows):
+            raise ValueError("scene point exclusion summaries disagree with excluded rows")
         if self.retained_row_count + self.excluded_row_count != self.profile.source_row_count:
             raise ValueError("scene point projection does not account for every source row")
 
@@ -98,7 +137,7 @@ class ScenePointProjection:
 
     @property
     def excluded_row_count(self) -> int:
-        return sum(gap.count for gap in self.exclusions)
+        return len(self.excluded_rows)
 
 
 def project_scene_points(
@@ -109,6 +148,26 @@ def project_scene_points(
 ) -> ScenePointProjection:
     """Revalidate one profiled request and retain only exact finite source points."""
 
+    loaded, authoritative = _validated_projection_source(
+        profile,
+        request,
+        checkpoint=checkpoint,
+    )
+    projection = _project_loaded_scene_points(
+        loaded,
+        authoritative,
+        request,
+        checkpoint=checkpoint,
+    )
+    return _require_retained_points(projection)
+
+
+def _validated_projection_source(
+    profile: SceneProfile,
+    request: SceneRequest,
+    *,
+    checkpoint: Checkpoint | None,
+) -> tuple[LoadedSceneProfileSource, SceneProfile]:
     if profile.binding != request.binding:
         raise SceneContractError(
             "invalid_scene_request",
@@ -128,12 +187,10 @@ def project_scene_points(
             "scene profile no longer matches the authoritative source profile",
         )
     validate_scene_request(request, authoritative.fields)
-    projection = _project_loaded_scene_points(
-        loaded,
-        authoritative,
-        request,
-        checkpoint=checkpoint,
-    )
+    return loaded, authoritative
+
+
+def _require_retained_points(projection: ScenePointProjection) -> ScenePointProjection:
     if projection.points:
         return projection
     raise SceneContractError(
@@ -166,13 +223,13 @@ def _project_loaded_scene_points(
             if field_id is not None
         )
     )
-    gaps: Counter[tuple[SceneGapCode, str | None]] = Counter()
     points: list[RetainedScenePoint] = []
+    excluded_rows: list[SceneRowExclusion] = []
     for row_position in range(loaded.source_row_count):
         if checkpoint is not None and row_position % 1_024 == 0:
             checkpoint()
         if not bool(loaded.source_valid.iloc[row_position]):
-            gaps[("source_invalid", None)] += 1
+            excluded_rows.append(_row_exclusion(loaded, row_position, "source_invalid", None))
             continue
         failed_filter = next(
             (
@@ -183,23 +240,39 @@ def _project_loaded_scene_points(
             None,
         )
         if failed_filter is not None:
-            gaps[("filtered", failed_filter.field_id)] += 1
+            excluded_rows.append(
+                _row_exclusion(loaded, row_position, "filtered", failed_filter.field_id)
+            )
             continue
         numeric_values: dict[str, float] = {}
-        excluded = False
+        row_excluded = False
         for field_id in selected_field_ids:
             raw = fields[field_id].values.iloc[row_position]
             if _is_missing(raw):
-                gaps[("missing_selected_value", field_id)] += 1
-                excluded = True
+                excluded_rows.append(
+                    _row_exclusion(
+                        loaded,
+                        row_position,
+                        "missing_selected_value",
+                        field_id,
+                    )
+                )
+                row_excluded = True
                 break
             numeric = _finite_numeric(raw, field_id)
             if numeric is None:
-                gaps[("nonfinite_selected_value", field_id)] += 1
-                excluded = True
+                excluded_rows.append(
+                    _row_exclusion(
+                        loaded,
+                        row_position,
+                        "nonfinite_selected_value",
+                        field_id,
+                    )
+                )
+                row_excluded = True
                 break
             numeric_values[field_id] = numeric
-        if excluded:
+        if row_excluded:
             continue
         points.append(
             RetainedScenePoint(
@@ -217,16 +290,38 @@ def _project_loaded_scene_points(
         )
     if checkpoint is not None:
         checkpoint()
-    exclusions = canonical_gap_summaries(
-        SceneGapSummary(code=code, count=count, field_id=field_id)
-        for (code, field_id), count in gaps.items()
-    )
+    exact_exclusions = tuple(excluded_rows)
     return ScenePointProjection(
         profile=profile,
         request=request,
         stable_id_field=loaded.stable_id_field,
         points=tuple(points),
-        exclusions=exclusions,
+        excluded_rows=exact_exclusions,
+        exclusions=_summarize_excluded_rows(exact_exclusions),
+    )
+
+
+def _row_exclusion(
+    loaded: LoadedSceneProfileSource,
+    row_position: int,
+    code: SceneGapCode,
+    field_id: str | None,
+) -> SceneRowExclusion:
+    return SceneRowExclusion(
+        row_position=row_position,
+        stable_id=loaded.stable_ids[row_position],
+        code=code,
+        field_id=field_id,
+    )
+
+
+def _summarize_excluded_rows(
+    rows: tuple[SceneRowExclusion, ...],
+) -> tuple[SceneGapSummary, ...]:
+    counts = Counter((row.code, row.field_id) for row in rows)
+    return canonical_gap_summaries(
+        SceneGapSummary(code=code, count=count, field_id=field_id)
+        for (code, field_id), count in counts.items()
     )
 
 

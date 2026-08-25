@@ -9,12 +9,13 @@ import stat
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, NoReturn, cast
+from typing import Any, Literal, NoReturn, cast, overload
 
 import numpy as np
 import pandas as pd
 
 from carnopy.app.scene_contracts import (
+    SceneBlockContext,
     SceneContractError,
     SceneFieldClassification,
     SceneFieldOrigin,
@@ -30,6 +31,16 @@ from carnopy.app.source_inspection import revalidate_scene_binding
 Checkpoint = Callable[[], None]
 FieldKind = Literal["numeric", "categorical"]
 StableIdField = Literal["case_id", "prepared_row_id"]
+SceneBlockContextKey = tuple[
+    str,
+    str,
+    str | None,
+    str | None,
+    str | None,
+    str | None,
+    str | None,
+    str | None,
+]
 
 _UINT64_MAX = 2**64 - 1
 
@@ -97,6 +108,7 @@ class LoadedSceneProfileSource:
     source_valid: pd.Series
     stable_id_field: StableIdField
     stable_ids: tuple[int, ...]
+    row_contexts: tuple[SceneBlockContext, ...]
     fields: tuple[SceneFieldData, ...]
     topology: SceneTopologyEvidence
     default_priority: tuple[str, ...]
@@ -138,6 +150,8 @@ def _profile_loaded_scene_source(
 ) -> SceneProfile:
     if len(loaded.stable_ids) != loaded.source_row_count:
         _unsupported("scene stable IDs are not aligned with source rows")
+    if len(loaded.row_contexts) != loaded.source_row_count:
+        _unsupported("scene block contexts are not aligned with source rows")
     projected_fields: list[SceneFieldProfile] = []
     for field in loaded.fields:
         _checkpoint(checkpoint)
@@ -602,6 +616,77 @@ def _stable_uint64(value: object, label: str) -> int:
     if numeric < 0 or numeric > _UINT64_MAX:
         _unsupported(f"{label} must be an exact unsigned 64-bit integer")
     return numeric
+
+
+@overload
+def _context_text(value: object, label: str, *, required: Literal[True]) -> str: ...
+
+
+@overload
+def _context_text(
+    value: object,
+    label: str,
+    *,
+    required: Literal[False] = False,
+) -> str | None: ...
+
+
+def _context_text(
+    value: object,
+    label: str,
+    *,
+    required: bool = False,
+) -> str | None:
+    try:
+        missing = bool(pd.isna(cast(Any, value)))
+    except (TypeError, ValueError):
+        missing = False
+    if missing:
+        if required:
+            _unsupported(f"{label} is missing")
+        return None
+    if not isinstance(value, str) or not value or "\x00" in value:
+        _unsupported(f"{label} must be exact non-empty text")
+    return value
+
+
+def _intern_block_context(
+    cache: dict[SceneBlockContextKey, SceneBlockContext],
+    *,
+    source_artifact: str,
+    source_run_id: str,
+    fluid: str | None,
+    backend_model: str | None,
+    phase: str | None,
+    saturation_endpoint: str | None,
+    scenario: str | None = None,
+    partition: str | None = None,
+) -> SceneBlockContext:
+    key: SceneBlockContextKey = (
+        source_artifact,
+        source_run_id,
+        fluid,
+        backend_model,
+        phase,
+        saturation_endpoint,
+        scenario,
+        partition,
+    )
+    existing = cache.get(key)
+    if existing is not None:
+        return existing
+    context = SceneBlockContext(
+        source_artifact=source_artifact,
+        source_run_id=source_run_id,
+        fluid=fluid,
+        backend_model=backend_model,
+        phase=phase,
+        saturation_endpoint=saturation_endpoint,
+        scenario=scenario,
+        partition=partition,
+    )
+    cache[key] = context
+    return context
 
 
 def _stat_identity(value: os.stat_result) -> tuple[int, int, int, int]:

@@ -1219,7 +1219,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete |
 | 4 | Add controlled sweep and preparation worker operations | Complete |
 | 5 | Add structured sweep and preparation QML workflows | Complete; automated, remote, and native functional acceptance passed |
-| 6 | Build exact emitted-value 3D scene contracts | In progress; Units 1–3 and checkpoint 4A implemented |
+| 6 | Build exact emitted-value 3D scene contracts | In progress; Units 1–3 and checkpoints 4A–4B implemented |
 | 7 | Integrate native interactive 3D into QML | Pending |
 | 8 | Complete native-3D platform, distribution, documentation, and later-release qualification | Pending |
 
@@ -1275,8 +1275,21 @@ X/Y/Z/optional-scalar field. Retained records preserve original table-row
 position, unsigned-64-bit `case_id` or `prepared_row_id`, finite float64
 coordinates, and an optional finite scalar. No context partitioning, topology
 dimension analysis, edges, quads, capabilities, serialization, worker request,
-controller integration, or visible QML is introduced by 4A; those remain later
-checkpoints.
+controller integration, or visible QML is introduced by 4A.
+
+Checkpoint 4B adds renderer-neutral context partitioning and topology analysis
+without primitive generation. Every row receives an exact source artifact,
+run, fluid, model, phase, saturation-endpoint, scenario, and partition context;
+retained blocks are canonically ordered and cannot silently span a context
+boundary. Dataset points map only to exact indices in the verified original
+materialized sampler order. Excluded rows retain their row identity, reason,
+context, and topology location when recorded, while missing intermediate
+levels remain explicit gaps. Duplicate locations keep each source point and
+stable ID distinct and block ambiguous topology. Zero-dimensional, unavailable,
+missing-context, incomplete, and unsupported higher-dimensional blocks are
+reported explicitly. Checkpoint 4B emits no edges, quads, triangles, or
+invented samples; primitive construction and representation capabilities
+remain later checkpoints.
 
 Stage 2 has also established definition-first sampler canonicalization, exact
 anchor-based GUI unit changes, Qt 6.11.1 as the QML baseline, packaged QML
