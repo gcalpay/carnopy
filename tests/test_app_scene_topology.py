@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import replace
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from carnopy.api import generate_dataset, prepare_dataset
 from carnopy.app.scene_contracts import (
@@ -15,6 +17,12 @@ from carnopy.app.scene_contracts import (
     SceneRequest,
     SceneTopologyAxis,
     SceneTopologyEvidence,
+)
+from carnopy.app.scene_edges import (
+    SceneEdge,
+    SceneEdgeProjection,
+    _build_topology_edges,
+    build_scene_edges,
 )
 from carnopy.app.scene_profiles import _load_scene_profile_source, profile_scene
 from carnopy.app.scene_topology import _analyze_block_topology, analyze_scene_topology
@@ -142,6 +150,7 @@ def test_topology_preserves_order_and_exact_gaps_without_primitives(tmp_path: Pa
     ] == [("pressure", (1, 2))]
     assert not hasattr(partition, "edges")
     assert not hasattr(partition, "quads")
+    assert _build_topology_edges(partition, checkpoint=None).edges == ()
 
     zero_request = _request(
         profile,
@@ -215,6 +224,42 @@ def test_topology_partitions_contexts_and_preserves_duplicate_points(tmp_path: P
     assert liquid.topology.dimension == 1
     assert gas.topology.axes[0].levels == liquid.topology.axes[0].levels == (320.0, 300.0)
 
+    edge_projection = build_scene_edges(profile, _request(profile))
+    assert [len(block.edges) for block in edge_projection.blocks] == [0, 0, 1]
+    assert edge_projection.edges[0].point_indices == (2, 3)
+    assert edge_projection.edges[0].topology_axis_index == 1
+    assert all(
+        point_index in edge_projection.topology.blocks[2].point_indices
+        for point_index in edge_projection.edges[0].point_indices
+    )
+    assert 4 not in edge_projection.edges[0].point_indices
+    with pytest.raises(ValueError, match="exact one-dimensional block topology"):
+        SceneEdgeProjection(
+            topology=edge_projection.topology,
+            blocks=(
+                edge_projection.blocks[0],
+                replace(
+                    edge_projection.blocks[1],
+                    edges=(SceneEdge(point_indices=(0, 1), topology_axis_index=1),),
+                ),
+                edge_projection.blocks[2],
+            ),
+            omissions=(),
+        )
+    with pytest.raises(ValueError, match="crosses its declared topology block"):
+        SceneEdgeProjection(
+            topology=edge_projection.topology,
+            blocks=(
+                edge_projection.blocks[0],
+                edge_projection.blocks[1],
+                replace(
+                    edge_projection.blocks[2],
+                    edges=(SceneEdge(point_indices=(0, 2), topology_axis_index=1),),
+                ),
+            ),
+            omissions=(),
+        )
+
     gas_only = analyze_scene_topology(
         profile,
         SceneRequest(
@@ -285,3 +330,95 @@ outputs:
         block.topology.reason_code == "source_sampling_levels_not_recorded"
         for block in partition.blocks
     )
+    assert _build_topology_edges(partition, checkpoint=None).edges == ()
+
+
+def test_one_dimensional_edges_preserve_filtered_and_invalid_level_gaps(
+    tmp_path: Path,
+) -> None:
+    run = _generate_grid(
+        tmp_path,
+        name="edge-gaps",
+        temperatures=(300.0,),
+        pressures_bar=(10.0, 7.0, 3.0, 2.0, 1.0),
+    )
+    frame = pd.read_parquet(run / "dataset.parquet")
+    assert len(frame) == 5
+    frame["phase"] = "gas"
+    frame["mass_density_kg_m3"] = [1.0, 100.0, 100.0, 2.0, 2.0]
+    frame.loc[1, "valid"] = False
+    frame.loc[1, "failure_layer"] = "property"
+    frame.loc[1, "failure_code"] = "backend_error"
+    frame.loc[1, "failure_message"] = "controlled invalid row"
+    frame.loc[1, "failure_property"] = "mass_density"
+    frame.loc[1, "backend_error_type"] = "ValueError"
+    frame.loc[1, "backend_error_message"] = "controlled invalid row"
+    _rewrite_dataset(run, frame)
+    profile = _profile(run)
+
+    result = build_scene_edges(
+        profile,
+        _request(
+            profile,
+            NumericRangeFilter(field_id="mass_density", maximum=2.0),
+        ),
+    )
+
+    assert [point.row_position for point in result.topology.projection.points] == [0, 3, 4]
+    assert result.topology.blocks[0].topology.dimension == 1
+    assert result.topology.blocks[0].topology.axes[1].levels == (
+        1_000_000.0,
+        700_000.0,
+        300_000.0,
+        200_000.0,
+        100_000.0,
+    )
+    assert [gap.level_indices for gap in result.topology.blocks[0].topology.gap_locations] == [
+        (0, 1),
+        (0, 2),
+    ]
+    assert result.topology.blocks[0].topology.missing_intermediate_levels[0].level_indices == (
+        1,
+        2,
+    )
+    assert [(edge.point_indices, edge.topology_axis_index) for edge in result.edges] == [
+        ((1, 2), 1)
+    ]
+    assert result.omissions == ()
+
+
+def test_one_dimensional_edges_omit_only_exact_zero_length_coordinates(
+    tmp_path: Path,
+) -> None:
+    run = _generate_grid(
+        tmp_path,
+        name="zero-edges",
+        temperatures=(300.0,),
+        pressures_bar=(10.0, 7.0, 3.0, 1.0),
+    )
+    frame = pd.read_parquet(run / "dataset.parquet")
+    assert len(frame) == 4
+    frame["phase"] = "gas"
+    frame["specific_enthalpy_J_kg"] = [10.0, 10.0, 10.0, 20.0]
+    frame["mass_density_kg_m3"] = [1.0, 1.0, math.nextafter(1.0, 2.0), 2.0]
+    _rewrite_dataset(run, frame)
+    profile = _profile(run)
+    request = SceneRequest(
+        binding=profile.binding,
+        x_field="temperature",
+        y_field="specific_enthalpy",
+        z_field="mass_density",
+    )
+
+    result = build_scene_edges(profile, request)
+
+    assert result.topology.blocks[0].topology.dimension == 1
+    assert [(edge.point_indices, edge.topology_axis_index) for edge in result.edges] == [
+        ((1, 2), 1),
+        ((2, 3), 1),
+    ]
+    assert result.blocks[0].omitted_zero_length_count == 1
+    assert len(result.omissions) == 1
+    assert result.omissions[0].code == "zero_length_edge"
+    assert result.omissions[0].count == 1
+    assert result.omissions[0].block_index == 0

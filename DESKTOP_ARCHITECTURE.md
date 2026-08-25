@@ -1219,7 +1219,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete |
 | 4 | Add controlled sweep and preparation worker operations | Complete |
 | 5 | Add structured sweep and preparation QML workflows | Complete; automated, remote, and native functional acceptance passed |
-| 6 | Build exact emitted-value 3D scene contracts | In progress; Units 1–3 and checkpoints 4A–4B implemented |
+| 6 | Build exact emitted-value 3D scene contracts | In progress; Units 1–3 and checkpoints 4A–4C implemented |
 | 7 | Integrate native interactive 3D into QML | Pending |
 | 8 | Complete native-3D platform, distribution, documentation, and later-release qualification | Pending |
 
@@ -1290,6 +1290,20 @@ missing-context, incomplete, and unsupported higher-dimensional blocks are
 reported explicitly. Checkpoint 4B emits no edges, quads, triangles, or
 invented samples; primitive construction and representation capabilities
 remain later checkpoints.
+
+Checkpoint 4C adds renderer-neutral one-dimensional edges without changing
+the worker protocol or visible application. Only an exact, unambiguous block
+with one varying verified topology axis can emit edges. Endpoints follow
+consecutive indices in the original materialized sampler order, independently
+of whether the recorded numeric levels ascend, descend, or use nonuniform
+spacing. Filtered, invalid, missing, or otherwise absent intermediate levels
+remain gaps and are never bridged. Blocked topology and duplicate locations
+emit no edges, so connectivity cannot cross an artifact, run, fluid, model,
+phase, saturation endpoint, scenario, or partition boundary. Display
+coordinates are consulted only after exact adjacency is established: equality
+of all three coordinates omits and counts a zero-length edge with no epsilon.
+Two-dimensional edges, ordered quads, capabilities, serialization, controller
+integration, and visible QML remain later checkpoints.
 
 Stage 2 has also established definition-first sampler canonicalization, exact
 anchor-based GUI unit changes, Qt 6.11.1 as the QML baseline, packaged QML
