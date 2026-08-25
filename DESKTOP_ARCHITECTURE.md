@@ -1219,7 +1219,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete |
 | 4 | Add controlled sweep and preparation worker operations | Complete |
 | 5 | Add structured sweep and preparation QML workflows | Complete; automated, remote, and native functional acceptance passed |
-| 6 | Build exact emitted-value 3D scene contracts | In progress; Units 1–3 and checkpoints 4A–4C implemented |
+| 6 | Build exact emitted-value 3D scene contracts | In progress; Units 1–3 and checkpoints 4A–4D implemented |
 | 7 | Integrate native interactive 3D into QML | Pending |
 | 8 | Complete native-3D platform, distribution, documentation, and later-release qualification | Pending |
 
@@ -1303,6 +1303,20 @@ phase, saturation endpoint, scenario, or partition boundary. Display
 coordinates are consulted only after exact adjacency is established: equality
 of all three coordinates omits and counts a zero-length edge with no epsilon.
 Two-dimensional edges, ordered quads, capabilities, serialization, controller
+integration, and visible QML remain later checkpoints.
+
+Checkpoint 4D extends the same exact adjacency rule to two-dimensional blocks
+and retains every complete cell as one ordered four-corner quad. The order is
+`[i,j]`, `[i+1,j]`, `[i+1,j+1]`, `[i,j+1]` in the original verified topology
+axis order; shared edges are stored once, and no renderer tessellation enters
+the scientific scene contract. Consecutive candidate cells inside each
+retained block bound remain absent when any exact corner is missing. Complete
+cells with repeated display-coordinate vertices or exact collinearity are
+omitted and counted deterministically, while zero-length adjacent edges retain
+their separate count. The collinearity predicate treats each finite binary64
+coordinate as its exact dyadic rational value and applies no epsilon, including
+for subnormal-area cells. Context or duplicate-topology blockers still emit no
+primitive. Capabilities, hard geometry limits, serialization, controller
 integration, and visible QML remain later checkpoints.
 
 Stage 2 has also established definition-first sampler canonicalization, exact

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from itertools import pairwise
 
 from carnopy.app.scene_contracts import (
     SceneGapSummary,
@@ -36,7 +35,7 @@ class SceneEdge:
 
 @dataclass(frozen=True)
 class SceneBlockEdges:
-    """Exact one-dimensional edges and omissions for one topology block."""
+    """Exact adjacency edges and omissions for one topology block."""
 
     block_index: int
     edges: tuple[SceneEdge, ...]
@@ -54,7 +53,7 @@ class SceneBlockEdges:
 
 @dataclass(frozen=True)
 class SceneEdgeProjection:
-    """One-dimensional edges over an exact topology partition."""
+    """Selected-dimensional edges over an exact topology partition."""
 
     topology: SceneTopologyPartition
     blocks: tuple[SceneBlockEdges, ...]
@@ -93,9 +92,10 @@ class SceneEdgeProjection:
         edge_block: SceneBlockEdges,
     ) -> None:
         if edge_block.edges and (
-            topology_block.topology.status != "exact" or topology_block.topology.dimension != 1
+            topology_block.topology.status != "exact"
+            or topology_block.topology.dimension not in {1, 2}
         ):
-            raise ValueError("scene edges require exact one-dimensional block topology")
+            raise ValueError("scene edges require exact one- or two-dimensional topology")
         location_by_point = {
             location.point_indices[0]: location
             for location in topology_block.topology.locations
@@ -149,6 +149,7 @@ def _build_topology_edges(
     topology: SceneTopologyPartition,
     *,
     checkpoint: Checkpoint | None,
+    included_dimensions: frozenset[int] = frozenset({1}),
 ) -> SceneEdgeProjection:
     blocks: list[SceneBlockEdges] = []
     for block in topology.blocks:
@@ -158,6 +159,7 @@ def _build_topology_edges(
             topology,
             block,
             checkpoint=checkpoint,
+            included_dimensions=included_dimensions,
         )
         blocks.append(
             SceneBlockEdges(
@@ -187,44 +189,51 @@ def _build_block_edges(
     block: SceneTopologyBlock,
     *,
     checkpoint: Checkpoint | None,
+    included_dimensions: frozenset[int],
 ) -> tuple[tuple[SceneEdge, ...], int]:
-    if block.topology.status != "exact" or block.topology.dimension != 1:
+    if block.topology.status != "exact" or block.topology.dimension not in included_dimensions:
         return (), 0
-    varying_axes = tuple(
+    varying_axes = _varying_axis_indices(block)
+    if len(varying_axes) != block.topology.dimension:
+        raise ValueError("exact scene topology has inconsistent varying axes")
+    location_by_levels = {location.level_indices: location for location in block.topology.locations}
+    edges: list[SceneEdge] = []
+    zero_length_count = 0
+    points = topology.projection.points
+    candidate_index = 0
+    for first in block.topology.locations:
+        if len(first.point_indices) != 1:
+            raise ValueError("exact scene topology contains an ambiguous location")
+        for axis_index in varying_axes:
+            if checkpoint is not None and candidate_index % 1_024 == 0:
+                checkpoint()
+            candidate_index += 1
+            neighbor_levels = list(first.level_indices)
+            neighbor_levels[axis_index] += 1
+            second = location_by_levels.get(tuple(neighbor_levels))
+            if second is None:
+                continue
+            if len(second.point_indices) != 1:
+                raise ValueError("exact scene topology contains an ambiguous location")
+            point_indices = (first.point_indices[0], second.point_indices[0])
+            if points[point_indices[0]].coordinates == points[point_indices[1]].coordinates:
+                zero_length_count += 1
+                continue
+            edges.append(
+                SceneEdge(
+                    point_indices=point_indices,
+                    topology_axis_index=axis_index,
+                )
+            )
+    return tuple(edges), zero_length_count
+
+
+def _varying_axis_indices(block: SceneTopologyBlock) -> tuple[int, ...]:
+    return tuple(
         axis_index
         for axis_index in range(len(block.topology.axes))
         if len({location.level_indices[axis_index] for location in block.topology.locations}) > 1
     )
-    if len(varying_axes) != 1:
-        raise ValueError("exact one-dimensional topology has inconsistent varying axes")
-    axis_index = varying_axes[0]
-    ordered = tuple(
-        sorted(
-            block.topology.locations,
-            key=lambda location: location.level_indices[axis_index],
-        )
-    )
-    edges: list[SceneEdge] = []
-    zero_length_count = 0
-    points = topology.projection.points
-    for candidate_index, (first, second) in enumerate(pairwise(ordered)):
-        if checkpoint is not None and candidate_index % 1_024 == 0:
-            checkpoint()
-        if not _locations_are_oriented_neighbors(first, second, axis_index):
-            continue
-        if len(first.point_indices) != 1 or len(second.point_indices) != 1:
-            raise ValueError("exact scene topology contains an ambiguous location")
-        point_indices = (first.point_indices[0], second.point_indices[0])
-        if points[point_indices[0]].coordinates == points[point_indices[1]].coordinates:
-            zero_length_count += 1
-            continue
-        edges.append(
-            SceneEdge(
-                point_indices=point_indices,
-                topology_axis_index=axis_index,
-            )
-        )
-    return tuple(edges), zero_length_count
 
 
 def _locations_are_oriented_neighbors(

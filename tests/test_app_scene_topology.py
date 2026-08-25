@@ -233,7 +233,7 @@ def test_topology_partitions_contexts_and_preserves_duplicate_points(tmp_path: P
         for point_index in edge_projection.edges[0].point_indices
     )
     assert 4 not in edge_projection.edges[0].point_indices
-    with pytest.raises(ValueError, match="exact one-dimensional block topology"):
+    with pytest.raises(ValueError, match="exact one- or two-dimensional topology"):
         SceneEdgeProjection(
             topology=edge_projection.topology,
             blocks=(
