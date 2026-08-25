@@ -248,15 +248,17 @@ file-integrity, worker, or lifecycle boundaries.
 Stage 6 source profiling supports verified dataset runs, model-sweep child
 datasets, and prepared main or scenario-partition tables.
 
-Stage 6 remains incomplete. Units 1–3 now establish the lightweight contracts,
-hostile-input boundary, and authoritative source profiles: immutable
+Stage 6 remains incomplete. Units 1–3 and checkpoint 4A now establish the
+lightweight contracts, hostile-input boundary, authoritative source profiles,
+and exact retained-point projection: immutable
 source/profile/request models, canonical request identities and limits,
 parent-created workspace-session leases, the canonical `scene.json` plus
 little-endian `scene.bin` contract, strict adoption and abandoned-lease
 verification, immutable scene bindings copied from Inspect, and the private
-`profile_scene` worker operation. Geometry, production writing, scene
-controllers, pick resolution, and integrated acceptance remain Units 4–8. No
-visible QML or native renderer is enabled by this foundation.
+`profile_scene` worker operation. Block and topology analysis, connectivity,
+production writing, scene controllers, pick resolution, and integrated
+acceptance remain later checkpoints. No visible QML or native renderer is
+enabled by this foundation.
 
 Inspect offers scene bindings only for complete run directories, sweep child
 datasets, prepared main tables, and prepared scenario partitions. Standalone
@@ -271,6 +273,15 @@ as the disjoint excluded source-row set, and scenario rows and metadata must
 agree with the prepared main table. Prepared bundles preserve exact source
 coordinates but not original ordered sampler levels, so their topology is
 explicitly unavailable rather than inferred.
+
+Checkpoint 4A revalidates the accepted binding and complete authoritative
+profile in one source read, then applies canonical request filters exactly and
+retains only source-valid rows with finite selected coordinates and optional
+scalar. Each retained point records its original table-row position and exact
+unsigned-64-bit `case_id` or `prepared_row_id`. Every excluded row receives one
+deterministic reason in this order: source invalid, first failed canonically
+ordered filter, then the first missing or nonfinite selected field in
+X/Y/Z/scalar order. The result contains no blocks or connectivity.
 
 - Points represent finite emitted rows.
 - Wireframe edges connect exact adjacent coordinate levels only within
@@ -292,8 +303,9 @@ and bridge without scientific imports in QML.
 
 ### Stage 6 delivery checkpoints
 
-The accepted Stage 6 contract retains eight top-level units. Units 1–3 are
-complete; Units 4–8 are divided into smaller dependency-ordered checkpoints so
+The accepted Stage 6 contract retains eight top-level units. Units 1–3 and
+checkpoint 4A are complete; the remaining work is divided into smaller
+dependency-ordered checkpoints so
 that one review does not combine source projection, topology, serialization,
 controller lifecycle, and picking. These checkpoints do not broaden Stage 6 or
 change its final acceptance boundary.
@@ -306,7 +318,7 @@ separate cleanly, and exceed them only when dividing the invariant would make
 the implementation less auditable. The verification requirements in
 `docs/agent-guides/DEVELOPMENT.md` remain authoritative.
 
-Completed top-level units:
+Completed units and checkpoints:
 
 - **Unit 1 — contracts, limits, and canonical requests:** immutable source,
   field, filter, topology, request, identity, capability, limit, and error
@@ -319,14 +331,14 @@ Completed top-level units:
   sweep-child, prepared-main, and prepared-partition adapters; exact prepared
   joins; authoritative field and topology profiles; deterministic defaults;
   immutable Inspect bindings; and the private `profile_scene` worker request.
+- **4A — retained-point projection and exact filters:** authoritative
+  profile/request revalidation, exact categorical and inclusive numeric
+  filtering, finite selected-value projection, stable source-row identities,
+  and deterministic one-reason-per-row exclusion accounting without blocks or
+  connectivity.
 
 Remaining checkpoints:
 
-- **4A — retained-point projection and exact filters:** revalidate a profiled
-  request, apply exact case-sensitive categorical and finite inclusive numeric
-  filters, and retain only source-valid rows with finite selected X, Y, Z, and
-  optional scalar values. Produce renderer-neutral point records and exact
-  retained/excluded reason counts without connectivity.
 - **4B — blocks and topology evidence:** partition retained points by every
   required artifact, run, fluid, model, phase, saturation-endpoint, scenario,
   and partition context. Preserve verified materialized topology-level order,

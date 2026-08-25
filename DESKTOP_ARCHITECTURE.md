@@ -1219,7 +1219,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete |
 | 4 | Add controlled sweep and preparation worker operations | Complete |
 | 5 | Add structured sweep and preparation QML workflows | Complete; automated, remote, and native functional acceptance passed |
-| 6 | Build exact emitted-value 3D scene contracts | In progress; Units 1–3 implemented |
+| 6 | Build exact emitted-value 3D scene contracts | In progress; Units 1–3 and checkpoint 4A implemented |
 | 7 | Integrate native interactive 3D into QML | Pending |
 | 8 | Complete native-3D platform, distribution, documentation, and later-release qualification | Pending |
 
@@ -1263,8 +1263,20 @@ no prepared-row identity. Scenario partitions must remain exact subsets of the
 main table, with transformations and aggregate metadata matching the verified
 scenario artifacts. Prepared provenance retains exact source coordinates but
 does not retain original ordered sampler levels, so adjacency is reported as
-unavailable rather than guessed. Geometry, production serialization, scene
-controller integration, and picking are not implemented yet.
+unavailable rather than guessed.
+
+Checkpoint 4A reuses one verified source read to reconstruct the authoritative
+profile, compare it with the accepted immutable profile, validate the canonical
+request, and project renderer-neutral points. Exact case-sensitive categorical
+filters and inclusive finite numeric ranges run before selected-value checks.
+Each source row is accounted once, in deterministic precedence order: source
+invalid, first failed canonical filter, then first missing or nonfinite selected
+X/Y/Z/optional-scalar field. Retained records preserve original table-row
+position, unsigned-64-bit `case_id` or `prepared_row_id`, finite float64
+coordinates, and an optional finite scalar. No context partitioning, topology
+dimension analysis, edges, quads, capabilities, serialization, worker request,
+controller integration, or visible QML is introduced by 4A; those remain later
+checkpoints.
 
 Stage 2 has also established definition-first sampler canonicalization, exact
 anchor-based GUI unit changes, Qt 6.11.1 as the QML baseline, packaged QML

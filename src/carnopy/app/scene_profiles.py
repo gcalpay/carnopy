@@ -29,6 +29,9 @@ from carnopy.app.source_inspection import revalidate_scene_binding
 
 Checkpoint = Callable[[], None]
 FieldKind = Literal["numeric", "categorical"]
+StableIdField = Literal["case_id", "prepared_row_id"]
+
+_UINT64_MAX = 2**64 - 1
 
 _COORDINATES: dict[str, tuple[str, str]] = {
     "temperature": ("temperature_K", "K"),
@@ -92,6 +95,8 @@ class LoadedSceneProfileSource:
     binding: SceneSourceBinding
     source_row_count: int
     source_valid: pd.Series
+    stable_id_field: StableIdField
+    stable_ids: tuple[int, ...]
     fields: tuple[SceneFieldData, ...]
     topology: SceneTopologyEvidence
     default_priority: tuple[str, ...]
@@ -104,16 +109,35 @@ def profile_scene(
 ) -> SceneProfile:
     """Revalidate and authoritatively profile one descriptor copied from Inspect."""
 
+    loaded = _load_scene_profile_source(binding, checkpoint=checkpoint)
+    return _profile_loaded_scene_source(loaded, checkpoint=checkpoint)
+
+
+def _load_scene_profile_source(
+    binding: SceneSourceBinding,
+    *,
+    checkpoint: Checkpoint | None,
+) -> LoadedSceneProfileSource:
+    """Read one exact source once for profiling and later scene projection."""
+
     accepted = revalidate_scene_binding(binding)
     _checkpoint(checkpoint)
     if accepted.source_kind in {"dataset", "model_sweep"}:
         from carnopy.app.scene_dataset_profiles import load_dataset_source
 
-        loaded = load_dataset_source(accepted, checkpoint=checkpoint)
-    else:
-        from carnopy.app.scene_prepared_profiles import load_prepared_source
+        return load_dataset_source(accepted, checkpoint=checkpoint)
+    from carnopy.app.scene_prepared_profiles import load_prepared_source
 
-        loaded = load_prepared_source(accepted, checkpoint=checkpoint)
+    return load_prepared_source(accepted, checkpoint=checkpoint)
+
+
+def _profile_loaded_scene_source(
+    loaded: LoadedSceneProfileSource,
+    *,
+    checkpoint: Checkpoint | None,
+) -> SceneProfile:
+    if len(loaded.stable_ids) != loaded.source_row_count:
+        _unsupported("scene stable IDs are not aligned with source rows")
     projected_fields: list[SceneFieldProfile] = []
     for field in loaded.fields:
         _checkpoint(checkpoint)
@@ -486,11 +510,9 @@ def _validate_control_hashes(
 def _prepared_ids(frame: pd.DataFrame, label: str) -> list[int]:
     if _PREPARED_ID not in frame.columns:
         _unsupported(f"{label} has no prepared_row_id")
-    values: list[int] = []
-    for raw in frame[_PREPARED_ID].tolist():
-        if not _exact_int(raw) or raw < 0:
-            _unsupported(f"{label} contains an invalid prepared_row_id")
-        values.append(int(raw))
+    values = [
+        _stable_uint64(raw, f"{label} prepared_row_id") for raw in frame[_PREPARED_ID].tolist()
+    ]
     if len(set(values)) != len(values):
         _unsupported(f"{label} repeats a prepared_row_id")
     return values
@@ -571,6 +593,15 @@ def _label(value: str) -> str:
 
 def _exact_int(value: object) -> bool:
     return isinstance(value, (int, np.integer)) and not isinstance(value, (bool, np.bool_))
+
+
+def _stable_uint64(value: object, label: str) -> int:
+    if not _exact_int(value):
+        _unsupported(f"{label} must be an exact unsigned 64-bit integer")
+    numeric = int(cast(int, value))
+    if numeric < 0 or numeric > _UINT64_MAX:
+        _unsupported(f"{label} must be an exact unsigned 64-bit integer")
+    return numeric
 
 
 def _stat_identity(value: os.stat_result) -> tuple[int, int, int, int]:

@@ -28,6 +28,7 @@ from carnopy.app.scene_profiles import (
     _require_recorded_hash,
     _require_unique_field_ids,
     _require_version,
+    _stable_uint64,
     _strict_boolean_series,
     _string_list,
     _string_mapping,
@@ -69,7 +70,7 @@ def load_dataset_source(
     if binding.source_kind == "model_sweep":
         _validate_sweep_parent(binding, selected.table_id, metadata, checkpoint)
     frame = _read_table(selected, checkpoint)
-    _validate_dataset_frame(frame, metadata)
+    stable_ids = _validate_dataset_frame(frame, metadata)
     source_valid = _strict_boolean_series(frame["valid"], "dataset valid")
     fields: list[SceneFieldData] = []
     topology_axes = _dataset_topology_axes(metadata, frame)
@@ -147,6 +148,8 @@ def load_dataset_source(
         binding=binding,
         source_row_count=len(frame),
         source_valid=source_valid,
+        stable_id_field="case_id",
+        stable_ids=stable_ids,
         fields=tuple(fields),
         topology=topology,
         default_priority=tuple(priority),
@@ -193,7 +196,10 @@ def _validate_sweep_parent(
         _unsupported("sweep and child metadata disagree about the selected run")
 
 
-def _validate_dataset_frame(frame: pd.DataFrame, metadata: Mapping[str, Any]) -> None:
+def _validate_dataset_frame(
+    frame: pd.DataFrame,
+    metadata: Mapping[str, Any],
+) -> tuple[int, ...]:
     missing = sorted(_REQUIRED_DATASET_COLUMNS - set(frame.columns))
     if missing:
         _unsupported("dataset table is missing required columns: " + ", ".join(missing))
@@ -215,8 +221,9 @@ def _validate_dataset_frame(frame: pd.DataFrame, metadata: Mapping[str, Any]) ->
             _unsupported(f"dataset identity column {column!r} contains missing values")
     if frame["case_id"].duplicated().any():
         _unsupported("dataset case_id values are not unique")
-    if any(not _exact_int(value) or value < 0 for value in frame["case_id"].tolist()):
-        _unsupported("dataset case_id values must be non-negative exact integers")
+    stable_ids = tuple(
+        _stable_uint64(value, "dataset case_id") for value in frame["case_id"].tolist()
+    )
     run_id = metadata.get("run_id")
     mode = metadata.get("mode")
     backend_model = metadata.get("backend_model")
@@ -232,6 +239,7 @@ def _validate_dataset_frame(frame: pd.DataFrame, metadata: Mapping[str, Any]) ->
             or set(observed) != {expected}
         ):
             _unsupported(f"dataset metadata disagrees with table column {column!r}")
+    return stable_ids
 
 
 def _dataset_topology_axes(

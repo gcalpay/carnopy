@@ -126,6 +126,8 @@ def load_prepared_source(
         binding=binding,
         source_row_count=len(selected_frame),
         source_valid=source_valid.reset_index(drop=True),
+        stable_id_field="prepared_row_id",
+        stable_ids=tuple(ids),
         fields=fields,
         topology=topology,
         default_priority=priority,
