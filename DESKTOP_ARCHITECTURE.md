@@ -1219,7 +1219,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete |
 | 4 | Add controlled sweep and preparation worker operations | Complete |
 | 5 | Add structured sweep and preparation QML workflows | Complete; automated, remote, and native functional acceptance passed |
-| 6 | Build exact emitted-value 3D scene contracts | In progress; Units 1–3 and checkpoints 4A–4E implemented |
+| 6 | Build exact emitted-value 3D scene contracts | In progress; Units 1–3 and checkpoints 4A–5A implemented |
 | 7 | Integrate native interactive 3D into QML | Pending |
 | 8 | Complete native-3D platform, distribution, documentation, and later-release qualification | Pending |
 
@@ -1337,6 +1337,25 @@ before serialization. The later writer remains responsible for enforcing the
 exact completed manifest-plus-binary size. Checkpoint 4E still adds no writer,
 lease adoption, worker request, controller, visible QML, renderer, or triangle
 tessellation.
+
+Checkpoint 5A turns that bounded assembly into an immutable in-memory
+`scene.bin` encoding without publishing a file or manifest. The encoder emits
+the fixed little-endian header followed by canonical float64 coordinates and
+optional scalars, uint64 row positions and stable IDs, uint32 edge pairs and
+ordered quads, and float64 topology-level evidence. Absolute offsets are
+8-byte aligned, alignment gaps are deterministically zero-filled, and each
+buffer plus the whole binary receives a SHA-256 identity.
+
+Because source-row order may interleave scientific contexts, serialization
+first regroups points in canonical block order while retaining source-row order
+inside each block. It builds one exact old-to-new index mapping and applies it
+to every edge and ordered quad before assigning contiguous point, edge, and
+quad ranges. Thus the storage layout satisfies the hostile-input verifier's
+cross-block boundary without merging points, changing quad corner order, or
+inventing connectivity. Empty scalar or primitive buffers remain absent, and
+the original recorded topology-level order is preserved. Canonical manifest
+construction, exclusive file creation, lease publication, and worker adoption
+remain checkpoints 5B and 5C.
 
 Stage 2 has also established definition-first sampler canonicalization, exact
 anchor-based GUI unit changes, Qt 6.11.1 as the QML baseline, packaged QML
