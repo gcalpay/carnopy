@@ -134,3 +134,74 @@ def read_scene_regular_file(path: Path, *, maximum_bytes: int, label: str) -> by
             f"{label} changed while it was read",
         )
     return data
+
+
+def write_scene_exclusive_regular_file(path: Path, data: bytes, *, label: str) -> None:
+    """Durably create one private regular file without replacing any path."""
+
+    flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_BINARY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        descriptor = os.open(path, flags, 0o600)
+    except OSError as exc:
+        raise SceneBundleError(
+            "scene_write_failed",
+            f"{label} could not be created exclusively: {path}",
+        ) from exc
+    try:
+        opened = os.fstat(descriptor)
+    except OSError as exc:
+        os.close(descriptor)
+        raise SceneBundleError(
+            "scene_write_failed",
+            f"{label} could not be inspected after creation: {path}",
+        ) from exc
+    try:
+        if not stat.S_ISREG(opened.st_mode):
+            raise OSError(f"{label} destination is not a regular file")
+        with os.fdopen(descriptor, "wb", closefd=True) as stream:
+            written = stream.write(data)
+            if written != len(data):
+                raise OSError(f"{label} write was incomplete")
+            stream.flush()
+            os.fsync(stream.fileno())
+            final = os.fstat(stream.fileno())
+        current = path.lstat()
+        if (
+            not stat.S_ISREG(final.st_mode)
+            or not stat.S_ISREG(current.st_mode)
+            or (final.st_dev, final.st_ino) != (opened.st_dev, opened.st_ino)
+            or (current.st_dev, current.st_ino) != (opened.st_dev, opened.st_ino)
+            or final.st_size != len(data)
+            or current.st_size != len(data)
+            or current.st_nlink != 1
+        ):
+            raise OSError(f"{label} changed while it was written")
+    except Exception as exc:
+        _unlink_exclusively_created_file(path, opened)
+        if isinstance(exc, SceneBundleError):
+            raise
+        raise SceneBundleError(
+            "scene_write_failed",
+            f"{label} could not be written safely: {path}",
+        ) from exc
+
+
+def _unlink_exclusively_created_file(path: Path, opened: os.stat_result) -> None:
+    try:
+        current = path.lstat()
+    except OSError:
+        return
+    if stat.S_ISREG(current.st_mode) and (current.st_dev, current.st_ino) == (
+        opened.st_dev,
+        opened.st_ino,
+    ):
+        try:
+            path.unlink()
+        except OSError:
+            return

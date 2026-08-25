@@ -1219,7 +1219,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete |
 | 4 | Add controlled sweep and preparation worker operations | Complete |
 | 5 | Add structured sweep and preparation QML workflows | Complete; automated, remote, and native functional acceptance passed |
-| 6 | Build exact emitted-value 3D scene contracts | In progress; Units 1–3 and checkpoints 4A–5A implemented |
+| 6 | Build exact emitted-value 3D scene contracts | In progress; Units 1–3 and checkpoints 4A–5B implemented |
 | 7 | Integrate native interactive 3D into QML | Pending |
 | 8 | Complete native-3D platform, distribution, documentation, and later-release qualification | Pending |
 
@@ -1353,9 +1353,29 @@ to every edge and ordered quad before assigning contiguous point, edge, and
 quad ranges. Thus the storage layout satisfies the hostile-input verifier's
 cross-block boundary without merging points, changing quad corner order, or
 inventing connectivity. Empty scalar or primitive buffers remain absent, and
-the original recorded topology-level order is preserved. Canonical manifest
-construction, exclusive file creation, lease publication, and worker adoption
-remain checkpoints 5B and 5C.
+the original recorded topology-level order is preserved. At the 5A boundary,
+canonical manifest construction, exclusive file creation, lease publication,
+and worker adoption were still absent.
+
+Checkpoint 5B adds the deterministic production bundle writer without adding a
+worker or controller. A typed canonical manifest binds the normalized request,
+exact source and revision, field profiles, retained value ranges and log-domain
+evidence, topology-axis identities, scientific block contexts and accounting,
+gaps, degeneracy omissions, representation capabilities, binary descriptors,
+and whole-content identity. The lightweight verifier cross-checks these facts
+against the buffer and block layout rather than trusting the content hash
+alone. It therefore rejects contradictory scientific metadata even if an
+attacker recomputes that hash.
+
+The writer constructs and validates the complete manifest and binary in memory,
+applies the 64 MiB limit to their exact combined byte size, and only then writes
+exclusive mode-`0600` regular files. It never replaces a destination, writes
+and durably flushes `scene.bin` first, and publishes canonical `scene.json`
+last. A failed manifest publication leaves an incomplete recognized lease, not
+an adoptable scene. The writer result explicitly remains a candidate awaiting
+parent verification; `build_scene` progress, cancellation, final source
+revalidation, parent adoption, and previous-scene retention remain checkpoint
+5C.
 
 Stage 2 has also established definition-first sampler canonicalization, exact
 anchor-based GUI unit changes, Qt 6.11.1 as the QML baseline, packaged QML

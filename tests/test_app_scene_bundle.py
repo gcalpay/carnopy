@@ -24,6 +24,7 @@ from carnopy.app.scene_bundle import (
     scene_content_id,
     verify_scene_bundle,
 )
+from carnopy.app.scene_contracts import SceneRequest
 from carnopy.app.scene_integrity import SceneBundleError, canonical_scene_json_bytes
 from carnopy.app.scene_leases import (
     SCENE_LEASE_NAME,
@@ -89,6 +90,168 @@ def _valid_buffers() -> list[tuple[str, str, tuple[int, ...], bytes]]:
     ]
 
 
+def _numeric_field(
+    field_id: str,
+    *,
+    minimum: float,
+    maximum: float,
+    classification: str = "source_coordinate",
+    axis_eligible: bool = True,
+    scalar_eligible: bool = True,
+) -> Manifest:
+    return {
+        "axis_eligible": axis_eligible,
+        "classification": classification,
+        "column": field_id,
+        "distinct_values": [],
+        "dtype": "float64",
+        "field_id": field_id,
+        "filter_kind": "numeric_range",
+        "finite_count": 8,
+        "ineligible_reason": "",
+        "kind": "numeric",
+        "label": field_id.upper(),
+        "maximum": maximum,
+        "minimum": minimum,
+        "missing_count": 0,
+        "origin": "table",
+        "positive_domain": minimum > 0.0,
+        "scalar_eligible": scalar_eligible,
+        "source_row_count": 8,
+        "source_valid_count": 8,
+        "unit": "m",
+        "unit_status": "canonical",
+        "value_count": 8,
+        "varying": minimum != maximum,
+    }
+
+
+def _valid_scientific_payload(
+    descriptors: list[Manifest],
+    blocks: list[Manifest],
+) -> Manifest:
+    source_root = (Path.cwd() / "fixture-scene-source").resolve()
+    binding: Manifest = {
+        "controls": [],
+        "inspection_revision": "a" * 64,
+        "selected_table_id": "dataset",
+        "source_kind": "dataset",
+        "source_path": str(source_root),
+        "tables": [
+            {
+                "artifact": {
+                    "device": 1,
+                    "inode": 1,
+                    "modified_ns": 1,
+                    "path": str(source_root / "dataset.parquet"),
+                    "sha256": "b" * 64,
+                    "size": 1,
+                },
+                "label": "Dataset",
+                "metadata": None,
+                "source_format": "parquet",
+                "table_id": "dataset",
+            }
+        ],
+    }
+    request: Manifest = {
+        "binding": binding,
+        "filters": [],
+        "scalar_field": "scalar",
+        "scene_request_schema_version": 1,
+        "x_field": "x",
+        "y_field": "y",
+        "z_field": "z",
+    }
+    topology_descriptors = {
+        descriptor["name"]: descriptor
+        for descriptor in descriptors
+        if str(descriptor["name"]).startswith("topology_levels.")
+    }
+    return {
+        "blocks": [
+            {
+                "context": block["context"],
+                "duplicate_topology_location_count": 0,
+                "excluded_row_count": 0,
+                "gap_location_count": 0,
+                "index": index,
+                "missing_intermediate_level_count": 0,
+                "omitted_collinear_count": 0,
+                "omitted_missing_corner_count": 0,
+                "omitted_repeated_vertex_count": 0,
+                "omitted_zero_length_edge_count": 0,
+                "retained_point_count": 4,
+                "topology_dimension": 2,
+                "topology_location_count": 4,
+                "topology_reason": "",
+                "topology_reason_code": "",
+                "topology_status": "exact",
+                "unlocated_point_count": 0,
+            }
+            for index, block in enumerate(blocks)
+        ],
+        "capabilities": [
+            {"available": True, "blockers": [], "representation": representation}
+            for representation in ("points", "wireframe", "surface")
+        ],
+        "excluded_row_count": 0,
+        "fields": [
+            _numeric_field("x", minimum=0.0, maximum=11.0),
+            _numeric_field("y", minimum=0.0, maximum=1.0),
+            _numeric_field("z", minimum=0.0, maximum=0.0),
+            _numeric_field(
+                "scalar",
+                minimum=0.0,
+                maximum=7.0,
+                classification="emitted_property",
+                axis_eligible=False,
+            ),
+        ],
+        "orphan_exclusions": [],
+        "point_exclusions": [],
+        "primitive_omissions": [],
+        "request": request,
+        "retained_row_count": 8,
+        "scene_profile_schema_version": 1,
+        "scientific_payload_schema_version": 1,
+        "source_row_count": 8,
+        "stable_id_field": "case_id",
+        "topology": {
+            "axes": [
+                {
+                    "field_id": field_id,
+                    "index": index,
+                    "level_count": 2,
+                    "levels_sha256": topology_descriptors[f"topology_levels.{index}"]["sha256"],
+                    "source_column": field_id,
+                    "unit": "m",
+                }
+                for index, field_id in enumerate(("x", "y"))
+            ],
+            "context_fields": ["phase"],
+            "reason": "",
+            "reason_code": "",
+            "status": "exact",
+        },
+        "value_extents": [
+            {
+                "field_id": field_id,
+                "logarithmic_available": minimum > 0.0,
+                "maximum": maximum,
+                "minimum": minimum,
+                "role": role,
+            }
+            for role, field_id, minimum, maximum in (
+                ("x", "x", 0.0, 11.0),
+                ("y", "y", 0.0, 1.0),
+                ("z", "z", 0.0, 0.0),
+                ("scalar", "scalar", 0.0, 7.0),
+            )
+        ],
+    }
+
+
 def _valid_bundle() -> tuple[Manifest, bytearray]:
     binary = bytearray(SCENE_BINARY_HEADER.pack(SCENE_BINARY_MAGIC, 1, 1, SCENE_ENDIAN_MARKER))
     descriptors: list[Manifest] = []
@@ -106,6 +269,30 @@ def _valid_bundle() -> tuple[Manifest, bytearray]:
                 "shape": list(shape),
             }
         )
+    blocks: list[Manifest] = [
+        {
+            "context": {
+                "backend_model": "HEOS",
+                "fluid": "Water",
+                "partition": None,
+                "phase": phase,
+                "saturation_endpoint": None,
+                "scenario": None,
+                "source_artifact": f"dataset-{suffix}",
+                "source_run_id": f"run-{suffix}",
+            },
+            "edge_count": 4,
+            "edge_start": index * 4,
+            "index": index,
+            "point_count": 4,
+            "point_start": index * 4,
+            "quad_count": 1,
+            "quad_start": index,
+        }
+        for index, (phase, suffix) in enumerate((("liquid", "a"), ("gas", "b")))
+    ]
+    scientific_payload = _valid_scientific_payload(descriptors, blocks)
+    request = SceneRequest.model_validate(scientific_payload["request"])
     manifest: Manifest = {
         "binary": {
             "byte_order": "little",
@@ -114,54 +301,12 @@ def _valid_bundle() -> tuple[Manifest, bytearray]:
             "sha256": hashlib.sha256(binary).hexdigest(),
             "size": len(binary),
         },
-        "blocks": [
-            {
-                "context": {
-                    "backend_model": "HEOS",
-                    "fluid": "Water",
-                    "partition": None,
-                    "phase": "liquid",
-                    "saturation_endpoint": None,
-                    "scenario": None,
-                    "source_artifact": "dataset-a",
-                    "source_run_id": "run-a",
-                },
-                "edge_count": 4,
-                "edge_start": 0,
-                "index": 0,
-                "point_count": 4,
-                "point_start": 0,
-                "quad_count": 1,
-                "quad_start": 0,
-            },
-            {
-                "context": {
-                    "backend_model": "HEOS",
-                    "fluid": "Water",
-                    "partition": None,
-                    "phase": "gas",
-                    "saturation_endpoint": None,
-                    "scenario": None,
-                    "source_artifact": "dataset-b",
-                    "source_run_id": "run-b",
-                },
-                "edge_count": 4,
-                "edge_start": 4,
-                "index": 1,
-                "point_count": 4,
-                "point_start": 4,
-                "quad_count": 1,
-                "quad_start": 1,
-            },
-        ],
+        "blocks": blocks,
         "buffers": descriptors,
         "counts": {"edges": 8, "points": 8, "quads": 2},
-        "request_id": "scene-" + "1" * 64,
+        "request_id": request.request_id,
         "scene_schema_version": 1,
-        "scientific_payload": {
-            "fixture": "exact-two-block-scene",
-            "topology_dimensions": 2,
-        },
+        "scientific_payload": scientific_payload,
     }
     _refresh_content_id(manifest)
     return manifest, binary
@@ -189,6 +334,11 @@ def _replace_buffer(
     start = descriptor["offset"]
     binary[start : start + len(payload)] = payload
     descriptor["sha256"] = hashlib.sha256(payload).hexdigest()
+    if name.startswith("topology_levels."):
+        axis_index = int(name.rsplit(".", 1)[1])
+        manifest["scientific_payload"]["topology"]["axes"][axis_index]["levels_sha256"] = (
+            descriptor["sha256"]
+        )
     _refresh_binary_identity(manifest, binary)
 
 
@@ -295,6 +445,50 @@ def test_points_only_bundle_may_omit_scalar_connectivity_and_topology_buffers(
             block["edge_start"] = 0
             block["quad_count"] = 0
             block["quad_start"] = 0
+        scientific = manifest["scientific_payload"]
+        scientific["request"]["scalar_field"] = None
+        scientific["value_extents"] = scientific["value_extents"][:3]
+        scientific["topology"] = {
+            "axes": [],
+            "context_fields": [],
+            "reason": "fixture topology is intentionally unavailable",
+            "reason_code": "topology_unavailable",
+            "status": "unavailable",
+        }
+        for block in scientific["blocks"]:
+            block["topology_dimension"] = None
+            block["topology_location_count"] = 0
+            block["topology_reason"] = "fixture topology is intentionally unavailable"
+            block["topology_reason_code"] = "topology_unavailable"
+            block["topology_status"] = "unavailable"
+        scientific["capabilities"] = [
+            {"available": True, "blockers": [], "representation": "points"},
+            {
+                "available": False,
+                "blockers": [
+                    {
+                        "block_index": index,
+                        "code": "topology_unavailable",
+                        "message": f"Block {index} has unavailable fixture topology.",
+                    }
+                    for index in range(2)
+                ],
+                "representation": "wireframe",
+            },
+            {
+                "available": False,
+                "blockers": [
+                    {
+                        "block_index": index,
+                        "code": "topology_unavailable",
+                        "message": f"Block {index} has unavailable fixture topology.",
+                    }
+                    for index in range(2)
+                ],
+                "representation": "surface",
+            },
+        ]
+        manifest["request_id"] = SceneRequest.model_validate(scientific["request"]).request_id
         _refresh_binary_identity(manifest, binary)
         (lease.path / SCENE_BINARY_NAME).write_bytes(binary)
         (lease.path / SCENE_MANIFEST_NAME).write_bytes(canonical_scene_json_bytes(manifest))
@@ -540,6 +734,11 @@ def test_connectivity_rejects_global_and_cross_block_indices(
             "identity buffer.*duplicates",
         ),
         (
+            "row_positions",
+            _pack("<Q", [(0,), (1,), (2,), (3,), (4,), (5,), (6,), (8,)]),
+            "row position is outside",
+        ),
+        (
             "stable_ids",
             _pack("<Q", [(100,), (100,), (102,), (103,), (104,), (105,), (106,), (107,)]),
             "identity buffer.*duplicates",
@@ -578,7 +777,7 @@ def test_manifest_content_identity_and_parent_lease_identity_are_enforced(
 ) -> None:
     with _lease(tmp_path) as lease:
         manifest, _binary = _write_bundle(lease)
-        manifest["scientific_payload"]["fixture"] = "tampered"
+        manifest["scientific_payload"]["fields"][0]["label"] = "Tampered X"
         (lease.path / SCENE_MANIFEST_NAME).write_bytes(canonical_scene_json_bytes(manifest))
         with pytest.raises(SceneBundleError, match="content identity"):
             verify_scene_bundle(lease)

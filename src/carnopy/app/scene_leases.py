@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import os
 import re
 import stat
 from collections.abc import Mapping
-from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Final, Literal
@@ -21,6 +19,7 @@ from carnopy.app.scene_integrity import (
     canonical_scene_json_bytes,
     parse_canonical_scene_json_object,
     read_scene_regular_file,
+    write_scene_exclusive_regular_file,
 )
 from carnopy.app.workspace import Workspace, open_workspace
 
@@ -214,9 +213,10 @@ def create_scene_lease(session: SceneSession) -> SceneLease:
             device=lease.device,
             inode=lease.inode,
         )
-        _write_exclusive_regular_file(
+        write_scene_exclusive_regular_file(
             path / SCENE_LEASE_NAME,
             canonical_scene_json_bytes(record.model_dump(mode="json")),
+            label="scene lease",
         )
         verify_scene_lease(lease)
         return lease
@@ -596,26 +596,6 @@ def _private_child_root(
             f"{name} root escapes the workspace private directory",
         )
     return root
-
-
-def _write_exclusive_regular_file(path: Path, data: bytes) -> None:
-    flags = (
-        os.O_WRONLY
-        | os.O_CREAT
-        | os.O_EXCL
-        | getattr(os, "O_BINARY", 0)
-        | getattr(os, "O_NOFOLLOW", 0)
-    )
-    descriptor = os.open(path, flags, 0o600)
-    try:
-        with os.fdopen(descriptor, "wb", closefd=True) as stream:
-            stream.write(data)
-            stream.flush()
-            os.fsync(stream.fileno())
-    except Exception:
-        with suppress(OSError):
-            path.unlink()
-        raise
 
 
 def _remove_new_empty_or_recorded_lease(path: Path) -> None:

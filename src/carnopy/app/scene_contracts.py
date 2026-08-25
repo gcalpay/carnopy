@@ -90,6 +90,7 @@ SceneErrorCode = Literal[
     "scene_topology_unavailable",
     "scene_limit_exceeded",
     "scene_integrity_error",
+    "scene_write_failed",
     "scene_cleanup_failed",
     "scene_pick_stale",
 ]

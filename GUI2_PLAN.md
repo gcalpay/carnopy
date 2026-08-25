@@ -82,7 +82,7 @@ implementation.
 | 3 | Complete | Reached parity, migrated both launchers, retired Widgets, and qualified `0.1.0a4` |
 | 4 | Complete | Added controlled sweep and preparation worker operations for the existing public contracts |
 | 5 | Complete | Added accepted structured Sweep and Preparation workflows plus typed audit inspection |
-| 6 | In progress (Units 1–3; checkpoints 4A–5A complete) | Build exact emitted-value 3D scenes |
+| 6 | In progress (Units 1–3; checkpoints 4A–5B complete) | Build exact emitted-value 3D scenes |
 | 7 | Pending | Add native interactive 3D to QML |
 | 8 | Pending | Qualify native 3D packaging, platforms, and a later release |
 
@@ -248,16 +248,17 @@ file-integrity, worker, or lifecycle boundaries.
 Stage 6 source profiling supports verified dataset runs, model-sweep child
 datasets, and prepared main or scenario-partition tables.
 
-Stage 6 remains incomplete. Units 1–3 and checkpoints 4A–5A now establish the
+Stage 6 remains incomplete. Units 1–3 and checkpoints 4A–5B now establish the
 lightweight contracts, hostile-input boundary, authoritative source profiles,
 exact retained-point projection, context-partitioned topology evidence, and
 exact one- and two-dimensional primitives plus deterministic in-memory binary
-encoding: immutable source/profile/request models, canonical request identities
-and limits, parent-created workspace-session leases, the canonical `scene.json`
-plus little-endian `scene.bin` contract, strict adoption and abandoned-lease
+encoding and canonical manifest-last publication: immutable
+source/profile/request models, canonical request identities and limits,
+parent-created workspace-session leases, the canonical `scene.json` plus
+little-endian `scene.bin` contract, strict adoption and abandoned-lease
 verification, immutable scene bindings copied from Inspect, and the private
-`profile_scene` worker operation. Production file and manifest writing, scene
-controllers, pick resolution, and integrated acceptance remain later
+`profile_scene` worker operation. The `build_scene` worker and parent adoption,
+scene controllers, pick resolution, and integrated acceptance remain later
 checkpoints. No visible QML or native renderer is enabled by this foundation.
 
 Inspect offers scene bindings only for complete run directories, sweep child
@@ -343,7 +344,27 @@ Absolute offsets are 8-byte aligned, any alignment bytes are zero, original
 materialized topology levels retain their recorded order, and whole-binary and
 per-buffer SHA-256 identities bind the immutable result. Empty optional scalar,
 edge, and quad buffers are omitted. This checkpoint creates no manifest, file,
-lease, or worker operation; deterministic file publication remains 5B.
+lease, or worker operation; those responsibilities begin only after the 5A
+encoding boundary.
+
+Checkpoint 5B builds a canonical, typed scientific manifest around that exact
+binary. It binds the normalized request and complete source revision, field
+profiles, retained value ranges, verified topology-axis identities, block
+contexts, row and omission accounting, representation capabilities, buffer
+descriptors, and whole-content identity. Lightweight structural validation
+cross-checks those facts against the binary and block ranges, so recomputing a
+content hash cannot conceal contradictory scientific evidence. The exact
+completed manifest-plus-binary size is enforced before publication.
+
+The production writer creates only exclusive regular files and never replaces
+an existing destination. It prepares and bounds the complete bundle before the
+first write, publishes the durable binary first, and publishes the canonical
+manifest last. A manifest-write failure therefore leaves a recognizable but
+incomplete lease rather than an apparently complete scene. Repeated builds of
+the same assembly are byte-identical. Checkpoint 5B does not add the
+`build_scene` worker, final source revalidation, progress or cancellation,
+parent verification and adoption, or previous-scene replacement; those remain
+5C.
 
 - Points represent finite emitted rows.
 - Wireframe edges connect exact adjacent coordinate levels only within
@@ -367,7 +388,7 @@ and bridge without scientific imports in QML.
 ### Stage 6 delivery checkpoints
 
 The accepted Stage 6 contract retains eight top-level units. Units 1–3 and
-checkpoints 4A–5A are complete; the remaining work is divided into smaller
+checkpoints 4A–5B are complete; the remaining work is divided into smaller
 dependency-ordered checkpoints so
 that one review does not combine source projection, topology, serialization,
 controller lifecycle, and picking. These checkpoints do not broaden Stage 6 or
@@ -424,13 +445,15 @@ Completed units and checkpoints:
   ranges while preserving within-block source order; remap exact edges and
   ordered quads; and bind aligned offsets, zero padding, topology-level order,
   and whole-file and per-buffer hashes without writing a completed lease.
+- **5B — canonical manifest and production writer:** bind the exact request,
+  source, fields, retained ranges, topology, blocks, exclusions, primitive
+  omissions, capabilities, binary descriptors, and content identity in one
+  canonical typed manifest; enforce exact completed-bundle size; and publish
+  exclusive durable binary and manifest files in manifest-last order without
+  replacement or adoption.
 
 Remaining checkpoints:
 
-- **5B — canonical manifest and production writer:** serialize binary buffers
-  and the canonical manifest deterministically, record exact request, source,
-  field, topology, block, gap, degeneracy, capability, and content identities,
-  and prove writer/verifier round trips, byte stability, and tamper rejection.
 - **5C — `build_scene` worker and adoption:** add projected or chunked reads,
   progress and cooperative-cancellation checkpoints, final source
   revalidation, exclusive creation, manifest-last completion, and parent

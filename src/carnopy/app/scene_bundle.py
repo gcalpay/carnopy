@@ -7,12 +7,13 @@ import struct
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Any, Final, Literal
+from typing import Annotated, Final, Literal
 
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    StrictBool,
     StrictInt,
     StrictStr,
     ValidationError,
@@ -26,6 +27,15 @@ from carnopy.app.scene_contracts import (
     MAX_SCENE_POINTS,
     MAX_SCENE_QUADS,
     SceneBlockContext,
+    SceneContractError,
+    SceneFieldProfile,
+    SceneGapCode,
+    SceneGapSummary,
+    SceneRepresentationCapability,
+    SceneRequest,
+    SceneTopologyStatus,
+    canonical_gap_summaries,
+    validate_scene_request,
 )
 from carnopy.app.scene_integrity import (
     SCENE_BINARY_NAME,
@@ -50,6 +60,17 @@ PositiveInt = Annotated[StrictInt, Field(gt=0)]
 CanonicalSha256 = Annotated[StrictStr, Field(pattern=r"^[0-9a-f]{64}$")]
 
 SceneBufferDType = Literal["float64", "uint64", "uint32"]
+SceneManifestValueRole = Literal["x", "y", "z", "scalar"]
+SceneManifestStableIdField = Literal["case_id", "prepared_row_id"]
+SceneManifestBlockTopologyStatus = Literal[
+    "unavailable",
+    "zero_dimensional",
+    "exact",
+    "incomplete",
+    "missing_context",
+    "duplicate_locations",
+    "unsupported_dimension",
+]
 
 _DTYPE_ITEM_SIZES: Final[dict[SceneBufferDType, int]] = {
     "float64": 8,
@@ -145,6 +166,280 @@ class SceneBlockRange(BaseModel):
     quad_count: NonNegativeInt
 
 
+class SceneManifestTopologyAxis(BaseModel):
+    """One manifest-bound topology buffer and its semantic identity."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    index: NonNegativeInt
+    field_id: StrictStr
+    source_column: StrictStr
+    unit: StrictStr
+    level_count: PositiveInt
+    levels_sha256: CanonicalSha256
+
+
+class SceneManifestTopology(BaseModel):
+    """Verified source-topology evidence without duplicating binary levels."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    status: SceneTopologyStatus
+    context_fields: tuple[StrictStr, ...]
+    axes: tuple[SceneManifestTopologyAxis, ...]
+    reason_code: StrictStr = ""
+    reason: StrictStr = ""
+
+    @model_validator(mode="after")
+    def consistent_topology(self) -> SceneManifestTopology:
+        if tuple(axis.index for axis in self.axes) != tuple(range(len(self.axes))):
+            raise ValueError("scene manifest topology axes must be contiguous and ordered")
+        if len({axis.field_id for axis in self.axes}) != len(self.axes) or len(
+            {axis.source_column for axis in self.axes}
+        ) != len(self.axes):
+            raise ValueError("scene manifest topology axes require unique fields and columns")
+        context_order = tuple(SceneBlockContext.model_fields)
+        expected_contexts = tuple(field for field in context_order if field in self.context_fields)
+        if self.context_fields != expected_contexts:
+            raise ValueError("scene manifest topology context fields are not canonical")
+        if self.status == "exact":
+            if not self.axes or self.reason_code or self.reason:
+                raise ValueError("exact scene manifest topology is inconsistent")
+        elif self.axes or not self.reason_code or not self.reason:
+            raise ValueError("unavailable scene manifest topology is inconsistent")
+        return self
+
+
+class SceneManifestValueExtent(BaseModel):
+    """Exact retained range and presentation-domain evidence for one selection."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    role: SceneManifestValueRole
+    field_id: StrictStr
+    minimum: float
+    maximum: float
+    logarithmic_available: StrictBool
+
+    @field_validator("minimum", "maximum", mode="before")
+    @classmethod
+    def finite_bound(cls, value: object) -> float:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("scene manifest value extent must be numeric")
+        numeric = float(value)
+        if not math.isfinite(numeric):
+            raise ValueError("scene manifest value extent must be finite")
+        return numeric
+
+    @model_validator(mode="after")
+    def consistent_extent(self) -> SceneManifestValueExtent:
+        if self.minimum > self.maximum:
+            raise ValueError("scene manifest value extent bounds are reversed")
+        if self.logarithmic_available != (self.minimum > 0.0):
+            raise ValueError("scene manifest logarithmic availability is inconsistent")
+        return self
+
+
+class SceneManifestScientificBlock(BaseModel):
+    """Scientific evidence and omission counts for one retained block."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    index: NonNegativeInt
+    context: SceneBlockContext
+    retained_point_count: PositiveInt
+    excluded_row_count: NonNegativeInt
+    topology_status: SceneManifestBlockTopologyStatus
+    topology_dimension: NonNegativeInt | None
+    topology_reason_code: StrictStr = ""
+    topology_reason: StrictStr = ""
+    topology_location_count: NonNegativeInt
+    duplicate_topology_location_count: NonNegativeInt
+    gap_location_count: NonNegativeInt
+    missing_intermediate_level_count: NonNegativeInt
+    unlocated_point_count: NonNegativeInt
+    omitted_zero_length_edge_count: NonNegativeInt
+    omitted_missing_corner_count: NonNegativeInt
+    omitted_repeated_vertex_count: NonNegativeInt
+    omitted_collinear_count: NonNegativeInt
+
+    @model_validator(mode="after")
+    def consistent_status(self) -> SceneManifestScientificBlock:
+        if self.duplicate_topology_location_count > self.topology_location_count:
+            raise ValueError("scene manifest duplicate topology count is inconsistent")
+        if self.topology_status == "unavailable":
+            valid_dimension = self.topology_dimension is None
+        elif self.topology_status == "zero_dimensional":
+            valid_dimension = self.topology_dimension == 0
+        elif self.topology_status == "exact":
+            valid_dimension = self.topology_dimension in {1, 2}
+        else:
+            valid_dimension = self.topology_dimension is not None
+        if not valid_dimension:
+            raise ValueError("scene manifest block topology dimension is inconsistent")
+        blocked = self.topology_status not in {"zero_dimensional", "exact"}
+        valid_reason = (
+            bool(self.topology_reason_code and self.topology_reason)
+            if blocked
+            else not self.topology_reason_code and not self.topology_reason
+        )
+        if not valid_reason:
+            raise ValueError("scene manifest block topology reason is inconsistent")
+        return self
+
+
+class SceneManifestOrphanExclusions(BaseModel):
+    """Excluded source rows in a context with no retained point."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    context: SceneBlockContext
+    excluded_row_count: PositiveInt
+
+
+class SceneScientificPayload(BaseModel):
+    """Canonical scientific facts bound by one private scene manifest."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    scientific_payload_schema_version: Literal[1] = 1
+    scene_profile_schema_version: Literal[1] = 1
+    request: SceneRequest
+    source_row_count: PositiveInt
+    retained_row_count: PositiveInt
+    excluded_row_count: NonNegativeInt
+    stable_id_field: SceneManifestStableIdField
+    fields: tuple[SceneFieldProfile, ...]
+    topology: SceneManifestTopology
+    value_extents: tuple[SceneManifestValueExtent, ...]
+    point_exclusions: tuple[SceneGapSummary, ...]
+    primitive_omissions: tuple[SceneGapSummary, ...]
+    capabilities: tuple[SceneRepresentationCapability, ...]
+    blocks: tuple[SceneManifestScientificBlock, ...]
+    orphan_exclusions: tuple[SceneManifestOrphanExclusions, ...]
+
+    @model_validator(mode="after")
+    def consistent_scientific_payload(self) -> SceneScientificPayload:
+        if not self.fields or any(
+            field.source_row_count != self.source_row_count for field in self.fields
+        ):
+            raise ValueError("scene manifest fields disagree with the source row count")
+        try:
+            validate_scene_request(self.request, self.fields)
+        except SceneContractError as exc:
+            raise ValueError(f"scene manifest request is invalid: {exc.message}") from exc
+        field_catalog = {field.field_id: field for field in self.fields}
+        for axis in self.topology.axes:
+            field = field_catalog.get(axis.field_id)
+            if (
+                field is None
+                or field.column != axis.source_column
+                or field.unit != axis.unit
+                or field.classification != "source_coordinate"
+            ):
+                raise ValueError("scene manifest topology axis disagrees with its field")
+        expected_stable_id = (
+            "prepared_row_id" if self.request.binding.source_kind == "preparation" else "case_id"
+        )
+        if self.stable_id_field != expected_stable_id:
+            raise ValueError("scene manifest stable ID field disagrees with its source kind")
+        if self.retained_row_count + self.excluded_row_count != self.source_row_count:
+            raise ValueError("scene manifest row counts do not account for the source")
+        expected_extents: tuple[tuple[SceneManifestValueRole, str], ...] = (
+            (
+                ("x", self.request.x_field),
+                ("y", self.request.y_field),
+                ("z", self.request.z_field),
+                ("scalar", self.request.scalar_field),
+            )
+            if self.request.scalar_field is not None
+            else (
+                ("x", self.request.x_field),
+                ("y", self.request.y_field),
+                ("z", self.request.z_field),
+            )
+        )
+        if tuple((extent.role, extent.field_id) for extent in self.value_extents) != (
+            expected_extents
+        ):
+            raise ValueError("scene manifest value extents do not match the request")
+        for extent in self.value_extents:
+            field = field_catalog[extent.field_id]
+            if (
+                field.minimum is None
+                or field.maximum is None
+                or extent.minimum < field.minimum
+                or extent.maximum > field.maximum
+            ):
+                raise ValueError("scene manifest value extent exceeds its source field range")
+        if self.point_exclusions != canonical_gap_summaries(self.point_exclusions) or any(
+            gap.block_index is not None
+            or gap.code
+            not in {
+                "filtered",
+                "source_invalid",
+                "missing_selected_value",
+                "nonfinite_selected_value",
+            }
+            for gap in self.point_exclusions
+        ):
+            raise ValueError("scene manifest point exclusions are not canonical")
+        if sum(gap.count for gap in self.point_exclusions) != self.excluded_row_count:
+            raise ValueError("scene manifest point exclusions disagree with excluded rows")
+        expected_omissions = canonical_gap_summaries(
+            gap for block in self.blocks for gap in _manifest_block_omissions(block)
+        )
+        if self.primitive_omissions != expected_omissions:
+            raise ValueError("scene manifest primitive omissions disagree with block counts")
+        if (
+            tuple(capability.representation for capability in self.capabilities)
+            != (
+                "points",
+                "wireframe",
+                "surface",
+            )
+            or not self.capabilities[0].available
+        ):
+            raise ValueError("scene manifest capabilities are not canonical")
+        if tuple(block.index for block in self.blocks) != tuple(range(len(self.blocks))):
+            raise ValueError("scene manifest scientific blocks are not ordered")
+        block_contexts = [block.context for block in self.blocks]
+        orphan_contexts = [orphan.context for orphan in self.orphan_exclusions]
+        if (
+            len(set(block_contexts)) != len(block_contexts)
+            or len(set(orphan_contexts)) != len(orphan_contexts)
+            or set(block_contexts).intersection(orphan_contexts)
+        ):
+            raise ValueError("scene manifest scientific contexts are not a partition")
+        if sum(block.retained_point_count for block in self.blocks) != self.retained_row_count:
+            raise ValueError("scene manifest block point counts are inconsistent")
+        if (
+            sum(block.excluded_row_count for block in self.blocks)
+            + sum(orphan.excluded_row_count for orphan in self.orphan_exclusions)
+            != self.excluded_row_count
+        ):
+            raise ValueError("scene manifest block exclusion counts are inconsistent")
+        return self
+
+
+def _manifest_block_omissions(
+    block: SceneManifestScientificBlock,
+) -> tuple[SceneGapSummary, ...]:
+    omissions: list[SceneGapSummary] = []
+    values: tuple[tuple[SceneGapCode, int], ...] = (
+        ("zero_length_edge", block.omitted_zero_length_edge_count),
+        ("missing_topology_corner", block.omitted_missing_corner_count),
+        (
+            "degenerate_quad",
+            block.omitted_repeated_vertex_count + block.omitted_collinear_count,
+        ),
+    )
+    for code, count in values:
+        if count:
+            omissions.append(SceneGapSummary(code=code, count=count, block_index=block.index))
+    return tuple(omissions)
+
+
 class SceneBundleManifest(BaseModel):
     """Lightweight structural manifest; scientific metadata remains hash-bound."""
 
@@ -157,7 +452,7 @@ class SceneBundleManifest(BaseModel):
     counts: SceneBundleCounts
     blocks: tuple[SceneBlockRange, ...]
     buffers: tuple[SceneBufferDescriptor, ...]
-    scientific_payload: dict[StrictStr, Any]
+    scientific_payload: SceneScientificPayload
 
     @field_validator("blocks")
     @classmethod
@@ -180,6 +475,7 @@ class SceneBundleManifest(BaseModel):
     def consistent_structure(self) -> SceneBundleManifest:
         _validate_buffer_descriptors(self)
         _validate_block_descriptors(self)
+        _validate_scientific_payload(self)
         return self
 
 
@@ -320,6 +616,65 @@ def _validate_block_descriptors(manifest: SceneBundleManifest) -> None:
         raise ValueError("scene block quad counts disagree with the global quad count")
 
 
+def _validate_scientific_payload(manifest: SceneBundleManifest) -> None:
+    payload = manifest.scientific_payload
+    if payload.request.request_id != manifest.request_id:
+        raise ValueError("scene request identity disagrees with the scientific payload")
+    if payload.retained_row_count != manifest.counts.points:
+        raise ValueError("scene retained row count disagrees with the point count")
+    names = {buffer.name for buffer in manifest.buffers}
+    if (payload.request.scalar_field is not None) != ("scalars" in names):
+        raise ValueError("scene scalar selection disagrees with its binary buffer")
+
+    topology_buffers = {
+        buffer.name: buffer
+        for buffer in manifest.buffers
+        if buffer.name.startswith("topology_levels.")
+    }
+    if len(topology_buffers) != len(payload.topology.axes):
+        raise ValueError("scene topology axes disagree with their binary buffers")
+    for axis in payload.topology.axes:
+        descriptor = topology_buffers.get(f"topology_levels.{axis.index}")
+        if (
+            descriptor is None
+            or descriptor.shape != (axis.level_count,)
+            or descriptor.sha256 != axis.levels_sha256
+        ):
+            raise ValueError("scene topology axis identity disagrees with its binary buffer")
+
+    if len(payload.blocks) != len(manifest.blocks):
+        raise ValueError("scene scientific blocks disagree with binary block ranges")
+    for block_range, scientific_block in zip(
+        manifest.blocks,
+        payload.blocks,
+        strict=True,
+    ):
+        if (
+            scientific_block.index != block_range.index
+            or scientific_block.context != block_range.context
+            or scientific_block.retained_point_count != block_range.point_count
+        ):
+            raise ValueError("scene scientific block identity disagrees with its range")
+        if scientific_block.topology_status != "exact" and (
+            block_range.edge_count or block_range.quad_count
+        ):
+            raise ValueError("blocked scene topology cannot contain connectivity")
+        if scientific_block.topology_dimension != 2 and block_range.quad_count:
+            raise ValueError("scene quads require two-dimensional exact topology")
+
+    capability_by_name = {
+        capability.representation: capability for capability in payload.capabilities
+    }
+    if capability_by_name["wireframe"].available != all(
+        block.edge_count > 0 for block in manifest.blocks
+    ):
+        raise ValueError("scene wireframe capability disagrees with block edges")
+    if capability_by_name["surface"].available != all(
+        block.quad_count > 0 for block in manifest.blocks
+    ):
+        raise ValueError("scene surface capability disagrees with block quads")
+
+
 def _parse_scene_manifest(data: bytes) -> SceneBundleManifest:
     raw = parse_canonical_scene_json_object(data, label="scene manifest")
     version = raw.get("scene_schema_version")
@@ -425,7 +780,8 @@ def _verify_binary(manifest: SceneBundleManifest, data: bytes) -> None:
             "scene binary hash does not match the manifest",
         )
     _verify_finite_float_buffers(buffers)
-    _verify_point_identity_buffers(buffers)
+    _verify_value_extents(manifest, buffers)
+    _verify_point_identity_buffers(manifest, buffers)
     _verify_connectivity(manifest, buffers)
 
 
@@ -448,13 +804,53 @@ def _verify_finite_float_buffers(buffers: Mapping[str, memoryview]) -> None:
                 )
 
 
-def _verify_point_identity_buffers(buffers: Mapping[str, memoryview]) -> None:
+def _verify_value_extents(
+    manifest: SceneBundleManifest,
+    buffers: Mapping[str, memoryview],
+) -> None:
+    coordinates = struct.iter_unpack("<ddd", buffers["points"])
+    first = next(coordinates)
+    minima = list(first)
+    maxima = list(first)
+    for row in coordinates:
+        for index, value in enumerate(row):
+            minima[index] = min(minima[index], value)
+            maxima[index] = max(maxima[index], value)
+    expected = {role: (minima[index], maxima[index]) for index, role in enumerate(("x", "y", "z"))}
+    if "scalars" in buffers:
+        scalar_values = (value for (value,) in struct.iter_unpack("<d", buffers["scalars"]))
+        first_scalar = next(scalar_values)
+        scalar_minimum = first_scalar
+        scalar_maximum = first_scalar
+        for value in scalar_values:
+            scalar_minimum = min(scalar_minimum, value)
+            scalar_maximum = max(scalar_maximum, value)
+        expected["scalar"] = (scalar_minimum, scalar_maximum)
+    for extent in manifest.scientific_payload.value_extents:
+        if (extent.minimum, extent.maximum) != expected[extent.role]:
+            raise SceneBundleError(
+                "scene_integrity_error",
+                f"scene value extent {extent.role!r} disagrees with binary values",
+            )
+
+
+def _verify_point_identity_buffers(
+    manifest: SceneBundleManifest,
+    buffers: Mapping[str, memoryview],
+) -> None:
     for name in ("row_positions", "stable_ids"):
         values = [value for (value,) in struct.iter_unpack("<Q", buffers[name])]
         if len(values) != len(set(values)):
             raise SceneBundleError(
                 "scene_integrity_error",
                 f"scene point identity buffer {name!r} contains duplicates",
+            )
+        if name == "row_positions" and any(
+            value >= manifest.scientific_payload.source_row_count for value in values
+        ):
+            raise SceneBundleError(
+                "scene_integrity_error",
+                "scene row position is outside the declared source table",
             )
 
 
