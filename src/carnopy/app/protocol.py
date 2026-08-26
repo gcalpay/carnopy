@@ -18,6 +18,7 @@ RequestType = Literal[
     "inspect_source",
     "profile_scene",
     "build_scene",
+    "resolve_scene_pick",
     "preview_table",
     "render_plot",
     "load_sweep_config",

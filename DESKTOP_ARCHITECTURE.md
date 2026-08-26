@@ -66,8 +66,9 @@ The source tree has one desktop presentation implementation:
 - a QtCore-only `SceneDraft`, `SceneController`, and `SceneLeaseLifecycle` now
   own explicit nonvisual scene profiling, build/update submission, stale
   state, independently verified replacement, workspace-session locks,
-  conservative lease cleanup, and safe shutdown sequencing; visible 3D
-  remains a later checkpoint;
+  conservative lease cleanup, and safe shutdown sequencing; a worker-only
+  exact pick resolver now supports direct runs and sweep children, while
+  controller pick integration and visible 3D remain later checkpoints;
 - the QML Visualization page exposes record-driven configured outcomes and
   explicit inspected-data session rendering, including verified preview,
   focus, PDF-open, and image-plus-sidecar export actions;
@@ -239,11 +240,13 @@ cancellation becomes available only when the worker reports a cancellable
 phase. Force stop is explicit and remains distinguishable in the terminal
 envelope.
 
-The private `scene` owner admits only `profile_scene` and `build_scene`. Both
-use cooperative cancellation until the worker announces the sticky
-termination-protected publication phase. The desktop scene lifecycle binds
-shutdown to the exact active session, waits for the coordinator's safety delay
-before force stop is available, and never interrupts protected publication.
+The private `scene` owner admits only `profile_scene`, `build_scene`, and
+`resolve_scene_pick`. Scene profiling is cancellable; scene building remains
+cancellable until it announces the sticky termination-protected publication
+phase. Pick resolution is a read-only cancellable worker request. The desktop
+scene lifecycle binds shutdown to the exact active session, waits for the
+coordinator's safety delay before force stop is available, and never interrupts
+protected publication.
 
 A matching request UUID is necessary but not sufficient for a controller to
 adopt a terminal response. Each response-owning controller retains only its
@@ -373,9 +376,10 @@ active workspace's `outputs/` directory; they can still select an authorized
 source outside the workspace.
 
 `carnopy.app.source_inspection`, `carnopy.app.scene_profiles` and its
-dataset/prepared profile adapters, and `carnopy.app.table_preview` are
-permanent worker-only modules. They may import pandas, PyArrow, visualization
-inspection, and data-reading implementations inside worker request handling.
+dataset/prepared profile adapters, `carnopy.app.scene_picks`, and
+`carnopy.app.table_preview` are permanent worker-only modules. They may import
+pandas, PyArrow, visualization inspection, and data-reading implementations
+inside worker request handling.
 `InspectionController`, `inspection_models`, `table_model`, and QML views
 import none of those modules and never open table or array bytes. They consume
 only JSON-compatible worker payloads. The first bounded
@@ -454,8 +458,25 @@ the coordinator's safety delay, and waits through protected publication. The
 continuation remains bound to the exact request object so a replacement worker
 cannot be cancelled or mistaken for the confirmed request. Scene profiling,
 building, cleanup, and shutdown create no Activity or Recovery record. No
-visible QML page, renderer, picking implementation, or native dependency is
-added.
+visible QML page, renderer, pick resolver, or native dependency was added by
+Checkpoint 6C.
+
+Checkpoint 7A adds a worker-only exact-pick boundary without yet adding
+controller or presentation state. `scene_pick_contracts` is lightweight and
+defines one immutable request from a copied scene binding, original table-row
+position, and unsigned-64-bit stable ID. `scene_picks` remains worker-only: for
+direct runs and model-sweep child tables it rebuilds and compares the complete
+binding and revision, securely rereads the accepted table, requires unique
+exact `case_id` values, and accepts a row only when both position and ID match.
+A second complete binding revalidation precedes the result.
+
+The typed result repeats the exact source kind, revision, selected table ID and
+hash, row position, and `case_id`, then carries every source column in original
+order with recorded dtype text and a loss-aware cell value. Missing values,
+booleans, integers, finite floats, infinities, and text remain distinct. No row
+is returned for a changed source or a missing, duplicate, reordered, or
+substituted identity. Prepared-row joins and controller source-stale behavior
+remain Checkpoint 7B; Stage 7 presentation will later own visible pick details.
 
 ### `ActivityController`
 
@@ -1277,7 +1298,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete |
 | 4 | Add controlled sweep and preparation worker operations | Complete |
 | 5 | Add structured sweep and preparation QML workflows | Complete; automated, remote, and native functional acceptance passed |
-| 6 | Build exact emitted-value 3D scene contracts | In progress; Units 1–3 and checkpoints 4A–6C implemented |
+| 6 | Build exact emitted-value 3D scene contracts | In progress; Units 1–3 and checkpoints 4A–7A implemented |
 | 7 | Integrate native interactive 3D into QML | Pending |
 | 8 | Complete native-3D platform, distribution, documentation, and later-release qualification | Pending |
 
@@ -1504,6 +1525,22 @@ waits without interruption during termination-protected publication. The
 lifecycle creates no Activity or Recovery records and adds no renderer,
 picking implementation, public interface, or dependency. Visible QML remains
 a later checkpoint.
+
+Checkpoint 7A adds the private `resolve_scene_pick` worker request and the
+lightweight typed input/result contract it uses. Direct-run and sweep-child
+rows resolve only after the complete scene binding and revision are rebuilt and
+compared, the accepted table is read through its exact identity, all
+`case_id` values are proved exact and unique, and the requested ID is found at
+the original requested position. A final binding revalidation prevents a
+source change during resolution from producing a successful result.
+
+The result carries the exact source, table, row-position, and stable-ID
+identity plus every source column in order using loss-aware JSON-compatible
+cells. Missing, duplicate, reordered, substituted, or source-mutated
+identities return no row. Prepared main/partition joins, provenance,
+diagnostics, scenario context, and controller source-stale integration remain
+Checkpoint 7B. This checkpoint adds no visible QML, renderer, backend call,
+public interface, dependency, Activity record, or Recovery record.
 
 Stage 2 has also established definition-first sampler canonicalization, exact
 anchor-based GUI unit changes, Qt 6.11.1 as the QML baseline, packaged QML
@@ -1770,6 +1807,7 @@ When changing the desktop, start at the owner of the behavior:
 | Configured plot evidence, preview authorization, and safe pair export | `configured_plot_results_controller`, `plot_artifacts`, and `plot_preview_provider` |
 | Inspected-data session plot edit and render lifecycle | `session_plot_controller` |
 | Nonvisual exact-scene draft, requests, stale state, verified replacement, workspace sessions, and lease cleanup | `scene_draft`, `scene_controller`, and `scene_lifecycle` |
+| Exact scene-pick identities and worker-only source-row resolution | `scene_pick_contracts` and `scene_picks` |
 | QML presentation | `qml/Carnopy/` plus narrow runtime signal wiring |
 | QML startup, resources, fonts, and warning policy | `qml_runtime`, `qml_resources`, and the resource manifest |
 | Scientific behavior | Existing non-app domain/pipeline module, executed by the worker |

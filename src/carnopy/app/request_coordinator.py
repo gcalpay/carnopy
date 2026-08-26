@@ -53,7 +53,7 @@ _OWNER_REQUESTS: dict[RequestOwner, frozenset[RequestType]] = {
             "execute_preparation",
         }
     ),
-    "scene": frozenset({"profile_scene", "build_scene"}),
+    "scene": frozenset({"profile_scene", "build_scene", "resolve_scene_pick"}),
 }
 
 

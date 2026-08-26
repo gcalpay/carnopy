@@ -82,7 +82,7 @@ implementation.
 | 3 | Complete | Reached parity, migrated both launchers, retired Widgets, and qualified `0.1.0a4` |
 | 4 | Complete | Added controlled sweep and preparation worker operations for the existing public contracts |
 | 5 | Complete | Added accepted structured Sweep and Preparation workflows plus typed audit inspection |
-| 6 | In progress (Units 1–3; checkpoints 4A–6C complete) | Build exact emitted-value 3D scenes |
+| 6 | In progress (Units 1–3; checkpoints 4A–7A complete) | Build exact emitted-value 3D scenes |
 | 7 | Pending | Add native interactive 3D to QML |
 | 8 | Pending | Qualify native 3D packaging, platforms, and a later release |
 
@@ -248,7 +248,7 @@ file-integrity, worker, or lifecycle boundaries.
 Stage 6 source profiling supports verified dataset runs, model-sweep child
 datasets, and prepared main or scenario-partition tables.
 
-Stage 6 remains incomplete. Units 1–3 and checkpoints 4A–6C now establish the
+Stage 6 remains incomplete. Units 1–3 and checkpoints 4A–7A now establish the
 lightweight contracts, hostile-input boundary, authoritative source profiles,
 exact retained-point projection, context-partitioned topology evidence, and
 exact one- and two-dimensional primitives plus deterministic in-memory binary
@@ -261,9 +261,11 @@ parent-created workspace-session leases, the canonical `scene.json` plus
 little-endian `scene.bin` contract, strict adoption and abandoned-lease
 verification, immutable scene bindings copied from Inspect, and the private
 `profile_scene` worker operation. Desktop composition, workspace-session
-ownership, conservative lease cleanup, and safe busy-shutdown sequencing are
-also implemented. Pick resolution and integrated acceptance remain later
-checkpoints. No visible QML or native renderer is enabled by this foundation.
+ownership, conservative lease cleanup, safe busy-shutdown sequencing, and
+exact direct-run and sweep-child source-row resolution are also implemented.
+Prepared pick resolution, controller stale integration, and integrated
+acceptance remain later checkpoints. No visible QML or native renderer is
+enabled by this foundation.
 
 Inspect offers scene bindings only for complete run directories, sweep child
 datasets, prepared main tables, and prepared scenario partitions. Standalone
@@ -436,6 +438,26 @@ stops termination-protected publication. Scene work creates no Activity or
 Recovery record. This checkpoint adds no QML page, renderer, picking, public
 interface, or dependency.
 
+Checkpoint 7A adds the private `resolve_scene_pick` worker operation for direct
+run and model-sweep child scenes. Its input contains the exact immutable scene
+binding plus the original table-row position and unsigned-64-bit `case_id`
+stored for one point. The worker revalidates the complete binding and source
+revision, reads the exact selected table through its accepted file identity,
+requires every `case_id` to remain exact and unique, and confirms that the
+requested ID exists at the requested position. It revalidates the binding
+again before returning; missing, duplicated, reordered, substituted, or
+source-mutated identities return no row.
+
+The result binds the source kind, revision, table ID and hash, row position,
+and stable ID. It preserves original column order and dtype text and represents
+each cell explicitly as null, boolean, integer, finite float, positive or
+negative infinity, or text. Pandas `NaN`, which is Carnopy's table-level
+missing-value representation, remains null rather than being presented as a
+finite value. Prepared rows and their joined provenance, diagnostics, and
+scenario context remain 7B, together with controller-side source-stale
+integration. Checkpoint 7A adds no page, renderer, backend call, public
+interface, or dependency.
+
 - Points represent finite emitted rows.
 - Wireframe edges connect exact adjacent coordinate levels only within
   compatible fluid, model, phase, and partition contexts.
@@ -458,7 +480,7 @@ and bridge without scientific imports in QML.
 ### Stage 6 delivery checkpoints
 
 The accepted Stage 6 contract retains eight top-level units. Units 1–3 and
-checkpoints 4A–6C are complete; the remaining work is divided into smaller
+checkpoints 4A–7A are complete; the remaining work is divided into smaller
 dependency-ordered checkpoints so
 that one review does not combine source projection, topology, serialization,
 controller lifecycle, and picking. These checkpoints do not broaden Stage 6 or
@@ -543,12 +565,13 @@ Completed units and checkpoints:
   visible 3D page, enforce one global worker, clean leases during replacement,
   workspace changes, startup, and shutdown, and preserve safe force-stop and
   busy-shutdown behavior without Activity or Recovery records.
-
-Remaining checkpoints:
 - **7A — direct and sweep exact picks:** revalidate the scene-level source
   descriptor and revision, then match original row position with stable
   `case_id` for dataset runs and sweep children. Return the exact source row or
   reject changed, missing, duplicated, reordered, or substituted identities.
+
+Remaining checkpoints:
+
 - **7B — prepared picks and stale integration:** resolve `prepared_row_id`
   against prepared main or partition tables and return its exact row plus
   verified provenance, diagnostics, and scenario or partition context. Any

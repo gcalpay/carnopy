@@ -315,6 +315,16 @@ def _execute(
             emit=writer.emit,
             checkpoint=lambda: _raise_if_cancelled(cancelled),
         )
+    if request.type == "resolve_scene_pick":
+        from carnopy.app.scene_pick_contracts import ResolveScenePickPayload
+        from carnopy.app.scene_picks import resolve_scene_pick
+
+        pick_payload = ResolveScenePickPayload.model_validate(request.payload)
+        writer.emit("phase", {"name": "scene_pick_resolution", "cancellable": True})
+        return resolve_scene_pick(
+            pick_payload,
+            checkpoint=lambda: _raise_if_cancelled(cancelled),
+        ).model_dump(mode="json")
     if request.type == "preview_table":
         preview_payload = PreviewPayload.model_validate(request.payload)
         writer.emit("phase", {"name": "table_preview", "cancellable": True})
