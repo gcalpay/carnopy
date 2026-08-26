@@ -63,6 +63,10 @@ The source tree has one desktop presentation implementation:
   `ConfiguredPlotResultsController`, while inspected-data plot editing and
   rendering are owned by one `SessionPlotController`; the QML Visualization
   page binds both;
+- a QtCore-only `SceneDraft` and `SceneController` now own explicit nonvisual
+  scene profiling, build/update submission, stale state, and independently
+  verified replacement; desktop composition, cleanup, and visible 3D remain
+  later checkpoints;
 - the QML Visualization page exposes record-driven configured outcomes and
   explicit inspected-data session rendering, including verified preview,
   focus, PDF-open, and image-plus-sidecar export actions;
@@ -219,7 +223,8 @@ Force Stop retain their separate active-operation paths.
 The coordinator owns the global active request, including:
 
 - request UUID and protocol type;
-- one owner: `configuration`, `execution`, `inspection`, or `plot`;
+- one owner: `configuration`, `execution`, `inspection`, `plot`, `sweep`,
+  `preparation`, or `scene`;
 - cancellation policy and force-stop state;
 - terminal worker event and process outcome;
 - stderr and cleanup status; and
@@ -230,6 +235,11 @@ Stale or foreign events are not delivered to another controller. Cooperative
 cancellation becomes available only when the worker reports a cancellable
 phase. Force stop is explicit and remains distinguishable in the terminal
 envelope.
+
+The private `scene` owner admits only `profile_scene` and `build_scene`. Both
+use cooperative cancellation until the worker announces the sticky
+termination-protected publication phase. Desktop-owned delayed force-stop and
+shutdown policy remain part of the later lifecycle integration.
 
 A matching request UUID is necessary but not sufficient for a controller to
 adopt a terminal response. Each response-owning controller retains only its
@@ -398,6 +408,33 @@ and the established preparation field-resolution code in the worker. QML
 consumes typed Qt models and never reconstructs preparation semantics from raw
 manifest dictionaries. The profile remains an inspection result until the
 user explicitly binds its exact snapshot for Preparation.
+
+### `SceneDraft` and `SceneController`
+
+`SceneDraft` owns one explicit deep copy of an immutable Inspect scene binding,
+one matching accepted profile, exact axis/scalar selections, and exact filters.
+It starts no request. While `SceneController` owns a submitted detached
+snapshot, every draft mutation is locked; completion unlocks the same draft
+without allowing a late edit to alter worker inputs.
+
+`SceneController` owns Profile and Build/Update requests under the global
+`scene` coordinator owner, their phase/progress/cancellation projections, the
+last independently verified scene, and its accepted request identity. It
+borrows—but does not acquire or close—the workspace `SceneSession` that the
+future desktop lifecycle checkpoint will own. A candidate becomes current only
+after the Unit 5C parent verifier accepts it. Failed, cancelled,
+source-changed, or integrity-rejected updates retain the previous verified
+scene; successful replacement requests retirement of the old lease only after
+the new scene is installed.
+
+Settings staleness compares the current exact request identity with the live
+draft and does not hide a valid scene. Source staleness is bound to the exact
+copied source descriptor and revision. It preserves the current scene as a
+viewable snapshot while disabling another Profile or Build from that old
+binding. Lease retirement is emitted as an ownership handoff rather than
+deleted here, so cleanup failures, workspace changes, startup scanning,
+shutdown, and safe force-stop remain centralized in Unit 6C. No Activity or
+Recovery record, visible QML page, renderer, or native dependency is added.
 
 ### `ActivityController`
 
@@ -1219,7 +1256,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete |
 | 4 | Add controlled sweep and preparation worker operations | Complete |
 | 5 | Add structured sweep and preparation QML workflows | Complete; automated, remote, and native functional acceptance passed |
-| 6 | Build exact emitted-value 3D scene contracts | In progress; Units 1–3 and checkpoints 4A–6A implemented |
+| 6 | Build exact emitted-value 3D scene contracts | In progress; Units 1–3 and checkpoints 4A–6B implemented |
 | 7 | Integrate native interactive 3D into QML | Pending |
 | 8 | Complete native-3D platform, distribution, documentation, and later-release qualification | Pending |
 
@@ -1418,9 +1455,19 @@ ranges preserve finite inclusive binary64 bounds; both normalize through the
 existing scene request contracts. Profile and Build/Update submission methods
 return detached immutable snapshots and perform no worker dispatch. Thus edits
 cannot start background work, and a later edit cannot mutate an already
-created submission. Worker ownership, submitted-draft locking, verified scene
-replacement, stale state, lease cleanup, and desktop composition remain 6B and
-6C responsibilities.
+created submission. Lease cleanup and desktop composition remain Unit 6C
+responsibilities.
+
+Checkpoint 6B adds the nonvisual controller boundary. Scene profiling and
+building now participate in the existing one-global-request policy, and the
+controller freezes the submitted draft, reports progress and cooperative
+cancellation, and treats publication as termination-protected. Only an
+independently adopted candidate can replace its current scene. Cancellation,
+worker failure, source change, or bundle-integrity failure leaves the old scene
+untouched and requests cleanup only for the discarded lease. Settings and
+source staleness remain separate exact identities. The controller is not yet
+composed by `DesktopController`; workspace-session ownership, lease cleanup,
+shutdown and force-stop sequencing, and visible QML remain later checkpoints.
 
 Stage 2 has also established definition-first sampler canonicalization, exact
 anchor-based GUI unit changes, Qt 6.11.1 as the QML baseline, packaged QML
@@ -1686,6 +1733,7 @@ When changing the desktop, start at the owner of the behavior:
 | Configured visualization or temporary plot state | `visualization_draft`, `plot_draft`, and `mapping_draft` |
 | Configured plot evidence, preview authorization, and safe pair export | `configured_plot_results_controller`, `plot_artifacts`, and `plot_preview_provider` |
 | Inspected-data session plot edit and render lifecycle | `session_plot_controller` |
+| Nonvisual exact-scene draft, requests, stale state, and verified replacement | `scene_draft` and `scene_controller` |
 | QML presentation | `qml/Carnopy/` plus narrow runtime signal wiring |
 | QML startup, resources, fonts, and warning policy | `qml_runtime`, `qml_resources`, and the resource manifest |
 | Scientific behavior | Existing non-app domain/pipeline module, executed by the worker |

@@ -60,6 +60,7 @@ class SceneDraft(QObject):
     selection_changed = Signal()
     filters_changed = Signal()
     validity_changed = Signal()
+    lock_changed = Signal()
     message = Signal(str)
 
     def __init__(self, parent: QObject | None = None) -> None:
@@ -93,6 +94,7 @@ class SceneDraft(QObject):
         self._z_field = ""
         self._scalar_field = ""
         self._filters: dict[str, SceneFilterValue] = {}
+        self._operation_locked = False
 
     def _constant_model(self, model: QObject) -> QObject:
         return model
@@ -142,6 +144,20 @@ class SceneDraft(QObject):
         return "" if self._binding is None else self._binding.inspection_revision
 
     inspectionRevision = Property(str, get_inspection_revision, notify=binding_changed)
+
+    def get_operation_locked(self) -> bool:
+        return self._operation_locked
+
+    operationLocked = Property(bool, get_operation_locked, notify=lock_changed)
+
+    def _set_operation_locked(self, value: bool) -> None:
+        """Let the owning controller freeze the submitted draft during a request."""
+
+        if value == self._operation_locked:
+            return
+        self._operation_locked = value
+        self.lock_changed.emit()
+        self.validity_changed.emit()
 
     def get_x_field(self) -> str:
         return self._x_field
@@ -199,6 +215,8 @@ class SceneDraft(QObject):
 
     @Slot(str, result=bool)
     def set_scalar_field(self, value: str) -> bool:
+        if self._operation_locked:
+            return self._reject_locked()
         profile = self._profile
         if profile is None:
             return self._reject("Profile the copied scene source before selecting a scalar.")
@@ -231,12 +249,12 @@ class SceneDraft(QObject):
     )
 
     def get_can_profile(self) -> bool:
-        return self._binding is not None
+        return self._binding is not None and not self._operation_locked
 
-    canProfile = Property(bool, get_can_profile, notify=binding_changed)
+    canProfile = Property(bool, get_can_profile, notify=validity_changed)
 
     def get_can_build(self) -> bool:
-        return self.get_locally_valid()
+        return self.get_locally_valid() and not self._operation_locked
 
     canBuild = Property(bool, get_can_build, notify=validity_changed)
 
@@ -288,6 +306,8 @@ class SceneDraft(QObject):
     def copy_binding(self, binding: SceneSourceBinding) -> bool:
         """Explicitly copy one immutable Inspect snapshot into the draft."""
 
+        if self._operation_locked:
+            return self._reject_locked()
         if not isinstance(binding, SceneSourceBinding):
             raise TypeError("scene binding must be a SceneSourceBinding")
         copied = binding.model_copy(deep=True)
@@ -307,6 +327,8 @@ class SceneDraft(QObject):
 
     @Slot(result=bool)
     def clear(self) -> bool:
+        if self._operation_locked:
+            return self._reject_locked()
         if self._binding is None and self._profile is None:
             return False
         self._binding = None
@@ -324,6 +346,11 @@ class SceneDraft(QObject):
     def accept_profile(self, value: SceneProfile | Mapping[str, object]) -> bool:
         """Accept only a profile for the exact binding currently held by the draft."""
 
+        if self._operation_locked:
+            raise SceneContractError(
+                "invalid_scene_profile",
+                "the scene draft is locked while a worker owns its submitted snapshot",
+            )
         try:
             profile = (
                 value if isinstance(value, SceneProfile) else SceneProfile.model_validate(value)
@@ -370,6 +397,8 @@ class SceneDraft(QObject):
 
     @Slot(result=bool)
     def reset_to_profile_defaults(self) -> bool:
+        if self._operation_locked:
+            return self._reject_locked()
         profile = self._profile
         if profile is None:
             return False
@@ -406,6 +435,8 @@ class SceneDraft(QObject):
 
     @Slot(str, list, result=bool)
     def set_categorical_filter(self, field_id: str, values: list[str]) -> bool:
+        if self._operation_locked:
+            return self._reject_locked()
         field = self._filterable_field(field_id, "categorical_set")
         if field is None:
             return False
@@ -427,6 +458,8 @@ class SceneDraft(QObject):
         minimum: float | int | None,
         maximum: float | int | None,
     ) -> bool:
+        if self._operation_locked:
+            return self._reject_locked()
         if self._filterable_field(field_id, "numeric_range") is None:
             return False
         try:
@@ -456,6 +489,8 @@ class SceneDraft(QObject):
 
     @Slot(str, result=bool)
     def clear_filter(self, field_id: str) -> bool:
+        if self._operation_locked:
+            return self._reject_locked()
         if field_id not in self._filters:
             return False
         del self._filters[field_id]
@@ -482,6 +517,11 @@ class SceneDraft(QObject):
     def create_profile_submission(self) -> SceneProfileSubmission:
         """Create the only Profile command input; never starts a worker itself."""
 
+        if self._operation_locked:
+            raise SceneContractError(
+                "invalid_scene_profile",
+                "the scene draft is locked by an active worker request",
+            )
         if self._binding is None:
             raise SceneContractError(
                 "invalid_scene_binding",
@@ -492,6 +532,11 @@ class SceneDraft(QObject):
     def create_build_submission(self) -> SceneBuildSubmission:
         """Create the only Build/Update input; never starts a worker itself."""
 
+        if self._operation_locked:
+            raise SceneContractError(
+                "invalid_scene_request",
+                "the scene draft is locked by an active worker request",
+            )
         profile = self._require_profile()
         request = self._scene_request()
         return SceneBuildSubmission(
@@ -500,6 +545,8 @@ class SceneDraft(QObject):
         )
 
     def _set_coordinate(self, role: str, value: str) -> bool:
+        if self._operation_locked:
+            return self._reject_locked()
         profile = self._profile
         if profile is None:
             return self._reject("Profile the copied scene source before selecting coordinates.")
@@ -708,6 +755,11 @@ class SceneDraft(QObject):
     def _reject(self, message: str) -> bool:
         self.message.emit(message)
         return False
+
+    def _reject_locked(self) -> bool:
+        return self._reject(
+            "The scene draft is locked while its submitted snapshot is being processed."
+        )
 
 
 def _field_by_id(profile: SceneProfile, field_id: str) -> SceneFieldProfile | None:

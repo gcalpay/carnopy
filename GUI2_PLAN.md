@@ -82,7 +82,7 @@ implementation.
 | 3 | Complete | Reached parity, migrated both launchers, retired Widgets, and qualified `0.1.0a4` |
 | 4 | Complete | Added controlled sweep and preparation worker operations for the existing public contracts |
 | 5 | Complete | Added accepted structured Sweep and Preparation workflows plus typed audit inspection |
-| 6 | In progress (Units 1–3; checkpoints 4A–6A complete) | Build exact emitted-value 3D scenes |
+| 6 | In progress (Units 1–3; checkpoints 4A–6B complete) | Build exact emitted-value 3D scenes |
 | 7 | Pending | Add native interactive 3D to QML |
 | 8 | Pending | Qualify native 3D packaging, platforms, and a later release |
 
@@ -248,18 +248,19 @@ file-integrity, worker, or lifecycle boundaries.
 Stage 6 source profiling supports verified dataset runs, model-sweep child
 datasets, and prepared main or scenario-partition tables.
 
-Stage 6 remains incomplete. Units 1–3 and checkpoints 4A–6A now establish the
+Stage 6 remains incomplete. Units 1–3 and checkpoints 4A–6B now establish the
 lightweight contracts, hostile-input boundary, authoritative source profiles,
 exact retained-point projection, context-partitioned topology evidence, and
 exact one- and two-dimensional primitives plus deterministic in-memory binary
 encoding, canonical manifest-last publication, the private `build_scene`
-worker, independently verified parent adoption, and a QtCore-only scene draft.
+worker, independently verified parent adoption, and QtCore-only scene draft and
+controller state.
 The foundation includes immutable source/profile/request models, canonical
 request identities and limits,
 parent-created workspace-session leases, the canonical `scene.json` plus
 little-endian `scene.bin` contract, strict adoption and abandoned-lease
 verification, immutable scene bindings copied from Inspect, and the private
-`profile_scene` worker operation. Controller state and lifecycle, pick
+`profile_scene` worker operation. Desktop composition and lease cleanup, pick
 resolution, and integrated acceptance remain later checkpoints. No visible
 QML or native renderer is enabled by this foundation.
 
@@ -397,8 +398,25 @@ Profile and Build/Update submission factories return detached immutable
 snapshots and never dispatch workers themselves. Invalid, ineligible, or
 mismatched state cannot produce a build submission. Editing the draft,
 navigating, or later Inspect changes therefore cannot implicitly profile or
-build a scene. Worker ownership, submitted-state locking, replacement, and
-stale-state transitions remain 6B.
+build a scene.
+
+Checkpoint 6B adds a nonvisual `SceneController` and admits `profile_scene` and
+`build_scene` through the one global request coordinator under one `scene`
+owner. It freezes every mutable draft operation while the detached submitted
+snapshot is active, exposes exact phase, progress, cooperative-cancellation,
+and protected-publication state, and never starts work from an edit or
+navigation change.
+
+The controller adopts a candidate only through the independent Unit 5C
+verifier. A failed, cancelled, source-changed, or integrity-rejected update
+keeps the prior verified scene unchanged and retires only the rejected
+candidate; a successful replacement retires the superseded lease only after
+the new scene is accepted. Request-identity comparison marks settings stale
+without hiding the scene. Exact binding comparison marks a source-stale scene
+as a viewable snapshot while blocking another Profile or Build from that old
+binding. The controller emits lease-retirement requests but deliberately does
+not delete them: desktop-owned cleanup, workspace/session replacement,
+shutdown, and safe force-stop remain 6C.
 
 - Points represent finite emitted rows.
 - Wireframe edges connect exact adjacent coordinate levels only within
@@ -422,7 +440,7 @@ and bridge without scientific imports in QML.
 ### Stage 6 delivery checkpoints
 
 The accepted Stage 6 contract retains eight top-level units. Units 1–3 and
-checkpoints 4A–6A are complete; the remaining work is divided into smaller
+checkpoints 4A–6B are complete; the remaining work is divided into smaller
 dependency-ordered checkpoints so
 that one review does not combine source projection, topology, serialization,
 controller lifecycle, and picking. These checkpoints do not broaden Stage 6 or
@@ -498,13 +516,14 @@ Completed units and checkpoints:
   create detached Profile and Build/Update submissions only on explicit calls.
   Draft edits have no worker, navigation, inspection, lease, or scene-lifecycle
   side effects.
+- **6B — `SceneController` state and replacement:** own immutable submitted
+  snapshots, global scene requests, progress and cooperative cancellation,
+  settings-stale and source-stale projections, independent verified adoption,
+  and prior-scene retention across failed or cancelled updates. Lease cleanup
+  remains an explicit request to the future desktop lifecycle owner.
 
 Remaining checkpoints:
 
-- **6B — `SceneController` state and replacement:** own submitted-draft
-  locking, global request participation, progress and cancellation,
-  settings-stale and source-stale transitions, verified replacement, and
-  retention of the previous scene after failed or cancelled updates.
 - **6C — desktop lifecycle integration:** compose the controller without a
   visible 3D page, enforce one global worker, clean leases during replacement,
   workspace changes, startup, and shutdown, and preserve safe force-stop and

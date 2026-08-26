@@ -10,7 +10,15 @@ from PySide6.QtCore import QObject, QTimer, Signal
 from carnopy.app.client import TransportOutcome, WorkerClient
 from carnopy.app.protocol import ErrorCategory, RequestType, WorkerErrorPayload, WorkerEvent
 
-RequestOwner = Literal["configuration", "execution", "inspection", "plot", "sweep", "preparation"]
+RequestOwner = Literal[
+    "configuration",
+    "execution",
+    "inspection",
+    "plot",
+    "sweep",
+    "preparation",
+    "scene",
+]
 RequestState = Literal[
     "starting",
     "running",
@@ -45,6 +53,7 @@ _OWNER_REQUESTS: dict[RequestOwner, frozenset[RequestType]] = {
             "execute_preparation",
         }
     ),
+    "scene": frozenset({"profile_scene", "build_scene"}),
 }
 
 
@@ -354,7 +363,7 @@ class DesktopRequestCoordinator(QObject):
             raise ValueError("parent export finalizers are supported only for render_plot")
 
         cancellation_mode: CancellationMode
-        if owner in {"execution", "sweep", "preparation"}:
+        if owner in {"execution", "sweep", "preparation", "scene"}:
             cancellation_mode = "cooperative"
         elif owner == "plot":
             cancellation_mode = "force_only"
@@ -444,7 +453,12 @@ class DesktopRequestCoordinator(QObject):
 
     def _enable_delayed_force_stop(self) -> None:
         session = self._active_session
-        if session is not None and session.owner in {"execution", "sweep", "preparation"}:
+        if session is not None and session.owner in {
+            "execution",
+            "sweep",
+            "preparation",
+            "scene",
+        }:
             session._enable_force_stop()
 
     def _transport_finished(self, value: object) -> None:
