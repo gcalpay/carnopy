@@ -1219,7 +1219,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete |
 | 4 | Add controlled sweep and preparation worker operations | Complete |
 | 5 | Add structured sweep and preparation QML workflows | Complete; automated, remote, and native functional acceptance passed |
-| 6 | Build exact emitted-value 3D scene contracts | In progress; Units 1–3 and checkpoints 4A–5C implemented |
+| 6 | Build exact emitted-value 3D scene contracts | In progress; Units 1–3 and checkpoints 4A–6A implemented |
 | 7 | Integrate native interactive 3D into QML | Pending |
 | 8 | Complete native-3D platform, distribution, documentation, and later-release qualification | Pending |
 
@@ -1404,6 +1404,23 @@ source change, forged result, or tampered bundle leaves any previously held
 verified scene untouched. Checkpoint 5C still introduces no `SceneDraft`,
 `SceneController`, visible QML, renderer, or lifecycle cleanup; those begin in
 Unit 6.
+
+Checkpoint 6A introduces the QtCore-only `SceneDraft`, still without controller
+composition or visible QML. The draft receives a scene source only through an
+explicit deep copy of an immutable Inspect snapshot; it is not connected to
+Inspect navigation or selection changes. Profile acceptance requires the exact
+copied binding and applies the worker's topology-first defaults verbatim,
+including an intentionally incomplete default instead of choosing a fallback.
+
+Axis and optional scalar choices retain authoritative field eligibility and
+units. Categorical filters preserve exact case-sensitive values, while numeric
+ranges preserve finite inclusive binary64 bounds; both normalize through the
+existing scene request contracts. Profile and Build/Update submission methods
+return detached immutable snapshots and perform no worker dispatch. Thus edits
+cannot start background work, and a later edit cannot mutate an already
+created submission. Worker ownership, submitted-draft locking, verified scene
+replacement, stale state, lease cleanup, and desktop composition remain 6B and
+6C responsibilities.
 
 Stage 2 has also established definition-first sampler canonicalization, exact
 anchor-based GUI unit changes, Qt 6.11.1 as the QML baseline, packaged QML
