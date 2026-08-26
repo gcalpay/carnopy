@@ -20,6 +20,8 @@ from carnopy.app.qml_settings import QmlSettingsController
 from carnopy.app.request_coordinator import DesktopRequestCoordinator
 from carnopy.app.sampler_draft import SamplerDraft
 from carnopy.app.scenario_draft import ScenarioDraft
+from carnopy.app.scene_controller import SceneController
+from carnopy.app.scene_lifecycle import SceneLeaseLifecycle
 from carnopy.app.session_plot_controller import SessionPlotController
 from carnopy.app.visualization_draft import VisualizationDraft
 from carnopy.app.workflow_controller import (
@@ -60,6 +62,8 @@ class DesktopController(QObject):
         self.qml_settings = QmlSettingsController(self.settings, self)
         self.client = WorkerClient(self)
         self.request_coordinator = DesktopRequestCoordinator(self.client, self)
+        self.scene_controller = SceneController(self.request_coordinator, parent=self)
+        self.scene_lifecycle = SceneLeaseLifecycle(self.scene_controller, self)
         self.dataset_draft = DatasetDraft(self)
         self.visualization_draft = VisualizationDraft(self)
         self.configuration_controller = ConfigurationController(
@@ -125,6 +129,8 @@ class DesktopController(QObject):
         self.preparation_workflow_controller.state_changed.connect(
             self._continue_pending_busy_shutdown
         )
+        self.scene_controller.state_changed.connect(self._continue_pending_busy_shutdown)
+        self.scene_lifecycle.state_changed.connect(self._scene_lifecycle_changed)
         self.execution_controller.run_finalized.connect(
             lambda _path: self.inspection_controller.refresh_sources()
         )
@@ -422,6 +428,24 @@ class DesktopController(QObject):
         QObject,
         get_execution_controller,
         constant=True,
+    )
+
+    def get_scene_controller(self) -> QObject:
+        return self.scene_controller
+
+    sceneController = Property(
+        QObject,
+        get_scene_controller,
+        constant=True,
+    )
+
+    def get_scene_cleanup_issue(self) -> str:
+        return self.scene_lifecycle.get_cleanup_issue()
+
+    sceneCleanupIssue = Property(
+        str,
+        get_scene_cleanup_issue,
+        notify=workspace_feedback_changed,
     )
 
     def get_sweep_workflow_controller(self) -> QObject:
@@ -1795,6 +1819,7 @@ class DesktopController(QObject):
             return False
         self._workspace_request_timer.stop()
         self._queued_workspace_request = None
+        self.scene_lifecycle.shutdown()
         self.request_coordinator.shutdown()
         self.settings.sync()
         self._shutdown = True
@@ -1857,6 +1882,15 @@ class DesktopController(QObject):
                     "force_stop_plot",
                     "A session plot render is active. Force-stop it and close Carnopy only "
                     "after its owned staging cleanup succeeds?",
+                )
+            elif active_session.owner == "scene" and active_session.request_type in {
+                "profile_scene",
+                "build_scene",
+            }:
+                self.busyShutdownConfirmationRequested.emit(
+                    "cancel_scene",
+                    "Scene preparation is active. Cancel it cooperatively and, only if "
+                    "needed after the safety delay, force-stop it before closing Carnopy?",
                 )
             else:
                 self._pending_busy_confirmation_session = None
@@ -1939,6 +1973,13 @@ class DesktopController(QObject):
                 return False
             self._pending_busy_shutdown = "plot"
             return True
+        if session.owner == "scene" and session.request_type in {
+            "profile_scene",
+            "build_scene",
+        }:
+            self._pending_busy_shutdown = "scene_waiting"
+            self._continue_pending_busy_shutdown()
+            return True
         self._clear_pending_busy_shutdown()
         return False
 
@@ -2010,20 +2051,16 @@ class DesktopController(QObject):
 
     def _workspace_activated(self, value: object) -> None:
         self._clear_pending_explore()
+        workspace = value if isinstance(value, Workspace) else None
+        self.scene_lifecycle.set_workspace(workspace)
         self.configuration_controller.set_workspace(value)
-        self.execution_controller.set_workspace(value if isinstance(value, Workspace) else None)
-        self.session_plot_controller.set_workspace(value if isinstance(value, Workspace) else None)
-        self.inspection_controller.set_workspace(value if isinstance(value, Workspace) else None)
-        self.sweep_workflow_controller.set_workspace(
-            value if isinstance(value, Workspace) else None
-        )
-        self.preparation_workflow_controller.set_workspace(
-            value if isinstance(value, Workspace) else None
-        )
-        self.activity_controller.set_workspace(value if isinstance(value, Workspace) else None)
-        self.configured_plot_results_controller.set_workspace(
-            value if isinstance(value, Workspace) else None
-        )
+        self.execution_controller.set_workspace(workspace)
+        self.session_plot_controller.set_workspace(workspace)
+        self.inspection_controller.set_workspace(workspace)
+        self.sweep_workflow_controller.set_workspace(workspace)
+        self.preparation_workflow_controller.set_workspace(workspace)
+        self.activity_controller.set_workspace(workspace)
+        self.configured_plot_results_controller.set_workspace(workspace)
         self.workspace_state_changed.emit()
         self.workspace_confirmation_changed.emit()
 
@@ -2044,12 +2081,20 @@ class DesktopController(QObject):
         if not busy and self._pending_busy_shutdown:
             QTimer.singleShot(0, self._complete_busy_shutdown)
 
+    def _scene_lifecycle_changed(self) -> None:
+        issue = self.scene_lifecycle.get_cleanup_issue()
+        if issue:
+            self.workspace_controller.report_error(issue)
+        self.workspace_feedback_changed.emit()
+
     def _continue_pending_busy_shutdown(self) -> None:
         mode = self._pending_busy_shutdown
         if mode not in {
             "generation_waiting",
             "sweep_waiting",
             "preparation_waiting",
+            "scene_waiting",
+            "scene_cancelling",
         }:
             return
         session = self.request_coordinator.active_session
@@ -2081,6 +2126,25 @@ class DesktopController(QObject):
                 return
             self._pending_busy_shutdown = "sweep"
             if not self.sweep_workflow_controller.cancel():
+                self._pending_busy_shutdown = mode
+            return
+        if mode == "scene_waiting":
+            if self.scene_controller.get_protected_finalization():
+                self._pending_busy_shutdown = "protected_finalization"
+                return
+            if not self.scene_controller.get_cancellation_available():
+                return
+            self._pending_busy_shutdown = "scene_cancelling"
+            if not self.scene_controller.cancel():
+                self._pending_busy_shutdown = mode
+            return
+        if mode == "scene_cancelling":
+            if self.scene_controller.get_protected_finalization():
+                return
+            if not self.scene_controller.get_force_stop_available():
+                return
+            self._pending_busy_shutdown = "scene"
+            if not self.scene_controller.force_stop():
                 self._pending_busy_shutdown = mode
             return
         if (

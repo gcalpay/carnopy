@@ -82,7 +82,7 @@ implementation.
 | 3 | Complete | Reached parity, migrated both launchers, retired Widgets, and qualified `0.1.0a4` |
 | 4 | Complete | Added controlled sweep and preparation worker operations for the existing public contracts |
 | 5 | Complete | Added accepted structured Sweep and Preparation workflows plus typed audit inspection |
-| 6 | In progress (Units 1–3; checkpoints 4A–6B complete) | Build exact emitted-value 3D scenes |
+| 6 | In progress (Units 1–3; checkpoints 4A–6C complete) | Build exact emitted-value 3D scenes |
 | 7 | Pending | Add native interactive 3D to QML |
 | 8 | Pending | Qualify native 3D packaging, platforms, and a later release |
 
@@ -248,21 +248,22 @@ file-integrity, worker, or lifecycle boundaries.
 Stage 6 source profiling supports verified dataset runs, model-sweep child
 datasets, and prepared main or scenario-partition tables.
 
-Stage 6 remains incomplete. Units 1–3 and checkpoints 4A–6B now establish the
+Stage 6 remains incomplete. Units 1–3 and checkpoints 4A–6C now establish the
 lightweight contracts, hostile-input boundary, authoritative source profiles,
 exact retained-point projection, context-partitioned topology evidence, and
 exact one- and two-dimensional primitives plus deterministic in-memory binary
 encoding, canonical manifest-last publication, the private `build_scene`
-worker, independently verified parent adoption, and QtCore-only scene draft and
-controller state.
+worker, independently verified parent adoption, and QtCore-only scene draft,
+controller, and desktop lifecycle state.
 The foundation includes immutable source/profile/request models, canonical
 request identities and limits,
 parent-created workspace-session leases, the canonical `scene.json` plus
 little-endian `scene.bin` contract, strict adoption and abandoned-lease
 verification, immutable scene bindings copied from Inspect, and the private
-`profile_scene` worker operation. Desktop composition and lease cleanup, pick
-resolution, and integrated acceptance remain later checkpoints. No visible
-QML or native renderer is enabled by this foundation.
+`profile_scene` worker operation. Desktop composition, workspace-session
+ownership, conservative lease cleanup, and safe busy-shutdown sequencing are
+also implemented. Pick resolution and integrated acceptance remain later
+checkpoints. No visible QML or native renderer is enabled by this foundation.
 
 Inspect offers scene bindings only for complete run directories, sweep child
 datasets, prepared main tables, and prepared scenario partitions. Standalone
@@ -415,8 +416,25 @@ the new scene is accepted. Request-identity comparison marks settings stale
 without hiding the scene. Exact binding comparison marks a source-stale scene
 as a viewable snapshot while blocking another Profile or Build from that old
 binding. The controller emits lease-retirement requests but deliberately does
-not delete them: desktop-owned cleanup, workspace/session replacement,
-shutdown, and safe force-stop remain 6C.
+not delete them; the desktop lifecycle owner accepts that handoff.
+
+Checkpoint 6C composes the nonvisual controller in `DesktopController` and
+adds one focused `SceneLeaseLifecycle`. Each workspace activation first runs
+the Unit 2 conservative abandoned-lease scan, then acquires and holds one
+QtCore session lock for that desktop workspace context. Verified replacement,
+failed candidate, workspace change, and shutdown retirement all use exact
+lease identity checks. A cleanup that cannot be proved safe is preserved and
+reported for a later retry; malformed, replaced, unrecognized, symlinked, or
+apparently live content is never recursively deleted.
+
+Workspace replacement and shutdown reset the copied draft, accepted request,
+stale state, progress, failure, and current scene before closing the owned
+session. Busy shutdown remains bound to the exact active request: it requests
+cooperative scene cancellation only in an advertised cancellable phase, waits
+for the coordinator's safety delay before exposing force stop, and never force
+stops termination-protected publication. Scene work creates no Activity or
+Recovery record. This checkpoint adds no QML page, renderer, picking, public
+interface, or dependency.
 
 - Points represent finite emitted rows.
 - Wireframe edges connect exact adjacent coordinate levels only within
@@ -440,7 +458,7 @@ and bridge without scientific imports in QML.
 ### Stage 6 delivery checkpoints
 
 The accepted Stage 6 contract retains eight top-level units. Units 1–3 and
-checkpoints 4A–6B are complete; the remaining work is divided into smaller
+checkpoints 4A–6C are complete; the remaining work is divided into smaller
 dependency-ordered checkpoints so
 that one review does not combine source projection, topology, serialization,
 controller lifecycle, and picking. These checkpoints do not broaden Stage 6 or
@@ -520,14 +538,13 @@ Completed units and checkpoints:
   snapshots, global scene requests, progress and cooperative cancellation,
   settings-stale and source-stale projections, independent verified adoption,
   and prior-scene retention across failed or cancelled updates. Lease cleanup
-  remains an explicit request to the future desktop lifecycle owner.
-
-Remaining checkpoints:
-
+  remains an explicit request to the desktop lifecycle owner.
 - **6C — desktop lifecycle integration:** compose the controller without a
   visible 3D page, enforce one global worker, clean leases during replacement,
   workspace changes, startup, and shutdown, and preserve safe force-stop and
   busy-shutdown behavior without Activity or Recovery records.
+
+Remaining checkpoints:
 - **7A — direct and sweep exact picks:** revalidate the scene-level source
   descriptor and revision, then match original row position with stable
   `case_id` for dataset runs and sweep children. Return the exact source row or

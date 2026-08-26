@@ -228,8 +228,18 @@ class SceneController(QObject):
         notify=state_changed,
     )
 
+    def get_force_stop_available(self) -> bool:
+        session = self._session
+        return session is not None and session.force_stop_available
+
+    forceStopAvailable = Property(
+        bool,
+        get_force_stop_available,
+        notify=state_changed,
+    )
+
     def set_scene_session(self, session: SceneSession | None) -> None:
-        """Borrow the workspace session that Unit 6C will own and close."""
+        """Borrow the workspace session owned by the desktop scene lifecycle."""
 
         if self._session is not None:
             raise RuntimeError("cannot replace the scene session during an active request")
@@ -245,6 +255,41 @@ class SceneController(QObject):
 
     def current_submission_snapshot(self) -> SceneBuildSubmission | None:
         return self._accepted_submission
+
+    def reset_workspace_state(self) -> bool:
+        """Release session-only scene state before its workspace owner changes."""
+
+        if self._session is not None:
+            raise RuntimeError("cannot reset scene state during an active request")
+        scene = self._scene
+        changed = (
+            scene is not None
+            or self._accepted_submission is not None
+            or self._stale_binding is not None
+            or self.draft.get_binding_available()
+            or self._state != "unavailable"
+            or bool(self._phase)
+            or self._progress_total > 0
+            or bool(self._issue)
+        )
+        self._scene = None
+        self._accepted_submission = None
+        self._stale_binding = None
+        self._profile_submission = None
+        self._build_attempt = None
+        self._operation = ""
+        self._phase = ""
+        self._progress_completed = 0
+        self._progress_total = 0
+        self._clear_failure()
+        self.draft.clear()
+        self._refresh_idle_state()
+        if changed:
+            self.scene_changed.emit()
+            self.state_changed.emit()
+        if scene is not None:
+            self.lease_retirement_requested.emit(scene.lease)
+        return changed
 
     @Slot(result=bool)
     def profile(self) -> bool:
@@ -320,6 +365,16 @@ class SceneController(QObject):
             return False
         self._state = "cancelling"
         self._phase = "Cancellation requested"
+        self.state_changed.emit()
+        return True
+
+    @Slot(result=bool, name="forceStop")
+    def force_stop(self) -> bool:
+        session = self._session
+        if session is None or not session.force_stop():
+            return False
+        self._state = "force_stopping"
+        self._phase = "Force-stopping scene worker"
         self.state_changed.emit()
         return True
 

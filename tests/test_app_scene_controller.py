@@ -42,6 +42,7 @@ class StubTransport(QObject):
         self.request_type: RequestType | None = None
         self.payload: dict[str, object] | None = None
         self.cancelled: list[UUID] = []
+        self.force_stopped: list[UUID] = []
         self.raise_on_start = False
 
     def start_request(
@@ -66,7 +67,10 @@ class StubTransport(QObject):
         return accepted
 
     def force_stop(self, request_id: UUID) -> bool:
-        return self.is_busy and request_id == self.request_id
+        accepted = self.is_busy and request_id == self.request_id
+        if accepted:
+            self.force_stopped.append(request_id)
+        return accepted
 
     def shutdown(self) -> None:
         assert not self.is_busy
@@ -440,6 +444,59 @@ def test_start_failure_releases_candidate_and_unlocks_draft(
         assert controller.current_scene_snapshot() is None
     finally:
         scene_session.close()
+
+
+def test_force_stop_waits_for_coordinator_safety_delay(
+    application: QCoreApplication,
+    scene_profile: SceneProfile,
+) -> None:
+    del application
+    controller, transport = _controller()
+    assert controller.draft.copy_binding(scene_profile.binding)
+    assert controller.profile()
+    transport.emit_event(
+        "phase",
+        {"name": "scene_profiling", "cancellable": True},
+    )
+
+    assert controller.cancel()
+    assert not controller.get_force_stop_available()
+    assert not controller.force_stop()
+
+    controller.coordinator._enable_delayed_force_stop()
+    assert controller.get_force_stop_available()
+    assert controller.force_stop()
+    assert transport.force_stopped
+    assert controller.get_state() == "force_stopping"
+    assert controller.get_phase() == "Force-stopping scene worker"
+
+    transport.finish(
+        terminal_type="cancelled",
+        payload={"code": "cancelled", "message": "force-stopped by test"},
+    )
+
+
+def test_workspace_reset_clears_failed_controller_state(
+    application: QCoreApplication,
+    scene_profile: SceneProfile,
+) -> None:
+    del application
+    controller, transport = _controller()
+    assert controller.draft.copy_binding(scene_profile.binding)
+    transport.raise_on_start = True
+    assert not controller.profile()
+    assert controller.get_state() == "failed"
+    assert controller.get_issue()
+    state_changes: list[str] = []
+    controller.state_changed.connect(lambda: state_changes.append(controller.get_state()))
+
+    assert controller.reset_workspace_state()
+
+    assert controller.get_state() == "unavailable"
+    assert controller.get_phase() == ""
+    assert controller.get_issue() == ""
+    assert not controller.draft.get_binding_available()
+    assert state_changes
 
 
 def test_scene_controller_import_keeps_heavy_modules_out_of_gui_process() -> None:
