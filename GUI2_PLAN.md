@@ -82,7 +82,7 @@ implementation.
 | 3 | Complete | Reached parity, migrated both launchers, retired Widgets, and qualified `0.1.0a4` |
 | 4 | Complete | Added controlled sweep and preparation worker operations for the existing public contracts |
 | 5 | Complete | Added accepted structured Sweep and Preparation workflows plus typed audit inspection |
-| 6 | In progress (Units 1–3; checkpoints 4A–7A complete) | Build exact emitted-value 3D scenes |
+| 6 | In progress (Units 1–3; checkpoints 4A–7B complete) | Build exact emitted-value 3D scenes |
 | 7 | Pending | Add native interactive 3D to QML |
 | 8 | Pending | Qualify native 3D packaging, platforms, and a later release |
 
@@ -248,7 +248,7 @@ file-integrity, worker, or lifecycle boundaries.
 Stage 6 source profiling supports verified dataset runs, model-sweep child
 datasets, and prepared main or scenario-partition tables.
 
-Stage 6 remains incomplete. Units 1–3 and checkpoints 4A–7A now establish the
+Stage 6 remains incomplete. Units 1–3 and checkpoints 4A–7B now establish the
 lightweight contracts, hostile-input boundary, authoritative source profiles,
 exact retained-point projection, context-partitioned topology evidence, and
 exact one- and two-dimensional primitives plus deterministic in-memory binary
@@ -262,9 +262,10 @@ little-endian `scene.bin` contract, strict adoption and abandoned-lease
 verification, immutable scene bindings copied from Inspect, and the private
 `profile_scene` worker operation. Desktop composition, workspace-session
 ownership, conservative lease cleanup, safe busy-shutdown sequencing, and
-exact direct-run and sweep-child source-row resolution are also implemented.
-Prepared pick resolution, controller stale integration, and integrated
-acceptance remain later checkpoints. No visible QML or native renderer is
+exact direct-run, sweep-child, prepared-main, and prepared-partition source-row
+resolution are also implemented. The controller now owns nonvisual pick
+requests and exact source-stale handling. Integrated hostile/lifecycle
+acceptance remains later checkpoints. No visible QML or native renderer is
 enabled by this foundation.
 
 Inspect offers scene bindings only for complete run directories, sweep child
@@ -453,10 +454,33 @@ and stable ID. It preserves original column order and dtype text and represents
 each cell explicitly as null, boolean, integer, finite float, positive or
 negative infinity, or text. Pandas `NaN`, which is Carnopy's table-level
 missing-value representation, remains null rather than being presented as a
-finite value. Prepared rows and their joined provenance, diagnostics, and
-scenario context remain 7B, together with controller-side source-stale
-integration. Checkpoint 7A adds no page, renderer, backend call, public
-interface, or dependency.
+finite value. At Checkpoint 7A, prepared rows and their joined provenance,
+diagnostics, scenario context, and controller-side source-stale integration
+remained assigned to 7B. Checkpoint 7A adds no page, renderer, backend call,
+public interface, or dependency.
+
+Checkpoint 7B extends the same worker operation to prepared main and scenario-
+partition scenes. It reuses the authoritative Preparation manifest, table,
+provenance, diagnostics, exclusions, and scenario validators established by
+Unit 3. The selected-table row must still match both its original position and
+unique unsigned-64-bit `prepared_row_id`. The result returns that exact row
+plus the one-to-one provenance and diagnostics rows; every row preserves its
+original columns, dtypes, and loss-aware cells, and each support row is bound
+to its verified table hash. Partition results additionally carry the exact
+validated scenario and partition names.
+
+`SceneController` now submits read-only picks only for its current verified
+scene and retains the scene content, request, source, table, row-position, and
+stable-ID identities until completion. It accepts no result that disagrees
+with those identities or, for prepared data, the bound support-table hashes.
+Starting another pick clears old details, scene replacement and workspace
+reset clear them, and any failed source revalidation clears them and marks the
+accepted scene source-stale. A mismatched point identity fails without falsely
+marking an unchanged source stale. Source-stale scenes remain viewable
+snapshots but cannot resolve further details, profile, or rebuild from the old
+binding. Pick cancellation participates in the established safe scene-shutdown
+sequence. This checkpoint adds no QML page, renderer, public interface,
+dependency, Activity record, or Recovery record.
 
 - Points represent finite emitted rows.
 - Wireframe edges connect exact adjacent coordinate levels only within
@@ -480,7 +504,7 @@ and bridge without scientific imports in QML.
 ### Stage 6 delivery checkpoints
 
 The accepted Stage 6 contract retains eight top-level units. Units 1–3 and
-checkpoints 4A–7A are complete; the remaining work is divided into smaller
+checkpoints 4A–7B are complete; the remaining work is divided into smaller
 dependency-ordered checkpoints so
 that one review does not combine source projection, topology, serialization,
 controller lifecycle, and picking. These checkpoints do not broaden Stage 6 or
@@ -569,14 +593,14 @@ Completed units and checkpoints:
   descriptor and revision, then match original row position with stable
   `case_id` for dataset runs and sweep children. Return the exact source row or
   reject changed, missing, duplicated, reordered, or substituted identities.
-
-Remaining checkpoints:
-
 - **7B — prepared picks and stale integration:** resolve `prepared_row_id`
   against prepared main or partition tables and return its exact row plus
   verified provenance, diagnostics, and scenario or partition context. Any
   failed source revalidation marks the controller source-stale and returns no
   misleading detail.
+
+Remaining checkpoints:
+
 - **8A — integrated hostile and lifecycle acceptance:** exercise unsupported
   manifest and header versions, magic and endianness errors, every buffer
   alignment, overlap, order, range, type, shape, length, count, and connectivity

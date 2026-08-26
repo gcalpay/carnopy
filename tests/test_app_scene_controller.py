@@ -25,6 +25,8 @@ from carnopy.app.scene_build import BuildScenePayload, execute_scene_build
 from carnopy.app.scene_contracts import SceneContractError, SceneProfile
 from carnopy.app.scene_controller import SceneController
 from carnopy.app.scene_leases import SceneLease, acquire_scene_session
+from carnopy.app.scene_pick_contracts import ResolveScenePickPayload
+from carnopy.app.scene_picks import resolve_scene_pick
 from carnopy.app.scene_profiles import profile_scene
 from carnopy.app.source_inspection import inspect_for_app
 from carnopy.app.workspace import initialize_workspace
@@ -415,6 +417,72 @@ def test_source_change_preserves_snapshot_and_blocks_old_binding(
         assert controller.get_source_stale()
         assert not controller.get_draft_source_stale()
         assert controller.get_can_profile()
+    finally:
+        scene_session.close()
+
+
+def test_exact_pick_result_and_failed_revalidation_update_controller_state(
+    application: QCoreApplication,
+    scene_profile: SceneProfile,
+    tmp_path: Path,
+) -> None:
+    del application
+    workspace = initialize_workspace(tmp_path / "workspace")
+    scene_session = acquire_scene_session(workspace.root)
+    controller, transport = _controller()
+    controller.set_scene_session(scene_session)
+    try:
+        _accept_profile(controller, transport, scene_profile)
+        _build_initial_scene(controller, transport)
+        assert controller.get_can_resolve_pick()
+
+        assert controller.resolve_pick(1, 1)
+        assert transport.request_type == "resolve_scene_pick"
+        assert not controller.get_draft_locked()
+        assert controller.get_operation() == "pick"
+        assert controller.get_state() == "resolving_pick"
+        assert transport.payload is not None
+        payload = ResolveScenePickPayload.model_validate(transport.payload)
+        result = resolve_scene_pick(payload)
+        transport.finish(payload=result.model_dump(mode="json"))
+
+        accepted = controller.current_pick_snapshot()
+        assert accepted == result
+        assert controller.get_has_pick()
+        assert controller.get_state() == "succeeded"
+
+        assert controller.resolve_pick(1, 1)
+        assert not controller.get_has_pick()
+        transport.finish(
+            terminal_type="error",
+            payload={
+                "category": "execution",
+                "code": "scene_pick_stale",
+                "message": "picked identity did not match",
+            },
+            exit_code=1,
+        )
+        assert not controller.get_has_pick()
+        assert not controller.get_source_stale()
+        assert controller.get_state() == "failed"
+        assert controller.get_can_resolve_pick()
+
+        assert controller.resolve_pick(1, 1)
+        transport.finish(
+            terminal_type="error",
+            payload={
+                "category": "execution",
+                "code": "scene_source_changed",
+                "message": "source revision changed",
+            },
+            exit_code=1,
+        )
+        assert not controller.get_has_pick()
+        assert controller.get_source_stale()
+        assert controller.get_state() == "source_stale"
+        assert not controller.get_can_resolve_pick()
+        assert not controller.get_can_build()
+        assert not controller.get_can_profile()
     finally:
         scene_session.close()
 

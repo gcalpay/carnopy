@@ -177,10 +177,12 @@ def test_desktop_composes_scene_lifecycle_without_activity_records(
     assert JobStore(workspace.private_directory).load() == []
 
 
+@pytest.mark.parametrize("request_type", ["build_scene", "resolve_scene_pick"])
 def test_scene_busy_shutdown_cancels_then_uses_delayed_safe_force_stop(
     application: QCoreApplication,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    request_type: str,
 ) -> None:
     del application
     desktop = DesktopController(settings=_settings(tmp_path / "settings.ini"))
@@ -192,7 +194,7 @@ def test_scene_busy_shutdown_cancels_then_uses_delayed_safe_force_stop(
         (),
         {
             "owner": "scene",
-            "request_type": "build_scene",
+            "request_type": request_type,
             "termination_protected": False,
         },
     )()

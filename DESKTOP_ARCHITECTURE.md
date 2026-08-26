@@ -66,9 +66,10 @@ The source tree has one desktop presentation implementation:
 - a QtCore-only `SceneDraft`, `SceneController`, and `SceneLeaseLifecycle` now
   own explicit nonvisual scene profiling, build/update submission, stale
   state, independently verified replacement, workspace-session locks,
-  conservative lease cleanup, and safe shutdown sequencing; a worker-only
-  exact pick resolver now supports direct runs and sweep children, while
-  controller pick integration and visible 3D remain later checkpoints;
+  conservative lease cleanup, safe shutdown sequencing, and nonvisual exact
+  pick state; the worker resolver now supports direct runs, sweep children,
+  prepared main tables, and prepared partitions, while visible 3D remains a
+  later checkpoint;
 - the QML Visualization page exposes record-driven configured outcomes and
   explicit inspected-data session rendering, including verified preview,
   focus, PDF-open, and image-plus-sidecar export actions;
@@ -475,8 +476,29 @@ hash, row position, and `case_id`, then carries every source column in original
 order with recorded dtype text and a loss-aware cell value. Missing values,
 booleans, integers, finite floats, infinities, and text remain distinct. No row
 is returned for a changed source or a missing, duplicate, reordered, or
-substituted identity. Prepared-row joins and controller source-stale behavior
-remain Checkpoint 7B; Stage 7 presentation will later own visible pick details.
+substituted identity. At this checkpoint, prepared-row joins and controller
+source-stale behavior remained assigned to Checkpoint 7B.
+
+Checkpoint 7B extends that operation through the existing authoritative
+prepared-source validator. Main and scenario-partition picks match the original
+selected-table position with a unique exact `prepared_row_id`, return the exact
+selected row, and join exactly one provenance and diagnostics row. The support
+rows carry their verified table hashes, original column order, dtype text, and
+loss-aware cells. Partition picks also carry the scenario and partition names
+already cross-checked against the manifest, scenario metadata, scenario report,
+partition table, and prepared main table.
+
+`SceneController` now owns read-only pick submission and result state for its
+current verified scene. The retained attempt binds scene content and request
+identity plus the exact source, selected table, row position, and stable ID;
+prepared results must also match the binding's provenance and diagnostics
+hashes. A new pick, verified scene replacement, workspace reset, or source-
+stale transition clears old details. Only `scene_source_changed` marks the
+accepted snapshot source-stale; a mismatched point identity fails without
+misclassifying the source. Source-stale scenes remain viewable but cannot
+profile, build, or resolve further detail. Read-only pick cancellation follows
+the same exact-session shutdown path as other scene work. Stage 7 presentation
+will later own visible selection and detail views.
 
 ### `ActivityController`
 
@@ -1298,7 +1320,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete |
 | 4 | Add controlled sweep and preparation worker operations | Complete |
 | 5 | Add structured sweep and preparation QML workflows | Complete; automated, remote, and native functional acceptance passed |
-| 6 | Build exact emitted-value 3D scene contracts | In progress; Units 1–3 and checkpoints 4A–7A implemented |
+| 6 | Build exact emitted-value 3D scene contracts | In progress; Units 1–3 and checkpoints 4A–7B implemented |
 | 7 | Integrate native interactive 3D into QML | Pending |
 | 8 | Complete native-3D platform, distribution, documentation, and later-release qualification | Pending |
 
@@ -1538,9 +1560,28 @@ The result carries the exact source, table, row-position, and stable-ID
 identity plus every source column in order using loss-aware JSON-compatible
 cells. Missing, duplicate, reordered, substituted, or source-mutated
 identities return no row. Prepared main/partition joins, provenance,
-diagnostics, scenario context, and controller source-stale integration remain
-Checkpoint 7B. This checkpoint adds no visible QML, renderer, backend call,
-public interface, dependency, Activity record, or Recovery record.
+diagnostics, scenario context, and controller source-stale integration remained
+assigned to Checkpoint 7B at the 7A boundary. Checkpoint 7A adds no visible QML,
+renderer, backend call, public interface, dependency, Activity record, or
+Recovery record.
+
+Checkpoint 7B reuses the complete prepared-source validator for exact main and
+scenario-partition picks. It matches both original row position and
+`prepared_row_id`, then returns the selected row with its exact one-to-one
+provenance and diagnostics rows and, for a partition, its validated scenario
+and partition identity. Support rows retain table hashes, original columns,
+dtype text, and loss-aware cell values.
+
+The nonvisual controller now owns pick submission and accepted detail state for
+the current verified scene. It compares every result with the retained scene,
+request, source, selected-table, row-position, stable-ID, and prepared support-
+table identities. A result is cleared on replacement, workspace reset, or
+source-stale transition. Failed source revalidation marks the accepted scene
+source-stale and disables further picks, profiling, and builds from that old
+binding; a bad point identity returns no details without falsely changing
+source state. Pick cancellation is covered by the existing scene busy-shutdown
+sequence. This checkpoint adds no visible QML, renderer, backend call, public
+interface, dependency, Activity record, or Recovery record.
 
 Stage 2 has also established definition-first sampler canonicalization, exact
 anchor-based GUI unit changes, Qt 6.11.1 as the QML baseline, packaged QML
@@ -1806,8 +1847,8 @@ When changing the desktop, start at the owner of the behavior:
 | Configured visualization or temporary plot state | `visualization_draft`, `plot_draft`, and `mapping_draft` |
 | Configured plot evidence, preview authorization, and safe pair export | `configured_plot_results_controller`, `plot_artifacts`, and `plot_preview_provider` |
 | Inspected-data session plot edit and render lifecycle | `session_plot_controller` |
-| Nonvisual exact-scene draft, requests, stale state, verified replacement, workspace sessions, and lease cleanup | `scene_draft`, `scene_controller`, and `scene_lifecycle` |
-| Exact scene-pick identities and worker-only source-row resolution | `scene_pick_contracts` and `scene_picks` |
+| Nonvisual exact-scene draft, requests, stale and pick state, verified replacement, workspace sessions, and lease cleanup | `scene_draft`, `scene_controller`, and `scene_lifecycle` |
+| Exact scene-pick identities and worker-only direct/prepared source-row resolution | `scene_pick_contracts`, `scene_picks`, and `scene_prepared_profiles` |
 | QML presentation | `qml/Carnopy/` plus narrow runtime signal wiring |
 | QML startup, resources, fonts, and warning policy | `qml_runtime`, `qml_resources`, and the resource manifest |
 | Scientific behavior | Existing non-app domain/pipeline module, executed by the worker |

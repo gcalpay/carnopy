@@ -11,6 +11,7 @@ from uuid import uuid4
 import pandas as pd
 import pytest
 
+from carnopy.api import generate_dataset, prepare_dataset
 from carnopy.app.protocol import PROTOCOL_VERSION
 from carnopy.app.scene_contracts import SceneContractError, SceneSourceBinding
 from carnopy.app.scene_pick_contracts import ResolveScenePickPayload, ScenePickResult
@@ -210,6 +211,93 @@ def test_sweep_child_pick_uses_selected_child_table_identity(tmp_path: Path) -> 
     assert result.row()["case_id"].value == 2
 
 
+def test_prepared_main_and_scenario_picks_return_exact_joined_evidence(
+    property_config_path: Path,
+    tmp_path: Path,
+) -> None:
+    run = generate_dataset(property_config_path, output_root=tmp_path / "runs")
+    preparation_config = tmp_path / "preparation.yaml"
+    preparation_config.write_text(
+        """schema_version: 1
+document_type: preparation
+features:
+  numeric: [temperature, pressure, mass_density]
+  derived: [specific_volume]
+categorical_features: []
+targets: [specific_enthalpy]
+scenarios:
+  - name: baseline
+    kind: unsplit
+    transformations:
+      - field: pressure
+        methods: [log10]
+outputs:
+  formats: [parquet]
+""",
+        encoding="utf-8",
+    )
+    prepared = prepare_dataset(
+        run.output_directory,
+        config=preparation_config,
+        output_root=tmp_path / "prepared",
+    )
+    bindings = {
+        binding.selected_table_id: binding
+        for binding in inspect_for_app(prepared.output_directory).scene_bindings
+    }
+
+    main_result = resolve_scene_pick(_payload(bindings["table"], 1, 1))
+    main_context = main_result.prepared_context
+
+    assert main_result.source_kind == "preparation"
+    assert main_result.stable_id_field == "prepared_row_id"
+    assert main_result.row()["prepared_row_id"].value == 1
+    assert main_context is not None
+    assert main_context.scenario is None
+    assert main_context.partition is None
+    assert main_context.provenance.row()["source_row_index"].value == 1
+    assert main_context.diagnostics.row()["source_valid"].value is True
+    assert (
+        main_context.provenance.table_sha256
+        == next(
+            table for table in bindings["table"].tables if table.table_id == "provenance"
+        ).artifact.sha256
+    )
+
+    scenario_binding = bindings["scenario.baseline.all"]
+    stdout = io.StringIO()
+    request = _worker_request(_payload(scenario_binding, 0, 0).model_dump(mode="json"))
+    assert main(io.StringIO(request + "\n"), stdout, io.StringIO()) == 0
+    scenario_result = ScenePickResult.model_validate(_events(stdout)[-1]["payload"])
+    scenario_context = scenario_result.prepared_context
+
+    assert scenario_result.table_id == "scenario.baseline.all"
+    assert scenario_result.row()["pressure__log10"].kind == "float"
+    assert scenario_context is not None
+    assert scenario_context.scenario == "baseline"
+    assert scenario_context.partition == "all"
+    assert scenario_context.provenance.row()["prepared_row_id"].value == 0
+    assert scenario_context.diagnostics.row()["prepared_row_id"].value == 0
+
+    provenance_path = prepared.provenance_path
+    provenance = pd.read_parquet(provenance_path)
+    provenance.loc[1, "prepared_row_id"] = 0
+    provenance.to_parquet(provenance_path, index=False)
+    manifest = json.loads(prepared.manifest_path.read_text(encoding="utf-8"))
+    manifest["artifact_hashes"]["data/provenance.parquet"] = _sha256(provenance_path)
+    _write_json(prepared.manifest_path, manifest)
+    corrupted_binding = next(
+        binding
+        for binding in inspect_for_app(prepared.output_directory).scene_bindings
+        if binding.selected_table_id == "table"
+    )
+
+    with pytest.raises(SceneContractError, match="repeats a prepared_row_id") as caught:
+        resolve_scene_pick(_payload(corrupted_binding, 0, 0))
+
+    assert caught.value.code == "unsupported_scene_source"
+
+
 @pytest.mark.parametrize(
     ("row_position", "stable_id", "message"),
     [
@@ -286,16 +374,16 @@ def test_pick_revalidates_source_after_reading_the_selected_row(tmp_path: Path) 
     assert caught.value.code == "scene_source_changed"
 
 
-def test_prepared_pick_is_explicitly_deferred_to_7b(tmp_path: Path) -> None:
+def test_pick_rejects_a_forged_source_kind(tmp_path: Path) -> None:
     binding = _binding(_write_dataset_run(tmp_path / "run"))
     prepared = SceneSourceBinding.model_validate(
         {**binding.model_dump(mode="json"), "source_kind": "preparation"}
     )
 
-    with pytest.raises(SceneContractError, match="not available at this checkpoint") as caught:
+    with pytest.raises(SceneContractError, match="identity no longer matches") as caught:
         resolve_scene_pick(_payload(prepared, 0, 0))
 
-    assert caught.value.code == "unsupported_scene_source"
+    assert caught.value.code == "scene_source_changed"
 
 
 def test_resolve_scene_pick_worker_returns_typed_row_and_rejects_bad_payload(

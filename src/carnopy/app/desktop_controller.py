@@ -1886,10 +1886,11 @@ class DesktopController(QObject):
             elif active_session.owner == "scene" and active_session.request_type in {
                 "profile_scene",
                 "build_scene",
+                "resolve_scene_pick",
             }:
                 self.busyShutdownConfirmationRequested.emit(
                     "cancel_scene",
-                    "Scene preparation is active. Cancel it cooperatively and, only if "
+                    "Scene work is active. Cancel it cooperatively and, only if "
                     "needed after the safety delay, force-stop it before closing Carnopy?",
                 )
             else:
@@ -1976,6 +1977,7 @@ class DesktopController(QObject):
         if session.owner == "scene" and session.request_type in {
             "profile_scene",
             "build_scene",
+            "resolve_scene_pick",
         }:
             self._pending_busy_shutdown = "scene_waiting"
             self._continue_pending_busy_shutdown()

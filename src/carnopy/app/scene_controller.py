@@ -25,8 +25,9 @@ from carnopy.app.scene_leases import (
     SceneSession,
     create_scene_lease,
 )
+from carnopy.app.scene_pick_contracts import ResolveScenePickPayload, ScenePickResult
 
-SceneOperation = Literal["", "profile", "build", "update"]
+SceneOperation = Literal["", "profile", "build", "update", "pick"]
 
 
 @dataclass(frozen=True)
@@ -35,11 +36,19 @@ class _BuildAttempt:
     submission: SceneBuildSubmission
 
 
+@dataclass(frozen=True)
+class _PickAttempt:
+    payload: ResolveScenePickPayload
+    scene_content_id: str
+    scene_request_id: str
+
+
 class SceneController(QObject):
     """Own one explicit scene request, accepted scene, and replacement boundary."""
 
     state_changed = Signal()
     scene_changed = Signal()
+    pick_changed = Signal()
     request_finished = Signal(object)
     lease_retirement_requested = Signal(object)
 
@@ -64,7 +73,9 @@ class SceneController(QObject):
         self._issue = ""
         self._profile_submission: SceneProfileSubmission | None = None
         self._build_attempt: _BuildAttempt | None = None
+        self._pick_attempt: _PickAttempt | None = None
         self._scene: VerifiedSceneBundle | None = None
+        self._pick: ScenePickResult | None = None
         self._accepted_submission: SceneBuildSubmission | None = None
         self._stale_binding: SceneSourceBinding | None = None
         self.draft.changed.connect(self._draft_changed)
@@ -148,6 +159,11 @@ class SceneController(QObject):
 
     sceneContentId = Property(str, get_scene_content_id, notify=scene_changed)
 
+    def get_has_pick(self) -> bool:
+        return self._pick is not None
+
+    hasPick = Property(bool, get_has_pick, notify=pick_changed)
+
     def get_submitted_request_id(self) -> str:
         attempt = self._build_attempt
         return "" if attempt is None else attempt.submission.request_id
@@ -208,6 +224,17 @@ class SceneController(QObject):
 
     canBuild = Property(bool, get_can_build, notify=state_changed)
 
+    def get_can_resolve_pick(self) -> bool:
+        return (
+            self._session is None
+            and not self.coordinator.is_busy
+            and self._scene is not None
+            and self._accepted_submission is not None
+            and not self.get_source_stale()
+        )
+
+    canResolvePick = Property(bool, get_can_resolve_pick, notify=state_changed)
+
     def get_cancellation_available(self) -> bool:
         session = self._session
         return session is not None and session.cooperative_cancel_available
@@ -256,6 +283,10 @@ class SceneController(QObject):
     def current_submission_snapshot(self) -> SceneBuildSubmission | None:
         return self._accepted_submission
 
+    def current_pick_snapshot(self) -> ScenePickResult | None:
+        pick = self._pick
+        return None if pick is None else pick.model_copy(deep=True)
+
     def reset_workspace_state(self) -> bool:
         """Release session-only scene state before its workspace owner changes."""
 
@@ -277,16 +308,20 @@ class SceneController(QObject):
         self._stale_binding = None
         self._profile_submission = None
         self._build_attempt = None
+        self._pick_attempt = None
         self._operation = ""
         self._phase = ""
         self._progress_completed = 0
         self._progress_total = 0
         self._clear_failure()
         self.draft.clear()
+        pick_changed = self._clear_pick()
         self._refresh_idle_state()
         if changed:
             self.scene_changed.emit()
             self.state_changed.emit()
+        if pick_changed:
+            self.pick_changed.emit()
         if scene is not None:
             self.lease_retirement_requested.emit(scene.lease)
         return changed
@@ -358,6 +393,58 @@ class SceneController(QObject):
         self._adopt_request_session(session)
         return True
 
+    def resolve_pick(self, row_position: int, stable_id: int) -> bool:
+        """Resolve one identity emitted by the currently verified scene."""
+
+        scene = self._scene
+        submission = self._accepted_submission
+        if not self.get_can_resolve_pick() or scene is None or submission is None:
+            return False
+        try:
+            payload = ResolveScenePickPayload(
+                binding=submission.request.binding,
+                row_position=row_position,
+                stable_id=stable_id,
+            )
+        except ValueError as exc:
+            self._set_local_failure("request", "scene_pick_stale", str(exc))
+            return False
+        if self._clear_pick():
+            self.pick_changed.emit()
+        self._clear_failure()
+        self._operation = "pick"
+        self._state = "resolving_pick"
+        self._phase = "Resolving exact scene row"
+        self._progress_completed = 0
+        self._progress_total = 0
+        attempt = _PickAttempt(
+            payload=payload,
+            scene_content_id=scene.manifest.content_id,
+            scene_request_id=submission.request_id,
+        )
+        self._pick_attempt = attempt
+        self.state_changed.emit()
+        try:
+            session = self.coordinator.start_request(
+                "scene",
+                "resolve_scene_pick",
+                payload.model_dump(mode="json"),
+            )
+        except Exception as exc:  # pragma: no cover - defensive process boundary
+            self._pick_attempt = None
+            self._finish_start_failure(exc, unlock_draft=False)
+            return False
+        self._adopt_request_session(session)
+        return True
+
+    def clear_pick(self) -> bool:
+        """Clear resolved details without changing the accepted scene."""
+
+        if not self._clear_pick():
+            return False
+        self.pick_changed.emit()
+        return True
+
     @Slot(result=bool)
     def cancel(self) -> bool:
         session = self._session
@@ -385,6 +472,8 @@ class SceneController(QObject):
         if accepted is None or accepted.request.binding == self._stale_binding:
             return False
         self._stale_binding = accepted.request.binding.model_copy(deep=True)
+        if self._clear_pick():
+            self.pick_changed.emit()
         if self._session is None:
             self._state = "source_stale"
         self.state_changed.emit()
@@ -443,11 +532,14 @@ class SceneController(QObject):
         operation = self._operation
         profile_submission = self._profile_submission
         build_attempt = self._build_attempt
+        pick_attempt = self._pick_attempt
         self._session = None
         self._operation = ""
         self._profile_submission = None
         self._build_attempt = None
-        self.draft._set_operation_locked(False)
+        self._pick_attempt = None
+        if operation != "pick":
+            self.draft._set_operation_locked(False)
         result = outcome.result_payload
         if operation == "profile" and profile_submission is not None and result is not None:
             self._accept_profile_result(profile_submission, result)
@@ -457,6 +549,11 @@ class SceneController(QObject):
                 self._accept_outcome_failure(outcome, build_attempt.submission.request.binding)
             else:
                 self._accept_build_result(build_attempt, result)
+        elif operation == "pick" and pick_attempt is not None:
+            if result is None:
+                self._accept_outcome_failure(outcome, pick_attempt.payload.binding)
+            else:
+                self._accept_pick_result(pick_attempt, result)
         else:
             self._accept_outcome_failure(
                 outcome,
@@ -505,6 +602,7 @@ class SceneController(QObject):
             self._set_local_failure("integrity", exc.code, exc.message)
             return
         previous = self._scene
+        had_pick = self._clear_pick()
         self._scene = scene
         self._accepted_submission = attempt.submission
         if self._stale_binding == attempt.submission.request.binding:
@@ -513,8 +611,70 @@ class SceneController(QObject):
         self._clear_failure()
         self._refresh_idle_state()
         self.scene_changed.emit()
+        if had_pick:
+            self.pick_changed.emit()
         if previous is not None and previous.lease != scene.lease:
             self.lease_retirement_requested.emit(previous.lease)
+
+    def _accept_pick_result(
+        self,
+        attempt: _PickAttempt,
+        result: Mapping[str, object],
+    ) -> None:
+        scene = self._scene
+        submission = self._accepted_submission
+        try:
+            pick = ScenePickResult.model_validate(result)
+            if (
+                scene is None
+                or submission is None
+                or scene.manifest.content_id != attempt.scene_content_id
+                or submission.request_id != attempt.scene_request_id
+            ):
+                raise SceneContractError(
+                    "scene_pick_stale",
+                    "scene changed while its picked row was being resolved",
+                )
+            binding = attempt.payload.binding
+            table = binding.selected_table()
+            expected_stable_field = (
+                "prepared_row_id" if binding.source_kind == "preparation" else "case_id"
+            )
+            if (
+                pick.source_path != binding.source_path
+                or pick.source_kind != binding.source_kind
+                or pick.inspection_revision != binding.inspection_revision
+                or pick.table_id != binding.selected_table_id
+                or pick.table_sha256 != table.artifact.sha256
+                or pick.row_position != attempt.payload.row_position
+                or pick.stable_id_field != expected_stable_field
+                or pick.stable_id != attempt.payload.stable_id
+            ):
+                raise SceneContractError(
+                    "scene_pick_stale",
+                    "scene pick result does not match its submitted identity",
+                )
+            if binding.source_kind == "preparation":
+                context = pick.prepared_context
+                tables = {item.table_id: item for item in binding.tables}
+                if (
+                    context is None
+                    or context.provenance.table_sha256 != tables["provenance"].artifact.sha256
+                    or context.diagnostics.table_sha256 != tables["diagnostics"].artifact.sha256
+                ):
+                    raise SceneContractError(
+                        "scene_pick_stale",
+                        "prepared scene pick evidence does not match its bound support tables",
+                    )
+        except (SceneContractError, ValueError) as exc:
+            code = exc.code if isinstance(exc, SceneContractError) else "scene_pick_stale"
+            self._set_local_failure("integrity", code, str(exc))
+            return
+        self._pick = pick.model_copy(deep=True)
+        self._phase = "Completed"
+        self._clear_failure()
+        self._refresh_idle_state()
+        self.pick_changed.emit()
 
     def _accept_outcome_failure(
         self,
@@ -531,14 +691,17 @@ class SceneController(QObject):
         self._state = "cancelled" if cancelled else "failed"
         if code == "scene_source_changed" and self.get_source_stale():
             self._state = "source_stale"
+            if self._clear_pick():
+                self.pick_changed.emit()
         self._phase = "Cancelled" if cancelled else "Failed"
         self._issue_category = _text(payload.get("category"), "execution")
         self._issue_code = code
         self._issue = _text(payload.get("message"), "scene request failed")
 
-    def _finish_start_failure(self, exc: Exception) -> None:
+    def _finish_start_failure(self, exc: Exception, *, unlock_draft: bool = True) -> None:
         self._operation = ""
-        self.draft._set_operation_locked(False)
+        if unlock_draft:
+            self.draft._set_operation_locked(False)
         self._set_local_failure("process", "worker_start_failed", str(exc))
 
     def _set_local_failure(self, category: str, code: str, message: str) -> None:
@@ -553,6 +716,12 @@ class SceneController(QObject):
         self._issue_category = ""
         self._issue_code = ""
         self._issue = ""
+
+    def _clear_pick(self) -> bool:
+        if self._pick is None:
+            return False
+        self._pick = None
+        return True
 
     def _draft_changed(self) -> None:
         if self._session is None:

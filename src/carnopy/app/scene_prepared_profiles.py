@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
@@ -41,11 +42,69 @@ from carnopy.app.scene_profiles import (
 )
 
 
+@dataclass(frozen=True)
+class PreparedSceneEvidence:
+    """Validated prepared rows and their exact one-to-one support-table joins."""
+
+    manifest: Mapping[str, Any]
+    selected: pd.DataFrame
+    provenance: pd.DataFrame
+    diagnostics: pd.DataFrame
+    stable_ids: tuple[int, ...]
+    joined: pd.DataFrame
+    scenario_metadata: Mapping[str, Any] | None
+    scenario_context: tuple[str, str] | None
+
+
 def load_prepared_source(
     binding: SceneSourceBinding,
     *,
     checkpoint: Checkpoint | None,
 ) -> LoadedSceneProfileSource:
+    evidence = load_prepared_evidence(binding, checkpoint=checkpoint)
+    source_valid = _strict_boolean_series(
+        evidence.joined["source_valid"],
+        "prepared source_valid",
+    )
+    fields, priority = _prepared_fields(
+        evidence.manifest,
+        evidence.joined,
+        list(evidence.selected.columns),
+        scenario_metadata=evidence.scenario_metadata,
+        scenario_context=evidence.scenario_context,
+    )
+    row_contexts = _prepared_row_contexts(
+        evidence.joined,
+        scenario_context=evidence.scenario_context,
+    )
+    topology = SceneTopologyEvidence(
+        status="unavailable",
+        reason_code="source_sampling_levels_not_recorded",
+        reason=(
+            "prepared bundles preserve exact source coordinates but do not record the original "
+            "ordered sampler levels required to infer adjacency"
+        ),
+    )
+    return LoadedSceneProfileSource(
+        binding=binding,
+        source_row_count=len(evidence.selected),
+        source_valid=source_valid.reset_index(drop=True),
+        stable_id_field="prepared_row_id",
+        stable_ids=evidence.stable_ids,
+        row_contexts=row_contexts,
+        fields=fields,
+        topology=topology,
+        default_priority=priority,
+    )
+
+
+def load_prepared_evidence(
+    binding: SceneSourceBinding,
+    *,
+    checkpoint: Checkpoint | None,
+) -> PreparedSceneEvidence:
+    """Validate one prepared source and retain exact rows needed for pick joins."""
+
     controls = {control.name: control.artifact for control in binding.controls}
     manifest_identity = controls.get("manifest.json")
     diagnostics_identity = controls.get("diagnostics.json")
@@ -110,33 +169,15 @@ def load_prepared_source(
         scenario_context = (scenario_name, partition)
     ids = _prepared_ids(selected_frame, "selected prepared table")
     joined = _join_prepared_evidence(selected_frame, provenance, source_diagnostics, ids)
-    source_valid = _strict_boolean_series(joined["source_valid"], "prepared source_valid")
-    fields, priority = _prepared_fields(
-        manifest,
-        joined,
-        list(selected_frame.columns),
+    return PreparedSceneEvidence(
+        manifest=manifest,
+        selected=selected_frame,
+        provenance=provenance,
+        diagnostics=source_diagnostics,
+        stable_ids=tuple(ids),
+        joined=joined,
         scenario_metadata=scenario_metadata,
         scenario_context=scenario_context,
-    )
-    row_contexts = _prepared_row_contexts(joined, scenario_context=scenario_context)
-    topology = SceneTopologyEvidence(
-        status="unavailable",
-        reason_code="source_sampling_levels_not_recorded",
-        reason=(
-            "prepared bundles preserve exact source coordinates but do not record the original "
-            "ordered sampler levels required to infer adjacency"
-        ),
-    )
-    return LoadedSceneProfileSource(
-        binding=binding,
-        source_row_count=len(selected_frame),
-        source_valid=source_valid.reset_index(drop=True),
-        stable_id_field="prepared_row_id",
-        stable_ids=tuple(ids),
-        row_contexts=row_contexts,
-        fields=fields,
-        topology=topology,
-        default_priority=priority,
     )
 
 
