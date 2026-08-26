@@ -82,7 +82,7 @@ implementation.
 | 3 | Complete | Reached parity, migrated both launchers, retired Widgets, and qualified `0.1.0a4` |
 | 4 | Complete | Added controlled sweep and preparation worker operations for the existing public contracts |
 | 5 | Complete | Added accepted structured Sweep and Preparation workflows plus typed audit inspection |
-| 6 | In progress (Units 1–3; checkpoints 4A–5B complete) | Build exact emitted-value 3D scenes |
+| 6 | In progress (Units 1–3; checkpoints 4A–5C complete) | Build exact emitted-value 3D scenes |
 | 7 | Pending | Add native interactive 3D to QML |
 | 8 | Pending | Qualify native 3D packaging, platforms, and a later release |
 
@@ -248,18 +248,19 @@ file-integrity, worker, or lifecycle boundaries.
 Stage 6 source profiling supports verified dataset runs, model-sweep child
 datasets, and prepared main or scenario-partition tables.
 
-Stage 6 remains incomplete. Units 1–3 and checkpoints 4A–5B now establish the
+Stage 6 remains incomplete. Units 1–3 and checkpoints 4A–5C now establish the
 lightweight contracts, hostile-input boundary, authoritative source profiles,
 exact retained-point projection, context-partitioned topology evidence, and
 exact one- and two-dimensional primitives plus deterministic in-memory binary
-encoding and canonical manifest-last publication: immutable
+encoding, canonical manifest-last publication, the private `build_scene`
+worker, and independently verified parent adoption: immutable
 source/profile/request models, canonical request identities and limits,
 parent-created workspace-session leases, the canonical `scene.json` plus
 little-endian `scene.bin` contract, strict adoption and abandoned-lease
 verification, immutable scene bindings copied from Inspect, and the private
-`profile_scene` worker operation. The `build_scene` worker and parent adoption,
-scene controllers, pick resolution, and integrated acceptance remain later
-checkpoints. No visible QML or native renderer is enabled by this foundation.
+`profile_scene` worker operation. Scene controllers, pick resolution, and
+integrated acceptance remain later checkpoints. No visible QML or native
+renderer is enabled by this foundation.
 
 Inspect offers scene bindings only for complete run directories, sweep child
 datasets, prepared main tables, and prepared scenario partitions. Standalone
@@ -361,10 +362,28 @@ an existing destination. It prepares and bounds the complete bundle before the
 first write, publishes the durable binary first, and publishes the canonical
 manifest last. A manifest-write failure therefore leaves a recognizable but
 incomplete lease rather than an apparently complete scene. Repeated builds of
-the same assembly are byte-identical. Checkpoint 5B does not add the
-`build_scene` worker, final source revalidation, progress or cancellation,
-parent verification and adoption, or previous-scene replacement; those remain
-5C.
+the same assembly are byte-identical. At the 5B boundary, the `build_scene`
+worker, final source revalidation, progress, cancellation, and parent adoption
+were still absent.
+
+Checkpoint 5C adds the private `build_scene` worker around those established
+scientific and storage contracts. The worker reconstructs and verifies the
+parent-created empty lease, rebuilds geometry through the authoritative
+projected source path, and reports bounded geometry, encoding, source
+revalidation, and publication progress. Cooperative cancellation checkpoints
+cover source processing, geometry, and in-memory encoding. Publication is a
+short noncancellable, termination-protected section: exclusive `scene.bin`
+creation precedes manifest-last `scene.json`, after which the worker runs the
+complete lightweight verifier and revalidates the exact source binding again.
+
+The worker returns path-free, lease-bound identity and size evidence rather
+than an adopted scene. Parent adoption independently reruns the complete
+bundle verifier and compares the lease, request, accepted profile facts,
+topology-level hashes, content identity, binary hash, and exact sizes. Adoption
+is mutation-free and returns only after every check succeeds, so a cancelled,
+failed, source-stale, result-tampered, or binary-tampered candidate cannot
+replace a previously held verified scene. Controller-owned replacement and
+lease cleanup remain Unit 6 responsibilities.
 
 - Points represent finite emitted rows.
 - Wireframe edges connect exact adjacent coordinate levels only within
@@ -388,7 +407,7 @@ and bridge without scientific imports in QML.
 ### Stage 6 delivery checkpoints
 
 The accepted Stage 6 contract retains eight top-level units. Units 1–3 and
-checkpoints 4A–5B are complete; the remaining work is divided into smaller
+checkpoints 4A–5C are complete; the remaining work is divided into smaller
 dependency-ordered checkpoints so
 that one review does not combine source projection, topology, serialization,
 controller lifecycle, and picking. These checkpoints do not broaden Stage 6 or
@@ -451,14 +470,16 @@ Completed units and checkpoints:
   canonical typed manifest; enforce exact completed-bundle size; and publish
   exclusive durable binary and manifest files in manifest-last order without
   replacement or adoption.
+- **5C — `build_scene` worker and adoption:** execute authoritative projected
+  source reads, exact geometry, deterministic encoding, final source
+  revalidation, and manifest-last publication with progress and cooperative
+  cancellation before a termination-protected publication boundary. Return a
+  path-free lease-bound result and adopt it only after an independent complete
+  verifier pass and comparison with the accepted request, profile, topology
+  levels, hashes, and sizes.
 
 Remaining checkpoints:
 
-- **5C — `build_scene` worker and adoption:** add projected or chunked reads,
-  progress and cooperative-cancellation checkpoints, final source
-  revalidation, exclusive creation, manifest-last completion, and parent
-  adoption only after complete verification. Failure must retain the previous
-  verified scene.
 - **6A — `SceneDraft` and copied binding:** add the QtCore-only editable draft,
   explicit immutable binding copied from Inspect, topology-first defaults, and
   explicit Profile and Build/Update commands. Editing, navigation, and

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -68,11 +69,21 @@ class WrittenSceneBundle:
     bundle_size: int
 
 
-def prepare_scene_bundle(assembly: SceneGeometryAssembly) -> PreparedSceneBundle:
+def prepare_scene_bundle(
+    assembly: SceneGeometryAssembly,
+    *,
+    checkpoint: Callable[[], None] | None = None,
+) -> PreparedSceneBundle:
     """Build the canonical manifest and exact bounded bytes without writing files."""
 
-    encoding = encode_scene_binary(assembly)
-    scientific_payload = _scientific_payload(assembly, encoding)
+    _checkpoint(checkpoint)
+    encoding = encode_scene_binary(assembly, checkpoint=checkpoint)
+    _checkpoint(checkpoint)
+    scientific_payload = _scientific_payload(
+        assembly,
+        encoding,
+        checkpoint=checkpoint,
+    )
     identity_payload: dict[str, object] = {
         "scene_schema_version": SCENE_SCHEMA_VERSION,
         "request_id": assembly.request.request_id,
@@ -98,6 +109,7 @@ def prepare_scene_bundle(assembly: SceneGeometryAssembly) -> PreparedSceneBundle
             bundle_bytes=bundle_bytes,
         )
     )
+    _checkpoint(checkpoint)
     return PreparedSceneBundle(
         encoding=encoding,
         manifest=manifest,
@@ -115,6 +127,15 @@ def write_scene_bundle(
     verify_scene_lease(lease)
     _require_empty_scene_destination(lease)
     prepared = prepare_scene_bundle(assembly)
+    return write_prepared_scene_bundle(lease, prepared)
+
+
+def write_prepared_scene_bundle(
+    lease: SceneLease,
+    prepared: PreparedSceneBundle,
+) -> WrittenSceneBundle:
+    """Publish already prepared canonical bytes to one empty verified lease."""
+
     verify_scene_lease(lease)
     _require_empty_scene_destination(lease)
 
@@ -145,12 +166,14 @@ def write_scene_bundle(
 def _scientific_payload(
     assembly: SceneGeometryAssembly,
     encoding: SceneBinaryEncoding,
+    *,
+    checkpoint: Callable[[], None] | None,
 ) -> SceneScientificPayload:
     topology_buffers = {buffer.name: buffer for buffer in encoding.buffers}
-    topology = SceneManifestTopology(
-        status=assembly.profile.topology.status,
-        context_fields=assembly.profile.topology.context_fields,
-        axes=tuple(
+    topology_axes: list[SceneManifestTopologyAxis] = []
+    for index, axis in enumerate(assembly.profile.topology.axes):
+        _checkpoint(checkpoint)
+        topology_axes.append(
             SceneManifestTopologyAxis(
                 index=index,
                 field_id=axis.field_id,
@@ -159,20 +182,36 @@ def _scientific_payload(
                 level_count=len(axis.levels),
                 levels_sha256=topology_buffers[f"topology_levels.{index}"].sha256,
             )
-            for index, axis in enumerate(assembly.profile.topology.axes)
-        ),
+        )
+    topology = SceneManifestTopology(
+        status=assembly.profile.topology.status,
+        context_fields=assembly.profile.topology.context_fields,
+        axes=tuple(topology_axes),
         reason_code=assembly.profile.topology.reason_code,
         reason=assembly.profile.topology.reason,
     )
-    blocks = tuple(
-        _scientific_block(topology_block, edge_block, cell_block)
-        for topology_block, edge_block, cell_block in zip(
+    blocks: list[SceneManifestScientificBlock] = []
+    for index, (topology_block, edge_block, cell_block) in enumerate(
+        zip(
             assembly.topology.blocks,
             assembly.cells.edge_projection.blocks,
             assembly.cells.blocks,
             strict=True,
         )
-    )
+    ):
+        if index % 256 == 0:
+            _checkpoint(checkpoint)
+        blocks.append(_scientific_block(topology_block, edge_block, cell_block))
+    orphan_exclusions: list[SceneManifestOrphanExclusions] = []
+    for index, group in enumerate(assembly.topology.orphan_exclusions):
+        if index % 256 == 0:
+            _checkpoint(checkpoint)
+        orphan_exclusions.append(
+            SceneManifestOrphanExclusions(
+                context=group.context,
+                excluded_row_count=len(group.exclusions),
+            )
+        )
     return SceneScientificPayload(
         scene_profile_schema_version=assembly.profile.scene_profile_schema_version,
         request=assembly.request,
@@ -195,14 +234,8 @@ def _scientific_payload(
         point_exclusions=assembly.topology.projection.exclusions,
         primitive_omissions=assembly.cells.omissions,
         capabilities=assembly.capabilities,
-        blocks=blocks,
-        orphan_exclusions=tuple(
-            SceneManifestOrphanExclusions(
-                context=group.context,
-                excluded_row_count=len(group.exclusions),
-            )
-            for group in assembly.topology.orphan_exclusions
-        ),
+        blocks=tuple(blocks),
+        orphan_exclusions=tuple(orphan_exclusions),
     )
 
 
@@ -251,3 +284,8 @@ def _require_empty_scene_destination(lease: SceneLease) -> None:
             "scene_write_failed",
             f"scene destination already exists and will not be replaced: {path}",
         )
+
+
+def _checkpoint(checkpoint: Callable[[], None] | None) -> None:
+    if checkpoint is not None:
+        checkpoint()

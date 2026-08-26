@@ -306,6 +306,15 @@ def _execute(
             profile_payload.binding,
             checkpoint=lambda: _raise_if_cancelled(cancelled),
         ).model_dump(mode="json")
+    if request.type == "build_scene":
+        from carnopy.app.scene_build import BuildScenePayload, execute_scene_build
+
+        build_payload = BuildScenePayload.model_validate(request.payload)
+        return execute_scene_build(
+            build_payload,
+            emit=writer.emit,
+            checkpoint=lambda: _raise_if_cancelled(cancelled),
+        )
     if request.type == "preview_table":
         preview_payload = PreviewPayload.model_validate(request.payload)
         writer.emit("phase", {"name": "table_preview", "cancellable": True})

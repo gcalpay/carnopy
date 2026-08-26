@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import struct
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Final
 
@@ -51,10 +51,18 @@ class SceneBinaryEncoding:
         _validate_encoded_blocks(self.counts, self.blocks)
 
 
-def encode_scene_binary(assembly: SceneGeometryAssembly) -> SceneBinaryEncoding:
+def encode_scene_binary(
+    assembly: SceneGeometryAssembly,
+    *,
+    checkpoint: Callable[[], None] | None = None,
+) -> SceneBinaryEncoding:
     """Encode exact geometry into the accepted renderer-neutral binary contract."""
 
-    point_order, remapped_edges, remapped_quads, blocks = _canonical_connectivity(assembly)
+    _checkpoint(checkpoint)
+    point_order, remapped_edges, remapped_quads, blocks = _canonical_connectivity(
+        assembly,
+        checkpoint=checkpoint,
+    )
     ordered_points = tuple(assembly.points[index] for index in point_order)
 
     data = bytearray(
@@ -72,11 +80,17 @@ def encode_scene_binary(assembly: SceneGeometryAssembly) -> SceneBinaryEncoding:
         name="points",
         dtype="float64",
         shape=(len(ordered_points), 3),
-        payload=_pack_rows("<ddd", (point.coordinates for point in ordered_points)),
+        payload=_pack_rows(
+            "<ddd",
+            (point.coordinates for point in ordered_points),
+            checkpoint=checkpoint,
+        ),
     )
     if assembly.request.scalar_field is not None:
         scalar_rows: list[tuple[float]] = []
-        for point in ordered_points:
+        for index, point in enumerate(ordered_points):
+            if index % 4_096 == 0:
+                _checkpoint(checkpoint)
             if point.scalar is None:
                 raise ValueError("selected scene scalar is absent from an encoded point")
             scalar_rows.append((point.scalar,))
@@ -86,7 +100,7 @@ def encode_scene_binary(assembly: SceneGeometryAssembly) -> SceneBinaryEncoding:
             name="scalars",
             dtype="float64",
             shape=(len(ordered_points),),
-            payload=_pack_rows("<d", scalar_rows),
+            payload=_pack_rows("<d", scalar_rows, checkpoint=checkpoint),
         )
     if any(point.row_position > _UINT64_MAX for point in ordered_points):
         raise ValueError("scene row position exceeds unsigned 64-bit storage")
@@ -96,7 +110,11 @@ def encode_scene_binary(assembly: SceneGeometryAssembly) -> SceneBinaryEncoding:
         name="row_positions",
         dtype="uint64",
         shape=(len(ordered_points),),
-        payload=_pack_rows("<Q", ((point.row_position,) for point in ordered_points)),
+        payload=_pack_rows(
+            "<Q",
+            ((point.row_position,) for point in ordered_points),
+            checkpoint=checkpoint,
+        ),
     )
     _append_buffer(
         data,
@@ -104,7 +122,11 @@ def encode_scene_binary(assembly: SceneGeometryAssembly) -> SceneBinaryEncoding:
         name="stable_ids",
         dtype="uint64",
         shape=(len(ordered_points),),
-        payload=_pack_rows("<Q", ((point.stable_id,) for point in ordered_points)),
+        payload=_pack_rows(
+            "<Q",
+            ((point.stable_id,) for point in ordered_points),
+            checkpoint=checkpoint,
+        ),
     )
     if remapped_edges:
         _append_buffer(
@@ -113,7 +135,7 @@ def encode_scene_binary(assembly: SceneGeometryAssembly) -> SceneBinaryEncoding:
             name="edges",
             dtype="uint32",
             shape=(len(remapped_edges), 2),
-            payload=_pack_rows("<II", remapped_edges),
+            payload=_pack_rows("<II", remapped_edges, checkpoint=checkpoint),
         )
     if remapped_quads:
         _append_buffer(
@@ -122,18 +144,24 @@ def encode_scene_binary(assembly: SceneGeometryAssembly) -> SceneBinaryEncoding:
             name="quads",
             dtype="uint32",
             shape=(len(remapped_quads), 4),
-            payload=_pack_rows("<IIII", remapped_quads),
+            payload=_pack_rows("<IIII", remapped_quads, checkpoint=checkpoint),
         )
     for axis_index, axis in enumerate(assembly.profile.topology.axes):
+        _checkpoint(checkpoint)
         _append_buffer(
             data,
             buffers,
             name=f"topology_levels.{axis_index}",
             dtype="float64",
             shape=(len(axis.levels),),
-            payload=_pack_rows("<d", ((level,) for level in axis.levels)),
+            payload=_pack_rows(
+                "<d",
+                ((level,) for level in axis.levels),
+                checkpoint=checkpoint,
+            ),
         )
 
+    _checkpoint(checkpoint)
     encoded = bytes(data)
     if len(encoded) != assembly.storage.binary_bytes:
         raise ValueError("encoded scene size disagrees with its exact storage projection")
@@ -156,6 +184,8 @@ def encode_scene_binary(assembly: SceneGeometryAssembly) -> SceneBinaryEncoding:
 
 def _canonical_connectivity(
     assembly: SceneGeometryAssembly,
+    *,
+    checkpoint: Callable[[], None] | None,
 ) -> tuple[
     tuple[int, ...],
     tuple[tuple[int, int], ...],
@@ -167,6 +197,8 @@ def _canonical_connectivity(
     )
     old_to_new = [-1] * len(point_order)
     for new_index, old_index in enumerate(point_order):
+        if new_index % 4_096 == 0:
+            _checkpoint(checkpoint)
         old_to_new[old_index] = new_index
     if any(index < 0 for index in old_to_new):
         raise ValueError("scene blocks do not partition encoded points")
@@ -183,19 +215,28 @@ def _canonical_connectivity(
         assembly.cells.blocks,
         strict=True,
     ):
-        block_edges = tuple(
-            (old_to_new[edge.point_indices[0]], old_to_new[edge.point_indices[1]])
-            for edge in edge_block.edges
-        )
-        block_quads = tuple(
-            (
-                old_to_new[quad.point_indices[0]],
-                old_to_new[quad.point_indices[1]],
-                old_to_new[quad.point_indices[2]],
-                old_to_new[quad.point_indices[3]],
+        _checkpoint(checkpoint)
+        block_edges_list: list[tuple[int, int]] = []
+        for index, edge in enumerate(edge_block.edges):
+            if index % 4_096 == 0:
+                _checkpoint(checkpoint)
+            block_edges_list.append(
+                (old_to_new[edge.point_indices[0]], old_to_new[edge.point_indices[1]])
             )
-            for quad in cell_block.quads
-        )
+        block_edges = tuple(block_edges_list)
+        block_quads_list: list[tuple[int, int, int, int]] = []
+        for index, quad in enumerate(cell_block.quads):
+            if index % 4_096 == 0:
+                _checkpoint(checkpoint)
+            block_quads_list.append(
+                (
+                    old_to_new[quad.point_indices[0]],
+                    old_to_new[quad.point_indices[1]],
+                    old_to_new[quad.point_indices[2]],
+                    old_to_new[quad.point_indices[3]],
+                )
+            )
+        block_quads = tuple(block_quads_list)
         if any(index > _UINT32_MAX for edge in block_edges for index in edge) or any(
             index > _UINT32_MAX for quad in block_quads for index in quad
         ):
@@ -220,12 +261,24 @@ def _canonical_connectivity(
     return point_order, tuple(remapped_edges), tuple(remapped_quads), tuple(blocks)
 
 
-def _pack_rows(format_string: str, rows: Iterable[tuple[int | float, ...]]) -> bytes:
+def _pack_rows(
+    format_string: str,
+    rows: Iterable[tuple[int | float, ...]],
+    *,
+    checkpoint: Callable[[], None] | None,
+) -> bytes:
     packer = struct.Struct(format_string)
     payload = bytearray()
-    for row in rows:
+    for index, row in enumerate(rows):
+        if index % 4_096 == 0:
+            _checkpoint(checkpoint)
         payload.extend(packer.pack(*row))
     return bytes(payload)
+
+
+def _checkpoint(checkpoint: Callable[[], None] | None) -> None:
+    if checkpoint is not None:
+        checkpoint()
 
 
 def _append_buffer(

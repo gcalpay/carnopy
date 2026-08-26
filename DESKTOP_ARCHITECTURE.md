@@ -1219,7 +1219,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete |
 | 4 | Add controlled sweep and preparation worker operations | Complete |
 | 5 | Add structured sweep and preparation QML workflows | Complete; automated, remote, and native functional acceptance passed |
-| 6 | Build exact emitted-value 3D scene contracts | In progress; Units 1–3 and checkpoints 4A–5B implemented |
+| 6 | Build exact emitted-value 3D scene contracts | In progress; Units 1–3 and checkpoints 4A–5C implemented |
 | 7 | Integrate native interactive 3D into QML | Pending |
 | 8 | Complete native-3D platform, distribution, documentation, and later-release qualification | Pending |
 
@@ -1373,9 +1373,37 @@ exclusive mode-`0600` regular files. It never replaces a destination, writes
 and durably flushes `scene.bin` first, and publishes canonical `scene.json`
 last. A failed manifest publication leaves an incomplete recognized lease, not
 an adoptable scene. The writer result explicitly remains a candidate awaiting
-parent verification; `build_scene` progress, cancellation, final source
-revalidation, parent adoption, and previous-scene retention remain checkpoint
-5C.
+parent verification; at the 5B boundary, `build_scene` progress, cancellation,
+final source revalidation, parent adoption, and previous-scene retention were
+still absent.
+
+Checkpoint 5C adds the private worker and parent-adoption seam while keeping
+all scientific and file work outside QML. `build_scene` accepts one immutable
+profile/request pair and the identity of an empty parent-created lease. It
+reuses the authoritative projected source path, exact geometry engine, and
+deterministic encoder, reporting geometry, encoding, source-revalidation, and
+publication phases. Cooperative cancellation is checked throughout the
+potentially long source, geometry, and encoding loops.
+
+Immediately before publication, the worker revalidates the exact copied source
+binding. It then announces a short noncancellable, termination-protected
+publication phase, exclusively creates `scene.bin`, publishes `scene.json`
+last, and runs the complete lightweight verifier over the files it wrote. A
+second exact source revalidation after verification prevents a source change
+during publication from producing a successful worker result. The result is
+path-free and binds the parent lease identity, canonical scene request and
+content identities, binary hash, and exact file sizes.
+
+Parent adoption is deliberately separate and mutation-free. It reruns the
+complete lightweight verifier against the parent-held lease, compares the
+worker result with the verified files, and compares the manifest request,
+accepted field and topology facts, original topology-level hashes, and source
+row count with the accepted profile. Only a successful return is eligible for
+later controller replacement. Consequently a cancelled build, worker failure,
+source change, forged result, or tampered bundle leaves any previously held
+verified scene untouched. Checkpoint 5C still introduces no `SceneDraft`,
+`SceneController`, visible QML, renderer, or lifecycle cleanup; those begin in
+Unit 6.
 
 Stage 2 has also established definition-first sampler canonicalization, exact
 anchor-based GUI unit changes, Qt 6.11.1 as the QML baseline, packaged QML
