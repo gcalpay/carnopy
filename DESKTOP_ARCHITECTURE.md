@@ -1320,7 +1320,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete |
 | 4 | Add controlled sweep and preparation worker operations | Complete |
 | 5 | Add structured sweep and preparation QML workflows | Complete; automated, remote, and native functional acceptance passed |
-| 6 | Build exact emitted-value 3D scene contracts | In progress; Units 1–3 and checkpoints 4A–8A implemented |
+| 6 | Build exact emitted-value 3D scene contracts | Complete; automated source, distribution, and installed-launcher acceptance passed |
 | 7 | Integrate native interactive 3D into QML | Pending |
 | 8 | Complete native-3D platform, distribution, documentation, and later-release qualification | Pending |
 
@@ -1598,8 +1598,19 @@ scan removes an independently abandoned recognized lease while preserving the
 helper's valid lease under its live session lock. After the helper exits, the
 same lease becomes removable. Malformed, replaced, symlinked, unrecognized,
 and apparently live candidates remain conservatively preserved rather than
-recursively deleted. Stage 6 remains incomplete until Checkpoint 8B's complete
-locked, distribution, installed-launcher, and documentation acceptance passes.
+recursively deleted.
+
+Checkpoint 8B completes Stage 6 without adding a renderer or public interface.
+The exact wheel and sdist inventory now requires all twenty Stage 6 application
+modules. The final 2026-08-27 acceptance passed lock consistency, Ruff,
+formatting across 258 files, strict mypy across 159 source files, preflight,
+CLI help, compatibility across 70 installed packages, and all 1,290 tests. An
+isolated sdist and wheel-from-sdist passed Twine and exact distribution
+inspection; every packaged scene module imported from a task-scoped installed
+wheel, and both generated public launchers passed their offscreen smoke path.
+No native UI acceptance was required because Stage 6 is intentionally
+nonvisual. The concise accepted contract is indexed in
+[`docs/archive/GUI2_STAGE6.md`](docs/archive/GUI2_STAGE6.md).
 
 Stage 2 has also established definition-first sampler canonicalization, exact
 anchor-based GUI unit changes, Qt 6.11.1 as the QML baseline, packaged QML

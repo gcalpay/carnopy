@@ -122,6 +122,28 @@ STAGE5_APP_FILES = {
     "workflow_planning.py",
     "workflow_worker.py",
 }
+STAGE6_APP_FILES = {
+    "scene_assembly.py",
+    "scene_build.py",
+    "scene_bundle.py",
+    "scene_cells.py",
+    "scene_contracts.py",
+    "scene_controller.py",
+    "scene_dataset_profiles.py",
+    "scene_draft.py",
+    "scene_edges.py",
+    "scene_encoding.py",
+    "scene_geometry.py",
+    "scene_integrity.py",
+    "scene_leases.py",
+    "scene_lifecycle.py",
+    "scene_pick_contracts.py",
+    "scene_picks.py",
+    "scene_prepared_profiles.py",
+    "scene_profiles.py",
+    "scene_topology.py",
+    "scene_writer.py",
+}
 WHEEL_REQUIRED = {
     "carnopy/__init__.py",
     "carnopy/__main__.py",
@@ -330,8 +352,10 @@ SDIST_REQUIRED = {
 }
 WHEEL_REQUIRED.update(f"carnopy/app/{path}" for path in QML_SHELL_APP_FILES)
 WHEEL_REQUIRED.update(f"carnopy/app/{path}" for path in STAGE5_APP_FILES)
+WHEEL_REQUIRED.update(f"carnopy/app/{path}" for path in STAGE6_APP_FILES)
 SDIST_REQUIRED.update(f"src/carnopy/app/{path}" for path in QML_SHELL_APP_FILES)
 SDIST_REQUIRED.update(f"src/carnopy/app/{path}" for path in STAGE5_APP_FILES)
+SDIST_REQUIRED.update(f"src/carnopy/app/{path}" for path in STAGE6_APP_FILES)
 SDIST_MARKDOWN = {
     "AGENTS.md",
     "DESKTOP_ARCHITECTURE.md",
