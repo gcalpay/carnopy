@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
 import os
+import subprocess
+import sys
 from pathlib import Path
 from typing import cast
 
@@ -115,6 +118,69 @@ def test_scene_lifecycle_preserves_live_foreign_lease_and_reports_reason(
     assert retry.set_workspace(workspace)
     assert not foreign.path.exists()
     retry.shutdown()
+
+
+def test_startup_cleanup_removes_abandoned_and_preserves_real_process_lease(
+    application: QCoreApplication,
+    tmp_path: Path,
+) -> None:
+    del application
+    workspace = initialize_workspace(tmp_path / "workspace")
+    abandoned_session = acquire_scene_session(workspace.root)
+    abandoned = create_scene_lease(abandoned_session)
+    abandoned_session.close()
+    script = """
+import json
+import os
+import sys
+from pathlib import Path
+from carnopy.app.scene_leases import acquire_scene_session, create_scene_lease
+
+session = acquire_scene_session(Path(sys.argv[1]))
+lease = create_scene_lease(session)
+print(json.dumps({"path": str(lease.path)}), flush=True)
+sys.stdin.readline()
+os._exit(0)
+"""
+    process = subprocess.Popen(
+        [sys.executable, "-c", script, str(workspace.root)],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    assert process.stdin is not None
+    assert process.stdout is not None
+    controller, lifecycle = _lifecycle()
+    del controller
+    retry: SceneLeaseLifecycle | None = None
+    try:
+        child = json.loads(process.stdout.readline())
+        live_path = Path(child["path"])
+
+        assert lifecycle.set_workspace(workspace)
+        assert not abandoned.path.exists()
+        assert live_path.is_dir()
+        assert "conservatively preserved" in lifecycle.get_cleanup_issue()
+        assert "lock is held" in lifecycle.get_cleanup_issue()
+        lifecycle.shutdown()
+
+        process.stdin.write("release\n")
+        process.stdin.flush()
+        return_code = process.wait(timeout=10)
+        assert return_code == 0, process.stderr.read() if process.stderr is not None else ""
+
+        retry_controller, retry = _lifecycle()
+        del retry_controller
+        assert retry.set_workspace(workspace)
+        assert not live_path.exists()
+    finally:
+        lifecycle.shutdown()
+        if retry is not None:
+            retry.shutdown()
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=10)
 
 
 def test_scene_lifecycle_cleanup_failure_is_preserved_and_retried(

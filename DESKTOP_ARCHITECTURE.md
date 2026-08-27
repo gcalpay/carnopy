@@ -1320,7 +1320,7 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete |
 | 4 | Add controlled sweep and preparation worker operations | Complete |
 | 5 | Add structured sweep and preparation QML workflows | Complete; automated, remote, and native functional acceptance passed |
-| 6 | Build exact emitted-value 3D scene contracts | In progress; Units 1–3 and checkpoints 4A–7B implemented |
+| 6 | Build exact emitted-value 3D scene contracts | In progress; Units 1–3 and checkpoints 4A–8A implemented |
 | 7 | Integrate native interactive 3D into QML | Pending |
 | 8 | Complete native-3D platform, distribution, documentation, and later-release qualification | Pending |
 
@@ -1582,6 +1582,24 @@ binding; a bad point identity returns no details without falsely changing
 source state. Pick cancellation is covered by the existing scene busy-shutdown
 sequence. This checkpoint adds no visible QML, renderer, backend call, public
 interface, dependency, Activity record, or Recovery record.
+
+Checkpoint 8A completes integrated acceptance for the existing private scene
+and lease boundaries without changing their architecture. The hostile matrix
+now explicitly covers unsupported schema and header versions, version
+disagreement, incorrect magic and endianness, and duplicated, misaligned,
+overlapping, out-of-order, out-of-range, wrongly typed, wrongly shaped,
+length-inconsistent, and count-inconsistent buffers. Connectivity cases include
+globally invalid, repeated, duplicated, and globally valid cross-block edges
+and ordered quads, while existing source, manifest, binary, and lease identity
+tests retain their tamper coverage.
+
+The lifecycle acceptance uses a real helper process to prove that one startup
+scan removes an independently abandoned recognized lease while preserving the
+helper's valid lease under its live session lock. After the helper exits, the
+same lease becomes removable. Malformed, replaced, symlinked, unrecognized,
+and apparently live candidates remain conservatively preserved rather than
+recursively deleted. Stage 6 remains incomplete until Checkpoint 8B's complete
+locked, distribution, installed-launcher, and documentation acceptance passes.
 
 Stage 2 has also established definition-first sampler canonicalization, exact
 anchor-based GUI unit changes, Qt 6.11.1 as the QML baseline, packaged QML

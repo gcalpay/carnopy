@@ -82,7 +82,7 @@ implementation.
 | 3 | Complete | Reached parity, migrated both launchers, retired Widgets, and qualified `0.1.0a4` |
 | 4 | Complete | Added controlled sweep and preparation worker operations for the existing public contracts |
 | 5 | Complete | Added accepted structured Sweep and Preparation workflows plus typed audit inspection |
-| 6 | In progress (Units 1–3; checkpoints 4A–7B complete) | Build exact emitted-value 3D scenes |
+| 6 | In progress (Units 1–3; checkpoints 4A–8A complete) | Build exact emitted-value 3D scenes |
 | 7 | Pending | Add native interactive 3D to QML |
 | 8 | Pending | Qualify native 3D packaging, platforms, and a later release |
 
@@ -248,7 +248,7 @@ file-integrity, worker, or lifecycle boundaries.
 Stage 6 source profiling supports verified dataset runs, model-sweep child
 datasets, and prepared main or scenario-partition tables.
 
-Stage 6 remains incomplete. Units 1–3 and checkpoints 4A–7B now establish the
+Stage 6 remains incomplete. Units 1–3 and checkpoints 4A–8A now establish the
 lightweight contracts, hostile-input boundary, authoritative source profiles,
 exact retained-point projection, context-partitioned topology evidence, and
 exact one- and two-dimensional primitives plus deterministic in-memory binary
@@ -264,9 +264,9 @@ verification, immutable scene bindings copied from Inspect, and the private
 ownership, conservative lease cleanup, safe busy-shutdown sequencing, and
 exact direct-run, sweep-child, prepared-main, and prepared-partition source-row
 resolution are also implemented. The controller now owns nonvisual pick
-requests and exact source-stale handling. Integrated hostile/lifecycle
-acceptance remains later checkpoints. No visible QML or native renderer is
-enabled by this foundation.
+requests and exact source-stale handling. The integrated hostile-input and
+real-process lease-lifecycle acceptance matrix is also complete. No visible
+QML or native renderer is enabled by this foundation.
 
 Inspect offers scene bindings only for complete run directories, sweep child
 datasets, prepared main tables, and prepared scenario partitions. Standalone
@@ -482,6 +482,24 @@ binding. Pick cancellation participates in the established safe scene-shutdown
 sequence. This checkpoint adds no QML page, renderer, public interface,
 dependency, Activity record, or Recovery record.
 
+Checkpoint 8A completes the integrated hostile-input and lease-lifecycle
+acceptance matrix without changing the private scene format. It explicitly
+rejects unsupported manifest and header versions, header/manifest disagreement,
+incorrect magic or endianness, and duplicated, misaligned, overlapping,
+out-of-order, out-of-range, wrongly typed, wrongly shaped, length-inconsistent,
+or count-inconsistent buffers. Connectivity acceptance covers globally invalid,
+repeated, duplicated, and globally valid cross-block edges and ordered quads.
+Existing source, manifest, binary, and lease identity tests retain their
+tamper coverage.
+
+A real helper process now proves the startup boundary in one scan: an
+independently abandoned recognized lease is removed while the helper's valid
+lease is preserved under its live session lock, and that same lease becomes
+removable after the helper exits. Conservative cleanup continues to preserve
+malformed, replaced, symlinked, unrecognized, or apparently live candidates
+instead of recursively deleting them. Checkpoint 8A adds no production code,
+visible QML, renderer, public interface, dependency, or schema change.
+
 - Points represent finite emitted rows.
 - Wireframe edges connect exact adjacent coordinate levels only within
   compatible fluid, model, phase, and partition contexts.
@@ -504,7 +522,7 @@ and bridge without scientific imports in QML.
 ### Stage 6 delivery checkpoints
 
 The accepted Stage 6 contract retains eight top-level units. Units 1–3 and
-checkpoints 4A–7B are complete; the remaining work is divided into smaller
+checkpoints 4A–8A are complete; the remaining work is divided into smaller
 dependency-ordered checkpoints so
 that one review does not combine source projection, topology, serialization,
 controller lifecycle, and picking. These checkpoints do not broaden Stage 6 or
@@ -598,16 +616,16 @@ Completed units and checkpoints:
   verified provenance, diagnostics, and scenario or partition context. Any
   failed source revalidation marks the controller source-stale and returns no
   misleading detail.
-
-Remaining checkpoints:
-
 - **8A — integrated hostile and lifecycle acceptance:** exercise unsupported
   manifest and header versions, magic and endianness errors, every buffer
   alignment, overlap, order, range, type, shape, length, count, and connectivity
-  violation, including globally valid cross-block edges and quads. Use real
-  subprocesses to prove live-lock preservation and conservative cleanup of
-  abandoned, malformed, replaced, symlinked, unrecognized, and apparently live
-  leases.
+  violation, including globally valid cross-block edges and quads. Real
+  subprocess acceptance proves live-lock preservation, abandoned cleanup, and
+  conservative preservation of malformed, replaced, symlinked, unrecognized,
+  and apparently live leases.
+
+Remaining checkpoints:
+
 - **8B — complete gate and documentation:** run the locked repository,
   preflight, distribution-inventory, and installed-launcher gates; archive the
   accepted Stage 6 contract; synchronize durable scientific and desktop

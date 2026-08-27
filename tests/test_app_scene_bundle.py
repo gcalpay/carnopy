@@ -582,8 +582,16 @@ def test_manifest_must_be_canonical_finite_unique_key_json(tmp_path: Path) -> No
             "8-byte aligned",
         ),
         (
+            lambda value: value["buffers"][0].__setitem__("offset", 8),
+            "greater than or equal to 16",
+        ),
+        (
             lambda value: value["buffers"][1].__setitem__("offset", value["buffers"][0]["offset"]),
             "overlaps or is out of order",
+        ),
+        (
+            lambda value: value["buffers"].insert(1, dict(value["buffers"][0])),
+            "missing, duplicated, unknown, or outside canonical order",
         ),
         (
             lambda value: value["buffers"].__setitem__(
@@ -592,8 +600,16 @@ def test_manifest_must_be_canonical_finite_unique_key_json(tmp_path: Path) -> No
             "canonical order",
         ),
         (
+            lambda value: value["buffers"][-1].__setitem__("offset", value["binary"]["size"] + 8),
+            "binary size disagrees with its final buffer boundary",
+        ),
+        (
             lambda value: value["buffers"][0].__setitem__("dtype", "uint64"),
             "wrong dtype",
+        ),
+        (
+            lambda value: value["buffers"][0].__setitem__("shape", [24]),
+            "wrong shape",
         ),
         (
             lambda value: value["buffers"][0].__setitem__("shape", [8, 2]),
@@ -607,9 +623,17 @@ def test_manifest_must_be_canonical_finite_unique_key_json(tmp_path: Path) -> No
             lambda value: value["counts"].__setitem__("points", 7),
             "wrong shape",
         ),
+        (
+            lambda value: value["counts"].__setitem__("edges", 7),
+            "wrong shape",
+        ),
+        (
+            lambda value: value["counts"].__setitem__("quads", 1),
+            "wrong shape",
+        ),
     ],
 )
-def test_manifest_rejects_misaligned_overlapping_out_of_order_and_inconsistent_buffers(
+def test_manifest_rejects_invalid_buffer_descriptors_and_counts(
     tmp_path: Path,
     mutation: ManifestMutation,
     message: str,
@@ -706,9 +730,35 @@ def test_buffer_and_whole_binary_hashes_are_both_enforced(tmp_path: Path) -> Non
             _pack("<IIII", [(0, 1, 2, 4), (4, 5, 6, 7)]),
             "quad crosses declared block 0",
         ),
+        (
+            "edges",
+            _pack(
+                "<II",
+                [(0, 0), (1, 2), (2, 3), (3, 0), (4, 5), (5, 6), (6, 7), (7, 4)],
+            ),
+            "edge repeats one point index",
+        ),
+        (
+            "edges",
+            _pack(
+                "<II",
+                [(0, 1), (1, 0), (2, 3), (3, 0), (4, 5), (5, 6), (6, 7), (7, 4)],
+            ),
+            "edges contain duplicates",
+        ),
+        (
+            "quads",
+            _pack("<IIII", [(0, 1, 2, 2), (4, 5, 6, 7)]),
+            "quad contains repeated point indices",
+        ),
+        (
+            "quads",
+            _pack("<IIII", [(0, 1, 2, 3), (3, 2, 1, 0)]),
+            "quads contain duplicates",
+        ),
     ],
 )
-def test_connectivity_rejects_global_and_cross_block_indices(
+def test_connectivity_rejects_invalid_repeated_duplicate_and_cross_block_indices(
     tmp_path: Path,
     buffer_name: str,
     payload: bytes,
