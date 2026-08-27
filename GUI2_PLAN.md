@@ -273,6 +273,16 @@ installed imports of every Stage 6 module, and offscreen smoke execution through
 both public launcher scripts. No manual UI acceptance was required because the
 stage changes no visible QML.
 
+A subsequent pre-merge read-only audit found that the verified table reader
+retained each complete encoded source file and materialized unused support
+columns before applying scene limits. The corrective checkpoint now hashes the
+safely opened descriptor before and after parsing, rechecks the final path
+identity, projects only scientifically required values while still validating
+the complete source schema, and parses Parquet and CSV in cancellable batches.
+Exact prepared picks continue to request complete selected, provenance, and
+diagnostic rows. Both the direct and preflight-owned complete suites then passed
+1,296 tests with no failures.
+
 Stage 6 adds no public API, CLI command, YAML or generated-artifact schema,
 dependency, visible renderer, camera, image export, version, tag, or release.
 The published `0.1.0a5` artifacts remain unchanged and predate this work.

@@ -108,6 +108,23 @@ encoding, writer, worker, draft, controller, lifecycle, pick, CI, and acceptance
 commits. Branch integration, the final commit, and any pull-request reference
 remain human-owned Git operations.
 
+## Pre-merge audit repair
+
+A read-only merge audit after the initial qualification found that scene table
+integrity hashing used bounded chunks but accumulated and joined the complete
+encoded file before pandas materialized every source column. A sufficiently
+large valid source could therefore exhaust the worker before scene output
+limits were evaluated.
+
+The corrective checkpoint removes that encoded-byte buffer. It hashes the
+safely opened descriptor before parsing, projects the scientific values needed
+by dataset profiling and prepared joins, parses Parquet record batches and CSV
+chunks with cooperative checkpoints, hashes the same descriptor again, and
+then rechecks the bound path identity. Complete source schemas remain validated
+even when unused diagnostic values are not materialized. Exact prepared picks
+still load complete selected, provenance, and diagnostic rows so their detail
+contract is unchanged.
+
 ## Verification and acceptance
 
 The final locked source gate passed on 2026-08-27. Ruff accepted all source,
@@ -125,3 +142,10 @@ The hostile verifier matrix and real-process lifecycle tests prove the required
 version, magic, endianness, buffer, count, connectivity, tamper, live-lock, and
 conservative-cleanup boundaries. No manual native UI acceptance was required
 because Stage 6 changes no visible QML or renderer behavior.
+
+After the bounded-read repair, lock consistency, Ruff, formatting across 258
+files, strict mypy across 159 source files, and compatibility across 70
+installed packages passed again. Every dedicated scene test passed, and both
+the direct complete suite and the preflight-owned complete suite passed 1,296
+tests with no failures, errors, or skips. The repair changes no scene schema,
+public interface, dependency, packaged module inventory, or visible QML.

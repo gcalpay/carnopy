@@ -1,18 +1,20 @@
 from __future__ import annotations
 
 import hashlib
-import io
 import json
 import math
 import os
 import stat
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, NoReturn, cast, overload
+from typing import IO, Any, Literal, NoReturn, cast, overload
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 from carnopy.app.scene_contracts import (
     SceneBlockContext,
@@ -43,6 +45,8 @@ SceneBlockContextKey = tuple[
 ]
 
 _UINT64_MAX = 2**64 - 1
+_TABLE_BATCH_ROWS = 65_536
+_HASH_CHUNK_BYTES = 8 * 1024 * 1024
 
 _COORDINATES: dict[str, tuple[str, str]] = {
     "temperature": ("temperature_K", "K"),
@@ -99,6 +103,14 @@ class SceneFieldData:
     origin: SceneFieldOrigin
     unit: str | None
     unit_status: SceneUnitStatus
+
+
+@dataclass(frozen=True)
+class VerifiedSceneTable:
+    """One integrity-verified projected table plus its complete source schema."""
+
+    frame: pd.DataFrame
+    source_columns: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -391,24 +403,158 @@ def _field_from_dtype(
     )
 
 
-def _read_table(table: Any, checkpoint: Checkpoint | None) -> pd.DataFrame:
-    data = _read_identity_bytes(table.artifact, f"scene table {table.table_id}", checkpoint)
+def _read_table(
+    table: Any,
+    checkpoint: Checkpoint | None,
+    *,
+    projected_columns: Sequence[str] | None = None,
+    optional_columns: Sequence[str] = (),
+    required_source_columns: Collection[str] = (),
+) -> VerifiedSceneTable:
+    """Read one verified table without retaining its complete encoded bytes in RAM."""
+
+    label = f"scene table {table.table_id}"
     try:
-        if table.source_format == "parquet":
-            frame = pd.read_parquet(io.BytesIO(data))
-        elif table.source_format == "csv":
-            frame = pd.read_csv(io.BytesIO(data))
-        else:  # pragma: no cover - SceneBoundTable closes this union
+        with _verified_identity_stream(table.artifact, label, checkpoint) as stream:
+            if table.source_format == "parquet":
+                return _read_parquet_stream(
+                    stream,
+                    table_id=table.table_id,
+                    projected_columns=projected_columns,
+                    optional_columns=optional_columns,
+                    required_source_columns=required_source_columns,
+                    checkpoint=checkpoint,
+                )
+            if table.source_format == "csv":
+                return _read_csv_stream(
+                    stream,
+                    table_id=table.table_id,
+                    projected_columns=projected_columns,
+                    optional_columns=optional_columns,
+                    required_source_columns=required_source_columns,
+                    checkpoint=checkpoint,
+                )
             _unsupported(f"unsupported scene table format {table.source_format!r}")
-    except (OSError, ValueError, TypeError) as exc:
+    except SceneContractError:
+        raise
+    except (OSError, ValueError, TypeError, UnicodeError) as exc:
         raise SceneContractError(
             "unsupported_scene_source",
             f"could not read verified scene table {table.table_id!r}: {exc}",
         ) from exc
-    if len(set(str(column) for column in frame.columns)) != len(frame.columns):
-        _unsupported(f"scene table {table.table_id!r} contains duplicate columns")
-    frame.columns = [str(column) for column in frame.columns]
-    return frame
+
+
+def _read_parquet_stream(
+    stream: IO[bytes],
+    *,
+    table_id: str,
+    projected_columns: Sequence[str] | None,
+    optional_columns: Sequence[str],
+    required_source_columns: Collection[str],
+    checkpoint: Checkpoint | None,
+) -> VerifiedSceneTable:
+    parquet = pq.ParquetFile(stream)  # type: ignore[no-untyped-call]
+    source_columns = tuple(str(name) for name in parquet.schema_arrow.names)
+    selected = _select_table_columns(
+        source_columns,
+        table_id=table_id,
+        projected_columns=projected_columns,
+        optional_columns=optional_columns,
+        required_source_columns=required_source_columns,
+    )
+    batches: list[pa.RecordBatch] = []
+    for batch in parquet.iter_batches(  # type: ignore[no-untyped-call]
+        batch_size=_TABLE_BATCH_ROWS,
+        columns=list(selected),
+        use_threads=False,
+    ):
+        batches.append(batch)
+        _checkpoint(checkpoint)
+    if batches:
+        frame = pa.Table.from_batches(batches).to_pandas()
+    else:
+        frame = parquet.read(  # type: ignore[no-untyped-call]
+            columns=list(selected), use_threads=False
+        ).to_pandas()
+    frame = frame.loc[:, list(selected)].reset_index(drop=True)
+    return VerifiedSceneTable(frame=frame, source_columns=source_columns)
+
+
+def _read_csv_stream(
+    stream: IO[bytes],
+    *,
+    table_id: str,
+    projected_columns: Sequence[str] | None,
+    optional_columns: Sequence[str],
+    required_source_columns: Collection[str],
+    checkpoint: Checkpoint | None,
+) -> VerifiedSceneTable:
+    header = pd.read_csv(stream, nrows=0)
+    source_columns = tuple(str(column) for column in header.columns)
+    selected = _select_table_columns(
+        source_columns,
+        table_id=table_id,
+        projected_columns=projected_columns,
+        optional_columns=optional_columns,
+        required_source_columns=required_source_columns,
+    )
+    stream.seek(0)
+    chunks: list[pd.DataFrame] = []
+    with pd.read_csv(
+        stream,
+        usecols=list(selected),
+        chunksize=_TABLE_BATCH_ROWS,
+    ) as reader:
+        for chunk in reader:
+            chunks.append(chunk.loc[:, list(selected)].reset_index(drop=True))
+            _checkpoint(checkpoint)
+    if not chunks:
+        frame = header.loc[:, list(selected)].reset_index(drop=True)
+    elif len(chunks) == 1:
+        frame = chunks[0]
+    else:
+        frame = pd.concat(chunks, ignore_index=True)
+    return VerifiedSceneTable(frame=frame, source_columns=source_columns)
+
+
+def _select_table_columns(
+    source_columns: tuple[str, ...],
+    *,
+    table_id: str,
+    projected_columns: Sequence[str] | None,
+    optional_columns: Sequence[str],
+    required_source_columns: Collection[str],
+) -> tuple[str, ...]:
+    if len(set(source_columns)) != len(source_columns):
+        _unsupported(f"scene table {table_id!r} contains duplicate columns")
+    required_schema = set(required_source_columns)
+    missing_schema = sorted(required_schema - set(source_columns))
+    if missing_schema:
+        _unsupported(
+            f"scene table {table_id!r} is missing required columns: " + ", ".join(missing_schema)
+        )
+    if projected_columns is None:
+        if optional_columns:
+            raise ValueError("optional scene columns require an explicit projection")
+        return source_columns
+    requested = tuple(projected_columns)
+    optional = tuple(optional_columns)
+    for label, values in (("projected", requested), ("optional", optional)):
+        if any(not isinstance(value, str) or not value for value in values):
+            raise ValueError(f"{label} scene columns must be exact non-empty strings")
+        if len(set(values)) != len(values):
+            raise ValueError(f"{label} scene columns must be unique")
+    missing = sorted(set(requested) - set(source_columns))
+    if missing:
+        _unsupported(
+            f"scene table {table_id!r} is missing projected columns: " + ", ".join(missing)
+        )
+    selected_names = set(requested)
+    selected_names.update(column for column in optional if column in source_columns)
+    selected = tuple(column for column in source_columns if column in selected_names)
+    if not selected:
+        raise ValueError("scene table projection must select at least one column")
+    return selected
 
 
 def _read_json_identity(
@@ -444,6 +590,16 @@ def _read_identity_bytes(
     label: str,
     checkpoint: Checkpoint | None,
 ) -> bytes:
+    with _verified_identity_stream(identity, label, checkpoint) as stream:
+        return stream.read()
+
+
+@contextmanager
+def _verified_identity_stream(
+    identity: Any,
+    label: str,
+    checkpoint: Checkpoint | None,
+) -> Iterator[IO[bytes]]:
     path = Path(identity.path)
     try:
         before = path.lstat()
@@ -464,25 +620,50 @@ def _read_identity_bytes(
         descriptor = os.open(path, flags)
     except OSError as exc:
         _changed(f"{label} cannot be opened safely", exc)
-    digest = hashlib.sha256()
-    chunks: list[bytes] = []
     try:
-        with os.fdopen(descriptor, "rb", closefd=True) as stream:
-            opened = os.fstat(stream.fileno())
-            if _stat_identity(opened) != expected:
-                _changed(f"{label} changed while it was opened")
-            while chunk := stream.read(8 * 1024 * 1024):
-                chunks.append(chunk)
-                digest.update(chunk)
-                _checkpoint(checkpoint)
-            after = os.fstat(stream.fileno())
-    except SceneContractError:
-        raise
-    except OSError as exc:
-        _changed(f"{label} cannot be read safely", exc)
-    if _stat_identity(after) != expected or digest.hexdigest() != identity.sha256:
-        _changed(f"{label} changed while it was read")
-    return b"".join(chunks)
+        try:
+            managed_stream = os.fdopen(descriptor, "rb", closefd=True)
+        except OSError as exc:
+            os.close(descriptor)
+            _changed(f"{label} cannot be wrapped safely", exc)
+        try:
+            with managed_stream as stream:
+                opened = os.fstat(stream.fileno())
+                if _stat_identity(opened) != expected:
+                    _changed(f"scene source changed while opening {label}")
+                if _hash_stream(stream, checkpoint) != identity.sha256:
+                    _changed(f"scene source changed before reading {label}")
+                stream.seek(0)
+                try:
+                    yield stream
+                finally:
+                    after = os.fstat(stream.fileno())
+                    if _stat_identity(after) != expected:
+                        _changed(f"scene source changed while reading {label}")
+                    stream.seek(0)
+                    if _hash_stream(stream, checkpoint) != identity.sha256:
+                        _changed(f"scene source changed while reading {label}")
+        except SceneContractError:
+            raise
+        except OSError as exc:
+            _changed(f"{label} cannot be read safely", exc)
+    finally:
+        try:
+            current = path.lstat()
+        except OSError as exc:
+            _changed(f"{label} is unavailable after reading", exc)
+        if stat.S_ISLNK(current.st_mode) or not stat.S_ISREG(current.st_mode):
+            _changed(f"{label} is no longer a regular file")
+        if _stat_identity(current) != expected:
+            _changed(f"scene source changed path identity while reading {label}")
+
+
+def _hash_stream(stream: IO[bytes], checkpoint: Checkpoint | None) -> str:
+    digest = hashlib.sha256()
+    while chunk := stream.read(_HASH_CHUNK_BYTES):
+        digest.update(chunk)
+        _checkpoint(checkpoint)
+    return digest.hexdigest()
 
 
 def _require_recorded_hash(

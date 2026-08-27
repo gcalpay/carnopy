@@ -1612,6 +1612,17 @@ No native UI acceptance was required because Stage 6 is intentionally
 nonvisual. The concise accepted contract is indexed in
 [`docs/archive/GUI2_STAGE6.md`](docs/archive/GUI2_STAGE6.md).
 
+The post-qualification pre-merge audit then identified one bounded-read gap:
+scene table loading hashed in chunks but retained and joined every encoded
+chunk before parsing every source column. The corrective checkpoint now uses
+the established hash-parse-rehash pattern over one safely opened descriptor,
+checks its path identity again afterward, and reads only the scientific values
+needed by dataset profiles and prepared joins while validating the complete
+recorded schema. Parquet record batches and CSV chunks provide cancellation
+checkpoints; complete prepared support rows remain exclusive to exact pick
+resolution. The direct and preflight-owned complete suites both passed the
+resulting 1,296-test repository state.
+
 Stage 2 has also established definition-first sampler canonicalization, exact
 anchor-based GUI unit changes, Qt 6.11.1 as the QML baseline, packaged QML
 resources, responsive settings, trusted workspace flows, structured Dataset

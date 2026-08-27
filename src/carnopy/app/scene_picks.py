@@ -63,7 +63,7 @@ def _resolve_dataset_pick(
     checkpoint: Checkpoint | None,
 ) -> ScenePickResult:
     selected = accepted.selected_table()
-    frame = _read_table(selected, checkpoint)
+    frame = _read_table(selected, checkpoint).frame
     stable_ids = _frame_stable_ids(frame, "case_id", "scene pick")
     row_position = _match_pick_identity(request, stable_ids, "case_id")
     columns, cells = _pick_record(frame, row_position)
@@ -86,7 +86,11 @@ def _resolve_prepared_pick(
     accepted: SceneSourceBinding,
     checkpoint: Checkpoint | None,
 ) -> ScenePickResult:
-    evidence = load_prepared_evidence(accepted, checkpoint=checkpoint)
+    evidence = load_prepared_evidence(
+        accepted,
+        checkpoint=checkpoint,
+        complete_support_rows=True,
+    )
     row_position = _match_pick_identity(
         request,
         evidence.stable_ids,

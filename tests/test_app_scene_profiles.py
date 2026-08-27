@@ -3,13 +3,17 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import pandas as pd
 import pytest
 
+from carnopy._execution import ExecutionCancelled
 from carnopy.api import generate_dataset, prepare_dataset
+from carnopy.app import scene_dataset_profiles, scene_prepared_profiles, scene_profiles
 from carnopy.app.scene_contracts import SceneContractError
 from carnopy.app.scene_profiles import profile_scene
 from carnopy.app.source_inspection import inspect_for_app
@@ -353,6 +357,227 @@ def test_dataset_profile_preserves_exact_topology_and_deterministic_defaults(
     assert fields["specific_enthalpy"].source_valid_count == 3
     assert fields["specific_enthalpy"].finite_count == 3
     assert fields["phase"].distinct_values == ("gas", "liquid")
+
+
+def test_verified_parquet_reader_hashes_twice_and_projects_at_parser_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = _write_dataset_run(tmp_path / "run")
+    selected = inspect_for_app(run).scene_bindings[0].selected_table()
+    parquet_factory = scene_profiles.pq.ParquetFile
+    parsed_columns: list[tuple[str, ...]] = []
+    hash_calls = 0
+    hash_stream = scene_profiles._hash_stream
+
+    class RecordingParquetFile:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            self._wrapped = parquet_factory(*args, **kwargs)
+
+        @property
+        def schema_arrow(self) -> Any:
+            return self._wrapped.schema_arrow
+
+        def iter_batches(self, **kwargs: object) -> Any:
+            columns = kwargs.get("columns")
+            assert isinstance(columns, list)
+            parsed_columns.append(tuple(columns))
+            return self._wrapped.iter_batches(**kwargs)
+
+        def read(self, **kwargs: object) -> Any:
+            return self._wrapped.read(**kwargs)
+
+    def recording_hash(stream: Any, checkpoint: Any) -> str:
+        nonlocal hash_calls
+        hash_calls += 1
+        return hash_stream(stream, checkpoint)
+
+    monkeypatch.setattr(scene_profiles.pq, "ParquetFile", RecordingParquetFile)
+    monkeypatch.setattr(scene_profiles, "_hash_stream", recording_hash)
+    table = scene_profiles._read_table(
+        selected,
+        None,
+        projected_columns=("case_id", "valid"),
+        optional_columns=("pressure_Pa", "not_present"),
+        required_source_columns={"failure_message"},
+    )
+
+    assert hash_calls == 2
+    assert parsed_columns == [("case_id", "pressure_Pa", "valid")]
+    assert tuple(table.frame.columns) == parsed_columns[0]
+    assert "failure_message" in table.source_columns
+    assert "failure_message" not in table.frame.columns
+
+
+def test_verified_csv_reader_projects_and_parses_in_cancellable_batches(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = _write_dataset_run(tmp_path / "run")
+    parquet = run / "dataset.parquet"
+    csv = run / "dataset.csv"
+    pd.read_parquet(parquet).to_csv(csv, index=False)
+    parquet.unlink()
+    metadata_path = run / "metadata.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["artifact_hashes"].pop("dataset.parquet")
+    metadata["artifact_hashes"]["dataset.csv"] = _sha(csv)
+    _write_json(metadata_path, metadata)
+    selected = inspect_for_app(run).scene_bindings[0].selected_table()
+    read_csv = scene_profiles.pd.read_csv
+    calls: list[dict[str, object]] = []
+
+    def recording_read_csv(*args: object, **kwargs: object) -> Any:
+        calls.append(dict(kwargs))
+        return read_csv(*args, **kwargs)
+
+    monkeypatch.setattr(scene_profiles, "_TABLE_BATCH_ROWS", 2)
+    monkeypatch.setattr(scene_profiles.pd, "read_csv", recording_read_csv)
+    table = scene_profiles._read_table(
+        selected,
+        None,
+        projected_columns=("case_id", "valid"),
+        optional_columns=("pressure_Pa",),
+        required_source_columns={"failure_message"},
+    )
+
+    assert calls == [
+        {"nrows": 0},
+        {
+            "usecols": ["case_id", "pressure_Pa", "valid"],
+            "chunksize": 2,
+        },
+    ]
+    assert tuple(table.frame.columns) == ("case_id", "pressure_Pa", "valid")
+    assert table.frame["case_id"].tolist() == [0, 1, 2, 3]
+    assert "failure_message" in table.source_columns
+
+
+def test_dataset_and_prepared_profiles_project_only_required_support_values(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = _write_dataset_run(tmp_path / "run")
+    dataset_calls: list[dict[str, object]] = []
+    dataset_reader = scene_dataset_profiles._read_table
+
+    def record_dataset(*args: object, **kwargs: object) -> Any:
+        dataset_calls.append(dict(kwargs))
+        return dataset_reader(*args, **kwargs)
+
+    monkeypatch.setattr(scene_dataset_profiles, "_read_table", record_dataset)
+    profile_scene(inspect_for_app(run).scene_bindings[0])
+    dataset_projection = dataset_calls[0]["projected_columns"]
+    dataset_schema = dataset_calls[0]["required_source_columns"]
+    assert isinstance(dataset_projection, tuple)
+    assert "specific_enthalpy_J_kg" in dataset_projection
+    assert "failure_message" not in dataset_projection
+    assert "failure_message" in dataset_schema
+
+    prepared = _write_preparation(tmp_path / "prepared")
+    prepared_calls: dict[str, dict[str, object]] = {}
+    prepared_reader = scene_prepared_profiles._read_table
+
+    def record_prepared(table: Any, *args: object, **kwargs: object) -> Any:
+        prepared_calls[table.table_id] = dict(kwargs)
+        return prepared_reader(table, *args, **kwargs)
+
+    monkeypatch.setattr(scene_prepared_profiles, "_read_table", record_prepared)
+    binding = next(
+        value
+        for value in inspect_for_app(prepared).scene_bindings
+        if value.selected_table_id == "table"
+    )
+    profile_scene(binding)
+
+    assert prepared_calls["provenance"]["projected_columns"] == (
+        "prepared_row_id",
+        "source_artifact",
+        "source_run_id",
+        "source_row_index",
+        "source_fluid",
+        "source_phase",
+        "backend_model",
+    )
+    assert prepared_calls["diagnostics"]["projected_columns"] == (
+        "prepared_row_id",
+        "source_valid",
+    )
+    assert prepared_calls["exclusions"]["projected_columns"] == (
+        "source_artifact",
+        "source_row_index",
+    )
+
+
+def test_verified_table_reader_rejects_byte_identical_path_replacement_after_parse(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = _write_dataset_run(tmp_path / "run")
+    selected = inspect_for_app(run).scene_bindings[0].selected_table()
+    dataset = Path(selected.artifact.path)
+    parser = scene_profiles._read_parquet_stream
+
+    def parse_then_replace(*args: object, **kwargs: object) -> Any:
+        result = parser(*args, **kwargs)
+        replacement = dataset.with_name("replacement.parquet")
+        replacement.write_bytes(dataset.read_bytes())
+        os.replace(replacement, dataset)
+        return result
+
+    monkeypatch.setattr(scene_profiles, "_read_parquet_stream", parse_then_replace)
+
+    with pytest.raises(SceneContractError, match="source changed path identity") as caught:
+        scene_profiles._read_table(selected, None)
+
+    assert caught.value.code == "scene_source_changed"
+
+
+def test_projected_parquet_reader_remains_cancellable_between_batches(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = _write_dataset_run(tmp_path / "run")
+    selected = inspect_for_app(run).scene_bindings[0].selected_table()
+    hash_stream = scene_profiles._hash_stream
+    checkpoints = 0
+
+    def hash_without_checkpoint(stream: Any, _checkpoint: Any) -> str:
+        return hash_stream(stream, None)
+
+    def cancel_first_batch() -> None:
+        nonlocal checkpoints
+        checkpoints += 1
+        raise ExecutionCancelled("cancel projected scene read")
+
+    monkeypatch.setattr(scene_profiles, "_TABLE_BATCH_ROWS", 2)
+    monkeypatch.setattr(scene_profiles, "_hash_stream", hash_without_checkpoint)
+
+    with pytest.raises(ExecutionCancelled, match="cancel projected scene read"):
+        scene_profiles._read_table(
+            selected,
+            cancel_first_batch,
+            projected_columns=("case_id", "valid"),
+        )
+
+    assert checkpoints == 1
+
+
+def test_dataset_projection_still_rejects_missing_unloaded_required_column(
+    tmp_path: Path,
+) -> None:
+    run = _write_dataset_run(tmp_path / "run")
+    dataset = run / "dataset.parquet"
+    frame = pd.read_parquet(dataset).drop(columns=["failure_message"])
+    frame.to_parquet(dataset, index=False)
+    metadata_path = run / "metadata.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["artifact_hashes"]["dataset.parquet"] = _sha(dataset)
+    _write_json(metadata_path, metadata)
+    binding = inspect_for_app(run).scene_bindings[0]
+
+    with pytest.raises(SceneContractError, match="missing required columns"):
+        profile_scene(binding)
 
 
 @pytest.mark.parametrize(

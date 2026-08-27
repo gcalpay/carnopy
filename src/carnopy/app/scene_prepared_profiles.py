@@ -102,6 +102,7 @@ def load_prepared_evidence(
     binding: SceneSourceBinding,
     *,
     checkpoint: Checkpoint | None,
+    complete_support_rows: bool = False,
 ) -> PreparedSceneEvidence:
     """Validate one prepared source and retain exact rows needed for pick joins."""
 
@@ -136,10 +137,57 @@ def load_prepared_evidence(
             table.artifact.path,
             source_root=Path(binding.source_path),
         )
-    main = _read_table(tables["table"], checkpoint)
-    provenance = _read_table(tables["provenance"], checkpoint)
-    source_diagnostics = _read_table(tables["diagnostics"], checkpoint)
-    exclusions = _read_table(tables["exclusions"], checkpoint)
+    main_table = _read_table(tables["table"], checkpoint)
+    main = main_table.frame
+    if complete_support_rows:
+        provenance_table = _read_table(tables["provenance"], checkpoint)
+        diagnostics_table = _read_table(tables["diagnostics"], checkpoint)
+    else:
+        provenance_table = _read_table(
+            tables["provenance"],
+            checkpoint,
+            projected_columns=(
+                _PREPARED_ID,
+                "source_artifact",
+                "source_run_id",
+                "source_row_index",
+                "source_fluid",
+                "source_phase",
+                "backend_model",
+            ),
+            optional_columns=tuple(
+                dict.fromkeys(
+                    [
+                        "source_saturation_endpoint",
+                        "source_temperature_K",
+                        "source_pressure_Pa",
+                        "source_vapor_mass_fraction",
+                        *main_table.source_columns,
+                    ]
+                )
+            ),
+        )
+        diagnostics_table = _read_table(
+            tables["diagnostics"],
+            checkpoint,
+            projected_columns=(_PREPARED_ID, "source_valid"),
+            optional_columns=main_table.source_columns,
+        )
+    exclusions_table = _read_table(
+        tables["exclusions"],
+        checkpoint,
+        projected_columns=("source_artifact", "source_row_index"),
+        required_source_columns={
+            "source_artifact",
+            "source_row_index",
+            "primary_reason",
+            "reason_codes",
+            "missing_or_invalid_fields",
+        },
+    )
+    provenance = provenance_table.frame
+    source_diagnostics = diagnostics_table.frame
+    exclusions = exclusions_table.frame
     _validate_prepared_joins(
         manifest,
         diagnostics_summary,
@@ -147,6 +195,10 @@ def load_prepared_evidence(
         provenance,
         source_diagnostics,
         exclusions,
+        main_columns=main_table.source_columns,
+        provenance_columns=provenance_table.source_columns,
+        diagnostics_columns=diagnostics_table.source_columns,
+        exclusions_columns=exclusions_table.source_columns,
     )
     selected = binding.selected_table()
     scenario_context: tuple[str, str] | None = None
@@ -155,7 +207,7 @@ def load_prepared_evidence(
         selected_frame = main
     else:
         scenario_name, partition = _parse_scenario_table_id(selected.table_id)
-        selected_frame = _read_table(selected, checkpoint)
+        selected_frame = _read_table(selected, checkpoint).frame
         scenario_metadata = _validate_scenario_partition(
             binding,
             manifest,
@@ -226,6 +278,11 @@ def _validate_prepared_joins(
     provenance: pd.DataFrame,
     diagnostics: pd.DataFrame,
     exclusions: pd.DataFrame,
+    *,
+    main_columns: tuple[str, ...],
+    provenance_columns: tuple[str, ...],
+    diagnostics_columns: tuple[str, ...],
+    exclusions_columns: tuple[str, ...],
 ) -> None:
     column_roles = manifest.get("column_roles")
     if not isinstance(column_roles, dict):
@@ -234,14 +291,14 @@ def _validate_prepared_joins(
         column_roles.get("table"),
         "prepared table column roles",
     )
-    if recorded_table_columns != list(main.columns):
+    if recorded_table_columns != list(main_columns):
         _unsupported("prepared main table columns disagree with the manifest")
-    for label, frame, key in (
-        ("provenance", provenance, "provenance"),
-        ("diagnostics", diagnostics, "diagnostics"),
+    for label, source_columns, key in (
+        ("provenance", provenance_columns, "provenance"),
+        ("diagnostics", diagnostics_columns, "diagnostics"),
     ):
         recorded = _string_list(column_roles.get(key), f"prepared {label} column roles")
-        if recorded != list(frame.columns):
+        if recorded != list(source_columns):
             _unsupported(f"prepared {label} columns disagree with the manifest")
     eligible = manifest.get("eligible_row_count")
     excluded = manifest.get("excluded_row_count")
@@ -280,11 +337,11 @@ def _validate_prepared_joins(
         "reason_codes",
         "missing_or_invalid_fields",
     }
-    if not required_provenance.issubset(provenance.columns):
+    if not required_provenance.issubset(provenance_columns):
         _unsupported("prepared provenance is missing required identity columns")
-    if not required_diagnostics.issubset(diagnostics.columns):
+    if not required_diagnostics.issubset(diagnostics_columns):
         _unsupported("prepared diagnostics is missing source-valid evidence")
-    if not required_exclusions.issubset(exclusions.columns):
+    if not required_exclusions.issubset(exclusions_columns):
         _unsupported("prepared exclusions are missing required scientific evidence")
     _strict_boolean_series(diagnostics["source_valid"], "prepared source_valid")
     source_keys = ["source_artifact", "source_row_index"]

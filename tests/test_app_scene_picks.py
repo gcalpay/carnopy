@@ -256,7 +256,9 @@ outputs:
     assert main_context.scenario is None
     assert main_context.partition is None
     assert main_context.provenance.row()["source_row_index"].value == 1
+    assert main_context.provenance.row()["source_row_hash"].kind == "text"
     assert main_context.diagnostics.row()["source_valid"].value is True
+    assert "source_failure_message" in main_context.diagnostics.row()
     assert (
         main_context.provenance.table_sha256
         == next(

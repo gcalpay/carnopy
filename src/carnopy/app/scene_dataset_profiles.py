@@ -74,13 +74,51 @@ def load_dataset_source(
         )
     if binding.source_kind == "model_sweep":
         _validate_sweep_parent(binding, selected.table_id, metadata, checkpoint)
-    frame = _read_table(selected, checkpoint)
-    stable_ids = _validate_dataset_frame(frame, metadata)
+    units = _string_mapping(metadata.get("canonical_units"), "canonical_units")
+    properties = _string_list(metadata.get("canonical_properties"), "canonical_properties")
+    if len(set(properties)) != len(properties):
+        _unsupported("dataset metadata repeats a canonical property")
+    property_columns: list[str] = []
+    for name in properties:
+        definition = PROPERTY_REGISTRY.get(name)
+        if definition is None:
+            _unsupported(f"dataset property {name!r} is unknown")
+        if units.get(definition.column) != definition.unit:
+            _unsupported(f"dataset property {name!r} does not record its canonical unit")
+        property_columns.append(definition.column)
+    table = _read_table(
+        selected,
+        checkpoint,
+        projected_columns=tuple(
+            dict.fromkeys(
+                [
+                    "run_id",
+                    "case_id",
+                    "mode",
+                    "fluid",
+                    "backend_model",
+                    "phase",
+                    "valid",
+                    *property_columns,
+                ]
+            )
+        ),
+        optional_columns=(
+            *(column for column, _unit in _COORDINATES.values()),
+            "saturation_endpoint",
+        ),
+        required_source_columns=_REQUIRED_DATASET_COLUMNS,
+    )
+    frame = table.frame
+    stable_ids = _validate_dataset_frame(
+        frame,
+        metadata,
+        source_columns=table.source_columns,
+    )
     source_valid = _strict_boolean_series(frame["valid"], "dataset valid")
     fields: list[SceneFieldData] = []
     topology_axes = _dataset_topology_axes(metadata, frame)
     topology_ids = {axis.field_id for axis in topology_axes}
-    units = _string_mapping(metadata.get("canonical_units"), "canonical_units")
     for field_id, (column, expected_unit) in _COORDINATES.items():
         if column not in frame.columns:
             continue
@@ -100,15 +138,10 @@ def load_dataset_source(
                 unit,
             )
         )
-    properties = _string_list(metadata.get("canonical_properties"), "canonical_properties")
-    if len(set(properties)) != len(properties):
-        _unsupported("dataset metadata repeats a canonical property")
     for name in properties:
         definition = PROPERTY_REGISTRY.get(name)
         if definition is None or definition.column not in frame.columns:
             _unsupported(f"dataset property {name!r} is unknown or absent")
-        if units.get(definition.column) != definition.unit:
-            _unsupported(f"dataset property {name!r} does not record its canonical unit")
         fields.append(
             _numeric_field(
                 name,
@@ -251,8 +284,10 @@ def _validate_sweep_parent(
 def _validate_dataset_frame(
     frame: pd.DataFrame,
     metadata: Mapping[str, Any],
+    *,
+    source_columns: tuple[str, ...],
 ) -> tuple[int, ...]:
-    missing = sorted(_REQUIRED_DATASET_COLUMNS - set(frame.columns))
+    missing = sorted(_REQUIRED_DATASET_COLUMNS - set(source_columns))
     if missing:
         _unsupported("dataset table is missing required columns: " + ", ".join(missing))
     row_count = metadata.get("row_count")
