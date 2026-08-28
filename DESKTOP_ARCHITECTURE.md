@@ -63,6 +63,13 @@ The source tree has one desktop presentation implementation:
   `ConfiguredPlotResultsController`, while inspected-data plot editing and
   rendering are owned by one `SessionPlotController`; the QML Visualization
   page binds both;
+- a QtCore-only `SceneDraft`, `SceneController`, and `SceneLeaseLifecycle` now
+  own explicit nonvisual scene profiling, build/update submission, stale
+  state, independently verified replacement, workspace-session locks,
+  conservative lease cleanup, safe shutdown sequencing, and nonvisual exact
+  pick state; the worker resolver now supports direct runs, sweep children,
+  prepared main tables, and prepared partitions, while visible 3D remains a
+  later checkpoint;
 - the QML Visualization page exposes record-driven configured outcomes and
   explicit inspected-data session rendering, including verified preview,
   focus, PDF-open, and image-plus-sidecar export actions;
@@ -146,6 +153,7 @@ not a second scientific implementation.
           +------- PreparationWorkflowController
           |
           +------------ InspectionController
+          +------- SceneController + SceneLeaseLifecycle
           |                  |
           +---------- DesktopRequestCoordinator
                              |
@@ -186,7 +194,8 @@ cross-controller facade. One instance owns:
 - `PreparationWorkflowController`;
 - `ActivityController`;
 - `ConfiguredPlotResultsController`;
-- `SessionPlotController`; and
+- `SessionPlotController`;
+- `SceneController` and `SceneLeaseLifecycle`; and
 - the shared verified-plot preview registry.
 
 It binds workspace activation to configuration context exactly once. QML may
@@ -219,7 +228,8 @@ Force Stop retain their separate active-operation paths.
 The coordinator owns the global active request, including:
 
 - request UUID and protocol type;
-- one owner: `configuration`, `execution`, `inspection`, or `plot`;
+- one owner: `configuration`, `execution`, `inspection`, `plot`, `sweep`,
+  `preparation`, or `scene`;
 - cancellation policy and force-stop state;
 - terminal worker event and process outcome;
 - stderr and cleanup status; and
@@ -230,6 +240,14 @@ Stale or foreign events are not delivered to another controller. Cooperative
 cancellation becomes available only when the worker reports a cancellable
 phase. Force stop is explicit and remains distinguishable in the terminal
 envelope.
+
+The private `scene` owner admits only `profile_scene`, `build_scene`, and
+`resolve_scene_pick`. Scene profiling is cancellable; scene building remains
+cancellable until it announces the sticky termination-protected publication
+phase. Pick resolution is a read-only cancellable worker request. The desktop
+scene lifecycle binds shutdown to the exact active session, waits for the
+coordinator's safety delay before force stop is available, and never interrupts
+protected publication.
 
 A matching request UUID is necessary but not sufficient for a controller to
 adopt a terminal response. Each response-owning controller retains only its
@@ -329,6 +347,9 @@ workflow. It owns:
   projections;
 - a private preparation-eligibility descriptor and typed source profile for an
   explicitly inspected immutable dataset run or model-sweep bundle;
+- immutable renderer-neutral scene bindings for supported run datasets,
+  model-sweep child datasets, prepared main tables, and prepared scenario
+  partitions, copied only from the accepted inspection revision;
 - dataset row totals together with the worker-reported column count, without
   opening the table again in the GUI process;
 - three independent dataset failure aggregates for layer, code, and property;
@@ -355,9 +376,11 @@ External file and folder actions are explicitly secondary and begin in the
 active workspace's `outputs/` directory; they can still select an authorized
 source outside the workspace.
 
-`carnopy.app.source_inspection` and `carnopy.app.table_preview` are permanent
-worker-only modules. They may import pandas, PyArrow, visualization inspection,
-and data-reading implementations inside worker request handling.
+`carnopy.app.source_inspection`, `carnopy.app.scene_profiles` and its
+dataset/prepared profile adapters, `carnopy.app.scene_picks`, and
+`carnopy.app.table_preview` are permanent worker-only modules. They may import
+pandas, PyArrow, visualization inspection, and data-reading implementations
+inside worker request handling.
 `InspectionController`, `inspection_models`, `table_model`, and QML views
 import none of those modules and never open table or array bytes. They consume
 only JSON-compatible worker payloads. The first bounded
@@ -394,6 +417,88 @@ and the established preparation field-resolution code in the worker. QML
 consumes typed Qt models and never reconstructs preparation semantics from raw
 manifest dictionaries. The profile remains an inspection result until the
 user explicitly binds its exact snapshot for Preparation.
+
+### `SceneDraft`, `SceneController`, and `SceneLeaseLifecycle`
+
+`SceneDraft` owns one explicit deep copy of an immutable Inspect scene binding,
+one matching accepted profile, exact axis/scalar selections, and exact filters.
+It starts no request. While `SceneController` owns a submitted detached
+snapshot, every draft mutation is locked; completion unlocks the same draft
+without allowing a late edit to alter worker inputs.
+
+`SceneController` owns Profile and Build/Update requests under the global
+`scene` coordinator owner, their phase/progress/cancellation projections, the
+last independently verified scene, and its accepted request identity. It
+borrows—but does not acquire or close—the workspace `SceneSession` owned by
+`SceneLeaseLifecycle`. A candidate becomes current only after the Unit 5C
+parent verifier accepts it. Failed, cancelled, source-changed, or
+integrity-rejected updates retain the previous verified scene; successful
+replacement requests retirement of the old lease only after the new scene is
+installed.
+
+Settings staleness compares the current exact request identity with the live
+draft and does not hide a valid scene. Source staleness is bound to the exact
+copied source descriptor and revision. It preserves the current scene as a
+viewable snapshot while disabling another Profile or Build from that old
+binding. Lease retirement is emitted as an ownership handoff rather than
+deleted by the scientific controller.
+
+`SceneLeaseLifecycle` is the focused desktop-owned filesystem and session
+boundary. On workspace activation it runs the conservative abandoned-lease
+scan before acquiring a fresh QtCore session lock, supplies that borrowed
+session to `SceneController`, and holds it until workspace replacement or
+shutdown. It retires exact controller-owned leases, retries failed retirement
+at lifecycle boundaries, and closes the session only after controller state is
+reset. Cleanup that cannot prove the recognized lease identity and inactive
+owner is preserved and surfaced; the lifecycle never recursively deletes an
+unrecognized or apparently live path.
+
+`DesktopController` composes both objects without a visible page. Scene
+shutdown first uses cooperative cancellation, exposes force stop only after
+the coordinator's safety delay, and waits through protected publication. The
+continuation remains bound to the exact request object so a replacement worker
+cannot be cancelled or mistaken for the confirmed request. Scene profiling,
+building, cleanup, and shutdown create no Activity or Recovery record. No
+visible QML page, renderer, pick resolver, or native dependency was added by
+Checkpoint 6C.
+
+Checkpoint 7A adds a worker-only exact-pick boundary without yet adding
+controller or presentation state. `scene_pick_contracts` is lightweight and
+defines one immutable request from a copied scene binding, original table-row
+position, and unsigned-64-bit stable ID. `scene_picks` remains worker-only: for
+direct runs and model-sweep child tables it rebuilds and compares the complete
+binding and revision, securely rereads the accepted table, requires unique
+exact `case_id` values, and accepts a row only when both position and ID match.
+A second complete binding revalidation precedes the result.
+
+The typed result repeats the exact source kind, revision, selected table ID and
+hash, row position, and `case_id`, then carries every source column in original
+order with recorded dtype text and a loss-aware cell value. Missing values,
+booleans, integers, finite floats, infinities, and text remain distinct. No row
+is returned for a changed source or a missing, duplicate, reordered, or
+substituted identity. At this checkpoint, prepared-row joins and controller
+source-stale behavior remained assigned to Checkpoint 7B.
+
+Checkpoint 7B extends that operation through the existing authoritative
+prepared-source validator. Main and scenario-partition picks match the original
+selected-table position with a unique exact `prepared_row_id`, return the exact
+selected row, and join exactly one provenance and diagnostics row. The support
+rows carry their verified table hashes, original column order, dtype text, and
+loss-aware cells. Partition picks also carry the scenario and partition names
+already cross-checked against the manifest, scenario metadata, scenario report,
+partition table, and prepared main table.
+
+`SceneController` now owns read-only pick submission and result state for its
+current verified scene. The retained attempt binds scene content and request
+identity plus the exact source, selected table, row position, and stable ID;
+prepared results must also match the binding's provenance and diagnostics
+hashes. A new pick, verified scene replacement, workspace reset, or source-
+stale transition clears old details. Only `scene_source_changed` marks the
+accepted snapshot source-stale; a mismatched point identity fails without
+misclassifying the source. Source-stale scenes remain viewable but cannot
+profile, build, or resolve further detail. Read-only pick cancellation follows
+the same exact-session shutdown path as other scene work. Stage 7 presentation
+will later own visible selection and detail views.
 
 ### `ActivityController`
 
@@ -1215,9 +1320,308 @@ GUI-2 is delivered one stage branch and pull request at a time:
 | 3 | Migrate remaining GUI-1 workflows, reach parity, switch both launchers to QML, remove Widgets, and qualify `0.1.0a4` | Complete |
 | 4 | Add controlled sweep and preparation worker operations | Complete |
 | 5 | Add structured sweep and preparation QML workflows | Complete; automated, remote, and native functional acceptance passed |
-| 6 | Build exact emitted-value 3D scene contracts | Pending |
+| 6 | Build exact emitted-value 3D scene contracts | Complete; automated source, distribution, and installed-launcher acceptance passed |
 | 7 | Integrate native interactive 3D into QML | Pending |
 | 8 | Complete native-3D platform, distribution, documentation, and later-release qualification | Pending |
+
+The implemented Stage 6 foundation is intentionally nonvisual. Immutable,
+renderer-neutral contracts normalize copied source bindings, field profiles,
+exact filters, topology evidence, block contexts, capabilities, requests, and
+hard scene limits without importing scientific or rendering libraries. Scene
+request identity includes the source revision, selected axes, optional scalar,
+and exact filters, while presentation representation and scale remain local
+future Stage 7 state.
+
+Private scene storage now uses parent-created UUID leases beneath
+`.carnopy-gui/scene-leases`, owned for the workspace session by a QtCore
+`QLockFile`. A canonical `lease.json` binds the directory device and inode. A
+complete scene is adoptable only when canonical `scene.json` and `scene.bin`
+both pass the lightweight verifier. The binary begins with the exact 16-byte
+`<8sHHI` header (`CARN3D`, header/schema version 1, little-endian marker), uses
+absolute 8-byte-aligned non-overlapping buffers with zero padding, and binds
+whole-file and per-buffer hashes. Manifest block ranges partition all points,
+edges, and ordered quads; connectivity must remain within both global bounds
+and its declared block. Startup cleanup removes only a fully recognized lease
+whose session lock can be acquired, and preserves malformed, replaced,
+symlinked, unrecognized, or apparently live candidates.
+
+Unit 3 adds authoritative worker-side profiling without adding a visible page.
+Inspect returns deeply immutable scene bindings only for run datasets,
+model-sweep child datasets, prepared main tables, and prepared scenario
+partitions. Standalone tables, sweep comparisons, and Preparation support
+tables remain inspectable but cannot be bound for a scene. The private
+`profile_scene` request reconstructs and compares the accepted binding,
+verifies recorded schemas, hashes, file identities, joins, and scenario
+evidence, then returns semantic field classifications, exact units or
+transformed-unit state, source-valid finite/missing/range/domain counts, filter
+and coordinate eligibility, deterministic defaults, and topology evidence.
+
+Run and sweep-child profiles preserve the original ordered materialized SI
+sampler levels from dataset metadata. Prepared main and partition rows join
+one-to-one with provenance and diagnostics by `prepared_row_id`; exclusions
+are checked as a disjoint source-row set because excluded rows correctly have
+no prepared-row identity. Scenario partitions must remain exact subsets of the
+main table, with transformations and aggregate metadata matching the verified
+scenario artifacts. Prepared provenance retains exact source coordinates but
+does not retain original ordered sampler levels, so adjacency is reported as
+unavailable rather than guessed.
+
+Checkpoint 4A reuses one verified source read to reconstruct the authoritative
+profile, compare it with the accepted immutable profile, validate the canonical
+request, and project renderer-neutral points. Exact case-sensitive categorical
+filters and inclusive finite numeric ranges run before selected-value checks.
+Each source row is accounted once, in deterministic precedence order: source
+invalid, first failed canonical filter, then first missing or nonfinite selected
+X/Y/Z/optional-scalar field. Retained records preserve original table-row
+position, unsigned-64-bit `case_id` or `prepared_row_id`, finite float64
+coordinates, and an optional finite scalar. No context partitioning, topology
+dimension analysis, edges, quads, capabilities, serialization, worker request,
+controller integration, or visible QML is introduced by 4A.
+
+Checkpoint 4B adds renderer-neutral context partitioning and topology analysis
+without primitive generation. Every row receives an exact source artifact,
+run, fluid, model, phase, saturation-endpoint, scenario, and partition context;
+retained blocks are canonically ordered and cannot silently span a context
+boundary. Dataset points map only to exact indices in the verified original
+materialized sampler order. Excluded rows retain their row identity, reason,
+context, and topology location when recorded, while missing intermediate
+levels remain explicit gaps. Duplicate locations keep each source point and
+stable ID distinct and block ambiguous topology. Zero-dimensional, unavailable,
+missing-context, incomplete, and unsupported higher-dimensional blocks are
+reported explicitly. Checkpoint 4B emits no edges, quads, triangles, or
+invented samples; primitive construction and representation capabilities
+remain later checkpoints.
+
+Checkpoint 4C adds renderer-neutral one-dimensional edges without changing
+the worker protocol or visible application. Only an exact, unambiguous block
+with one varying verified topology axis can emit edges. Endpoints follow
+consecutive indices in the original materialized sampler order, independently
+of whether the recorded numeric levels ascend, descend, or use nonuniform
+spacing. Filtered, invalid, missing, or otherwise absent intermediate levels
+remain gaps and are never bridged. Blocked topology and duplicate locations
+emit no edges, so connectivity cannot cross an artifact, run, fluid, model,
+phase, saturation endpoint, scenario, or partition boundary. Display
+coordinates are consulted only after exact adjacency is established: equality
+of all three coordinates omits and counts a zero-length edge with no epsilon.
+Two-dimensional edges, ordered quads, capabilities, serialization, controller
+integration, and visible QML remain later checkpoints.
+
+Checkpoint 4D extends the same exact adjacency rule to two-dimensional blocks
+and retains every complete cell as one ordered four-corner quad. The order is
+`[i,j]`, `[i+1,j]`, `[i+1,j+1]`, `[i,j+1]` in the original verified topology
+axis order; shared edges are stored once, and no renderer tessellation enters
+the scientific scene contract. Consecutive candidate cells inside each
+retained block bound remain absent when any exact corner is missing. Complete
+cells with repeated display-coordinate vertices or exact collinearity are
+omitted and counted deterministically, while zero-length adjacent edges retain
+their separate count. The collinearity predicate treats each finite binary64
+coordinate as its exact dyadic rational value and applies no epsilon, including
+for subnormal-area cells. Context or duplicate-topology blockers still emit no
+primitive. At the 4D boundary, capabilities and hard geometry limits were
+still deliberately absent; serialization, controller integration, and visible
+QML remain later checkpoints.
+
+Checkpoint 4E composes those exact primitives into one bounded,
+pre-serialization scene assembly. Points remain globally available, while
+wireframe and surface capabilities use an all-retained-block rule: every block
+must contain at least one valid edge or ordered quad respectively, and each
+unavailable, incomplete, missing-context, duplicate, or unsupported topology
+block contributes an explicit deterministic blocker. One valid block can
+therefore never hide an incompatible block. Exact retained binary64 ranges and
+positive-domain availability are recorded separately for X, Y, Z, and the
+optional scalar without changing raw values.
+
+The assembly projects the fixed header and complete typed binary-buffer size
+together with canonical future-manifest facts, then applies the accepted
+250,000-point, 499,999-edge, 249,999-quad, and 64 MiB projected-bundle limits
+before serialization. The later writer remains responsible for enforcing the
+exact completed manifest-plus-binary size. Checkpoint 4E still adds no writer,
+lease adoption, worker request, controller, visible QML, renderer, or triangle
+tessellation.
+
+Checkpoint 5A turns that bounded assembly into an immutable in-memory
+`scene.bin` encoding without publishing a file or manifest. The encoder emits
+the fixed little-endian header followed by canonical float64 coordinates and
+optional scalars, uint64 row positions and stable IDs, uint32 edge pairs and
+ordered quads, and float64 topology-level evidence. Absolute offsets are
+8-byte aligned, alignment gaps are deterministically zero-filled, and each
+buffer plus the whole binary receives a SHA-256 identity.
+
+Because source-row order may interleave scientific contexts, serialization
+first regroups points in canonical block order while retaining source-row order
+inside each block. It builds one exact old-to-new index mapping and applies it
+to every edge and ordered quad before assigning contiguous point, edge, and
+quad ranges. Thus the storage layout satisfies the hostile-input verifier's
+cross-block boundary without merging points, changing quad corner order, or
+inventing connectivity. Empty scalar or primitive buffers remain absent, and
+the original recorded topology-level order is preserved. At the 5A boundary,
+canonical manifest construction, exclusive file creation, lease publication,
+and worker adoption were still absent.
+
+Checkpoint 5B adds the deterministic production bundle writer without adding a
+worker or controller. A typed canonical manifest binds the normalized request,
+exact source and revision, field profiles, retained value ranges and log-domain
+evidence, topology-axis identities, scientific block contexts and accounting,
+gaps, degeneracy omissions, representation capabilities, binary descriptors,
+and whole-content identity. The lightweight verifier cross-checks these facts
+against the buffer and block layout rather than trusting the content hash
+alone. It therefore rejects contradictory scientific metadata even if an
+attacker recomputes that hash.
+
+The writer constructs and validates the complete manifest and binary in memory,
+applies the 64 MiB limit to their exact combined byte size, and only then writes
+exclusive mode-`0600` regular files. It never replaces a destination, writes
+and durably flushes `scene.bin` first, and publishes canonical `scene.json`
+last. A failed manifest publication leaves an incomplete recognized lease, not
+an adoptable scene. The writer result explicitly remains a candidate awaiting
+parent verification; at the 5B boundary, `build_scene` progress, cancellation,
+final source revalidation, parent adoption, and previous-scene retention were
+still absent.
+
+Checkpoint 5C adds the private worker and parent-adoption seam while keeping
+all scientific and file work outside QML. `build_scene` accepts one immutable
+profile/request pair and the identity of an empty parent-created lease. It
+reuses the authoritative projected source path, exact geometry engine, and
+deterministic encoder, reporting geometry, encoding, source-revalidation, and
+publication phases. Cooperative cancellation is checked throughout the
+potentially long source, geometry, and encoding loops.
+
+Immediately before publication, the worker revalidates the exact copied source
+binding. It then announces a short noncancellable, termination-protected
+publication phase, exclusively creates `scene.bin`, publishes `scene.json`
+last, and runs the complete lightweight verifier over the files it wrote. A
+second exact source revalidation after verification prevents a source change
+during publication from producing a successful worker result. The result is
+path-free and binds the parent lease identity, canonical scene request and
+content identities, binary hash, and exact file sizes.
+
+Parent adoption is deliberately separate and mutation-free. It reruns the
+complete lightweight verifier against the parent-held lease, compares the
+worker result with the verified files, and compares the manifest request,
+accepted field and topology facts, original topology-level hashes, and source
+row count with the accepted profile. Only a successful return is eligible for
+later controller replacement. Consequently a cancelled build, worker failure,
+source change, forged result, or tampered bundle leaves any previously held
+verified scene untouched. Checkpoint 5C still introduces no `SceneDraft`,
+`SceneController`, visible QML, renderer, or lifecycle cleanup; those begin in
+Unit 6.
+
+Checkpoint 6A introduces the QtCore-only `SceneDraft`, still without controller
+composition or visible QML. The draft receives a scene source only through an
+explicit deep copy of an immutable Inspect snapshot; it is not connected to
+Inspect navigation or selection changes. Profile acceptance requires the exact
+copied binding and applies the worker's topology-first defaults verbatim,
+including an intentionally incomplete default instead of choosing a fallback.
+
+Axis and optional scalar choices retain authoritative field eligibility and
+units. Categorical filters preserve exact case-sensitive values, while numeric
+ranges preserve finite inclusive binary64 bounds; both normalize through the
+existing scene request contracts. Profile and Build/Update submission methods
+return detached immutable snapshots and perform no worker dispatch. Thus edits
+cannot start background work, and a later edit cannot mutate an already
+created submission. Checkpoint 6A itself performs no lease cleanup or desktop
+composition; Checkpoint 6C below implements both.
+
+Checkpoint 6B adds the nonvisual controller boundary. Scene profiling and
+building now participate in the existing one-global-request policy, and the
+controller freezes the submitted draft, reports progress and cooperative
+cancellation, and treats publication as termination-protected. Only an
+independently adopted candidate can replace its current scene. Cancellation,
+worker failure, source change, or bundle-integrity failure leaves the old scene
+untouched and requests cleanup only for the discarded lease. Settings and
+source staleness remain separate exact identities.
+
+Checkpoint 6C composes `SceneController` and the focused
+`SceneLeaseLifecycle` in `DesktopController`, still without a visible QML page.
+The lifecycle scans abandoned leases before acquiring each workspace session,
+holds the new QtCore lock for that workspace context, and performs exact
+retirement on discarded candidates, verified replacement, workspace change,
+and shutdown. Unsafe or failed cleanup is preserved, reported, and retried at
+later lifecycle boundaries. Workspace release clears session-only scene,
+request, draft, stale, progress, and failure state before closing the lock.
+
+Scene requests continue to use the one global coordinator. Busy shutdown is
+bound to the exact confirmed scene request, begins with cooperative
+cancellation, allows force stop only after the coordinator safety delay, and
+waits without interruption during termination-protected publication. The
+lifecycle creates no Activity or Recovery records and adds no renderer,
+picking implementation, public interface, or dependency. Visible QML remains
+a later checkpoint.
+
+Checkpoint 7A adds the private `resolve_scene_pick` worker request and the
+lightweight typed input/result contract it uses. Direct-run and sweep-child
+rows resolve only after the complete scene binding and revision are rebuilt and
+compared, the accepted table is read through its exact identity, all
+`case_id` values are proved exact and unique, and the requested ID is found at
+the original requested position. A final binding revalidation prevents a
+source change during resolution from producing a successful result.
+
+The result carries the exact source, table, row-position, and stable-ID
+identity plus every source column in order using loss-aware JSON-compatible
+cells. Missing, duplicate, reordered, substituted, or source-mutated
+identities return no row. Prepared main/partition joins, provenance,
+diagnostics, scenario context, and controller source-stale integration remained
+assigned to Checkpoint 7B at the 7A boundary. Checkpoint 7A adds no visible QML,
+renderer, backend call, public interface, dependency, Activity record, or
+Recovery record.
+
+Checkpoint 7B reuses the complete prepared-source validator for exact main and
+scenario-partition picks. It matches both original row position and
+`prepared_row_id`, then returns the selected row with its exact one-to-one
+provenance and diagnostics rows and, for a partition, its validated scenario
+and partition identity. Support rows retain table hashes, original columns,
+dtype text, and loss-aware cell values.
+
+The nonvisual controller now owns pick submission and accepted detail state for
+the current verified scene. It compares every result with the retained scene,
+request, source, selected-table, row-position, stable-ID, and prepared support-
+table identities. A result is cleared on replacement, workspace reset, or
+source-stale transition. Failed source revalidation marks the accepted scene
+source-stale and disables further picks, profiling, and builds from that old
+binding; a bad point identity returns no details without falsely changing
+source state. Pick cancellation is covered by the existing scene busy-shutdown
+sequence. This checkpoint adds no visible QML, renderer, backend call, public
+interface, dependency, Activity record, or Recovery record.
+
+Checkpoint 8A completes integrated acceptance for the existing private scene
+and lease boundaries without changing their architecture. The hostile matrix
+now explicitly covers unsupported schema and header versions, version
+disagreement, incorrect magic and endianness, and duplicated, misaligned,
+overlapping, out-of-order, out-of-range, wrongly typed, wrongly shaped,
+length-inconsistent, and count-inconsistent buffers. Connectivity cases include
+globally invalid, repeated, duplicated, and globally valid cross-block edges
+and ordered quads, while existing source, manifest, binary, and lease identity
+tests retain their tamper coverage.
+
+The lifecycle acceptance uses a real helper process to prove that one startup
+scan removes an independently abandoned recognized lease while preserving the
+helper's valid lease under its live session lock. After the helper exits, the
+same lease becomes removable. Malformed, replaced, symlinked, unrecognized,
+and apparently live candidates remain conservatively preserved rather than
+recursively deleted.
+
+Checkpoint 8B completes Stage 6 without adding a renderer or public interface.
+The exact wheel and sdist inventory now requires all twenty Stage 6 application
+modules. The final 2026-08-27 acceptance passed lock consistency, Ruff,
+formatting across 258 files, strict mypy across 159 source files, preflight,
+CLI help, compatibility across 70 installed packages, and all 1,290 tests. An
+isolated sdist and wheel-from-sdist passed Twine and exact distribution
+inspection; every packaged scene module imported from a task-scoped installed
+wheel, and both generated public launchers passed their offscreen smoke path.
+No native UI acceptance was required because Stage 6 is intentionally
+nonvisual. The concise accepted contract is indexed in
+[`docs/archive/GUI2_STAGE6.md`](docs/archive/GUI2_STAGE6.md).
+
+The post-qualification pre-merge audit then identified one bounded-read gap:
+scene table loading hashed in chunks but retained and joined every encoded
+chunk before parsing every source column. The corrective checkpoint now uses
+the established hash-parse-rehash pattern over one safely opened descriptor,
+checks its path identity again afterward, and reads only the scientific values
+needed by dataset profiles and prepared joins while validating the complete
+recorded schema. Parquet record batches and CSV chunks provide cancellation
+checkpoints; complete prepared support rows remain exclusive to exact pick
+resolution. The direct and preflight-owned complete suites both passed the
+resulting 1,296-test repository state.
 
 Stage 2 has also established definition-first sampler canonicalization, exact
 anchor-based GUI unit changes, Qt 6.11.1 as the QML baseline, packaged QML
@@ -1483,6 +1887,8 @@ When changing the desktop, start at the owner of the behavior:
 | Configured visualization or temporary plot state | `visualization_draft`, `plot_draft`, and `mapping_draft` |
 | Configured plot evidence, preview authorization, and safe pair export | `configured_plot_results_controller`, `plot_artifacts`, and `plot_preview_provider` |
 | Inspected-data session plot edit and render lifecycle | `session_plot_controller` |
+| Nonvisual exact-scene draft, requests, stale and pick state, verified replacement, workspace sessions, and lease cleanup | `scene_draft`, `scene_controller`, and `scene_lifecycle` |
+| Exact scene-pick identities and worker-only direct/prepared source-row resolution | `scene_pick_contracts`, `scene_picks`, and `scene_prepared_profiles` |
 | QML presentation | `qml/Carnopy/` plus narrow runtime signal wiring |
 | QML startup, resources, fonts, and warning policy | `qml_runtime`, `qml_resources`, and the resource manifest |
 | Scientific behavior | Existing non-app domain/pipeline module, executed by the worker |

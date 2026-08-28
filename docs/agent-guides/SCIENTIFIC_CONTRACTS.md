@@ -65,6 +65,12 @@ read-only source inspection, bounded table previews, configured and session
 plot workflows, guarded no-overwrite image/sidecar promotion, Qt-only PNG/SVG
 previews, and explicit PDF opening.
 
+Development source after the published `0.1.0a5` payload additionally contains
+GUI-2 Stage 6's private, nonvisual exact-scene preparation, verification,
+lifecycle, and pick-resolution pipeline. It is not a public command, schema,
+renderer, or released native-3D capability; its detailed scientific boundary
+is recorded under Visualization below.
+
 [GUI2_PLAN.md](../../GUI2_PLAN.md) is the temporary source of truth for unfinished
 GUI-2 stages. Read it before changing desktop controllers, QML, native 3D, or
 desktop packaging. Delete it only after GUI-2 is complete and permanent
@@ -435,6 +441,31 @@ Visualization is a reproducible view of emitted columns:
 - derive only `specific_volume = 1 / mass_density`;
 - use semantic scientific labels and units;
 - keep visualization identity separate from dataset identity.
+
+GUI-2 Stage 6 also implements a private, nonvisual exact-scene preparation
+contract for verified dataset-run, model-sweep-child, prepared-main, and
+prepared-partition tables. It retains only source-valid rows with finite
+selected X, Y, Z, and optional scalar values; stores original row position and
+stable source identity; and separates connectivity by artifact, run, fluid,
+model, phase, saturation endpoint, scenario, and partition. Adjacency follows
+only verified original materialized sampler-level order. Missing, invalid,
+filtered, or omitted intermediate levels remain gaps, and duplicate topology
+locations remain distinct points while blocking ambiguous connectivity.
+
+One-dimensional exact topology may emit only immediately adjacent edges.
+Exactly two-dimensional topology may additionally emit one ordered quad per
+complete adjacent cell as `[i,j]`, `[i+1,j]`, `[i+1,j+1]`, `[i,j+1]`. Exact
+zero-length edges and repeated-vertex or exactly collinear quads are omitted
+and counted without tolerance. Unsupported or unavailable topology is reported
+explicitly. Scene preparation never emits triangles or calls a backend, and it
+never interpolates, smooths, extrapolates, resamples, merges, or silently
+repairs source data.
+
+These scenes are private, versioned, session-only desktop artifacts rather than
+a public dataset schema or API. They are bounded to 250,000 points, 499,999
+edges, 249,999 quads, and a 64 MiB complete manifest-plus-binary bundle. Stage 6
+adds no visible renderer; interactive native presentation remains GUI-2 Stage 7
+and is unavailable in the current published alpha.
 
 Sampled-series sidecars distinguish invalid or missing `gap_count` from
 deliberate `phase_break_count`. Dense numeric curve families may replace an

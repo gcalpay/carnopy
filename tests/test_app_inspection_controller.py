@@ -359,6 +359,67 @@ def test_dataset_projection_keeps_failure_aggregates_independent(tmp_path: Path)
     coordinator.shutdown()
 
 
+def test_inspect_accepts_and_deep_copies_immutable_scene_binding(tmp_path: Path) -> None:
+    source = (tmp_path / "run").resolve()
+    source.mkdir()
+    dataset = source / "dataset.parquet"
+    dataset.touch()
+    binding = {
+        "source_path": str(source),
+        "source_kind": "dataset",
+        "inspection_revision": REVISION,
+        "selected_table_id": "dataset",
+        "tables": [
+            {
+                "table_id": "dataset",
+                "label": "Dataset",
+                "source_format": "parquet",
+                "artifact": {
+                    "path": str(dataset),
+                    "sha256": "b" * 64,
+                    "device": 1,
+                    "inode": 2,
+                    "size": 0,
+                    "modified_ns": 3,
+                },
+                "metadata": None,
+            }
+        ],
+        "controls": [],
+    }
+    controller, coordinator = controller_for()
+    prepare_payload(
+        controller,
+        source,
+        {
+            "source_kind": "dataset",
+            "summary": {},
+            "tables": [
+                {
+                    "id": "dataset",
+                    "label": "Dataset",
+                    "format": "parquet",
+                    "sha256": "b" * 64,
+                }
+            ],
+            "scene_bindings": [binding],
+            "scene_ineligible_reasons": {},
+        },
+    )
+
+    first = controller.scene_source_snapshot()
+    second = controller.scene_source_snapshot()
+
+    assert first is not None
+    assert second is not None
+    assert first == second
+    assert first is not second
+    assert first.selected_table_id == "dataset"
+    binding["selected_table_id"] = "changed"
+    assert controller.scene_source_snapshot() == first
+    coordinator.shutdown()
+
+
 def test_preparation_eligibility_is_explicit_and_revision_bound(tmp_path: Path) -> None:
     eligible_source = tmp_path / "generated-run"
     eligible_source.mkdir()

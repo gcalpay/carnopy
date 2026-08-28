@@ -24,6 +24,7 @@ from carnopy.app.protocol import (
     encode_event,
     parse_request,
 )
+from carnopy.app.scene_contracts import SceneContractError, SceneSourceBinding
 from carnopy.app.workflow_worker import (
     WORKFLOW_REQUESTS,
     StalePlanError,
@@ -91,6 +92,12 @@ class PreviewPayload(InspectPayload):
     limit: int = Field(ge=1, le=500)
 
 
+class ProfileScenePayload(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    binding: SceneSourceBinding
+
+
 class EventWriter:
     def __init__(self, stream: IO[str], request_id: UUID) -> None:
         self._stream = stream
@@ -156,6 +163,17 @@ def main(
         return 1
     except ConfigError as exc:
         writer.emit("error", _config_error_payload(exc))
+        return 1
+    except SceneContractError as exc:
+        writer.emit(
+            "error",
+            _error_payload(
+                "execution",
+                exc.code,
+                exc.message,
+                exc.details or None,
+            ),
+        )
         return 1
     except CarnopyError as exc:
         writer.emit(
@@ -279,6 +297,34 @@ def _execute(
         from carnopy.app.source_inspection import inspect_for_app
 
         return inspect_for_app(inspect_payload.source_path).public_payload()
+    if request.type == "profile_scene":
+        profile_payload = ProfileScenePayload.model_validate(request.payload)
+        writer.emit("phase", {"name": "scene_profiling", "cancellable": True})
+        from carnopy.app.scene_profiles import profile_scene
+
+        return profile_scene(
+            profile_payload.binding,
+            checkpoint=lambda: _raise_if_cancelled(cancelled),
+        ).model_dump(mode="json")
+    if request.type == "build_scene":
+        from carnopy.app.scene_build import BuildScenePayload, execute_scene_build
+
+        build_payload = BuildScenePayload.model_validate(request.payload)
+        return execute_scene_build(
+            build_payload,
+            emit=writer.emit,
+            checkpoint=lambda: _raise_if_cancelled(cancelled),
+        )
+    if request.type == "resolve_scene_pick":
+        from carnopy.app.scene_pick_contracts import ResolveScenePickPayload
+        from carnopy.app.scene_picks import resolve_scene_pick
+
+        pick_payload = ResolveScenePickPayload.model_validate(request.payload)
+        writer.emit("phase", {"name": "scene_pick_resolution", "cancellable": True})
+        return resolve_scene_pick(
+            pick_payload,
+            checkpoint=lambda: _raise_if_cancelled(cancelled),
+        ).model_dump(mode="json")
     if request.type == "preview_table":
         preview_payload = PreviewPayload.model_validate(request.payload)
         writer.emit("phase", {"name": "table_preview", "cancellable": True})
@@ -316,6 +362,11 @@ def _load_expected_config(payload: ExecutionConfigPayload) -> LoadedConfig:
     from carnopy.config.io import load_config_bytes
 
     return load_config_bytes(raw_bytes, source_name=str(payload.config_path))
+
+
+def _raise_if_cancelled(cancelled: threading.Event) -> None:
+    if cancelled.is_set():
+        raise ExecutionCancelled("execution cancelled by request")
 
 
 def _validated_dataset_payload(loaded: LoadedConfig) -> dict[str, Any]:

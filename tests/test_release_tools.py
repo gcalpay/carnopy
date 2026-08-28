@@ -367,6 +367,36 @@ def test_distribution_checker_requires_every_stage5_application_module() -> None
     )
 
 
+def test_distribution_checker_requires_every_stage6_application_module() -> None:
+    expected = {
+        "scene_assembly.py",
+        "scene_build.py",
+        "scene_bundle.py",
+        "scene_cells.py",
+        "scene_contracts.py",
+        "scene_controller.py",
+        "scene_dataset_profiles.py",
+        "scene_draft.py",
+        "scene_edges.py",
+        "scene_encoding.py",
+        "scene_geometry.py",
+        "scene_integrity.py",
+        "scene_leases.py",
+        "scene_lifecycle.py",
+        "scene_pick_contracts.py",
+        "scene_picks.py",
+        "scene_prepared_profiles.py",
+        "scene_profiles.py",
+        "scene_topology.py",
+        "scene_writer.py",
+    }
+    assert expected == check_distribution.STAGE6_APP_FILES
+    assert {f"carnopy/app/{path}" for path in expected}.issubset(check_distribution.WHEEL_REQUIRED)
+    assert {f"src/carnopy/app/{path}" for path in expected}.issubset(
+        check_distribution.SDIST_REQUIRED
+    )
+
+
 def test_installed_smoke_invokes_both_public_qml_entrypoints(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

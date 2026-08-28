@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from typing import cast
 from uuid import UUID, uuid4
@@ -133,7 +133,7 @@ class CompletionReceiver(QObject):
 
 
 @pytest.fixture(scope="module")
-def application() -> QCoreApplication:
+def application() -> Iterator[QCoreApplication]:
     existing = QCoreApplication.instance()
     app = existing if isinstance(existing, QCoreApplication) else QCoreApplication([])
     yield app
@@ -206,6 +206,20 @@ def test_configuration_owner_admits_only_its_generic_requests(
 
     with pytest.raises(ValueError, match="not owned by 'sweep'"):
         coordinator.start_request("sweep", "load_configuration", {})
+
+
+def test_scene_owner_admits_exact_pick_resolution(
+    application: QCoreApplication,
+) -> None:
+    del application
+    transport = StubTransport()
+    coordinator = coordinator_for(transport)
+
+    session = coordinator.start_request("scene", "resolve_scene_pick", {"point": 4})
+
+    assert session.owner == "scene"
+    assert session.request_type == "resolve_scene_pick"
+    transport.finish(payload={})
 
 
 def test_reservation_is_nonbusy_blocks_reentry_and_preserves_uuid(

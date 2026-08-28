@@ -82,7 +82,7 @@ implementation.
 | 3 | Complete | Reached parity, migrated both launchers, retired Widgets, and qualified `0.1.0a4` |
 | 4 | Complete | Added controlled sweep and preparation worker operations for the existing public contracts |
 | 5 | Complete | Added accepted structured Sweep and Preparation workflows plus typed audit inspection |
-| 6 | Pending | Build exact emitted-value 3D scenes |
+| 6 | Complete | Added accepted exact emitted-value 3D scene preparation contracts |
 | 7 | Pending | Add native interactive 3D to QML |
 | 8 | Pending | Qualify native 3D packaging, platforms, and a later release |
 
@@ -245,25 +245,49 @@ file-integrity, worker, or lifecycle boundaries.
 
 ## Stage 6: exact scientific 3D scenes
 
-Worker-prepared scenes support dataset runs and prepared main or scenario
-tables.
+Stage 6 is complete. Its accepted scientific, integrity, lifecycle,
+implementation, and verification record is indexed in
+[`docs/archive/GUI2_STAGE6.md`](docs/archive/GUI2_STAGE6.md); durable ownership
+is maintained in [`DESKTOP_ARCHITECTURE.md`](DESKTOP_ARCHITECTURE.md), and the
+scientific rules are maintained in the routed public contracts.
 
-- Points represent finite emitted rows.
-- Wireframe edges connect exact adjacent coordinate levels only within
-  compatible fluid, model, phase, and partition contexts.
-- Surfaces require two independent coordinates, explicit structured-grid
-  evidence, and one unambiguous row per coordinate pair.
-- A surface cell exists only when all corners exist and share a compatible
-  context.
-- Missing and invalid rows remain gaps.
-- Ambiguous duplicates, incompatible contexts, non-positive logarithmic
-  domains, and unsupported shapes fail clearly.
-- Picking maps exactly to source-row identity and provenance.
-- No backend call, interpolation, smoothing, extrapolation, resampling, or
-  silent repair is permitted.
+The completed nonvisual pipeline profiles verified dataset runs, model-sweep
+child datasets, prepared main tables, and prepared scenario partitions. It
+projects finite source-valid points with exact source-row identities, preserves
+verified original sampler order, partitions every scientific context, emits
+only immediately adjacent edges and complete ordered quads, retains gaps and
+ambiguities explicitly, and never calls a backend or interpolates, smooths,
+extrapolates, resamples, merges, or silently repairs data.
 
-The bounded, hashed scene representation must be reconstructible by the GUI
-and bridge without scientific imports in QML.
+Canonical, bounded `scene.json` and little-endian `scene.bin` bundles use
+parent-created workspace-session leases, exact hashes, independent parent
+verification, and conservative live-lock-aware cleanup. The QtCore-only draft,
+controller, lifecycle, and exact pick resolver retain prior verified scenes
+across failed updates and resolve direct, sweep-child, prepared-main, and
+prepared-partition rows only after complete source revalidation.
+
+The 2026-08-27 completion gate passed all 1,290 tests, lock consistency, Ruff,
+formatting, strict mypy, preflight, CLI help, dependency compatibility, isolated
+sdist and wheel-from-sdist construction, Twine, exact distribution inventory,
+installed imports of every Stage 6 module, and offscreen smoke execution through
+both public launcher scripts. No manual UI acceptance was required because the
+stage changes no visible QML.
+
+A subsequent pre-merge read-only audit found that the verified table reader
+retained each complete encoded source file and materialized unused support
+columns before applying scene limits. The corrective checkpoint now hashes the
+safely opened descriptor before and after parsing, rechecks the final path
+identity, projects only scientifically required values while still validating
+the complete source schema, and parses Parquet and CSV in cancellable batches.
+Exact prepared picks continue to request complete selected, provenance, and
+diagnostic rows. Both the direct and preflight-owned complete suites then passed
+1,296 tests with no failures.
+
+Stage 6 adds no public API, CLI command, YAML or generated-artifact schema,
+dependency, visible renderer, camera, image export, version, tag, or release.
+The published `0.1.0a5` artifacts remain unchanged and predate this work.
+Stage 7 owns interactive reconstruction and presentation; Stage 8 owns native
+packaging, platform qualification, versioning, and release.
 
 ## Stage 7: native interactive 3D
 
