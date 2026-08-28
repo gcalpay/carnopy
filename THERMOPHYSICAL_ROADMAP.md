@@ -16,6 +16,8 @@ qualification. The current behavior remains defined by
 
 ## Product direction
 
+Thermophysical data workbench for generating, importing, comparing, validating and visualizing data from experiments, literature, property models and simulation backends, with leakage-aware preparation for physics-informed machine learning.
+
 Carnopy should not compete by reproducing every equation of state, activity
 model, process solver, or training framework. Established scientific engines
 already provide broad and specialized numerical implementations. Carnopy's
@@ -33,6 +35,27 @@ distinct role is to make work across those engines reproducible and auditable:
 Backend count is not a success measure. A new adapter is useful only when its
 results can be identified, validated, compared, reproduced, packaged, and
 explained at least as rigorously as current CoolProp runs.
+
+## Source and provider roles
+
+Future integrations must preserve what kind of scientific source produced a
+value instead of calling every provider a backend:
+
+- **experimental and literature evidence** supplies reported observations,
+  methods, uncertainty, citations, samples, and source-record identity;
+- **property engines** evaluate thermophysical or equilibrium properties from
+  declared states, compositions, models, and parameters;
+- **simulation engines** solve process, cycle, reacting-system, or field
+  models and return typed state, topology, balance, convergence, and solver
+  evidence; and
+- **external surrogate results** supply predictions or uncertainties bound to
+  an exact Carnopy Preparation bundle and external run identity.
+
+ThermoML is the first structured evidence target. CoolProp, ThermoPack, teqp,
+and `thermo` are candidate property-engine paths with different scientific
+coverage. TESPy, DWSIM, Cantera, and IDAES are candidate simulation paths whose
+cycle, flowsheet, reaction, optimization, and property-package responsibilities
+must remain explicit rather than being flattened into one generic adapter.
 
 ## Recommended sequence
 
@@ -94,6 +117,12 @@ The importer must not treat every record as equally suitable for validation.
 Method, uncertainty, phase, composition, and domain compatibility must remain
 visible so users can decide what constitutes relevant evidence.
 
+The first compatibility target should cover archive ThermoML XML and its
+corresponding JSON representation through one normalized evidence model. Exact
+source bytes remain immutable. Unsupported record families or fields must be
+reported and retained as explicit import limitations rather than discarded or
+guessed into a simpler schema.
+
 ### Comparison and validation products
 
 Model-to-reference comparison should align only scientifically compatible
@@ -114,6 +143,27 @@ source records, objective, weighting, bounds, optimizer, convergence evidence,
 software versions, covariance or uncertainty information when available, and
 an immutable result identity. Fitted parameters must never silently replace a
 backend default.
+
+## Reference-state alignment for enthalpy, entropy, and internal energy
+
+Specific enthalpy, entropy, and internal energy require an explicit reference
+context. Future imported and multi-engine comparisons must retain:
+
+- the raw reported or generated value and unit;
+- source, backend, model, version, composition, and phase identity;
+- the declared reference-state convention when one is supplied;
+- any reference temperature, pressure, phase, composition, and anchor values;
+- whether the reference information is source-reported, backend-defined,
+  user-declared, derived through a reviewed transformation, or unavailable;
+- the exact offset or transformation used for an aligned comparison; and
+- both the original and aligned value identities.
+
+Absolute values may be compared directly only when their reference contexts
+are compatible. Otherwise Carnopy should prefer reference-independent
+differences where scientifically valid, report the incompatibility, or allow an
+explicit reversible rebasing against a sufficiently defined common anchor.
+Rebasing must never alter source artifacts, hide the original values, or occur
+as an automatic plotting or import convenience.
 
 ## Mixtures and phase equilibria
 
@@ -239,6 +289,10 @@ through a new typed result contract.
   networks rather than ordinary nonreacting property tables.
 - **IDAES** is a later candidate for full process flowsheets and optimization
   when a use case needs that broader process-modeling scope.
+- **DWSIM** is a later candidate for process-flowsheet execution or typed result
+  import through its automation surfaces. A reviewed adapter must preserve the
+  flowsheet, property-package, unit-operation, solver, stream, and convergence
+  identities rather than exposing mutable simulator objects as Carnopy state.
 
 Each adapter must remain optional and worker-owned. Carnopy configuration and
 results should not expose mutable engine objects as public scientific state.
@@ -261,6 +315,38 @@ artifacts. Candidate views include:
 - Preparation partition, coverage, and leakage-diagnostic views; and
 - imported ML prediction parity, residual, error-domain, learning-curve, and
   uncertainty-calibration views.
+
+### Interactive 3D and multidimensional projections
+
+The native 3D direction extends exact emitted-value scenes into a scientific
+data-navigation workbench:
+
+- CAD-style orbit, pan, dolly/zoom, fit-to-data, camera reset, and focus on an
+  exact selected point;
+- standard XY, XZ, and YZ views plus isometric views, with perspective and
+  orthographic camera choices and a visible orientation control;
+- points, verified wireframes, verified surfaces, and scalar-colored
+  representations with explicit units and linear or logarithmic mapping;
+- sequential and diverging scalar palettes selected according to declared
+  value semantics, with explicit user-controlled ranges and visible missing or
+  invalid values;
+- exact point picking linked to the complete source row, source identity,
+  diagnostics, and provenance;
+- assignment of eligible fields to X, Y, Z, and scalar color without
+  regenerating or rewriting the source artifact;
+- exact categorical and numeric filtering, faceting, and coordinate-level
+  stepping for dimensions not assigned to visible axes;
+- linked 2D sections or tables that preserve the selected 3D point and source
+  context; and
+- deterministic image export recording scene, camera, dimensions,
+  representation, filters, scalar mapping, and source identities.
+
+These are projections of sampled multidimensional data. A scalar attached to
+emitted points or verified cells is a sampled scalar field; it is not silently
+promoted to a continuous field. Arbitrary contours, reconstructed slices,
+isosurfaces, volume rendering, smoothing, or hole filling require a separate
+scientific contract that states the reconstruction or interpolation method,
+domain, uncertainty, and provenance.
 
 Visualization must preserve missing data, phase boundaries, uncertainty,
 source identity, and failures. Interpolation, smoothing, derived envelopes, or
@@ -297,3 +383,5 @@ metrics, and result visualization are detailed in
 - OpenMDAO, [pyCycle](https://github.com/openmdao/pycycle).
 - Cantera, [reactor networks](https://cantera.org/stable/reference/reactors/index.html).
 - IDAES, [process systems engineering framework](https://idaes.org/software/).
+- DWSIM, [automation documentation](https://dwsim.org/wiki/index.php?title=Automation)
+  and [tutorials](https://dwsim.org/tutorials/en/index.html).

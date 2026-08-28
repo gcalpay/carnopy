@@ -6,7 +6,7 @@
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22053741.svg)](https://doi.org/10.5281/zenodo.22053741)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Reproducible thermophysical data pipelines integrating property models, simulation backends and validated reference data, with inspection, visualization, provenance and leakage aware preparation for physics-informed machine learning workflows.
+Thermophysical data workbench for generating, importing, comparing, validating and visualizing data from experiments, literature, property models and simulation backends, with leakage-aware preparation for physics-informed machine learning.
 
 Carnopy is an open and auditable thermophysical-data workbench. It turns an
 explicit YAML sampling specification into immutable CSV and Parquet datasets,
@@ -447,10 +447,18 @@ The planned direction develops six connected capabilities:
   provenance.
 - **Expanded visualization:** add mixture, phase-equilibrium, model-comparison,
   uncertainty, cycle, Preparation, and imported ML-result views backed only by
-  verified data contracts.
+  verified data contracts; extend exact emitted-value 3D with CAD-style
+  orbit, pan, zoom, standard and isometric views, scalar coloring, exact point
+  inspection, and selectable X/Y/Z/color projections of multidimensional data.
 - **ML interoperability:** keep Parquet canonical while evaluating PyTorch and
   selected external physics-informed and tabular-ML consumers, plus an
   identity-bound result-import contract for prediction and error analysis.
+
+Reference-dependent enthalpy, entropy, and internal-energy values remain tied
+to their recorded source, model, and reference-state context. Future comparison
+work will preserve raw values, make compatibility explicit, and allow only
+documented, reversible alignment against a declared anchor rather than silent
+normalization.
 
 The [thermophysical and simulation roadmap](THERMOPHYSICAL_ROADMAP.md) records
 the detailed source, model, backend, mixture, cycle, and visualization

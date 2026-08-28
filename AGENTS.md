@@ -83,6 +83,8 @@ blending them.
 
 ## Project boundary
 
+Thermophysical data workbench for generating, importing, comparing, validating and visualizing data from experiments, literature, property models and simulation backends, with leakage-aware preparation for physics-informed machine learning.
+
 Carnopy is an open and auditable thermophysical-data workbench. Current
 behavior and exclusions live in the tracked scientific contracts. The public
 direction is summarized in the [README Future Scope](README.md#future-scope),
