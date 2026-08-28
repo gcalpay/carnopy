@@ -14,8 +14,13 @@ scientific and public contracts or make an unimplemented direction available.
 
 ## Purpose and scope
 
-Carnopy generates reproducible, backend-derived synthetic thermophysical
-datasets for machine-learning, surrogate-model, and engineering workflows.
+Thermophysical data workbench for generating, importing, comparing, validating and visualizing data from experiments, literature, property models and simulation backends, with leakage-aware preparation for physics-informed machine learning.
+
+The current implemented contract is the first bounded part of that product
+scope: Carnopy generates reproducible, backend-derived synthetic
+thermophysical datasets for machine-learning, surrogate-model, and engineering
+workflows. Import, additional sources, and the other future capabilities remain
+roadmap directions until separately implemented and accepted.
 
 Carnopy is not:
 

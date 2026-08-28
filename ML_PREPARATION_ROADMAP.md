@@ -2,11 +2,13 @@
 
 ## Purpose
 
-Carnopy prepares reproducible, backend-derived thermophysical datasets for
-external machine-learning and surrogate-model workflows. It is not a training
-or deployment framework. An optional diagnostic layer may fit disposable
-baseline estimators to measure prepared-dataset learnability, but it never
-persists, tunes, registers, or deploys them.
+Thermophysical data workbench for generating, importing, comparing, validating and visualizing data from experiments, literature, property models and simulation backends, with leakage-aware preparation for physics-informed machine learning.
+
+Within that product scope, Carnopy prepares reproducible, source-aware
+thermophysical datasets for external machine-learning and surrogate-model
+workflows. It is not a training or deployment framework. An optional diagnostic
+layer may fit disposable baseline estimators to measure prepared-dataset
+learnability, but it never persists, tunes, registers, or deploys them.
 
 This document separates implemented preparation behavior from possible future
 work. Future entries are design directions, not public API commitments. Each
@@ -146,6 +148,13 @@ Future interoperability should use three explicit levels:
 1. framework-neutral files and manifests owned by Carnopy;
 2. small, optional, version-qualified consumption adapters; and
 3. external training and orchestration systems that remain outside Carnopy.
+
+PyTorch is the primary planned framework-specific consumption target. The
+useful boundary includes a manifest-backed CPU tensor export, a small
+Dataset/DataLoader adapter or reference consumer, and identity-bound prediction
+result import. Physics-informed consumers must receive only genuinely available
+coordinates, fields, masks, derivatives, constraints, units, and provenance;
+Carnopy must not fabricate a physics contract to satisfy a framework API.
 
 The current and candidate technologies fall into these categories:
 

@@ -1,5 +1,7 @@
 # Carnopy GUI-2: active stages and release boundaries
 
+Thermophysical data workbench for generating, importing, comparing, validating and visualizing data from experiments, literature, property models and simulation backends, with leakage-aware preparation for physics-informed machine learning.
+
 This temporary document is the implementation source of truth for unfinished
 GUI-2 work. Completed implementation detail belongs in Git history and the
 short indexes under `docs/archive/`; durable implemented ownership belongs in
@@ -296,9 +298,23 @@ reconstruction, rotate, pan, zoom, camera reset, standard views, axes and
 units, scalar legends, validated linear and logarithmic presentation, points,
 wireframe, surfaces, exact picking, and deterministic teardown.
 
+Interaction should use a CAD-style scientific-navigation vocabulary: orbit,
+pan, dolly/zoom, fit-to-data, focus selected point, XY/XZ/YZ and isometric
+views, perspective and orthographic cameras, and a visible orientation control.
+The user may assign eligible fields to X, Y, Z, and scalar color, then apply
+exact filters or select levels for remaining dimensions. Scalar coloring must
+retain units, explicit ranges, missing/invalid visibility, and suitable
+sequential or diverging mapping without changing the sampled values.
+
 The QML page selects inspection-backed sources, coordinates, scalar values,
 scales, representations, and filters. Unsupported surfaces receive an explicit
 explanation rather than an approximation.
+
+Stage 7 presents sampled scalar fields on retained points or verified cells.
+It does not add arbitrary contours, isosurfaces, reconstructed slices, volume
+rendering, interpolation, smoothing, or hole filling. Those remain separate
+research directions requiring an explicit reconstruction and provenance
+contract.
 
 Authoritative image export uses a short-lived worker with explicit scene,
 camera, dimensions, scalar mapping, and rendering settings. It writes a
