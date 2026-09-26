@@ -14,8 +14,10 @@ and `architect`. The project `explorer` and `worker` intentionally override the
 built-in roles with the same names.
 
 Every active project agent must pin its model, reasoning effort, and sandbox.
-GPT-5.4, GPT-5.4-mini, Terra, automatic model selection, and automatic review
-are forbidden. Do not add or use another project role without maintainer
+Only GPT-6 Astra (`gpt-6-astra`), GPT-6 Sol (`gpt-6-sol`), and GPT-6 Luna
+(`gpt-6-luna`) are approved. Luna must always use Max (`max`), including for
+read-only work. Other model families, automatic model selection, and automatic
+review are forbidden. Do not add or use another project role without maintainer
 review. Parent-model preferences, exact-selection failures, and observable
 fallback handling belong in `.agents/local.md`.
 
@@ -23,13 +25,13 @@ The reviewed project-agent assignments are:
 
 | Role | Purpose | Sandbox | Model | Effort | Typical tier |
 | --- | --- | --- | --- | --- | --- |
-| `explorer` | Focused codebase lookup and evidence collection | `read-only` | GPT-5.6 Luna | High | Easiest read-only |
-| `worker` | Bounded, already-designed implementation | `workspace-write` | GPT-5.6 Luna | Max | Easy write |
-| `reviewer` | Correctness, regression, security, and scientific review | `read-only` | GPT-5.6 Sol | XHigh | Hard read-only |
-| `architect` | Difficult architecture, native, scientific, numerical, and release decisions | `read-only` | GPT-5.6 Sol | Max | Most difficult |
+| `explorer` | Focused codebase lookup and evidence collection | `read-only` | GPT-6 Luna | Max | Bounded read-only |
+| `worker` | Bounded, already-designed implementation | `workspace-write` | GPT-6 Luna | Max | Easy write |
+| `reviewer` | Correctness, regression, security, and scientific review | `read-only` | GPT-6 Sol | XHigh | Hard read-only |
+| `architect` | Difficult architecture, native, scientific, numerical, and release decisions | `read-only` | GPT-6 Astra | Max | Most difficult |
 
-These are exact pins, not minimums. Approved parent-only intermediate tiers
-remain in `.agents/local.md`; do not override a project role's pin to reach
+These are exact pins, not minimums. Parent-session model and reasoning choices
+remain in `.agents/local.md`; do not override a project role's pin to match
 them. A stuck agent reports the limitation to the parent; it does not alter its
 own model or reasoning effort.
 
@@ -57,4 +59,3 @@ integrated or discarded, including agents already marked completed.
 `interrupt_agent` stops a turn but leaves its thread open, so it is never a
 substitute for `close_agent`. If the active surface does not provide the
 required lifecycle operation, do not spawn project agents from that surface.
-

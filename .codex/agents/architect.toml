@@ -1,6 +1,6 @@
 name = "architect"
 description = "Read-only analysis for difficult architecture, native integration, scientific, numerical, and release-critical work."
-model = "gpt-5.6-sol"
+model = "gpt-6-astra"
 model_reasoning_effort = "max"
 sandbox_mode = "read-only"
 nickname_candidates = [

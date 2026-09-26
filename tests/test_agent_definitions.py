@@ -10,10 +10,10 @@ import pytest
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 AGENT_DIRECTORY = REPOSITORY_ROOT / ".codex" / "agents"
 EXPECTED_AGENTS = {
-    "architect": ("gpt-5.6-sol", "max", "read-only"),
-    "explorer": ("gpt-5.6-luna", "high", "read-only"),
-    "reviewer": ("gpt-5.6-sol", "xhigh", "read-only"),
-    "worker": ("gpt-5.6-luna", "max", "workspace-write"),
+    "architect": ("gpt-6-astra", "max", "read-only"),
+    "explorer": ("gpt-6-luna", "max", "read-only"),
+    "reviewer": ("gpt-6-sol", "xhigh", "read-only"),
+    "worker": ("gpt-6-luna", "max", "workspace-write"),
 }
 NICKNAME_PATTERN = re.compile(r"[A-Za-z0-9 _-]+\Z")
 
