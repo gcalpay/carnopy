@@ -11,6 +11,7 @@ if TYPE_CHECKING:
         generate_model_sweep,
         load_config,
         prepare_dataset,
+        preview_source_import,
         validate_config,
     )
     from carnopy.config.models import BackendConfig, CarnopyConfig, CoolPropModel, NormalizedConfig
@@ -23,15 +24,22 @@ if TYPE_CHECKING:
         ValidationResult,
         VisualizationSummary,
     )
+    from carnopy.sources.config import ImportConfig, ImportSelection
+    from carnopy.sources.errors import SourceImportError
+    from carnopy.sources.preview import ImportPreview
 
 __all__ = [
     "BackendConfig",
     "CarnopyConfig",
     "CoolPropModel",
+    "ImportConfig",
+    "ImportPreview",
+    "ImportSelection",
     "NormalizedConfig",
     "OutputConfig",
     "PreparationResult",
     "RunResult",
+    "SourceImportError",
     "SweepResult",
     "ValidationResult",
     "VisualizationConfig",
@@ -42,6 +50,7 @@ __all__ = [
     "generate_model_sweep",
     "load_config",
     "prepare_dataset",
+    "preview_source_import",
     "validate_config",
 ]
 
@@ -49,6 +58,10 @@ _LAZY_EXPORTS = {
     "BackendConfig": ("carnopy.config.models", "BackendConfig"),
     "CarnopyConfig": ("carnopy.config.models", "CarnopyConfig"),
     "CoolPropModel": ("carnopy.config.models", "CoolPropModel"),
+    "ImportConfig": ("carnopy.sources.config", "ImportConfig"),
+    "ImportSelection": ("carnopy.sources.config", "ImportSelection"),
+    "ImportPreview": ("carnopy.sources.preview", "ImportPreview"),
+    "SourceImportError": ("carnopy.sources.errors", "SourceImportError"),
     "NormalizedConfig": ("carnopy.config.models", "NormalizedConfig"),
     "OutputConfig": ("carnopy.config.outputs", "OutputConfig"),
     "PreparationResult": ("carnopy.results", "PreparationResult"),
@@ -65,6 +78,7 @@ _LAZY_EXPORTS = {
     "generate_model_sweep": ("carnopy.api", "generate_model_sweep"),
     "load_config": ("carnopy.api", "load_config"),
     "prepare_dataset": ("carnopy.api", "prepare_dataset"),
+    "preview_source_import": ("carnopy.api", "preview_source_import"),
     "validate_config": ("carnopy.api", "validate_config"),
 }
 

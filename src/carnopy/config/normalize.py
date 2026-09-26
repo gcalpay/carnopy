@@ -8,8 +8,8 @@ from carnopy.config.models import CarnopyConfig, NormalizedConfig
 from carnopy.domain.failures import ConfigError
 from carnopy.domain.numbers import stable_binary64
 from carnopy.domain.units import AXIS_SI_UNITS
+from carnopy.sampling import materialize_sampler
 from carnopy.sampling.canonical import canonicalize_sampler
-from carnopy.sampling.generate import materialize_sampler
 from carnopy.sampling.models import Sampler
 from carnopy.sampling.projection import (
     MAX_PROJECTED_ROWS,

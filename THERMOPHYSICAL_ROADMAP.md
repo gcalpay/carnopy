@@ -63,9 +63,10 @@ must remain explicit rather than being flattened into one generic adapter.
 The maintainer has selected [SOURCE-1](SOURCE_IMPORT_PLAN.md) to implement the
 source-breadth portion of this roadmap. SOURCE-1.0 records the accepted
 [evidence and operation contracts](docs/agent-guides/SOURCE_CONTRACTS.md).
-Runtime work starts at SOURCE-1.1 with local XML/JSON import and inspection,
-then observation plots, HEOS comparison, PR/SRK comparison, collections, and
-experimental ML Preparation. Archive access and VLE follow the complete local
+SOURCE-1.1A now implements bounded local XML/JSON parsing and Python preview.
+Immutable import bundles and desktop inspection follow, then observation
+plots, HEOS comparison, PR/SRK comparison, collections, and experimental ML
+Preparation. Archive access and VLE follow the complete local
 single-phase workflow. Its binary calculations support reference comparison;
 general mixture generation and the advanced engines below remain separate.
 

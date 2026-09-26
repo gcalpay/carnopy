@@ -390,6 +390,35 @@ Public helpers also cover model sweeps, preparation, and explicit
 visualization. CLI handlers and desktop controllers call the same core logic
 rather than maintaining separate scientific implementations.
 
+### ThermoML preview in development source
+
+SOURCE-1.1A adds a non-writing Python preview for local ThermoML XML and NIST
+ThermoML JSON. Save an import configuration as `import.yaml`:
+
+```yaml
+schema_version: 1
+document_type: source_import
+format: thermoml_xml
+selections: []
+```
+
+```python
+from carnopy import preview_source_import
+
+preview = preview_source_import("article.xml", config="import.yaml")
+print(preview.status, preview.counts)
+print(preview.as_dict()["warning_counts"])
+```
+
+Use `format: thermoml_json` for the corresponding NIST JSON representation.
+The preview checks the supported density subset, retains exact source identity,
+and reports unsupported records, invalid values, and missing information.
+It writes no artifacts and calls no backend. Parsing does not establish
+independent scientific validation. The import CLI, immutable source bundles,
+and desktop import follow in SOURCE-1.1B/C; this preview is not part of the
+published `0.1.0a5` payload. See the
+[source contract](docs/agent-guides/SOURCE_CONTRACTS.md) for selections and limits.
+
 ## Current alpha scope
 
 Carnopy `0.1.0a5` deliberately begins with a bounded, verified scientific
@@ -459,8 +488,10 @@ local ThermoML XML/JSON import, inspection and plots, HEOS then PR/SRK
 comparisons, multi-publication collections, and measured-value/residual ML
 Preparation across Python, CLI, and desktop workflows. Archive access and
 vapour-liquid equilibrium follow that local workflow. SOURCE-1.0 establishes
-the contracts; these capabilities are not yet implemented or included in the
-current alpha. General binary-mixture generation remains separate.
+the contracts, and development source now provides SOURCE-1.1A's Python
+preview. The complete import-to-ML workflow remains in progress and is not
+included in the current alpha. General binary-mixture generation remains
+separate.
 
 Reference-dependent enthalpy, entropy, and internal-energy values remain tied
 to their recorded source, model, and reference-state context. Future comparison

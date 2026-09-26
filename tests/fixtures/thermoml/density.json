@@ -1,0 +1,37 @@
+{
+  "Compound": [
+    {"tml_elements": ["RegNum", "sCommonName", "Sample"], "RegNum": {"tml_elements": ["nOrgNum"], "nOrgNum": 1}, "sCommonName": ["Example component A"], "Sample": [{"tml_elements": ["nSampleNm", "eSource"], "nSampleNm": 1, "eSource": "Commercial source"}]},
+    {"tml_elements": ["RegNum", "sCommonName", "Sample"], "RegNum": {"tml_elements": ["nOrgNum"], "nOrgNum": 2}, "sCommonName": ["Example component B"], "Sample": [{"tml_elements": ["nSampleNm"], "nSampleNm": 1}]}
+  ],
+  "Citation": {"tml_elements": ["sTitle", "sAuthor", "sDOI"], "sTitle": "Synthetic importer qualification fixture", "sAuthor": ["Carnopy tests"], "sDOI": "10.9999/carnopy.synthetic"},
+  "Version": {"tml_elements": ["nVersionMajor", "nVersionMinor"], "nVersionMajor": 2, "nVersionMinor": 0},
+  "tml_elements": ["Version", "Citation", "Compound", "PureOrMixtureData"],
+  "PureOrMixtureData": [
+    {
+      "tml_elements": ["nPureOrMixtureDataNumber", "Component", "Property", "PhaseID", "Constraint", "Variable", "NumValues"],
+      "nPureOrMixtureDataNumber": 17,
+      "Component": [{"tml_elements": ["RegNum", "nSampleNm"], "RegNum": {"tml_elements": ["nOrgNum"], "nOrgNum": 1}, "nSampleNm": 1}],
+      "Property": [{"tml_elements": ["nPropNumber", "Property-MethodID", "PropPhaseID", "ePresentation", "CombinedUncertainty"], "nPropNumber": 1, "Property-MethodID": {"tml_elements": ["PropertyGroup"], "PropertyGroup": {"tml_elements": ["VolumetricProp"], "VolumetricProp": {"tml_elements": ["ePropName", "eMethodName"], "ePropName": "Mass density, kg/m3", "eMethodName": "Vibrating tube method"}}}, "PropPhaseID": {"tml_elements": ["ePropPhase"], "ePropPhase": "Liquid"}, "ePresentation": "Direct value, X", "CombinedUncertainty": {"tml_elements": ["nCombUncertAssessNum", "nCombUncertLevOfConfid"], "nCombUncertAssessNum": 1, "nCombUncertLevOfConfid": 95}}],
+      "PhaseID": [{"tml_elements": ["ePhase"], "ePhase": "Liquid"}],
+      "Constraint": [{"tml_elements": ["nConstraintNumber", "ConstraintID", "nConstraintValue", "nConstrDigits"], "nConstraintNumber": 1, "ConstraintID": {"tml_elements": ["ConstraintType"], "ConstraintType": {"tml_elements": ["eTemperature"], "eTemperature": "Temperature, K"}}, "nConstraintValue": 298.15, "nConstrDigits": 5}],
+      "Variable": [{"tml_elements": ["nVarNumber", "VariableID"], "nVarNumber": 1, "VariableID": {"tml_elements": ["VariableType"], "VariableType": {"tml_elements": ["ePressure"], "ePressure": "Pressure, kPa"}}}],
+      "NumValues": [
+        {"tml_elements": ["VariableValue", "PropertyValue"], "VariableValue": [{"tml_elements": ["nVarNumber", "nVarValue", "nVarDigits"], "nVarNumber": 1, "nVarValue": 100.0, "nVarDigits": 4}], "PropertyValue": [{"tml_elements": ["nPropNumber", "nPropValue", "nPropDigits", "CombinedUncertainty"], "nPropNumber": 1, "nPropValue": 1000.00, "nPropDigits": 6, "CombinedUncertainty": {"tml_elements": ["nCombUncertAssessNum", "nCombExpandUncertValue"], "nCombUncertAssessNum": 1, "nCombExpandUncertValue": 0.5}}]},
+        {"tml_elements": ["VariableValue", "PropertyValue"], "VariableValue": [{"tml_elements": ["nVarNumber", "nVarValue", "nVarDigits"], "nVarNumber": 1, "nVarValue": 100.0, "nVarDigits": 4}], "PropertyValue": [{"tml_elements": ["nPropNumber", "nPropValue", "nPropDigits"], "nPropNumber": 1, "nPropValue": 1000.00, "nPropDigits": 6}]}
+      ]
+    },
+    {
+      "tml_elements": ["nPureOrMixtureDataNumber", "Component", "Property", "PhaseID", "Constraint", "Variable", "NumValues"],
+      "nPureOrMixtureDataNumber": 42,
+      "Component": [{"tml_elements": ["RegNum", "nSampleNm"], "RegNum": {"tml_elements": ["nOrgNum"], "nOrgNum": 1}, "nSampleNm": 1}, {"tml_elements": ["RegNum", "nSampleNm"], "RegNum": {"tml_elements": ["nOrgNum"], "nOrgNum": 2}, "nSampleNm": 1}],
+      "Property": [{"tml_elements": ["nPropNumber", "Property-MethodID", "PropPhaseID", "ePresentation"], "nPropNumber": 1, "Property-MethodID": {"tml_elements": ["PropertyGroup"], "PropertyGroup": {"tml_elements": ["VolumetricProp"], "VolumetricProp": {"tml_elements": ["ePropName"], "ePropName": "Mass density, kg/m3"}}}, "PropPhaseID": {"tml_elements": ["ePropPhase"], "ePropPhase": "Liquid"}, "ePresentation": "Direct value, X"}],
+      "PhaseID": [{"tml_elements": ["ePhase"], "ePhase": "Liquid"}],
+      "Constraint": [
+        {"tml_elements": ["ConstraintID", "nConstraintValue", "nConstrDigits"], "ConstraintID": {"tml_elements": ["ConstraintType"], "ConstraintType": {"tml_elements": ["eTemperature"], "eTemperature": "Temperature, K"}}, "nConstraintValue": 300.00, "nConstrDigits": 5},
+        {"tml_elements": ["ConstraintID", "ConstraintPhaseID", "nConstraintValue", "nConstrDigits"], "ConstraintID": {"tml_elements": ["ConstraintType", "RegNum"], "ConstraintType": {"tml_elements": ["eComponentComposition"], "eComponentComposition": "Mole fraction"}, "RegNum": {"tml_elements": ["nOrgNum"], "nOrgNum": 1}}, "ConstraintPhaseID": {"tml_elements": ["eConstraintPhase"], "eConstraintPhase": "Liquid"}, "nConstraintValue": 0.2500, "nConstrDigits": 4}
+      ],
+      "Variable": [{"tml_elements": ["nVarNumber", "VariableID"], "nVarNumber": 1, "VariableID": {"tml_elements": ["VariableType"], "VariableType": {"tml_elements": ["ePressure"], "ePressure": "Pressure, kPa"}}}],
+      "NumValues": [{"tml_elements": ["VariableValue", "PropertyValue"], "VariableValue": [{"tml_elements": ["nVarNumber", "nVarValue", "nVarDigits"], "nVarNumber": 1, "nVarValue": 200.0, "nVarDigits": 4}], "PropertyValue": [{"tml_elements": ["nPropNumber", "nPropValue", "nPropDigits"], "nPropNumber": 1, "nPropValue": 802.50, "nPropDigits": 5}]}]
+    }
+  ]
+}

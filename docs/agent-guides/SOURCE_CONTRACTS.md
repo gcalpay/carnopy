@@ -2,10 +2,11 @@
 
 ## Status and authority
 
-This is the accepted implementation contract for SOURCE-1. It does not describe
-an available importer, comparison engine, collection workflow, or desktop page.
-SOURCE-1.0 establishes these contracts; behavioral implementation begins in
-SOURCE-1.1. The checkpoint ledger and qualification matrix live in
+This is the accepted implementation contract for SOURCE-1. Development source
+now implements SOURCE-1.1A's Python import preview, described below. Bundle
+creation, comparison, collections, and source desktop pages remain planned.
+SOURCE-1.0 establishes the full program's contracts; the checkpoint ledger and
+qualification matrix live in
 [SOURCE_IMPORT_PLAN.md](../../SOURCE_IMPORT_PLAN.md).
 
 Read this guide with [the current scientific contracts](SCIENTIFIC_CONTRACTS.md),
@@ -14,6 +15,67 @@ the active SOURCE-1 checkpoint, and, for desktop work,
 sweep, Preparation v1, and GUI-2 contracts remain authoritative for their
 implemented behavior. SOURCE-1 introduces separate source kinds; it must not
 make experimental observations impersonate generated dataset rows.
+
+## Implemented SOURCE-1.1A preview
+
+`preview_source_import(source, *, config)` reads a local file and exact import
+YAML, returning a frozen `ImportPreview`. It creates no output, uses no network
+or thermodynamic backend, and imports no scientific/data or Qt runtime.
+`ImportConfig` and `ImportSelection` are frozen public configuration models;
+`SourceImportError` is a `ConfigError` with stable `code` and `locator` fields.
+
+```yaml
+schema_version: 1
+document_type: source_import
+format: thermoml_xml  # or thermoml_json
+selections: []        # all datasets/properties
+```
+
+Explicit selections use `dataset_index` (zero-based source dataset order,
+including unsupported reaction datasets) and optional `property_numbers`
+(reported integer property identifiers). For example,
+`selections: [{dataset_index: 0, property_numbers: [1]}]`. An empty property
+list selects all properties of that dataset. Duplicate or unknown selections,
+extra configuration fields, YAML duplicate keys, and aliases fail explicitly.
+Source paths are invocation inputs, never YAML fields.
+
+The preview reports format/profile, source and configuration descriptors,
+document/publication/request/context identities, per-dataset and overall
+`eligible`/`unsupported`/`invalid`/`unselected` counts, reasons, and warnings.
+It exposes at most 500 selected dataset summaries, 500 selected records, and
+500 document diagnostics. Dataset property-number lists are also capped at
+500; record display text at 1,024 characters. Omission/truncation fields are
+explicit; complete evidence and exact bytes remain in the private plan.
+`as_dict()` returns an independent JSON-compatible projection. The outcomes
+are `ready_with_limitations` or `no_eligible_observations` in this first profile;
+unclassified data origin always remains visible. Eligibility is prospective
+density normalization eligibility, not a written or independently validated
+observation.
+
+The implemented subset qualifies direct mass/amount density with `RegNum` /
+`nOrgNum` component references, pure substances or two identified components,
+and single liquid/gas/broad-fluid phases. Mole and mass fractions may be
+variables or constraints. Exact rational arithmetic checks state conflicts and
+precision-supported fraction sums without rescaling reported evidence. Missing
+T/P is disclosed separately from measurement eligibility. Alternative component
+locators, ternary/reaction data, unsupported quantities/presentations/qualifiers,
+and equilibrium contexts remain raw evidence with unsupported accounting.
+Uncertainty and sample/method metadata are retained; uncertainty conversion and
+data-origin qualification remain subsequent normalization work.
+
+The readers enforce the resource profile in the active plan before completing
+parse. Local integer identifiers accept at most 20 source characters; reported
+precision accepts 1–1,024 significant digits. Unqualified precision and
+nonfinite or nonrepresentable values cannot become eligible. NIST JSON must
+have complete, unique `tml_elements` ordering and UTF-8 encoding; numeric
+lexemes are preserved without a binary64 decoding step. Namespace/schema
+locations do not trigger downloads. This remains subset validation, not XSD
+conformance certification.
+
+Reads reject symlinks, nonregular files, replacement, mutation, and oversize
+input. The private cancellable plan revalidates both files after parsing and
+can check a previously accepted preview's exact bindings. No preview can
+publish a bundle; protected finalization belongs to SOURCE-1.1B.
 
 ## Evidence and eligibility — SOURCE-1.0A
 

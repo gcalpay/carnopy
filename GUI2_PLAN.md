@@ -90,10 +90,10 @@ implementation.
 
 The accepted [SOURCE-1 program](SOURCE_IMPORT_PLAN.md) is a separate
 implementation track for ThermoML evidence, comparisons, collections, and ML
-Preparation. SOURCE-1.0 records its contracts; no source runtime or new QML
-workflow is implemented by that documentation checkpoint. It preserves the
-completed GUI-2 stages and the pending Stage 7/8 boundaries above. SOURCE-1
-work must follow the existing desktop ownership and worker contracts.
+Preparation. SOURCE-1.0 records its contracts; SOURCE-1.1A adds core Python
+parsing and preview. Source desktop work remains pending at SOURCE-1.1C.
+The completed GUI-2 stages and pending Stage 7/8 boundaries above are unchanged.
+SOURCE-1 work must follow the existing desktop ownership and worker contracts.
 
 ## Completed-stage records
 

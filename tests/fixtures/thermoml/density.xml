@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DataReport xmlns="http://www.iupac.org/namespaces/ThermoML">
+  <Version><nVersionMajor>2</nVersionMajor><nVersionMinor>0</nVersionMinor></Version>
+  <Citation><sTitle>Synthetic importer qualification fixture</sTitle><sAuthor>Carnopy tests</sAuthor><sDOI>10.9999/carnopy.synthetic</sDOI></Citation>
+  <Compound><RegNum><nOrgNum>1</nOrgNum></RegNum><sCommonName>Example component A</sCommonName><Sample><nSampleNm>1</nSampleNm><eSource>Commercial source</eSource></Sample></Compound>
+  <Compound><RegNum><nOrgNum>2</nOrgNum></RegNum><sCommonName>Example component B</sCommonName><Sample><nSampleNm>1</nSampleNm></Sample></Compound>
+  <PureOrMixtureData>
+    <nPureOrMixtureDataNumber>17</nPureOrMixtureDataNumber>
+    <Component><RegNum><nOrgNum>1</nOrgNum></RegNum><nSampleNm>1</nSampleNm></Component>
+    <Property><nPropNumber>1</nPropNumber><Property-MethodID><PropertyGroup><VolumetricProp><ePropName>Mass density, kg/m3</ePropName><eMethodName>Vibrating tube method</eMethodName></VolumetricProp></PropertyGroup></Property-MethodID><PropPhaseID><ePropPhase>Liquid</ePropPhase></PropPhaseID><ePresentation>Direct value, X</ePresentation><CombinedUncertainty><nCombUncertAssessNum>1</nCombUncertAssessNum><nCombUncertLevOfConfid>95</nCombUncertLevOfConfid></CombinedUncertainty></Property>
+    <PhaseID><ePhase>Liquid</ePhase></PhaseID>
+    <Constraint><nConstraintNumber>1</nConstraintNumber><ConstraintID><ConstraintType><eTemperature>Temperature, K</eTemperature></ConstraintType></ConstraintID><nConstraintValue>298.15</nConstraintValue><nConstrDigits>5</nConstrDigits></Constraint>
+    <Variable><nVarNumber>1</nVarNumber><VariableID><VariableType><ePressure>Pressure, kPa</ePressure></VariableType></VariableID></Variable>
+    <NumValues><VariableValue><nVarNumber>1</nVarNumber><nVarValue>100.0</nVarValue><nVarDigits>4</nVarDigits></VariableValue><PropertyValue><nPropNumber>1</nPropNumber><nPropValue>1000.00</nPropValue><nPropDigits>6</nPropDigits><CombinedUncertainty><nCombUncertAssessNum>1</nCombUncertAssessNum><nCombExpandUncertValue>0.5</nCombExpandUncertValue></CombinedUncertainty></PropertyValue></NumValues>
+    <NumValues><VariableValue><nVarNumber>1</nVarNumber><nVarValue>100.0</nVarValue><nVarDigits>4</nVarDigits></VariableValue><PropertyValue><nPropNumber>1</nPropNumber><nPropValue>1000.00</nPropValue><nPropDigits>6</nPropDigits></PropertyValue></NumValues>
+  </PureOrMixtureData>
+  <PureOrMixtureData>
+    <nPureOrMixtureDataNumber>42</nPureOrMixtureDataNumber>
+    <Component><RegNum><nOrgNum>1</nOrgNum></RegNum><nSampleNm>1</nSampleNm></Component>
+    <Component><RegNum><nOrgNum>2</nOrgNum></RegNum><nSampleNm>1</nSampleNm></Component>
+    <Property><nPropNumber>1</nPropNumber><Property-MethodID><PropertyGroup><VolumetricProp><ePropName>Mass density, kg/m3</ePropName></VolumetricProp></PropertyGroup></Property-MethodID><PropPhaseID><ePropPhase>Liquid</ePropPhase></PropPhaseID><ePresentation>Direct value, X</ePresentation></Property>
+    <PhaseID><ePhase>Liquid</ePhase></PhaseID>
+    <Constraint><ConstraintID><ConstraintType><eTemperature>Temperature, K</eTemperature></ConstraintType></ConstraintID><nConstraintValue>300.00</nConstraintValue><nConstrDigits>5</nConstrDigits></Constraint>
+    <Constraint><ConstraintID><ConstraintType><eComponentComposition>Mole fraction</eComponentComposition></ConstraintType><RegNum><nOrgNum>1</nOrgNum></RegNum></ConstraintID><ConstraintPhaseID><eConstraintPhase>Liquid</eConstraintPhase></ConstraintPhaseID><nConstraintValue>0.2500</nConstraintValue><nConstrDigits>4</nConstrDigits></Constraint>
+    <Variable><nVarNumber>1</nVarNumber><VariableID><VariableType><ePressure>Pressure, kPa</ePressure></VariableType></VariableID></Variable>
+    <NumValues><VariableValue><nVarNumber>1</nVarNumber><nVarValue>200.0</nVarValue><nVarDigits>4</nVarDigits></VariableValue><PropertyValue><nPropNumber>1</nPropNumber><nPropValue>802.50</nPropValue><nPropDigits>5</nPropDigits></PropertyValue></NumValues>
+  </PureOrMixtureData>
+</DataReport>

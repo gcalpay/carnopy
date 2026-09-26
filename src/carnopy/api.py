@@ -7,10 +7,18 @@ from carnopy.config.io import LoadedConfig, load_config_file, load_sweep_config_
 
 if TYPE_CHECKING:
     from carnopy.results import PreparationResult, RunResult, SweepResult, ValidationResult
+    from carnopy.sources.preview import ImportPreview
 
 
 def load_config(path: str | Path) -> LoadedConfig:
     return load_config_file(path)
+
+
+def preview_source_import(source: str | Path, *, config: str | Path) -> ImportPreview:
+    """Inspect local ThermoML evidence without writing outputs or calling a backend."""
+    from carnopy.sources.preview import plan_source_import
+
+    return plan_source_import(source, config).preview
 
 
 def validate_config(path: str | Path) -> ValidationResult:

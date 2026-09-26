@@ -642,9 +642,10 @@ collection editing) and Reference Comparison are planned presentation surfaces
 over worker-owned imports and comparisons. Their document drafts will extend
 the existing global configuration lifecycle; explicit source bindings, typed
 inspection profiles, one request coordinator, protected finalization, and
-Activity/recovery remain the ownership rules. SOURCE-1.0 documents that
-extension only: the current application still has the three implemented
-document kinds and no source-import or reference-comparison page. Native 3D
+Activity/recovery remain the ownership rules. SOURCE-1.1A adds a core Python
+preview; desktop integration remains SOURCE-1.1C. The current application still
+has the three implemented document kinds and no source-import or
+reference-comparison page. Native 3D
 remains separate GUI-2 Stage 7/8 work.
 
 ### `WorkerClient`

@@ -20,9 +20,10 @@ The current implemented contract is the first bounded part of that product
 scope: Carnopy generates reproducible, backend-derived synthetic
 thermophysical datasets for machine-learning, surrogate-model, and engineering
 workflows. SOURCE-1 now has an accepted ThermoML implementation contract;
-import, reference comparison, and collections remain unavailable until their
-behavioral milestones are implemented and accepted. Other future capabilities
-remain roadmap directions.
+development source implements its bounded, backend-free ThermoML XML/JSON
+Python preview. Immutable import bundles, reference comparison, and collections
+remain unavailable until their behavioral milestones are implemented and
+accepted. Other future capabilities remain roadmap directions.
 
 Carnopy is not:
 
@@ -94,7 +95,7 @@ Outside the current implemented contract:
 - random, Sobol, Latin-hypercube, adaptive, or active-learning sampling;
 - ML training or inference;
 - web/API services or databases;
-- ThermoML, OCR, RAG, or literature mining.
+- finalized ThermoML imports, OCR, RAG, or literature mining.
 
 [`THERMOPHYSICAL_ROADMAP.md`](../../THERMOPHYSICAL_ROADMAP.md) records public
 source, mixture, model, backend, cycle, and visualization candidates.
@@ -110,9 +111,12 @@ ThermoML import-to-ML program and its current checkpoint. SOURCE-1.0 establishes
 the [source evidence and operation contracts](SOURCE_CONTRACTS.md): immutable
 XML/JSON evidence, pure/binary composition, uncertainty, distinct source bundle
 kinds, exact-state model comparison, collections, and source-aware Preparation.
-Read both before implementing those workflows. SOURCE-1.1 begins runtime work;
-the current command list, generated schemas, and Preparation v1 behavior below
-remain implemented contracts rather than prospective source interfaces.
+Read both before implementing those workflows. SOURCE-1.1A implements the
+non-writing `preview_source_import` Python helper and import configuration and
+preview models. It preserves raw evidence and reports density eligibility;
+SOURCE-1.1B still owns normalized observations and bundle creation, and 1.1C
+owns desktop import. The current command list, generated schemas, and
+Preparation v1 behavior below retain their existing contracts.
 
 New source kinds must preserve their scientific origin instead of fabricating
 generation fields or backend validity for observations. The future reference
@@ -157,6 +161,7 @@ The supported Python API intentionally remains narrow:
 - `generate_dataset`;
 - `generate_model_sweep`;
 - `prepare_dataset`;
+- `preview_source_import` (development SOURCE-1.1A);
 - public configuration and result models;
 - explicit visualization functions.
 

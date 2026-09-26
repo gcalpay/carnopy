@@ -12,11 +12,13 @@ local ThermoML XML/JSON
   -> later NIST archive access -> later vapour-liquid equilibrium
 ```
 
-**Completed milestone: SOURCE-1.0, contracts (0A–0C).** The evidence and
-operation contracts, qualification matrix, and documentation/distribution
-checks are complete. **Next checkpoint: SOURCE-1.1A**, bounded parsing and
-non-writing import preview, after the local commit boundary. No SOURCE-1
-runtime capability is implemented yet.
+**Completed milestone: SOURCE-1.0, contracts (0A–0C).**
+**Completed checkpoint: SOURCE-1.1A**, bounded parsing and non-writing import
+preview; verification is recorded below. SOURCE-1.1 remains in progress.
+**Next checkpoint: SOURCE-1.1B**, density normalization and immutable import
+bundles, after the local commit boundary. The Python preview is available in
+development source; bundle writing, the import CLI, and desktop import are
+not implemented yet.
 
 The normative source contract is
 [docs/agent-guides/SOURCE_CONTRACTS.md](docs/agent-guides/SOURCE_CONTRACTS.md).
@@ -74,21 +76,25 @@ it adds no runtime source, template, schema implementation, or dependency.
 
 | Checkpoint | Deliverable and acceptance |
 | --- | --- |
-| 1A | Implement bounded XML/JSON readers, shared evidence inventory, stable source reads, selections, and non-writing preview. Both encodings produce equivalent interpreted evidence while retaining different raw identities. |
+| 1A | Complete. Bounded XML/JSON readers, shared evidence inventory, stable source reads, selections, and non-writing Python preview. Both encodings preserve interpreted evidence while retaining different raw identities. Verification is recorded below. |
 | 1B | Normalize supported pure/binary density observations; write immutable source bundles with complete accounting, raw bytes, provenance, uncertainty, and diagnostic joins. Expose the planned import CLI/API. |
 | 1C | Add the Sources import document/draft, worker planning/execution, explicit source binding, Activity/recovery, source discovery, and bounded Inspect tables. Complete installed and native desktop acceptance. |
 
-Start 1A by reusing canonical identity, stable-read, cancellation, and failure
-helpers. XML parsing uses `defusedxml`; JSON uses the standard library with
-explicit validation. Add the small XML dependency to the base distribution,
-load it only in the import path, and qualify supported Python versions through
-the locked environment. Dependency edits, locking, and installation must follow
+The 1A implementation uses canonical identity, stable reads, cancellation, and
+the existing failure hierarchy. XML parsing uses `defusedxml`; JSON uses the
+standard library with explicit validation. The XML dependency is in the base
+distribution and loads only in the import path. Local qualification uses the
+locked Python 3.12.3 environment; broader Python support remains subject to the
+existing matrix gates. Dependency edits, locking, and installation must follow
 local authorization; do not substitute an unqualified parser if unavailable.
 
 The initial resource profile is 64 MiB per uncompressed source, nesting depth
 64, 1 MiB per scalar text value, and 1,000,000 property-value records per
-document, including unsupported/unselected records. Reject at the boundary;
-never truncate or finalize a partial parse. Check depth/text/counts during
+document, including unsupported/unselected records. SOURCE-1.1A additionally
+bounds representation size to 1,000,000 XML elements or JSON containers/scalars
+(including keys); this bounds documents with many empty or descriptive nodes.
+Reject inputs over a limit and accept values at the limit; never truncate or
+finalize a partial parse. Check depth/text/counts during
 parsing, not only after materializing the document. Compressed archives and
 embedded file retrieval are not accepted import inputs. These are versioned
 capability limits, not silently adjustable scientific options.
@@ -260,6 +266,30 @@ test. Fixture conversion/identity expectations are exact where appropriate.
 Real-source model disagreement is reported rather than automatically treated
 as an importer failure or evidence that the experiment is wrong.
 
+### SOURCE-1.1A implemented corpus
+
+The independently hand-authored XML/JSON pair in
+`tests/fixtures/thermoml/` covers pure/binary density, repeated observations,
+variable/constraint states, samples, methods, precision, and uncertainty.
+Focused tests exercise malformed references and values, unsupported records,
+composition bases and rounding, exact selections, all parser bounds, unsafe
+XML/JSON, cancellation, immutable previews, changed files/configurations, and
+backend-free imports. These are parser/eligibility checks; normalization,
+bundle finalization, comparison accuracy, and native desktop acceptance remain
+assigned to their later checkpoints.
+
+On 2026-09-26, explicit acquisition of the real-record anchor above reproduced
+the recorded XML hash. The corresponding JSON was 453,138 bytes, SHA-256
+`9b0660c45acf67779c741c21ba6831539a857bfb9d9b30798a833a430d29ee5a`.
+Both previews account for **662 density values** across dataset numbers 1–5
+(34, 72, 16, 438, and 102 respectively). All 662 property values, variable
+values, reported precisions, and row locators agree between encodings, while
+source hashes and row identities remain distinct. Both retain unclassified
+data-origin warnings; 540 binary values require recorded complement derivation
+at normalization. This is evidence of parsing/preview agreement, not model
+accuracy or scientific validation of the measurements. Acquired archive files
+remain outside the repository and offline CI.
+
 ## Verification, handoff, and completion
 
 Use the routed [development workflow](docs/agent-guides/DEVELOPMENT.md).
@@ -295,3 +325,33 @@ next milestone; neither this plan nor its acceptance grants Git mutation.
 - Runtime implementation, dependencies, model qualification, and native UI
   acceptance: not part of SOURCE-1.0; not performed or claimed.
 - Next implementation checkpoint: SOURCE-1.1A after the local stage boundary.
+
+### SOURCE-1.1A completion record
+
+- Implemented: bounded readers, immutable shared evidence, identifier/reference
+  checks, density eligibility, source/configuration bindings, and the public
+  `preview_source_import` helper with `ImportConfig`, `ImportSelection`,
+  `ImportPreview`, and `SourceImportError`.
+- Preview projections retain at most 500 selected records and 500 selected
+  dataset summaries, with complete counts and explicit omission counts.
+- Approved dependency operation: added `defusedxml>=0.7.1,<1`, locked 0.7.1,
+  and synchronized the existing environment. No existing package version was
+  upgraded; uv also normalized existing conditional dependency markers.
+- Source gate: `uv lock --check`,
+  `uv run --locked --no-sync python scripts/preflight.py`, and
+  `uv pip check --python .venv/bin/python` passed. Preflight includes Ruff,
+  formatting, full mypy, the full test suite, and root CLI help. Its final run
+  passed **1,402 tests in 569.79 s**; all 169 source files passed mypy.
+- The first full run had two desktop worker timeouts (inspection at 30 s and
+  validation at 15 s). Both cases passed unchanged in isolation (**2 tests in
+  17.66 s**) and in the final full run. No desktop timeout or behavior was
+  changed. The final source corpus includes 106 focused parser/preview cases.
+- Real-record XML/JSON qualification: all 662 density values, variable values,
+  reported precisions, and locators agree, with hashes and limitations recorded
+  above. This does not qualify comparison accuracy or validate the measurements.
+- Complete change review, `git diff --check`, and local Markdown link/whitespace
+  checks passed (10 files, 57 local links). Tracked contracts, user guidance,
+  roadmap/desktop boundaries, and unpublished local status are synchronized.
+- Next: SOURCE-1.1B. Canonical SI observations, conversion lineage, Parquet
+  schemas, protected bundle finalization, and the import CLI are still pending;
+  desktop source import remains SOURCE-1.1C. GUI-2 numbering is unchanged.

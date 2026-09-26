@@ -30,6 +30,7 @@ def test_coolprop_major_version_is_bounded() -> None:
     pyproject: dict[str, Any] = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
 
     assert "CoolProp>=8,<9" in pyproject["project"]["dependencies"]
+    assert "defusedxml>=0.7.1,<1" in pyproject["project"]["dependencies"]
 
 
 def test_desktop_extra_and_launcher_are_declared() -> None:
