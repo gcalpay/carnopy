@@ -7,11 +7,12 @@ alpha contract. It separates potential sources, model families, backend
 adapters, mixture capabilities, cycle workflows, and visualizations from
 implemented behavior.
 
-Every item below is planned direction or a candidate for evaluation, not a
-supported capability or a public API commitment. A candidate may enter Carnopy
-only through a separately reviewed scientific contract and implementation
-stage with licensing, platform, validation, provenance, and distribution
-qualification. The current behavior remains defined by
+Items below are planned direction or candidates for evaluation, not supported
+capabilities. The separately accepted SOURCE-1 program is identified below;
+its implementation contracts are not a claim of runtime support. A candidate
+may enter Carnopy only through a separately reviewed scientific contract and
+implementation stage with licensing, platform, validation, provenance, and
+distribution qualification. The current behavior remains defined by
 [`docs/agent-guides/SCIENTIFIC_CONTRACTS.md`](docs/agent-guides/SCIENTIFIC_CONTRACTS.md).
 
 ## Product direction
@@ -58,6 +59,17 @@ cycle, flowsheet, reaction, optimization, and property-package responsibilities
 must remain explicit rather than being flattened into one generic adapter.
 
 ## Recommended sequence
+
+The maintainer has selected [SOURCE-1](SOURCE_IMPORT_PLAN.md) to implement the
+source-breadth portion of this roadmap. SOURCE-1.0 records the accepted
+[evidence and operation contracts](docs/agent-guides/SOURCE_CONTRACTS.md).
+Runtime work starts at SOURCE-1.1 with local XML/JSON import and inspection,
+then observation plots, HEOS comparison, PR/SRK comparison, collections, and
+experimental ML Preparation. Archive access and VLE follow the complete local
+single-phase workflow. Its binary calculations support reference comparison;
+general mixture generation and the advanced engines below remain separate.
+
+The broader sequence remains:
 
 1. Establish a validated source/import contract, beginning with ThermoML.
 2. Add binary mixtures through a schema designed for later multicomponent use.

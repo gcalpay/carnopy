@@ -19,8 +19,10 @@ Thermophysical data workbench for generating, importing, comparing, validating a
 The current implemented contract is the first bounded part of that product
 scope: Carnopy generates reproducible, backend-derived synthetic
 thermophysical datasets for machine-learning, surrogate-model, and engineering
-workflows. Import, additional sources, and the other future capabilities remain
-roadmap directions until separately implemented and accepted.
+workflows. SOURCE-1 now has an accepted ThermoML implementation contract;
+import, reference comparison, and collections remain unavailable until their
+behavioral milestones are implemented and accepted. Other future capabilities
+remain roadmap directions.
 
 Carnopy is not:
 
@@ -100,6 +102,26 @@ source, mixture, model, backend, cycle, and visualization candidates.
 Preparation behavior and future interoperability and evaluation directions.
 Roadmap classifications are not implementation authority. Do not broaden this
 contract without a separately approved stage and maintainer acceptance.
+
+## Accepted SOURCE-1 contract
+
+[SOURCE_IMPORT_PLAN.md](../../SOURCE_IMPORT_PLAN.md) records the accepted
+ThermoML import-to-ML program and its current checkpoint. SOURCE-1.0 establishes
+the [source evidence and operation contracts](SOURCE_CONTRACTS.md): immutable
+XML/JSON evidence, pure/binary composition, uncertainty, distinct source bundle
+kinds, exact-state model comparison, collections, and source-aware Preparation.
+Read both before implementing those workflows. SOURCE-1.1 begins runtime work;
+the current command list, generated schemas, and Preparation v1 behavior below
+remain implemented contracts rather than prospective source interfaces.
+
+New source kinds must preserve their scientific origin instead of fabricating
+generation fields or backend validity for observations. The future reference
+residual convention is measurement minus prediction; existing model-sweep
+differences keep their model-minus-reference convention. Source-aware
+Preparation uses a separately versioned extension and must retain v1 readers.
+Binary evaluation in SOURCE-1 serves reference comparison, not general mixture
+generation or model sweeps. GUI-2 Stage 6 remains complete, with native 3D
+presentation and qualification still assigned to Stages 7/8.
 
 ## Public interfaces
 

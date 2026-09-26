@@ -454,6 +454,14 @@ The planned direction develops six connected capabilities:
   selected external physics-informed and tabular-ML consumers, plus an
   identity-bound result-import contract for prediction and error analysis.
 
+The accepted [SOURCE-1 implementation plan](SOURCE_IMPORT_PLAN.md) now sequences
+local ThermoML XML/JSON import, inspection and plots, HEOS then PR/SRK
+comparisons, multi-publication collections, and measured-value/residual ML
+Preparation across Python, CLI, and desktop workflows. Archive access and
+vapour-liquid equilibrium follow that local workflow. SOURCE-1.0 establishes
+the contracts; these capabilities are not yet implemented or included in the
+current alpha. General binary-mixture generation remains separate.
+
 Reference-dependent enthalpy, entropy, and internal-energy values remain tied
 to their recorded source, model, and reference-state context. Future comparison
 work will preserve raw values, make compatibility explicit, and allow only

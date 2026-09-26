@@ -10,9 +10,25 @@ workflows. It is not a training or deployment framework. An optional diagnostic
 layer may fit disposable baseline estimators to measure prepared-dataset
 learnability, but it never persists, tunes, registers, or deploys them.
 
-This document separates implemented preparation behavior from possible future
-work. Future entries are design directions, not public API commitments. Each
-requires its own reviewed plan before implementation.
+This document separates implemented preparation behavior from future work.
+SOURCE-1 has a separately accepted implementation plan, described below; other
+future entries remain design directions requiring their own reviewed plans.
+
+## Accepted SOURCE-1 preparation direction
+
+[SOURCE-1](SOURCE_IMPORT_PLAN.md) adds local ThermoML import, observation plots,
+HEOS then PR/SRK reference comparison, and multi-publication collections before
+its experimental Preparation milestone, SOURCE-1.6. The accepted
+[source contract](docs/agent-guides/SOURCE_CONTRACTS.md) defines measured and
+measurement-minus-prediction targets, exact observation lineage, publication
+and duplicate-state grouping, explicit split failures, and target-leakage
+prevention. Preparation consumes finalized evidence without calling a backend.
+
+This is an accepted contract, not implemented Preparation behavior. A versioned
+source-aware extension must retain current Preparation v1 readers and existing
+Parquet/array contracts. Archive access and VLE follow the complete local
+workflow; training and new tensor formats remain separate. The implemented
+foundation below continues to describe the current runtime.
 
 ## Implemented foundation
 

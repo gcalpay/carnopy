@@ -246,9 +246,11 @@ SDIST_REQUIRED = {
     "docs/agent-guides/DEVELOPMENT.md",
     "docs/agent-guides/RELEASE.md",
     "docs/agent-guides/SCIENTIFIC_CONTRACTS.md",
+    "docs/agent-guides/SOURCE_CONTRACTS.md",
     "LICENSE",
     "ML_PREPARATION_ROADMAP.md",
     "README.md",
+    "SOURCE_IMPORT_PLAN.md",
     "THERMOPHYSICAL_ROADMAP.md",
     "configs/model_sweep_example.yaml",
     "configs/property_table_example.yaml",
@@ -363,8 +365,10 @@ SDIST_MARKDOWN = {
     "docs/agent-guides/DEVELOPMENT.md",
     "docs/agent-guides/RELEASE.md",
     "docs/agent-guides/SCIENTIFIC_CONTRACTS.md",
+    "docs/agent-guides/SOURCE_CONTRACTS.md",
     "ML_PREPARATION_ROADMAP.md",
     "README.md",
+    "SOURCE_IMPORT_PLAN.md",
     "THERMOPHYSICAL_ROADMAP.md",
 }
 FORBIDDEN_ANYWHERE = {

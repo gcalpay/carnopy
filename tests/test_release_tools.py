@@ -266,6 +266,8 @@ def test_distribution_checker_requires_model_sweep_artifacts() -> None:
         "DESKTOP_ARCHITECTURE.md",
         "ML_PREPARATION_ROADMAP.md",
         "THERMOPHYSICAL_ROADMAP.md",
+        "SOURCE_IMPORT_PLAN.md",
+        "docs/agent-guides/SOURCE_CONTRACTS.md",
         "configs/model_sweep_example.yaml",
         "scripts/check_qml.py",
         "src/carnopy/_execution.py",

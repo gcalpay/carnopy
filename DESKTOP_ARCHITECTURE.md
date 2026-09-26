@@ -635,6 +635,18 @@ presentation logic. A future imported ML-result workflow follows the same
 boundary: Python validates exact Preparation, partition, row, target, unit, and
 artifact identities before QML can visualize predictions or errors.
 
+The accepted [SOURCE-1 program](SOURCE_IMPORT_PLAN.md) now defines the next
+source workflow through its
+[source contracts](docs/agent-guides/SOURCE_CONTRACTS.md). Sources (including
+collection editing) and Reference Comparison are planned presentation surfaces
+over worker-owned imports and comparisons. Their document drafts will extend
+the existing global configuration lifecycle; explicit source bindings, typed
+inspection profiles, one request coordinator, protected finalization, and
+Activity/recovery remain the ownership rules. SOURCE-1.0 documents that
+extension only: the current application still has the three implemented
+document kinds and no source-import or reference-comparison page. Native 3D
+remains separate GUI-2 Stage 7/8 work.
+
 ### `WorkerClient`
 
 `WorkerClient` is transport, not workflow logic. It starts one `QProcess`,

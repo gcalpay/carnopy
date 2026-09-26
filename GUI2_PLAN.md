@@ -88,6 +88,13 @@ implementation.
 | 7 | Pending | Add native interactive 3D to QML |
 | 8 | Pending | Qualify native 3D packaging, platforms, and a later release |
 
+The accepted [SOURCE-1 program](SOURCE_IMPORT_PLAN.md) is a separate
+implementation track for ThermoML evidence, comparisons, collections, and ML
+Preparation. SOURCE-1.0 records its contracts; no source runtime or new QML
+workflow is implemented by that documentation checkpoint. It preserves the
+completed GUI-2 stages and the pending Stage 7/8 boundaries above. SOURCE-1
+work must follow the existing desktop ownership and worker contracts.
+
 ## Completed-stage records
 
 ### Stage 0: native feasibility

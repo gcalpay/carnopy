@@ -238,12 +238,14 @@ def test_public_and_community_markdown_have_intentional_distribution_boundaries(
     assert (root / "DESKTOP_ARCHITECTURE.md").is_file()
     assert (root / "ML_PREPARATION_ROADMAP.md").is_file()
     assert (root / "THERMOPHYSICAL_ROADMAP.md").is_file()
+    assert (root / "SOURCE_IMPORT_PLAN.md").is_file()
     agent_guides = root / "docs" / "agent-guides"
     assert {path.name for path in agent_guides.glob("*.md")} == {
         "DELEGATION.md",
         "DEVELOPMENT.md",
         "RELEASE.md",
         "SCIENTIFIC_CONTRACTS.md",
+        "SOURCE_CONTRACTS.md",
     }
     community = root / ".github"
     for name in ("CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "SECURITY.md"):
@@ -258,6 +260,7 @@ def test_public_and_community_markdown_have_intentional_distribution_boundaries(
     assert "/DESKTOP_ARCHITECTURE.md" in sdist_includes
     assert "/ML_PREPARATION_ROADMAP.md" in sdist_includes
     assert "/THERMOPHYSICAL_ROADMAP.md" in sdist_includes
+    assert "/SOURCE_IMPORT_PLAN.md" in sdist_includes
     assert "/PRODUCT_SCOPE.md" not in sdist_includes
     assert "/docs/agent-guides" in sdist_includes
     assert not any(path.startswith("/.github") for path in sdist_includes)
@@ -373,6 +376,7 @@ def test_public_agents_bootstraps_ignored_local_policy() -> None:
         "DEVELOPMENT.md",
         "RELEASE.md",
         "SCIENTIFIC_CONTRACTS.md",
+        "SOURCE_CONTRACTS.md",
     ):
         assert f"docs/agent-guides/{guide}" in agents
     assert ".agents/local.md" in gitignore
