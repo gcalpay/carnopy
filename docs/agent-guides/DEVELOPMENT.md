@@ -155,6 +155,9 @@ staging is required. Prefer one coherent commit unless the proposed
 intermediate commits are independently reviewable and verifiable. This is
 guidance for the human operator and does not grant Git mutation authority.
 
+Use [the handoff guide](HANDOFF.md) for the accompanying next-step, planning,
+and model/effort recommendations.
+
 Common types:
 
 ```text

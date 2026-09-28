@@ -244,6 +244,7 @@ def test_public_and_community_markdown_have_intentional_distribution_boundaries(
     assert {path.name for path in agent_guides.glob("*.md")} == {
         "DELEGATION.md",
         "DEVELOPMENT.md",
+        "HANDOFF.md",
         "RELEASE.md",
         "SCIENTIFIC_CONTRACTS.md",
         "SOURCE_CONTRACTS.md",
@@ -375,6 +376,7 @@ def test_public_agents_bootstraps_ignored_local_policy() -> None:
     for guide in (
         "DELEGATION.md",
         "DEVELOPMENT.md",
+        "HANDOFF.md",
         "RELEASE.md",
         "SCIENTIFIC_CONTRACTS.md",
         "SOURCE_CONTRACTS.md",

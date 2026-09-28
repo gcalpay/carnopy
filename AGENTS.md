@@ -127,3 +127,6 @@ maintainer approval.
 
 Read the routed development guide for exact commands, documentation policy,
 test posture, and commit handoff requirements.
+
+Before the final implementation handoff, read
+[handoff guidance](docs/agent-guides/HANDOFF.md).
