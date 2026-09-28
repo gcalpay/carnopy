@@ -9,6 +9,7 @@ from typing import Literal
 
 from carnopy.sources.evidence import DatasetEvidence, EvidenceElement, RecordEvidence
 from carnopy.sources.inventory import component_number, identifier
+from carnopy.sources.metadata import data_origin
 
 RecordStatus = Literal["eligible", "unsupported", "invalid", "unselected"]
 _DENSITIES = {"Mass density, kg/m3": "mass_density", "Amount density, mol/m3": "amount_density"}
@@ -113,7 +114,14 @@ def _property(node: EvidenceElement) -> tuple[str | None, bool]:
         or family is None
         or _unknown(method, {"PropertyGroup"})
         or family.name != "VolumetricProp"
-        or _unknown(family, {"ePropName", "eMethodName", "sMethodName"})
+        or _unknown(
+            family, {"ePropName", "eMethodName", "sMethodName", "Prediction", "CriticalEvaluation"}
+        )
+        or sum(
+            len(family.all(field))
+            for field in ("eMethodName", "sMethodName", "Prediction", "CriticalEvaluation")
+        )
+        > 1
     )
     return name, unknown
 
@@ -149,7 +157,10 @@ def _definition_assessment(
     phase = _phase(definition, "PropPhaseID", "ePropPhase")
     unsupported: list[str] = []
     invalid: list[str] = []
-    warnings = ["data_origin_unclassified"]
+    origin, _ = data_origin(definition)
+    warnings = ["data_origin_unclassified"] if origin == "unknown" else []
+    if origin in {"predicted", "critically_evaluated"}:
+        warnings.append(f"data_origin_{origin}")
     if dataset.kind != "PureOrMixtureData":
         unsupported.append("unsupported_dataset_kind")
     if not 1 <= len(dataset.component_numbers) <= 2:
@@ -372,7 +383,8 @@ def _context(
                 unsupported.append("component_specific_coordinate")
             si = Fraction(number) * Fraction(scale) + Fraction(offset)
             try:
-                if not math.isfinite(float(si)):
+                projected = float(si)
+                if not math.isfinite(projected) or (si and not projected):
                     invalid.append("nonrepresentable_normalized_coordinate")
             except OverflowError:
                 invalid.append("nonrepresentable_normalized_coordinate")

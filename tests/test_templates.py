@@ -28,7 +28,7 @@ def test_packaged_dataset_templates_match_repository_examples_and_validate() -> 
         "vapor_mass_fraction_table": "vapor_mass_fraction_table_example.yaml",
     }
     for mode, filename in TEMPLATE_FILENAMES.items():
-        if mode in {"model_sweep", "preparation"}:
+        if mode in {"model_sweep", "preparation", "source_import"}:
             continue
         packaged = template_text(mode)
         example = (root / "configs" / example_names[mode]).read_text(encoding="utf-8")
@@ -168,6 +168,10 @@ def test_full_templates_are_valid_and_append_one_authoritative_reference(
         assert load_sweep_config_file(output).model.document_type == "model_sweep"
     elif mode == "preparation":
         assert load_preparation_config(output).model.document_type == "preparation"
+    elif mode == "source_import":
+        from carnopy.sources.config import load_import_config
+
+        assert load_import_config(output).model.document_type == "source_import"
     else:
         assert load_config_file(output).model.mode == mode
 

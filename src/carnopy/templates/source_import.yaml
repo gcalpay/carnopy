@@ -1,0 +1,14 @@
+# Local ThermoML density import. Supply the source path to import, not in this file.
+# carnopy import SOURCE --config source_import.yaml --preview
+# carnopy import SOURCE --config source_import.yaml --out outputs
+schema_version: 1
+document_type: source_import
+# Use thermoml_json for the corresponding NIST JSON serialization.
+format: thermoml_xml
+# Empty selects every supported record; unsupported/invalid content stays inventoried.
+selections: []
+# To select datasets, use zero-based preview indices and reported property numbers:
+# selections:
+#   - dataset_index: 0
+#     property_numbers: [1]
+# Omit property_numbers (or use []) to select all properties in that dataset.

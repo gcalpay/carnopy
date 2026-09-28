@@ -63,8 +63,9 @@ must remain explicit rather than being flattened into one generic adapter.
 The maintainer has selected [SOURCE-1](SOURCE_IMPORT_PLAN.md) to implement the
 source-breadth portion of this roadmap. SOURCE-1.0 records the accepted
 [evidence and operation contracts](docs/agent-guides/SOURCE_CONTRACTS.md).
-SOURCE-1.1A now implements bounded local XML/JSON parsing and Python preview.
-Immutable import bundles and desktop inspection follow, then observation
+SOURCE-1.1B implements bounded local XML/JSON parsing, Python/CLI preview,
+immutable density bundles, and verified inspection. Desktop Sources follows
+at 1.1C, then observation
 plots, HEOS comparison, PR/SRK comparison, collections, and experimental ML
 Preparation. Archive access and VLE follow the complete local
 single-phase workflow. Its binary calculations support reference comparison;

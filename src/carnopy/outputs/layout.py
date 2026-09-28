@@ -36,19 +36,39 @@ def create_run_layout(
     public_output_root: Path | None = None,
 ) -> RunLayout:
     try:
+        mode_slug = MODE_SLUGS[mode]
+    except KeyError as exc:
+        raise OutputError(f"unsupported dataset mode for run layout: {mode}") from exc
+    return create_artifact_layout(
+        output_root=output_root,
+        slug=mode_slug,
+        run_id=run_id,
+        created_at=created_at,
+        public_output_root=public_output_root,
+    )
+
+
+def create_artifact_layout(
+    *,
+    output_root: Path,
+    slug: str,
+    run_id: str,
+    created_at: datetime,
+    public_output_root: Path | None = None,
+) -> RunLayout:
+    """Share the owned staging-directory lifecycle across immutable artifact kinds."""
+    if not slug or any(character not in "abcdefghijklmnopqrstuvwxyz_" for character in slug):
+        raise OutputError("artifact directory slug must contain lowercase letters or underscores")
+    try:
         output_root.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
         raise OutputError(f"could not create output root {output_root}: {exc}") from exc
     timestamp = created_at.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
     try:
-        mode_slug = MODE_SLUGS[mode]
-    except KeyError as exc:
-        raise OutputError(f"unsupported dataset mode for run layout: {mode}") from exc
-    try:
         run_prefix = UUID(run_id).hex[:8]
     except ValueError as exc:
         raise OutputError(f"invalid run_id for run layout: {run_id}") from exc
-    name = f"{timestamp}_{mode_slug}_{run_prefix}"
+    name = f"{timestamp}_{slug}_{run_prefix}"
     final_directory = output_root / name
     staging_directory = output_root / f".{name}.staging"
     selected_public_root = public_output_root if public_output_root is not None else output_root

@@ -7,7 +7,7 @@ from types import MappingProxyType
 from carnopy.sources.errors import SourceImportError
 
 THERMOML_NAMESPACE = "http://www.iupac.org/namespaces/ThermoML"
-ADAPTER_VERSION = "thermoml-subset-1"
+ADAPTER_VERSION = "thermoml-subset-2"
 MAX_SOURCE_BYTES = 64 * 1024 * 1024
 MAX_DEPTH = 64
 MAX_SCALAR_BYTES = 1024 * 1024

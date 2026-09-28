@@ -234,6 +234,7 @@ WHEEL_REQUIRED = {
     "carnopy/templates/full_reference.yaml",
     "carnopy/templates/model_sweep.yaml",
     "carnopy/templates/preparation.yaml",
+    "carnopy/templates/source_import.yaml",
     "carnopy/templates/property_table.yaml",
     "carnopy/templates/saturation_table.yaml",
     "carnopy/templates/vapor_mass_fraction_table.yaml",
@@ -347,11 +348,35 @@ SDIST_REQUIRED = {
     "src/carnopy/sweeps/plots.py",
     "src/carnopy/templates/model_sweep.yaml",
     "src/carnopy/templates/preparation.yaml",
+    "src/carnopy/templates/source_import.yaml",
     "src/carnopy/templates/property_table.yaml",
     "src/carnopy/templates/full_reference.yaml",
     "tests/test_cli.py",
     "uv.lock",
 }
+SOURCE_MODULES = (
+    "__init__",
+    "bundle",
+    "config",
+    "eligibility",
+    "errors",
+    "evidence",
+    "files",
+    "inspection",
+    "inventory",
+    "metadata",
+    "normalization",
+    "numbers",
+    "pipeline",
+    "preview",
+    "json_reader",
+    "xml_reader",
+    "results",
+    "tables",
+    "uncertainty",
+)
+WHEEL_REQUIRED.update(f"carnopy/sources/{name}.py" for name in SOURCE_MODULES)
+SDIST_REQUIRED.update(f"src/carnopy/sources/{name}.py" for name in SOURCE_MODULES)
 WHEEL_REQUIRED.update(f"carnopy/app/{path}" for path in QML_SHELL_APP_FILES)
 WHEEL_REQUIRED.update(f"carnopy/app/{path}" for path in STAGE5_APP_FILES)
 WHEEL_REQUIRED.update(f"carnopy/app/{path}" for path in STAGE6_APP_FILES)

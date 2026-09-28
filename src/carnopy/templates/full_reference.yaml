@@ -1,6 +1,13 @@
 
 # ---------------------------------------------------------------------------
 # Carnopy configuration reference
+#
+# Local source import (separate document; generation/preparation options do not apply):
+# schema_version: 1
+# document_type: source_import
+# format: thermoml_xml  # or thermoml_json
+# selections: []       # all; otherwise dataset_index (zero-based), property_numbers
+# Source path is a CLI/API argument. Preview with carnopy import ... --preview.
 # ---------------------------------------------------------------------------
 # This commented catalog is appended to a valid mode-specific configuration by
 # `carnopy init MODE OUTPUT --full` and copied into every newly generated

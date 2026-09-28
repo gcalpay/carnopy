@@ -234,6 +234,8 @@ def plan_source_import(
             "request_id": request_id,
             "configuration_sha256": loaded.snapshot.descriptor.sha256,
             "adapter_version": evidence.ADAPTER_VERSION,
+            "bundle_schema_version": 1,
+            "parquet_writer_version": version("pyarrow"),
             "carnopy_version": __version__,
             "python_version": platform.python_version(),
             "xml_parser_version": version("defusedxml")

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import stat
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from carnopy.provenance import sha256_bytes
 from carnopy.sources.errors import SourceImportError
 
 Checkpoint = Callable[[], None]
@@ -55,6 +55,28 @@ def read_source_snapshot(
     maximum_bytes: int,
     cancel: Checkpoint | None = None,
 ) -> SourceSnapshot:
+    return _read_source(path, maximum_bytes=maximum_bytes, cancel=cancel, retain_bytes=True)
+
+
+def read_source_descriptor(
+    path: str | Path,
+    *,
+    maximum_bytes: int,
+    cancel: Checkpoint | None = None,
+) -> SourceDescriptor:
+    """Hash an artifact with the same stable-read rules, without buffering it."""
+    return _read_source(
+        path, maximum_bytes=maximum_bytes, cancel=cancel, retain_bytes=False
+    ).descriptor
+
+
+def _read_source(
+    path: str | Path,
+    *,
+    maximum_bytes: int,
+    cancel: Checkpoint | None,
+    retain_bytes: bool,
+) -> SourceSnapshot:
     """Bounded descriptor-backed read, following the existing artifact-read policy.
 
     The preparation reader imports pandas and the scene reader owns desktop errors;
@@ -79,6 +101,7 @@ def read_source_snapshot(
             if not stat.S_ISREG(opened.st_mode) or _identity(opened) != _identity(before):
                 raise SourceImportError("source_changed", "source changed while opening")
             blocks: list[bytes] = []
+            digest = hashlib.sha256()
             size = 0
             while True:
                 checkpoint(cancel)
@@ -88,7 +111,9 @@ def read_source_snapshot(
                 size += len(block)
                 if size > maximum_bytes:
                     raise SourceImportError("byte_limit", f"source exceeds {maximum_bytes} bytes")
-                blocks.append(block)
+                digest.update(block)
+                if retain_bytes:
+                    blocks.append(block)
             after = os.fstat(stream.fileno())
         current = _regular_path(source)
         if (
@@ -102,7 +127,7 @@ def read_source_snapshot(
         return SourceSnapshot(
             SourceDescriptor(
                 source,
-                sha256_bytes(content),
+                digest.hexdigest(),
                 size,
                 before.st_dev,
                 before.st_ino,

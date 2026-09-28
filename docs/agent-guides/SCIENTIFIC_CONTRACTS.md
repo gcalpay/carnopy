@@ -21,9 +21,10 @@ scope: Carnopy generates reproducible, backend-derived synthetic
 thermophysical datasets for machine-learning, surrogate-model, and engineering
 workflows. SOURCE-1 now has an accepted ThermoML implementation contract;
 development source implements its bounded, backend-free ThermoML XML/JSON
-Python preview. Immutable import bundles, reference comparison, and collections
-remain unavailable until their behavioral milestones are implemented and
-accepted. Other future capabilities remain roadmap directions.
+Python/CLI preview, immutable density bundles, and verified inspection.
+Reference comparison, collections, and experimental Preparation remain
+unavailable until their behavioral milestones are implemented and accepted.
+Other future capabilities remain roadmap directions.
 
 Carnopy is not:
 
@@ -89,13 +90,13 @@ changes a major ownership or process boundary.
 
 Outside the current implemented contract:
 
-- mixtures;
+- mixture generation (pure/binary density evidence import is supported);
 - ORC generation;
 - additional property backends;
 - random, Sobol, Latin-hypercube, adaptive, or active-learning sampling;
 - ML training or inference;
 - web/API services or databases;
-- finalized ThermoML imports, OCR, RAG, or literature mining.
+- source desktop workflows, OCR, RAG, or literature mining.
 
 [`THERMOPHYSICAL_ROADMAP.md`](../../THERMOPHYSICAL_ROADMAP.md) records public
 source, mixture, model, backend, cycle, and visualization candidates.
@@ -114,8 +115,9 @@ kinds, exact-state model comparison, collections, and source-aware Preparation.
 Read both before implementing those workflows. SOURCE-1.1A implements the
 non-writing `preview_source_import` Python helper and import configuration and
 preview models. It preserves raw evidence and reports density eligibility;
-SOURCE-1.1B still owns normalized observations and bundle creation, and 1.1C
-owns desktop import. The current command list, generated schemas, and
+SOURCE-1.1B implements `import_source`, `ImportResult`, `carnopy import`,
+`carnopy init source_import`, and verified imported-source `inspect` dispatch.
+SOURCE-1.1C owns desktop import. The generated schemas and
 Preparation v1 behavior below retain their existing contracts.
 
 New source kinds must preserve their scientific origin instead of fabricating
@@ -139,6 +141,7 @@ carnopy fluids [--model heos|pr|srk]
 carnopy validate CONFIG.yaml
 carnopy generate CONFIG.yaml [--out PATH] [--figures-out PATH]
 carnopy sweep SWEEP.yaml [--out PATH]
+carnopy import SOURCE --config IMPORT.yaml [--out PATH] [--preview] [--json]
 carnopy prepare SOURCE --config PREPARATION.yaml [--out PATH]
 carnopy inspect SOURCE
 carnopy plot SOURCE ...
@@ -153,6 +156,9 @@ init → edit → optional validate → generate/sweep → inspect → optional 
 ```
 
 Commands remain independently scriptable; do not add implicit chaining.
+The development source workflow is `init source_import → import --preview →
+import → inspect`; imported-source plotting and Preparation remain later
+SOURCE-1 milestones.
 
 The supported Python API intentionally remains narrow:
 
@@ -162,6 +168,7 @@ The supported Python API intentionally remains narrow:
 - `generate_model_sweep`;
 - `prepare_dataset`;
 - `preview_source_import` (development SOURCE-1.1A);
+- `import_source` and `ImportResult` (development SOURCE-1.1B);
 - public configuration and result models;
 - explicit visualization functions.
 

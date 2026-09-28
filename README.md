@@ -390,10 +390,19 @@ Public helpers also cover model sweeps, preparation, and explicit
 visualization. CLI handlers and desktop controllers call the same core logic
 rather than maintaining separate scientific implementations.
 
-### ThermoML preview in development source
+### ThermoML import in development source
 
-SOURCE-1.1A adds a non-writing Python preview for local ThermoML XML and NIST
-ThermoML JSON. Save an import configuration as `import.yaml`:
+SOURCE-1.1B supports local ThermoML XML and NIST ThermoML JSON through
+Python and the CLI. Start with the packaged configuration and preview:
+
+```bash
+carnopy init source_import import.yaml
+carnopy import article.xml --config import.yaml --preview
+carnopy import article.xml --config import.yaml --out outputs
+carnopy inspect outputs/CREATED_SOURCE_BUNDLE --format json
+```
+
+The configuration is:
 
 ```yaml
 schema_version: 1
@@ -403,20 +412,28 @@ selections: []
 ```
 
 ```python
-from carnopy import preview_source_import
+from carnopy import import_source, preview_source_import
 
 preview = preview_source_import("article.xml", config="import.yaml")
 print(preview.status, preview.counts)
 print(preview.as_dict()["warning_counts"])
+result = import_source("article.xml", config="import.yaml", output_root="outputs")
+print(result.output_directory, result.counts, result.manifest_sha256)
 ```
 
 Use `format: thermoml_json` for the corresponding NIST JSON representation.
 The preview checks the supported density subset, retains exact source identity,
 and reports unsupported records, invalid values, and missing information.
-It writes no artifacts and calls no backend. Parsing does not establish
-independent scientific validation. The import CLI, immutable source bundles,
-and desktop import follow in SOURCE-1.1B/C; this preview is not part of the
-published `0.1.0a5` payload. See the
+Preview writes no artifacts. Import creates a new immutable bundle with exact
+original bytes, canonical density observations in Parquet, provenance,
+uncertainty assessments, diagnostics, and complete accounting. Pure/binary
+compositions retain their reported mole/mass basis. No CoolProp mapping or
+backend call is required. Parsing does not establish independent scientific
+validation. A valid source with no eligible observations still produces an
+audit bundle (CLI exit 3). Desktop Sources remains SOURCE-1.1C; observation
+plots, reference comparison, collections, and experimental ML Preparation
+follow later. This development workflow is not in the published `0.1.0a5`
+payload. See the
 [source contract](docs/agent-guides/SOURCE_CONTRACTS.md) for selections and limits.
 
 ## Current alpha scope
@@ -488,8 +505,9 @@ local ThermoML XML/JSON import, inspection and plots, HEOS then PR/SRK
 comparisons, multi-publication collections, and measured-value/residual ML
 Preparation across Python, CLI, and desktop workflows. Archive access and
 vapour-liquid equilibrium follow that local workflow. SOURCE-1.0 establishes
-the contracts, and development source now provides SOURCE-1.1A's Python
-preview. The complete import-to-ML workflow remains in progress and is not
+the contracts, and development source now provides SOURCE-1.1B's local
+Python/CLI import, immutable density bundles, and verified inspection.
+The complete import-to-ML workflow remains in progress and is not
 included in the current alpha. General binary-mixture generation remains
 separate.
 

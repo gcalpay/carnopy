@@ -275,6 +275,31 @@ class SweepInspection:
 
 def inspect_source(source: str | Path) -> Inspection | PlotInspection:
     path = Path(source).expanduser()
+    if path.is_dir() and (path / "manifest.json").exists():
+        from carnopy.sources.bundle import MAX_MANIFEST_BYTES, json_object
+        from carnopy.sources.errors import SourceImportError
+        from carnopy.sources.files import read_source_snapshot
+        from carnopy.sources.inspection import inspect_imported_source
+
+        try:
+            if (path / "preparation.normalized.json").is_file() or (
+                path / "sweep.normalized.json"
+            ).is_file():
+                # Legacy artifacts predate the source-manifest resource profile.
+                # Preserve their reader contract while still honoring explicit kinds.
+                manifest = _read_json(path / "manifest.json", "legacy manifest")
+            else:
+                manifest = json_object(
+                    read_source_snapshot(
+                        path / "manifest.json", maximum_bytes=MAX_MANIFEST_BYTES
+                    ).raw_bytes
+                )
+            if "bundle_kind" in manifest:
+                if manifest["bundle_kind"] != "imported_source":
+                    raise SourceImportError("unsupported_bundle_kind", str(manifest["bundle_kind"]))
+                return inspect_imported_source(path)
+        except SourceImportError as exc:
+            raise VisualizationError(str(exc)) from exc
     if path.is_dir() and (path / "preparation.normalized.json").is_file():
         return _inspect_preparation_bundle(path)
     if path.is_dir() and (path / "sweep.normalized.json").is_file():

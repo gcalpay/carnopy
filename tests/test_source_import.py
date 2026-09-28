@@ -67,7 +67,7 @@ def test_xml_json_preserve_equivalent_evidence_and_distinct_byte_identity(tmp_pa
         assert assessment.value("nCombUncertLevOfConfid") == "95"
         assert assessment.value("nCombCoverageFactor") is None
         assert plan.preview.records[0].point_id != plan.preview.records[1].point_id
-        assert "data_origin_unclassified" in plan.preview.records[0].warnings
+        assert "data_origin_unclassified" not in plan.preview.records[0].warnings
 
 
 def test_preview_is_nonwriting_immutable_and_path_independent(tmp_path: Path) -> None:

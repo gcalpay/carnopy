@@ -13,12 +13,11 @@ local ThermoML XML/JSON
 ```
 
 **Completed milestone: SOURCE-1.0, contracts (0A–0C).**
-**Completed checkpoint: SOURCE-1.1A**, bounded parsing and non-writing import
-preview; verification is recorded below. SOURCE-1.1 remains in progress.
-**Next checkpoint: SOURCE-1.1B**, density normalization and immutable import
-bundles, after the local commit boundary. The Python preview is available in
-development source; bundle writing, the import CLI, and desktop import are
-not implemented yet.
+**Completed checkpoint: SOURCE-1.1B**, density normalization, immutable source
+bundles, Python/CLI import, and verified core inspection; verification is
+recorded below. SOURCE-1.1 remains in progress.
+**Next checkpoint: SOURCE-1.1C**, desktop Sources and bounded inspection,
+after the local commit boundary. No Sources GUI is implemented yet.
 
 The normative source contract is
 [docs/agent-guides/SOURCE_CONTRACTS.md](docs/agent-guides/SOURCE_CONTRACTS.md).
@@ -77,7 +76,7 @@ it adds no runtime source, template, schema implementation, or dependency.
 | Checkpoint | Deliverable and acceptance |
 | --- | --- |
 | 1A | Complete. Bounded XML/JSON readers, shared evidence inventory, stable source reads, selections, and non-writing Python preview. Both encodings preserve interpreted evidence while retaining different raw identities. Verification is recorded below. |
-| 1B | Normalize supported pure/binary density observations; write immutable source bundles with complete accounting, raw bytes, provenance, uncertainty, and diagnostic joins. Expose the planned import CLI/API. |
+| 1B | Complete. Pure/binary density normalization; immutable source bundles with complete accounting, exact bytes, provenance, uncertainty and diagnostic joins; import CLI/API and verified core inspection. Source verification recorded below; distribution/native milestone acceptance remains 1C. |
 | 1C | Add the Sources import document/draft, worker planning/execution, explicit source binding, Activity/recovery, source discovery, and bounded Inspect tables. Complete installed and native desktop acceptance. |
 
 The 1A implementation uses canonical identity, stable reads, cancellation, and
@@ -96,7 +95,9 @@ bounds representation size to 1,000,000 XML elements or JSON containers/scalars
 Reject inputs over a limit and accept values at the limit; never truncate or
 finalize a partial parse. Check depth/text/counts during
 parsing, not only after materializing the document. Compressed archives and
-embedded file retrieval are not accepted import inputs. These are versioned
+embedded file retrieval are not accepted import inputs. Bundle schema 1 also
+bounds artifacts and table uncompressed sizes to 1 GiB, tables to 16,000,000
+rows, and manifests to 1 MiB; over-limit results are never published. These are versioned
 capability limits, not silently adjustable scientific options.
 
 An import preview records format, adapter/schema profile, source hash, ordered
@@ -355,3 +356,52 @@ next milestone; neither this plan nor its acceptance grants Git mutation.
 - Next: SOURCE-1.1B. Canonical SI observations, conversion lineage, Parquet
   schemas, protected bundle finalization, and the import CLI are still pending;
   desktop source import remains SOURCE-1.1C. GUI-2 numbering is unchanged.
+
+### SOURCE-1.1B completion and qualification record
+
+- Implemented `import_source` / frozen `ImportResult`, packaged
+  `init source_import`, non-writing CLI preview, execution with explicit
+  completion/no-eligible outcomes, and verified source-kind `inspect` dispatch.
+- Added schema-1 observations, provenance, uncertainty, and diagnostics Parquet
+  tables plus exact source/configuration bytes, normalized configuration,
+  complete catalog accounting, report, and hash manifest. Stable observation
+  identity survives re-import while run directories remain distinct.
+- Exact density/state normalization, reported mole/mass composition and
+  recorded binary complements, explicit data origins, standard/expanded and
+  asymmetric uncertainty handling are covered by offline regression cases.
+  Additional cases cover cancellation, stale previews, changed source/config
+  or artifacts, protected finalization, destination collision, foreign staging,
+  resource limits, corrupted bundles, empty schemas, relocation, lightweight
+  help, and legacy inspection compatibility.
+- Reacquired the pinned Jia et al. XML/JSON records above for explicit local
+  qualification on 2026-09-28. Both byte sizes and SHA-256 hashes match the
+  recorded corpus. Both imports normalize all **662** observations; values,
+  T/P states, and exact composition fractions agree across serializations.
+  The dataset-4 anchor is 1199.78 kg/m^3 at 283.54 K and 3,000,000 Pa,
+  fractions 0.1742/0.8258. Its expanded uncertainty remains 3.87 kg/m^3,
+  confidence 95, with no invented coverage factor or standard uncertainty.
+  All 662 assessments report the missing coverage factor. This verifies import
+  fidelity, not independent measurement validity or model agreement.
+- Source gate passed: `uv lock --check`, locked/no-sync preflight (Ruff,
+  formatting, mypy over 178 source files, full pytest and CLI help), and
+  `uv pip check --python .venv/bin/python`. The final preflight passed
+  **1,444 tests in 610.80 s**, including 41 new bundle cases. Focused source,
+  template, inspection, packaging metadata, and release-tool checks also passed.
+- The first full run stalled in the existing QML plot focus-mode test and was
+  terminated after it did not respond to interruption. The unchanged test
+  passed alone in 4.62 s. The final full preflight passed with diagnostic stack
+  dumping enabled (`PYTEST_ADDOPTS='-o faulthandler_timeout=60'`); no desktop
+  behavior or test timeout was changed.
+- Distribution inventory covers all 19 source modules and the packaged import
+  template. The optional non-isolated build rehearsal reported
+  `ERROR Backend 'hatchling.build' is not available.` An isolated build awaits
+  the local dependency-install approval; no dependency or environment was
+  changed. Built-package verification is not claimed. Full distribution,
+  installed-package and native desktop acceptance remain the 1C milestone gate.
+- Reviewed the implementation and synchronized scientific contracts, user
+  guidance, roadmap and desktop boundaries. Diff whitespace and all 47 local
+  links in the seven changed Markdown documents passed inspection. No acquired
+  NIST payload or generated bundle is included in the change.
+- Next: SOURCE-1.1C, desktop Sources, worker/configuration lifecycle integration,
+  Activity, discovery, and bounded inspection with native acceptance. The
+  SOURCE-1.1 milestone remains open; GUI-2 Stage 7/8 numbering is unchanged.

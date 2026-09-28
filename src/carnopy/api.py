@@ -8,6 +8,7 @@ from carnopy.config.io import LoadedConfig, load_config_file, load_sweep_config_
 if TYPE_CHECKING:
     from carnopy.results import PreparationResult, RunResult, SweepResult, ValidationResult
     from carnopy.sources.preview import ImportPreview
+    from carnopy.sources.results import ImportResult
 
 
 def load_config(path: str | Path) -> LoadedConfig:
@@ -19,6 +20,15 @@ def preview_source_import(source: str | Path, *, config: str | Path) -> ImportPr
     from carnopy.sources.preview import plan_source_import
 
     return plan_source_import(source, config).preview
+
+
+def import_source(
+    source: str | Path, *, config: str | Path, output_root: str | Path = "outputs"
+) -> ImportResult:
+    """Normalize local ThermoML density evidence into a new immutable source bundle."""
+    from carnopy.sources.pipeline import run_source_import
+
+    return run_source_import(source, config, output_root=output_root)
 
 
 def validate_config(path: str | Path) -> ValidationResult:

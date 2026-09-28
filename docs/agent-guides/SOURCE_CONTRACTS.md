@@ -3,8 +3,9 @@
 ## Status and authority
 
 This is the accepted implementation contract for SOURCE-1. Development source
-now implements SOURCE-1.1A's Python import preview, described below. Bundle
-creation, comparison, collections, and source desktop pages remain planned.
+now implements SOURCE-1.1B's Python/CLI preview, density import bundles, and
+verified core/CLI inspection. Comparison, collections, observation plotting,
+experimental Preparation, and source desktop pages remain planned.
 SOURCE-1.0 establishes the full program's contracts; the checkpoint ledger and
 qualification matrix live in
 [SOURCE_IMPORT_PLAN.md](../../SOURCE_IMPORT_PLAN.md).
@@ -60,8 +61,8 @@ precision-supported fraction sums without rescaling reported evidence. Missing
 T/P is disclosed separately from measurement eligibility. Alternative component
 locators, ternary/reaction data, unsupported quantities/presentations/qualifiers,
 and equilibrium contexts remain raw evidence with unsupported accounting.
-Uncertainty and sample/method metadata are retained; uncertainty conversion and
-data-origin qualification remain subsequent normalization work.
+Uncertainty and sample/method metadata are retained. Normalization below
+qualifies supported uncertainty assessments and explicit data origins.
 
 The readers enforce the resource profile in the active plan before completing
 parse. Local integer identifiers accept at most 20 source characters; reported
@@ -75,7 +76,95 @@ conformance certification.
 Reads reject symlinks, nonregular files, replacement, mutation, and oversize
 input. The private cancellable plan revalidates both files after parsing and
 can check a previously accepted preview's exact bindings. No preview can
-publish a bundle; protected finalization belongs to SOURCE-1.1B.
+publish a bundle; only import execution enters protected finalization.
+
+## Implemented SOURCE-1.1B import and inspection
+
+`import_source(source, *, config, output_root="outputs")` returns a frozen
+`ImportResult` with exact document/publication/request/context/run identities,
+accounting, immutable artifact references, manifest SHA-256, and at most 500
+diagnostics plus an explicit omitted count. Its `as_dict()` returns an
+independent JSON-compatible projection. Private execution accepts cancellation,
+progress, and an accepted preview binding; these are not public API arguments.
+
+`carnopy init source_import OUTPUT [--full]` creates the packaged starter.
+`carnopy import SOURCE --config IMPORT.yaml [--out PATH] [--preview] [--json]`
+exposes the same core operations. Preview exits 0 for a valid report, including
+one with no eligible observations. Execution exits 0 for `completed` or
+`completed_with_limitations`, and 3 for a finalized `no_eligible_observations`
+audit bundle. Configuration/source/integrity errors exit 2; output failures
+exit 1. JSON failures carry `status`, `error`, and `exit_code`; no failed
+execution claims a completed bundle. Help and public imports remain lightweight.
+
+Adapter `thermoml-subset-2` retains the 1A input limits. It normalizes direct
+mass density (`kg/m^3`) and amount density (`mol/m^3`) without interchanging
+bases. Exact decimal scale/offset arithmetic precedes binary64 projection,
+independently of the ambient decimal context. Conversion lineage retains
+original text/digits/units, exact canonical decimal, scale/offset, binary64
+value/hexadecimal representation, and whether that projection is exact.
+Reported binary mole/mass fractions retain their basis and phase scope. A
+single fraction receives an explicitly recorded `1 - x` complement; a reported
+pair is never rescaled. No molar-mass lookup or basis conversion occurs.
+
+Known physical measurement method enumerations qualify origin as
+`experimental`; explicit `Prediction` and `CriticalEvaluation` qualify their
+respective origins. Free text, derived/calculated methods, and absent methods
+remain `unknown`. Conflicting method choices are unsupported. Origin records
+the classification rule and does not assert independent validation.
+
+Each property, variable, or constraint uncertainty assessment remains separate.
+Supported absolute standard/expanded, combined, and property asymmetric
+representations retain raw definitions and values. Scale conversion applies
+without coordinate offsets. Expanded uncertainty supplies a standard value
+only through its explicit positive coverage factor; confidence alone never
+supplies one. Asymmetric bounds remain separate and never produce an averaged
+scalar standard uncertainty. Unsupported or malformed uncertainty receives a
+diagnostic without erasing the interpretable observation. Device specifications,
+repeatability, and curve deviations remain raw evidence, not uncertainty.
+
+Every source property record has one catalog entry, including unsupported,
+invalid, and unselected records. The finalized accounting is `total`,
+`normalized`, `unsupported`, `invalid`, and `unselected`; the last four sum to
+the first. Empty canonical tables retain their declared schemas. Canonical
+observations and provenance join one-to-one in source order. Repeated points
+stay distinct; co-reported properties alone share a `point_id`.
+
+The `imported_source` manifest and all four Parquet tables use bundle schema
+version 1. The manifest declares column names, Arrow types, nullability, row
+counts, and every companion artifact hash. Tables also carry kind/version/name
+and unit metadata. Core fields are:
+
+| Table | Contents and joins |
+| --- | --- |
+| `observations` | Document/publication/dataset/point/property/observation identities, source order and locators, quantity/unit/basis, binary64 and exact-decimal value, nullable `temperature_K`/`pressure_Pa`, reported/canonical phase, origin, component/sample references, composition basis/scope and ordered fractions |
+| `provenance` | One row per observation; original property text, digits, units/basis, locator, origin rule, conversion evidence and original property evidence as JSON |
+| `uncertainties` | Assessment/representation identities; target kind/identity, dataset, nullable point/observation join, original and normalized magnitudes/bounds, explicit standard conversion, coverage/confidence/method/evaluator, raw JSON and status/issue |
+| `diagnostics` | Stable diagnostic identity, nullable dataset/point/source-record/observation joins, target, locator, code, severity and message |
+
+Reported integer identifiers are stored as text to preserve the supported
+20-character range. Constraints attach once to their dataset, variables once
+to their point, and property uncertainties to their observation. Catalog
+metadata preserves citation, compounds/samples, full dataset definitions,
+unsupported content, and original source order; exact original bytes remain
+authoritative. Comparison and Preparation eligibility are not evaluated here.
+
+The bundle is written in bounded table batches to owned staging, verified,
+and published with the existing atomic no-overwrite directory promotion.
+Source/configuration bindings and staged hashes are rechecked before promotion,
+including after the protected worker handoff. Cancellation before that boundary
+cleans owned staging; late cancellation cannot interrupt finalization. Failed
+validation or publication never returns a finalized result. Re-import creates
+a separate run while preserving identical scientific observation identities.
+
+Version-1 bundle verification bounds each artifact and each table's declared
+uncompressed size to 1 GiB, each table to 16,000,000 rows, and the manifest to
+1 MiB. Over-limit artifacts fail rather than being truncated or published.
+These limits supplement the stricter source/configuration/parser limits.
+`inspect` dispatches explicit kind/version before legacy heuristics and verifies
+hashes, schemas, counts, ordering, and joins. Inspection works after relocating
+the bundle, without the input files or backend calls; its record projection is
+bounded to 500 entries. Existing generated bundle readers remain supported.
+The desktop Sources workflow and bounded observation tables remain 1.1C.
 
 ## Evidence and eligibility — SOURCE-1.0A
 

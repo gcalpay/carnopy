@@ -26,6 +26,7 @@ class ConfigModeCli(StrEnum):
     vapor_mass_fraction_table = "vapor_mass_fraction_table"
     model_sweep = "model_sweep"
     preparation = "preparation"
+    source_import = "source_import"
 
 
 class InspectFormatCli(StrEnum):
@@ -50,10 +51,11 @@ app = typer.Typer(
     no_args_is_help=True,
     pretty_exceptions_enable=False,
     rich_markup_mode=None,
-    help="Generate reproducible thermophysical datasets from configured backends.",
+    help="Generate datasets from configured backends and import traceable source evidence.",
     epilog=(
         "Workflow: init -> edit -> optional validate -> generate/sweep -> inspect "
         "-> optional plot -> optional prepare."
+        " Local evidence: init source_import -> import --preview -> import -> inspect."
     ),
 )
 
@@ -355,7 +357,7 @@ def inspect_command(
         typer.Argument(
             exists=True,
             readable=True,
-            help="Dataset run, model-sweep bundle, preparation bundle, CSV, or Parquet file.",
+            help="Dataset, source, model-sweep or preparation bundle, CSV, or Parquet file.",
         ),
     ],
     output_format: Annotated[
@@ -452,9 +454,62 @@ def init_command(
         typer.echo(f"  carnopy sweep {created}")
     elif mode is ConfigModeCli.preparation:
         typer.echo(f"  carnopy prepare SOURCE --config {created}")
+    elif mode is ConfigModeCli.source_import:
+        typer.echo(f"  carnopy import SOURCE --config {created} --preview")
+        typer.echo(f"  carnopy import SOURCE --config {created}")
     else:
         typer.echo(f"  carnopy validate {created}")
         typer.echo(f"  carnopy generate {created}")
+
+
+@app.command("import", short_help="Import local ThermoML density evidence.")
+def import_command(
+    source: Annotated[Path, typer.Argument(help="Local ThermoML XML or NIST JSON file.")],
+    config: Annotated[Path, typer.Option("--config", help="Source import configuration.")],
+    output_root: Annotated[
+        Path, typer.Option("--out", help="Parent for a new source bundle.")
+    ] = Path("outputs"),
+    preview: Annotated[
+        bool, typer.Option("--preview", help="Preview without creating outputs.")
+    ] = False,
+    json_output: Annotated[bool, typer.Option("--json", help="Print structured JSON.")] = False,
+) -> None:
+    """Preserve original evidence; import does not require a CoolProp mapping."""
+    import json
+
+    from carnopy.api import import_source, preview_source_import
+    from carnopy.domain.failures import CarnopyError, ConfigError
+
+    try:
+        result = (
+            preview_source_import(source, config=config)
+            if preview
+            else import_source(source, config=config, output_root=output_root)
+        )
+    except CarnopyError as exc:
+        code = 2 if isinstance(exc, ConfigError) else 1
+        if json_output:
+            typer.echo(json.dumps({"status": "failed", "error": str(exc), "exit_code": code}))
+        else:
+            typer.echo(f"Source import failed: {exc}", err=True)
+        raise typer.Exit(code=code) from exc
+    payload = result.as_dict()
+    if json_output:
+        typer.echo(json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False))
+    else:
+        typer.echo(f"Status: {result.status}")
+        typer.echo(f"Source document: {result.source_document_id}")
+        typer.echo(
+            "Records: " + ", ".join(f"{key}={value}" for key, value in payload["counts"].items())
+        )
+        if preview:
+            typer.echo("Preview only; no outputs created.")
+        else:
+            typer.echo(f"Bundle: {payload['output_directory']}")
+            typer.echo(f"Manifest SHA-256: {payload['manifest_sha256']}")
+        typer.echo("Parsing and normalization do not establish independent scientific validity.")
+    if not preview and result.status == "no_eligible_observations":
+        raise typer.Exit(code=3)
 
 
 @app.command("plot", short_help="Plot a generated dataset.")
